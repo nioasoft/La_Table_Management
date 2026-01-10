@@ -17,7 +17,6 @@ import {
   Bell,
   ArrowLeft,
   ChevronLeft,
-  DollarSign,
   Users,
   Building2,
   Settings,
@@ -278,7 +277,6 @@ export function MinimalDashboard({ userRole }: MinimalDashboardProps) {
                   {formatCurrency(commissionStatus?.commissionSummary?.totalAmount || 0)}
                 </p>
               </div>
-              <DollarSign className="h-8 w-8 text-muted-foreground/30" />
             </div>
             <div className="mt-2 text-xs text-muted-foreground">
               {commissionStatus?.commissionSummary?.pendingCount || 0} ממתין
