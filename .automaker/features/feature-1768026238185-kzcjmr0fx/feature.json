@@ -1,0 +1,16 @@
+{
+  "category": "feature",
+  "description": "Create /admin/settlement-workflow page displaying the 9-step settlement process: 1) Period selection, 2) Supplier/franchisee file status, 3) Send report requests button, 4) Send reminders button, 5) File processing and cross-referencing, 6) Gap handling, 7) Commission calculation, 8) Final approval, 9) Invoice report generation. Include quick action buttons for each step and visual progress indicators.",
+  "title": "Settlement Workflow Page",
+  "dependencies": [
+    "feature-1768026131518-qg3crdlnt",
+    "feature-1767974063700-06j16z08a",
+    "feature-1767974063700-zafezaat0"
+  ],
+  "priority": 2,
+  "status": "verified",
+  "id": "feature-1768026238185-kzcjmr0fx",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:52:10.513Z",
+  "updatedAt": "2026-01-10T07:03:05.088Z"
+}

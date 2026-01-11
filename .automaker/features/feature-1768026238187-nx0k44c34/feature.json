@@ -1,0 +1,14 @@
+{
+  "category": "enhancement",
+  "description": "Replace single leaseOptionEnd field with three separate fields: leaseOption1End, leaseOption2End, leaseOption3End to track multiple lease option dates for franchisees.",
+  "title": "Schema Enhancement - Multiple Lease Options",
+  "dependencies": [
+    "feature-1767974063696-ee4juf2z6"
+  ],
+  "priority": 3,
+  "status": "verified",
+  "id": "feature-1768026238187-nx0k44c34",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:24:23.538Z",
+  "updatedAt": "2026-01-10T06:52:19.555Z"
+}

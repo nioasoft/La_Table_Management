@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement dashboard widget showing upload status: who has uploaded files, who hasn't, and pending upload links.",
+  "title": "Dashboard - Upload Status",
+  "dependencies": [
+    "public-upload-page"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063703-uks8dk58m",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:51:17.755Z",
+  "updatedAt": "2026-01-09T18:57:39.472Z"
+}

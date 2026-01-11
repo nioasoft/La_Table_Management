@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement cross-reference view with table showing all supplier-franchisee pairs. Color coding: green (matched), red (discrepancy), yellow (pending). Filter by status. Support bulk approve for matched items.",
+  "title": "Cross-Reference UI",
+  "dependencies": [
+    "cross-reference-engine"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063700-znqh9zogp",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:49:47.696Z",
+  "updatedAt": "2026-01-09T17:57:28.129Z"
+}

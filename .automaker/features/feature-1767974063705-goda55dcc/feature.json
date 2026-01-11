@@ -1,0 +1,16 @@
+{
+  "category": "feature",
+  "description": "Implement comprehensive franchisee card view showing all details, aliases, owners, documents, reminders, and purchase history in organized tabs/sections.",
+  "title": "Franchisee Card Full View",
+  "dependencies": [
+    "franchisee-status-history",
+    "document-management-system",
+    "franchisee-reminder-system"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063705-goda55dcc",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:52:43.050Z",
+  "updatedAt": "2026-01-09T18:59:53.987Z"
+}

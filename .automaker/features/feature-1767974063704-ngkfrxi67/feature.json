@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement settings UI for user management: view pending users, approve/reject, assign roles, configure permissions per user.",
+  "title": "Settings - User Management UI",
+  "dependencies": [
+    "granular-permission-system"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063704-ngkfrxi67",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:57:45.641Z",
+  "updatedAt": "2026-01-09T18:04:45.216Z"
+}

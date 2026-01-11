@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/file-requests",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/settlement-requests?action=all",
+      "schedule": "0 8 1,15 * *"
+    },
+    {
+      "path": "/api/cron/upload-reminders?action=all",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/franchisee-reminders?action=all&autoCreate=true",
+      "schedule": "0 8 * * *"
+    }
+  ]
+}

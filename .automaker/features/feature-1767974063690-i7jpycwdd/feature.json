@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Set up PostgreSQL database with Drizzle ORM. Create all core tables: users, brands, suppliers, franchisees, documents, reminders, upload_links, uploaded_files, settlement_periods, cross_references, adjustments, commissions, email_templates, email_logs, and all history tables (supplier_commission_history, franchisee_status_history).",
+  "title": "Database Schema & Drizzle ORM Setup",
+  "dependencies": [
+    "project-setup-configuration"
+  ],
+  "priority": 1,
+  "status": "completed",
+  "id": "feature-1767974063690-i7jpycwdd",
+  "branchName": "master",
+  "startedAt": "2026-01-09T15:54:27.894Z",
+  "updatedAt": "2026-01-09T16:01:08.323Z"
+}

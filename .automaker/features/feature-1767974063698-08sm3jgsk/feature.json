@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement workflow to send file requests: generate secure upload links, send emails via Resend using templates, log all sent emails. Trigger manually or via scheduled job.",
+  "title": "File Request Workflow",
+  "dependencies": [
+    "secure-upload-link-generation",
+    "email-sending-with-resend"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063698-08sm3jgsk",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:22:45.939Z",
+  "updatedAt": "2026-01-09T17:32:30.314Z"
+}

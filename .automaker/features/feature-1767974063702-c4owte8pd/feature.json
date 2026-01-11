@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement per-franchisee purchase report showing all suppliers they purchased from, amounts, and details. Export to Excel format.",
+  "title": "Franchisee Report",
+  "dependencies": [
+    "commission-calculation-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063702-c4owte8pd",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:32:55.551Z",
+  "updatedAt": "2026-01-09T18:39:52.480Z"
+}

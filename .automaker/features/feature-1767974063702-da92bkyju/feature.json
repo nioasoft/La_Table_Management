@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement invoice report generation: one report per brand per supplier. Export to Excel format with preparation for future Hashavshevet format. Super User uses these to issue invoices manually.",
+  "title": "Invoice Report Generation",
+  "dependencies": [
+    "settlement-approval-workflow",
+    "brand-report"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063702-da92bkyju",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:38:14.026Z",
+  "updatedAt": "2026-01-09T18:45:07.349Z"
+}

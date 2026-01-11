@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement commission calculation: apply commission rate per supplier on net amounts (before VAT). Group calculations by brand for invoicing. Create commission records with status: calculated/approved/invoiced.",
+  "title": "Commission Calculation Engine",
+  "dependencies": [
+    "cross-reference-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063701-zhm35w8qd",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:25:18.841Z",
+  "updatedAt": "2026-01-09T18:32:55.143Z"
+}

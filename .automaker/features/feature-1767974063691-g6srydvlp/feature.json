@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement Google OAuth authentication using Better Auth. Include user registration flow with 'pending' status, session management, and protected route middleware.",
+  "title": "Authentication System with Better Auth",
+  "dependencies": [
+    "database-schema-drizzle-orm-setup"
+  ],
+  "priority": 1,
+  "status": "completed",
+  "id": "feature-1767974063691-g6srydvlp",
+  "branchName": "master",
+  "startedAt": "2026-01-09T15:54:28.134Z",
+  "updatedAt": "2026-01-09T16:17:24.829Z"
+}

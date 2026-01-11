@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement document upload and management for both suppliers and franchisees. Support document types: agreement, correspondence, invoice, other. Store in Vercel Blob with local fallback. Track uploader and upload date.",
+  "title": "Document Management System",
+  "dependencies": [
+    "supplier-management-core-crud",
+    "franchisee-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063697-d5hngm0i3",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:41:45.797Z",
+  "updatedAt": "2026-01-09T16:54:54.199Z"
+}

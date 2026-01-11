@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement franchisee card with all fields: name, brand, aliases array, company ID, address, primary contact, owners (name, phone, email, ownership %), opening date, lease option end, franchise agreement end, and status. Include list view filterable by brand with status indicators.",
+  "title": "Franchisee Management - Core CRUD",
+  "dependencies": [
+    "brand-management",
+    "granular-permission-system"
+  ],
+  "priority": 2,
+  "status": "completed",
+  "id": "feature-1767974063696-ee4juf2z6",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:25:37.110Z",
+  "updatedAt": "2026-01-09T16:34:17.024Z"
+}

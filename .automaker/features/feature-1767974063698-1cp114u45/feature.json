@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement email template management with React Email. Support template types: supplier_request, franchisee_request, reminder, custom. Include variable substitution: {{entity_name}}, {{period}}, {{upload_link}}, {{deadline}}, {{brand_name}}.",
+  "title": "Email Template System",
+  "dependencies": [
+    "database-schema-drizzle-orm-setup"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063698-1cp114u45",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:54:54.624Z",
+  "updatedAt": "2026-01-09T17:08:24.812Z"
+}

@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Create management_companies table to track the 3 management companies that issue invoices (פנקון, פדווילי, ונתמי). Include relationships to brands/suppliers and integrate with invoice report generation.",
+  "title": "Management Companies Entity",
+  "dependencies": [
+    "feature-1767974063690-i7jpycwdd",
+    "feature-1767974063693-xgnatxeqr"
+  ],
+  "priority": 4,
+  "status": "verified",
+  "id": "feature-1768026238187-h26rra9kf",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:52:22.570Z",
+  "updatedAt": "2026-01-10T07:03:50.865Z"
+}

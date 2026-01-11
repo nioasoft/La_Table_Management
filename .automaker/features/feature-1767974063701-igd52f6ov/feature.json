@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement report showing total commissions for entire network with breakdown by brand and by period. Export to Excel format.",
+  "title": "Network Commission Summary Report",
+  "dependencies": [
+    "commission-calculation-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063701-igd52f6ov",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:13:56.563Z",
+  "updatedAt": "2026-01-09T18:21:35.930Z"
+}

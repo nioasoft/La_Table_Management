@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement PDF export for formal reports using react-pdf. Support Hebrew RTL layout.",
+  "title": "PDF Report Generation",
+  "dependencies": [
+    "network-commission-summary-report"
+  ],
+  "priority": 6,
+  "status": "completed",
+  "id": "feature-1767974063702-rxod7bkvu",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:57:40.083Z",
+  "updatedAt": "2026-01-09T19:05:08.470Z"
+}

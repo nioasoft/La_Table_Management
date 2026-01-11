@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement settlement period entity with types: monthly/quarterly/semi_annual/annual. Track status: open/processing/pending_approval/approved/invoiced. Support period creation and lifecycle management.",
+  "title": "Settlement Period Management",
+  "dependencies": [
+    "database-schema-drizzle-orm-setup",
+    "granular-permission-system"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063700-06j16z08a",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:33:54.692Z",
+  "updatedAt": "2026-01-09T17:41:51.054Z"
+}

@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement VAT adjustment during file processing based on supplier's 'vat_included' setting. Calculate net amounts (before VAT) for commission calculation.",
+  "title": "VAT Handling in File Processing",
+  "dependencies": [
+    "excel-file-parser"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063699-6r1dy7ae4",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:23:27.396Z",
+  "updatedAt": "2026-01-09T17:30:37.758Z"
+}

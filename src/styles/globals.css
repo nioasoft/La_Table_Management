@@ -1,0 +1,912 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* LaTable Brand: Clean, professional design with black primary and white background */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    /* Black primary for professional, minimal aesthetic */
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 100%;
+    /* Subtle gray secondary for modern look */
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+    /* Destructive remains red for clear warning indication */
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    /* Clean, subtle borders */
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 9%;
+    --radius: 0.5rem;
+    /* Chart colors - professional grayscale palette */
+    --chart-1: 0 0% 9%;
+    --chart-2: 0 0% 45%;
+    --chart-3: 0 0% 65%;
+    --chart-4: 0 0% 25%;
+    --chart-5: 0 0% 55%;
+  }
+
+  .dark {
+    /* Dark mode - professional dark theme */
+    --background: 0 0% 7%;
+    --foreground: 0 0% 95%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 95%;
+    /* White primary for dark mode contrast */
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 0 0% 95%;
+    /* Destructive - lighter red for visibility in dark mode */
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 95%;
+    /* Chart colors - professional grayscale palette for dark mode */
+    --chart-1: 0 0% 95%;
+    --chart-2: 0 0% 75%;
+    --chart-3: 0 0% 55%;
+    --chart-4: 0 0% 85%;
+    --chart-5: 0 0% 65%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  /* RTL Support for Hebrew */
+  html[dir="rtl"] {
+    direction: rtl;
+  }
+
+  /* Ensure proper text alignment for RTL */
+  html[dir="rtl"] input,
+  html[dir="rtl"] textarea {
+    text-align: right;
+  }
+
+  /* RTL adjustments for flex containers */
+  html[dir="rtl"] .flex-row-reverse {
+    flex-direction: row;
+  }
+
+  /* Hebrew font optimization */
+  html[lang="he"] {
+    font-family: var(--font-rubik), system-ui, sans-serif;
+  }
+}
+
+/* Custom scrollbar styles */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   RTL Utility Classes for Hebrew Localization
+   ========================================================================== */
+
+@layer utilities {
+  /* --------------------------------------------------------------------------
+     Direction utilities - Force specific text direction
+     Use for mixed content (codes, emails, numbers)
+     -------------------------------------------------------------------------- */
+  .dir-ltr {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  .dir-rtl {
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
+
+  /* For embedded content that needs full isolation */
+  .dir-ltr-embed {
+    direction: ltr;
+    unicode-bidi: embed;
+  }
+
+  .dir-rtl-embed {
+    direction: rtl;
+    unicode-bidi: embed;
+  }
+
+  /* For inline elements with opposite direction */
+  .dir-ltr-override {
+    direction: ltr;
+    unicode-bidi: bidi-override;
+  }
+
+  /* --------------------------------------------------------------------------
+     Text alignment utilities (RTL-aware)
+     -------------------------------------------------------------------------- */
+  .text-start {
+    text-align: start;
+  }
+
+  .text-end {
+    text-align: end;
+  }
+
+  /* --------------------------------------------------------------------------
+     RTL-aware spacing utilities
+     Use these instead of ml-/mr- for RTL-compatible margins
+     -------------------------------------------------------------------------- */
+  .ms-auto {
+    margin-inline-start: auto;
+  }
+
+  .me-auto {
+    margin-inline-end: auto;
+  }
+
+  .ps-0 {
+    padding-inline-start: 0;
+  }
+
+  .pe-0 {
+    padding-inline-end: 0;
+  }
+
+  /* --------------------------------------------------------------------------
+     RTL-aware positioning utilities
+     -------------------------------------------------------------------------- */
+  .start-0 {
+    inset-inline-start: 0;
+  }
+
+  .end-0 {
+    inset-inline-end: 0;
+  }
+
+  .start-auto {
+    inset-inline-start: auto;
+  }
+
+  .end-auto {
+    inset-inline-end: auto;
+  }
+
+  /* --------------------------------------------------------------------------
+     RTL-aware border utilities
+     -------------------------------------------------------------------------- */
+  .border-s {
+    border-inline-start-width: 1px;
+  }
+
+  .border-e {
+    border-inline-end-width: 1px;
+  }
+
+  .border-s-0 {
+    border-inline-start-width: 0;
+  }
+
+  .border-e-0 {
+    border-inline-end-width: 0;
+  }
+
+  .rounded-s {
+    border-start-start-radius: var(--radius);
+    border-end-start-radius: var(--radius);
+  }
+
+  .rounded-e {
+    border-start-end-radius: var(--radius);
+    border-end-end-radius: var(--radius);
+  }
+
+  /* --------------------------------------------------------------------------
+     Icon/Arrow flip utilities for RTL
+     Use on directional icons (chevrons, arrows) that should flip in RTL
+     -------------------------------------------------------------------------- */
+  .rtl-flip {
+    transform: scaleX(1);
+  }
+
+  html[dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
+  }
+
+  /* Prevent flip for icons that should NOT flip in RTL (e.g., checkmarks, logos) */
+  .rtl-no-flip {
+    transform: scaleX(1) !important;
+  }
+
+  /* --------------------------------------------------------------------------
+     RTL-aware flex utilities
+     -------------------------------------------------------------------------- */
+  .flex-row-rtl {
+    flex-direction: row;
+  }
+
+  html[dir="rtl"] .flex-row-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* Flex gap utilities that work with RTL */
+  .gap-inline-1 {
+    column-gap: 0.25rem;
+  }
+
+  .gap-inline-2 {
+    column-gap: 0.5rem;
+  }
+
+  .gap-inline-3 {
+    column-gap: 0.75rem;
+  }
+
+  .gap-inline-4 {
+    column-gap: 1rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Table RTL utilities
+     Note: The table component (src/components/ui/table.tsx) now uses logical
+     properties (text-start, pe-0) which automatically handle RTL. These utilities
+     are provided for additional manual control if needed.
+     -------------------------------------------------------------------------- */
+  /* Table cells with numeric content should use ltr-content for proper display */
+  .table-cell-numeric {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: start;
+  }
+
+  /* First and last cell padding adjustments using logical properties */
+  .table-rtl th:first-child,
+  .table-rtl td:first-child {
+    padding-inline-start: 1rem;
+    padding-inline-end: 0.5rem;
+  }
+
+  .table-rtl th:last-child,
+  .table-rtl td:last-child {
+    padding-inline-end: 1rem;
+    padding-inline-start: 0.5rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Form input RTL utilities
+     -------------------------------------------------------------------------- */
+  /* Input with icon on start */
+  .input-icon-start {
+    padding-inline-start: 2.5rem;
+  }
+
+  /* Input with icon on end */
+  .input-icon-end {
+    padding-inline-end: 2.5rem;
+  }
+
+  /* Position icon at start of input */
+  .icon-input-start {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  /* Position icon at end of input */
+  .icon-input-end {
+    position: absolute;
+    inset-inline-end: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  /* --------------------------------------------------------------------------
+     Card/Container RTL utilities
+     -------------------------------------------------------------------------- */
+  .card-header-rtl {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  html[dir="rtl"] .card-header-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* --------------------------------------------------------------------------
+     Badge/Tag RTL utilities
+     -------------------------------------------------------------------------- */
+  .badge-icon-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .badge-icon-start svg {
+    order: -1;
+  }
+
+  html[dir="rtl"] .badge-icon-start svg {
+    order: 1;
+  }
+
+  /* --------------------------------------------------------------------------
+     List RTL utilities
+     -------------------------------------------------------------------------- */
+  .list-disc-rtl {
+    list-style-type: disc;
+    padding-inline-start: 1.5rem;
+  }
+
+  .list-decimal-rtl {
+    list-style-type: decimal;
+    padding-inline-start: 1.5rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Dialog/Modal RTL utilities
+     -------------------------------------------------------------------------- */
+  .dialog-close-rtl {
+    position: absolute;
+    inset-inline-end: 1rem;
+    top: 1rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Navigation RTL utilities
+     -------------------------------------------------------------------------- */
+  .nav-item-rtl {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  html[dir="rtl"] .nav-item-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* Breadcrumb separator that flips in RTL */
+  .breadcrumb-separator-rtl {
+    display: inline-block;
+  }
+
+  html[dir="rtl"] .breadcrumb-separator-rtl {
+    transform: scaleX(-1);
+  }
+
+  /* --------------------------------------------------------------------------
+     Number and code display (always LTR)
+     -------------------------------------------------------------------------- */
+  .ltr-content {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: left;
+  }
+
+  /* Phone numbers, codes, IDs - always display LTR */
+  .phone-number,
+  .code-display,
+  .id-display,
+  .email-display {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* Currency display - number LTR, symbol follows locale */
+  .currency-display {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* Date display */
+  .date-display {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  /* --------------------------------------------------------------------------
+     Animation utilities that respect RTL
+     -------------------------------------------------------------------------- */
+  .slide-in-start {
+    animation: slideInStart 0.2s ease-out;
+  }
+
+  .slide-in-end {
+    animation: slideInEnd 0.2s ease-out;
+  }
+
+  @keyframes slideInStart {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  html[dir="rtl"] .slide-in-start {
+    animation-name: slideInStartRTL;
+  }
+
+  @keyframes slideInStartRTL {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slideInEnd {
+    from {
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  html[dir="rtl"] .slide-in-end {
+    animation-name: slideInEndRTL;
+  }
+
+  @keyframes slideInEndRTL {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+}
+
+/* ==========================================================================
+   RTL Fixes for Form Components and UI Elements
+   ========================================================================== */
+
+@layer components {
+  /* --------------------------------------------------------------------------
+     Dialog/Modal RTL fixes
+     -------------------------------------------------------------------------- */
+  /* Fix dialog close button position for RTL */
+  html[dir="rtl"] [data-radix-dialog-content] > button[class*="absolute"][class*="right-"] {
+    right: auto;
+    left: 1rem;
+  }
+
+  /* Fix dialog header text alignment for RTL */
+  html[dir="rtl"] [data-radix-dialog-content] [class*="text-left"] {
+    text-align: right;
+  }
+
+  /* Fix dialog footer spacing for RTL */
+  html[dir="rtl"] [data-radix-dialog-content] [class*="space-x-"] > * + * {
+    margin-left: 0;
+    margin-right: 0.5rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Alert RTL fixes
+     -------------------------------------------------------------------------- */
+  /* Fix alert icon position for RTL */
+  html[dir="rtl"] [role="alert"] > svg {
+    left: auto !important;
+    right: 1rem;
+  }
+
+  /* Fix alert content padding for RTL */
+  html[dir="rtl"] [role="alert"] [class*="pl-7"] {
+    padding-left: 0;
+    padding-right: 1.75rem;
+  }
+
+  html[dir="rtl"] [role="alert"] > svg ~ * {
+    padding-left: 0 !important;
+    padding-inline-start: 1.75rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Select component RTL fixes
+     -------------------------------------------------------------------------- */
+  /* Fix select item padding and checkmark position for RTL */
+  html[dir="rtl"] [data-radix-select-item] {
+    padding-right: 2rem !important;
+    padding-left: 0.5rem !important;
+  }
+
+  html[dir="rtl"] [data-radix-select-item] > span[class*="absolute"] {
+    right: auto;
+    left: 0.5rem;
+  }
+
+  /* Fix select trigger icon positioning for RTL */
+  html[dir="rtl"] [data-radix-select-trigger] {
+    flex-direction: row-reverse;
+  }
+
+  html[dir="rtl"] [data-radix-select-trigger] > [data-radix-select-icon] {
+    margin-left: 0;
+    margin-right: auto;
+  }
+
+  /* --------------------------------------------------------------------------
+     Checkbox with label RTL fixes
+     -------------------------------------------------------------------------- */
+  /* When checkbox is followed by label, ensure proper spacing */
+  html[dir="rtl"] .checkbox-label-container {
+    display: flex;
+    flex-direction: row-reverse;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* Fix inline checkbox + label spacing */
+  html[dir="rtl"] [data-state][role="checkbox"] + label,
+  html[dir="rtl"] label + [data-state][role="checkbox"] {
+    margin-left: 0;
+    margin-right: 0.5rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Form field layout RTL utilities
+     -------------------------------------------------------------------------- */
+  /* Form row with label and input side by side */
+  .form-row-rtl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  html[dir="rtl"] .form-row-rtl {
+    direction: rtl;
+  }
+
+  /* Form group - vertical layout with label above input */
+  .form-group-rtl {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  html[dir="rtl"] .form-group-rtl {
+    text-align: right;
+  }
+
+  /* Inline form fields */
+  .form-inline-rtl {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+
+  html[dir="rtl"] .form-inline-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* --------------------------------------------------------------------------
+     Input with addon/icon RTL fixes
+     -------------------------------------------------------------------------- */
+  /* Input group with prefix/suffix */
+  .input-group-rtl {
+    display: flex;
+    align-items: center;
+  }
+
+  html[dir="rtl"] .input-group-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* Input addon (text or icon before/after input) */
+  .input-addon-start {
+    border-start-start-radius: var(--radius);
+    border-end-start-radius: var(--radius);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+    border-inline-end: 0;
+  }
+
+  .input-addon-end {
+    border-start-end-radius: var(--radius);
+    border-end-end-radius: var(--radius);
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    border-inline-start: 0;
+  }
+
+  /* Input with addon - remove border radius on adjacent side */
+  .input-with-addon-start {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  .input-with-addon-end {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  /* --------------------------------------------------------------------------
+     Button group RTL fixes
+     -------------------------------------------------------------------------- */
+  .button-group-rtl {
+    display: inline-flex;
+  }
+
+  .button-group-rtl > button:first-child {
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  .button-group-rtl > button:last-child {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
+  .button-group-rtl > button:not(:first-child):not(:last-child) {
+    border-radius: 0;
+  }
+
+  .button-group-rtl > button:not(:first-child) {
+    margin-inline-start: -1px;
+  }
+
+  /* --------------------------------------------------------------------------
+     Search input RTL fixes (with icon)
+     -------------------------------------------------------------------------- */
+  .search-input-container {
+    position: relative;
+  }
+
+  .search-input-container input {
+    padding-inline-start: 2.5rem;
+  }
+
+  .search-input-container svg,
+  .search-input-container .search-icon {
+    position: absolute;
+    inset-inline-start: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  /* --------------------------------------------------------------------------
+     Form validation message RTL fixes
+     -------------------------------------------------------------------------- */
+  .form-error-rtl,
+  .form-hint-rtl {
+    text-align: start;
+    padding-inline-start: 0;
+  }
+
+  html[dir="rtl"] .form-error-rtl,
+  html[dir="rtl"] .form-hint-rtl {
+    text-align: right;
+  }
+
+  /* Error/validation icon positioning */
+  .validation-icon-container {
+    position: relative;
+  }
+
+  .validation-icon-container .validation-icon {
+    position: absolute;
+    inset-inline-end: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .validation-icon-container input {
+    padding-inline-end: 2.5rem;
+  }
+
+  /* --------------------------------------------------------------------------
+     Radio group RTL fixes
+     -------------------------------------------------------------------------- */
+  .radio-group-rtl {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .radio-item-rtl {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  html[dir="rtl"] .radio-item-rtl {
+    flex-direction: row-reverse;
+    justify-content: flex-end;
+  }
+
+  /* --------------------------------------------------------------------------
+     Switch/Toggle RTL fixes
+     -------------------------------------------------------------------------- */
+  .switch-container-rtl {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  html[dir="rtl"] .switch-container-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* --------------------------------------------------------------------------
+     Dropdown menu RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] [data-radix-menu-content] {
+    text-align: right;
+  }
+
+  html[dir="rtl"] [data-radix-menu-content] [class*="pl-"] {
+    padding-left: 0;
+    padding-right: 2rem;
+  }
+
+  html[dir="rtl"] [data-radix-menu-content] [role="menuitem"] svg:first-child {
+    margin-right: 0;
+    margin-left: 0.5rem;
+  }
+
+  /* Submenu indicator icon flip for RTL */
+  html[dir="rtl"] [data-radix-menu-content] [class*="submenu"] svg[class*="chevron"] {
+    transform: scaleX(-1);
+  }
+
+  /* --------------------------------------------------------------------------
+     Popover RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] [data-radix-popover-content] {
+    text-align: right;
+  }
+
+  /* --------------------------------------------------------------------------
+     Tooltip RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] [data-radix-tooltip-content] {
+    text-align: right;
+  }
+
+  /* --------------------------------------------------------------------------
+     Form actions/footer RTL layout
+     -------------------------------------------------------------------------- */
+  .form-actions-rtl {
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+
+  html[dir="rtl"] .form-actions-rtl {
+    flex-direction: row-reverse;
+  }
+
+  /* Primary action button should be on the logical end */
+  .form-actions-rtl .btn-primary,
+  .form-actions-rtl [data-primary="true"] {
+    order: 1;
+  }
+
+  html[dir="rtl"] .form-actions-rtl .btn-primary,
+  html[dir="rtl"] .form-actions-rtl [data-primary="true"] {
+    order: -1;
+  }
+
+  /* --------------------------------------------------------------------------
+     Textarea RTL support
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] textarea {
+    text-align: right;
+  }
+
+  /* --------------------------------------------------------------------------
+     File input RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] input[type="file"]::file-selector-button {
+    margin-left: 0.5rem;
+    margin-right: 0;
+  }
+
+  /* --------------------------------------------------------------------------
+     Number input RTL fixes - keep numbers LTR but align right
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] input[type="number"] {
+    direction: ltr;
+    text-align: right;
+  }
+
+  /* --------------------------------------------------------------------------
+     Date/Time input RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] input[type="date"],
+  html[dir="rtl"] input[type="time"],
+  html[dir="rtl"] input[type="datetime-local"] {
+    direction: ltr;
+    text-align: right;
+  }
+
+  /* --------------------------------------------------------------------------
+     Combobox/Autocomplete RTL fixes
+     -------------------------------------------------------------------------- */
+  html[dir="rtl"] [cmdk-root] {
+    direction: rtl;
+    text-align: right;
+  }
+
+  html[dir="rtl"] [cmdk-input] {
+    text-align: right;
+  }
+
+  html[dir="rtl"] [cmdk-item] {
+    flex-direction: row-reverse;
+  }
+
+  html[dir="rtl"] [cmdk-item] svg:first-child {
+    margin-left: 0.5rem;
+    margin-right: 0;
+  }
+
+  /* --------------------------------------------------------------------------
+     Label with required indicator RTL fix
+     -------------------------------------------------------------------------- */
+  .label-required::after {
+    content: " *";
+    color: hsl(var(--destructive));
+  }
+
+  html[dir="rtl"] .label-required::after {
+    content: "* ";
+  }
+
+  html[dir="rtl"] .label-required::before {
+    content: " *";
+    color: hsl(var(--destructive));
+  }
+
+  html[dir="rtl"] .label-required::after {
+    content: none;
+  }
+}

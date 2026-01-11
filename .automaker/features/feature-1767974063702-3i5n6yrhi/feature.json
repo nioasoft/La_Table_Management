@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement per-brand commission report showing all commissions for a specific brand, ready for invoice generation. Export to Excel format.",
+  "title": "Brand Report",
+  "dependencies": [
+    "commission-calculation-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063702-3i5n6yrhi",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:28:49.249Z",
+  "updatedAt": "2026-01-09T18:38:13.613Z"
+}

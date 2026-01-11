@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement notification to Super User when new files are uploaded via secure links. Include file details and link to process.",
+  "title": "Upload Notification System",
+  "dependencies": [
+    "public-upload-page"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063703-fin6e04wd",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:57:28.531Z",
+  "updatedAt": "2026-01-09T18:04:05.073Z"
+}

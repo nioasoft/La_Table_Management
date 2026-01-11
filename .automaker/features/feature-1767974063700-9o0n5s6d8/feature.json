@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement manual adjustment system for discrepancies. Predefined types: credit (זיכוי), deposit (פיקדון), supplier_error (טעות ספק), timing (הפרשי עיתוי), other (requires description). Log adjustment with user and timestamp.",
+  "title": "Adjustment System",
+  "dependencies": [
+    "cross-reference-engine"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063700-9o0n5s6d8",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:41:51.495Z",
+  "updatedAt": "2026-01-09T17:49:47.237Z"
+}

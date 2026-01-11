@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement robust error handling for file processing: log processing errors, flag problematic files, provide clear error messages for common issues (wrong format, missing columns, unmatched franchisees).",
+  "title": "File Processing Error Handling",
+  "dependencies": [
+    "excel-file-parser"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063704-o4zky7eq4",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:04:05.469Z",
+  "updatedAt": "2026-01-09T18:13:56.113Z"
+}

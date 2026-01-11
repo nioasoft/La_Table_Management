@@ -1,0 +1,14 @@
+{
+  "category": "enhancement",
+  "description": "Add isHidden boolean field to suppliers table to support hiding irrelevant suppliers (pest control, insurance, payment processing) from commission reports while preserving history. Hidden suppliers should not appear in reports but remain in the database.",
+  "title": "Schema Enhancement - Hidden Suppliers Flag",
+  "dependencies": [
+    "feature-1767974063694-b3wiegmo2"
+  ],
+  "priority": 3,
+  "status": "verified",
+  "id": "feature-1768026238186-8f9m017uz",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:24:23.114Z",
+  "updatedAt": "2026-01-10T06:48:24.036Z"
+}

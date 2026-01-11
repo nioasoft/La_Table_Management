@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement secure upload link generation with UUID v4 tokens, 14-day expiry, single use. Track status: pending/uploaded/expired. Generate links for both suppliers and franchisees with period information.",
+  "title": "Secure Upload Link Generation",
+  "dependencies": [
+    "supplier-management-core-crud",
+    "franchisee-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063698-5vot33xq9",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:06:56.480Z",
+  "updatedAt": "2026-01-09T17:13:28.564Z"
+}

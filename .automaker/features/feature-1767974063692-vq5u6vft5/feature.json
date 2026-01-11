@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement module-level granular permissions (View, Edit, Create, Delete, Approve) for each system module. Super User can configure permissions per user. Store permissions as JSONB in user record.",
+  "title": "Granular Permission System",
+  "dependencies": [
+    "user-management-role-system"
+  ],
+  "priority": 2,
+  "status": "completed",
+  "id": "feature-1767974063692-vq5u6vft5",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:16:36.713Z",
+  "updatedAt": "2026-01-09T16:25:36.760Z"
+}

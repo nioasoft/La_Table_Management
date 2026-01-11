@@ -1,0 +1,1319 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Truck,
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  X,
+  Check,
+  Loader2,
+  Building2,
+  Users,
+  Percent,
+  Hash,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  User,
+  FileSpreadsheet,
+  FileText,
+  Eye,
+} from "lucide-react";
+import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
+import { FileMappingConfig } from "@/components/file-mapping-config";
+import { DocumentManager } from "@/components/document-manager";
+import {
+  CommissionExceptionsEditor,
+  type CommissionExceptionFormData,
+  formDataToCommissionExceptions,
+  commissionExceptionsToFormData,
+} from "@/components/commission-exceptions-editor";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import Link from "next/link";
+import { he } from "@/lib/translations/he";
+
+// Document type with uploader info
+interface DocumentWithUploader extends Document {
+  uploaderName?: string | null;
+  uploaderEmail?: string | null;
+}
+
+// Commission history type
+interface CommissionHistoryEntry {
+  id: string;
+  supplierId: string;
+  previousRate: string | null;
+  newRate: string;
+  effectiveDate: string;
+  reason: string | null;
+  notes: string | null;
+  createdAt: Date;
+  createdBy: string | null;
+  createdByUser?: { name: string; email: string } | null;
+}
+
+// Extended supplier type with brands
+type SupplierWithBrands = Supplier & {
+  brands: Brand[];
+};
+
+interface SupplierFormData {
+  code: string;
+  name: string;
+  companyId: string;
+  description: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string;
+  secondaryContactName: string;
+  secondaryContactEmail: string;
+  secondaryContactPhone: string;
+  address: string;
+  taxId: string;
+  paymentTerms: string;
+  defaultCommissionRate: string;
+  commissionType: CommissionType;
+  settlementFrequency: SettlementFrequency;
+  vatIncluded: boolean;
+  isActive: boolean;
+  isHidden: boolean;
+  brandIds: string[];
+  commissionExceptions: CommissionExceptionFormData[];
+  // Commission change logging fields
+  commissionChangeReason: string;
+  commissionChangeNotes: string;
+  commissionEffectiveDate: string;
+}
+
+const initialFormData: SupplierFormData = {
+  code: "",
+  name: "",
+  companyId: "",
+  description: "",
+  contactName: "",
+  contactEmail: "",
+  contactPhone: "",
+  secondaryContactName: "",
+  secondaryContactEmail: "",
+  secondaryContactPhone: "",
+  address: "",
+  taxId: "",
+  paymentTerms: "",
+  defaultCommissionRate: "",
+  commissionType: "percentage",
+  settlementFrequency: "monthly",
+  vatIncluded: false,
+  isActive: true,
+  isHidden: false,
+  brandIds: [],
+  commissionExceptions: [],
+  commissionChangeReason: "",
+  commissionChangeNotes: "",
+  commissionEffectiveDate: new Date().toISOString().split("T")[0],
+};
+
+export default function AdminSuppliersPage() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [suppliers, setSuppliers] = useState<SupplierWithBrands[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [stats, setStats] = useState<{
+    total: number;
+    active: number;
+    inactive: number;
+    hidden: number;
+  } | null>(null);
+  const [filter, setFilter] = useState<"all" | "active">("all");
+  const [showForm, setShowForm] = useState(false);
+  const [editingSupplier, setEditingSupplier] = useState<SupplierWithBrands | null>(null);
+  const [formData, setFormData] = useState<SupplierFormData>(initialFormData);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
+  const [commissionHistories, setCommissionHistories] = useState<
+    Record<string, CommissionHistoryEntry[]>
+  >({});
+  const [expandedFileMappingId, setExpandedFileMappingId] = useState<string | null>(null);
+  const [expandedDocumentsId, setExpandedDocumentsId] = useState<string | null>(null);
+  const [loadingDocumentsId, setLoadingDocumentsId] = useState<string | null>(null);
+  const [supplierDocuments, setSupplierDocuments] = useState<
+    Record<string, DocumentWithUploader[]>
+  >({});
+  const { data: session, isPending } = authClient.useSession();
+
+  const userRole = session ? (session.user as { role?: string })?.role : undefined;
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push("/sign-in?redirect=/admin/suppliers");
+      return;
+    }
+
+    // Check if user has permission
+    if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+      router.push("/dashboard");
+      return;
+    }
+
+    if (!isPending && session) {
+      fetchSuppliers();
+      fetchBrands();
+    }
+  }, [session, isPending, router, userRole, filter]);
+
+  const fetchSuppliers = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch(
+        `/api/suppliers?filter=${filter}&stats=true`
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch suppliers");
+      }
+      const data = await response.json();
+      setSuppliers(data.suppliers || []);
+      setStats(data.stats || null);
+    } catch (error) {
+      console.error("Error fetching suppliers:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchBrands = async () => {
+    try {
+      const response = await fetch("/api/brands?filter=active");
+      if (!response.ok) {
+        throw new Error("Failed to fetch brands");
+      }
+      const data = await response.json();
+      setBrands(data.brands || []);
+    } catch (error) {
+      console.error("Error fetching brands:", error);
+    }
+  };
+
+  const fetchCommissionHistory = async (supplierId: string) => {
+    try {
+      setLoadingHistoryId(supplierId);
+      const response = await fetch(
+        `/api/suppliers/${supplierId}/commission-history`
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch commission history");
+      }
+      const data = await response.json();
+      setCommissionHistories((prev) => ({
+        ...prev,
+        [supplierId]: data.history || [],
+      }));
+    } catch (error) {
+      console.error("Error fetching commission history:", error);
+    } finally {
+      setLoadingHistoryId(null);
+    }
+  };
+
+  const toggleHistoryExpanded = async (supplierId: string) => {
+    if (expandedHistoryId === supplierId) {
+      setExpandedHistoryId(null);
+    } else {
+      setExpandedHistoryId(supplierId);
+      // Fetch history if not already loaded
+      if (!commissionHistories[supplierId]) {
+        await fetchCommissionHistory(supplierId);
+      }
+    }
+  };
+
+  const toggleFileMappingExpanded = (supplierId: string) => {
+    if (expandedFileMappingId === supplierId) {
+      setExpandedFileMappingId(null);
+    } else {
+      setExpandedFileMappingId(supplierId);
+    }
+  };
+
+  const handleFileMappingSave = (supplierId: string, fileMapping: SupplierFileMapping | null) => {
+    // Update the suppliers list with the new file mapping
+    setSuppliers((prev) =>
+      prev.map((s) =>
+        s.id === supplierId ? { ...s, fileMapping } : s
+      )
+    );
+  };
+
+  const fetchSupplierDocuments = async (supplierId: string) => {
+    try {
+      setLoadingDocumentsId(supplierId);
+      const response = await fetch(`/api/documents/supplier/${supplierId}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch documents");
+      }
+      const data = await response.json();
+      setSupplierDocuments((prev) => ({
+        ...prev,
+        [supplierId]: data.documents || [],
+      }));
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+    } finally {
+      setLoadingDocumentsId(null);
+    }
+  };
+
+  const toggleDocumentsExpanded = async (supplierId: string) => {
+    if (expandedDocumentsId === supplierId) {
+      setExpandedDocumentsId(null);
+    } else {
+      setExpandedDocumentsId(supplierId);
+      // Fetch documents if not already loaded
+      if (!supplierDocuments[supplierId]) {
+        await fetchSupplierDocuments(supplierId);
+      }
+    }
+  };
+
+  const handleDocumentsChange = (supplierId: string, documents: DocumentWithUploader[]) => {
+    setSupplierDocuments((prev) => ({
+      ...prev,
+      [supplierId]: documents,
+    }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+
+    if (!formData.code || !formData.name) {
+      setFormError("Code and name are required");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      const url = editingSupplier
+        ? `/api/suppliers/${editingSupplier.id}`
+        : "/api/suppliers";
+
+      const method = editingSupplier ? "PATCH" : "POST";
+
+      // Check if commission rate is changing (only for edit mode)
+      const isCommissionChanging =
+        editingSupplier &&
+        formData.defaultCommissionRate !== "" &&
+        formData.defaultCommissionRate !==
+          (editingSupplier.defaultCommissionRate || "");
+
+      const submitData = {
+        ...formData,
+        defaultCommissionRate: formData.defaultCommissionRate || null,
+        commissionExceptions: formDataToCommissionExceptions(formData.commissionExceptions),
+        // Only include commission change fields if rate is changing
+        ...(isCommissionChanging && {
+          commissionChangeReason: formData.commissionChangeReason,
+          commissionChangeNotes: formData.commissionChangeNotes,
+          commissionEffectiveDate: formData.commissionEffectiveDate,
+        }),
+      };
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submitData),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || `Failed to ${editingSupplier ? "update" : "create"} supplier`);
+      }
+
+      // Reset form and refresh list
+      setShowForm(false);
+      setEditingSupplier(null);
+      setFormData(initialFormData);
+      // Clear commission history cache to force refresh
+      setCommissionHistories({});
+      await fetchSuppliers();
+    } catch (error) {
+      console.error("Error saving supplier:", error);
+      setFormError(error instanceof Error ? error.message : "Failed to save supplier");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (supplier: SupplierWithBrands) => {
+    setEditingSupplier(supplier);
+    setFormData({
+      code: supplier.code,
+      name: supplier.name,
+      companyId: supplier.companyId || "",
+      description: supplier.description || "",
+      contactName: supplier.contactName || "",
+      contactEmail: supplier.contactEmail || "",
+      contactPhone: supplier.contactPhone || "",
+      secondaryContactName: supplier.secondaryContactName || "",
+      secondaryContactEmail: supplier.secondaryContactEmail || "",
+      secondaryContactPhone: supplier.secondaryContactPhone || "",
+      address: supplier.address || "",
+      taxId: supplier.taxId || "",
+      paymentTerms: supplier.paymentTerms || "",
+      defaultCommissionRate: supplier.defaultCommissionRate || "",
+      commissionType: supplier.commissionType || "percentage",
+      settlementFrequency: supplier.settlementFrequency || "monthly",
+      vatIncluded: supplier.vatIncluded || false,
+      isActive: supplier.isActive,
+      isHidden: supplier.isHidden || false,
+      brandIds: supplier.brands?.map((b) => b.id) || [],
+      commissionExceptions: commissionExceptionsToFormData(supplier.commissionExceptions as CommissionException[] | null | undefined),
+      commissionChangeReason: "",
+      commissionChangeNotes: "",
+      commissionEffectiveDate: new Date().toISOString().split("T")[0],
+    });
+    setShowForm(true);
+    setFormError(null);
+  };
+
+  const handleDelete = async (supplierId: string) => {
+    if (!confirm(he.admin.suppliers.confirmDelete)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/suppliers/${supplierId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete supplier");
+      }
+
+      await fetchSuppliers();
+    } catch (error) {
+      console.error("Error deleting supplier:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete supplier");
+    }
+  };
+
+  const handleToggleStatus = async (supplier: SupplierWithBrands) => {
+    try {
+      const response = await fetch(`/api/suppliers/${supplier.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive: !supplier.isActive }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update supplier status");
+      }
+
+      await fetchSuppliers();
+    } catch (error) {
+      console.error("Error updating supplier status:", error);
+      alert(error instanceof Error ? error.message : "Failed to update supplier status");
+    }
+  };
+
+  const handleToggleHidden = async (supplier: SupplierWithBrands) => {
+    try {
+      const response = await fetch(`/api/suppliers/${supplier.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isHidden: !supplier.isHidden }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to update supplier hidden status");
+      }
+
+      await fetchSuppliers();
+    } catch (error) {
+      console.error("Error updating supplier hidden status:", error);
+      alert(error instanceof Error ? error.message : "Failed to update supplier hidden status");
+    }
+  };
+
+  const cancelForm = () => {
+    setShowForm(false);
+    setEditingSupplier(null);
+    setFormData(initialFormData);
+    setFormError(null);
+  };
+
+  const handleBrandToggle = (brandId: string) => {
+    setFormData((prev) => {
+      const newBrandIds = prev.brandIds.includes(brandId)
+        ? prev.brandIds.filter((id) => id !== brandId)
+        : [...prev.brandIds, brandId];
+      return { ...prev, brandIds: newBrandIds };
+    });
+  };
+
+  // Check if commission rate is being changed (for form UI)
+  const isCommissionRateChanging =
+    editingSupplier &&
+    formData.defaultCommissionRate !== "" &&
+    formData.defaultCommissionRate !==
+      (editingSupplier.defaultCommissionRate || "");
+
+  if (isLoading || isPending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto p-6">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold">{he.admin.suppliers.title}</h1>
+      </div>
+
+      {/* Stats Cards */}
+      {stats && (
+        <div className="grid gap-4 md:grid-cols-4 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.totalSuppliers}</CardTitle>
+              <Truck className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.total}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.activeSuppliers}</CardTitle>
+              <Check className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.active}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.inactiveSuppliers}</CardTitle>
+              <X className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.inactive}</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.hiddenSuppliers}</CardTitle>
+              <Eye className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.hidden}</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Filter and Actions */}
+      <div className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+          <Select
+            value={filter}
+            onValueChange={(value) => setFilter(value as "all" | "active")}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder={he.common.filter} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{he.admin.suppliers.filters.allSuppliers}</SelectItem>
+              <SelectItem value="active">{he.admin.suppliers.filters.activeOnly}</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={fetchSuppliers}>
+            <RefreshCw className="ml-2 h-4 w-4" />
+            {he.common.refresh}
+          </Button>
+        </div>
+        <Button onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }}>
+          <Plus className="ml-2 h-4 w-4" />
+          {he.common.create}
+        </Button>
+      </div>
+
+      {/* Supplier Form Modal */}
+      {showForm && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>{editingSupplier ? he.admin.suppliers.form.editTitle : he.admin.suppliers.form.createTitle}</CardTitle>
+            <CardDescription>
+              {editingSupplier
+                ? he.admin.suppliers.form.editDescription
+                : he.admin.suppliers.form.createDescription}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {formError && (
+                <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+                  <p className="text-sm text-destructive">{formError}</p>
+                </div>
+              )}
+
+              {/* Basic Information */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  {he.admin.suppliers.form.sections.basicInfo}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="code">{he.admin.suppliers.form.fields.code} *</Label>
+                    <Input
+                      id="code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                      placeholder={he.admin.suppliers.form.fields.codePlaceholder}
+                      disabled={isSubmitting}
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="name">{he.admin.suppliers.form.fields.name} *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.namePlaceholder}
+                      disabled={isSubmitting}
+                      required
+                      dir="rtl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="companyId">{he.admin.suppliers.form.fields.companyId}</Label>
+                    <Input
+                      id="companyId"
+                      value={formData.companyId}
+                      onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.companyIdPlaceholder}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="address">{he.admin.suppliers.form.fields.address}</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.addressPlaceholder}
+                      disabled={isSubmitting}
+                      dir="rtl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">{he.admin.suppliers.form.fields.description}</Label>
+                    <Input
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.descriptionPlaceholder}
+                      disabled={isSubmitting}
+                      dir="rtl"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Primary Contact - Collapsible */}
+              <Collapsible defaultOpen={!!(formData.contactName || formData.contactEmail || formData.contactPhone)}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors">
+                  <Users className="h-5 w-5" />
+                  <span className="text-lg font-semibold">{he.admin.suppliers.form.sections.primaryContact}</span>
+                  {(formData.contactName || formData.contactEmail || formData.contactPhone) && (
+                    <Check className="h-4 w-4 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="contactName">{he.admin.suppliers.form.fields.contactName}</Label>
+                      <Input
+                        id="contactName"
+                        value={formData.contactName}
+                        onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactNamePlaceholder}
+                        disabled={isSubmitting}
+                        dir="rtl"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contactEmail">{he.admin.suppliers.form.fields.contactEmail}</Label>
+                      <Input
+                        id="contactEmail"
+                        type="email"
+                        value={formData.contactEmail}
+                        onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactEmailPlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="contactPhone">{he.admin.suppliers.form.fields.contactPhone}</Label>
+                      <Input
+                        id="contactPhone"
+                        value={formData.contactPhone}
+                        onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactPhonePlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Secondary Contact - Collapsible */}
+              <Collapsible defaultOpen={!!(formData.secondaryContactName || formData.secondaryContactEmail || formData.secondaryContactPhone)}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors">
+                  <Users className="h-5 w-5" />
+                  <span className="text-lg font-semibold">{he.admin.suppliers.form.sections.secondaryContact}</span>
+                  {(formData.secondaryContactName || formData.secondaryContactEmail || formData.secondaryContactPhone) && (
+                    <Check className="h-4 w-4 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryContactName">{he.admin.suppliers.form.fields.contactName}</Label>
+                      <Input
+                        id="secondaryContactName"
+                        value={formData.secondaryContactName}
+                        onChange={(e) => setFormData({ ...formData, secondaryContactName: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactNamePlaceholder}
+                        disabled={isSubmitting}
+                        dir="rtl"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryContactEmail">{he.admin.suppliers.form.fields.contactEmail}</Label>
+                      <Input
+                        id="secondaryContactEmail"
+                        type="email"
+                        value={formData.secondaryContactEmail}
+                        onChange={(e) => setFormData({ ...formData, secondaryContactEmail: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactEmailPlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="secondaryContactPhone">{he.admin.suppliers.form.fields.contactPhone}</Label>
+                      <Input
+                        id="secondaryContactPhone"
+                        value={formData.secondaryContactPhone}
+                        onChange={(e) => setFormData({ ...formData, secondaryContactPhone: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.contactPhonePlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Commission Settings */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Percent className="h-5 w-5" />
+                  {he.admin.suppliers.form.sections.commissionSettings}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="defaultCommissionRate">{he.admin.suppliers.form.fields.commissionRate}</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="defaultCommissionRate"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={formData.defaultCommissionRate}
+                        onChange={(e) => setFormData({ ...formData, defaultCommissionRate: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.commissionRatePlaceholder}
+                        disabled={isSubmitting}
+                        className="w-28"
+                      />
+                      <span className="text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      חל על כל הפריטים, אלא אם הוגדרו חריגות
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="settlementFrequency">{he.admin.suppliers.form.fields.settlementFrequency}</Label>
+                    <Select
+                      value={formData.settlementFrequency}
+                      onValueChange={(value: SettlementFrequency) =>
+                        setFormData({ ...formData, settlementFrequency: value })
+                      }
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger id="settlementFrequency">
+                        <SelectValue placeholder={he.admin.suppliers.form.fields.settlementFrequencyPlaceholder} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="monthly">{he.admin.suppliers.form.fields.settlementMonthly}</SelectItem>
+                        <SelectItem value="quarterly">{he.admin.suppliers.form.fields.settlementQuarterly}</SelectItem>
+                        <SelectItem value="semi_annual">{he.admin.suppliers.form.fields.settlementSemiAnnual}</SelectItem>
+                        <SelectItem value="annual">{he.admin.suppliers.form.fields.settlementAnnual}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="vatIncluded"
+                      checked={formData.vatIncluded}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, vatIncluded: checked as boolean })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <Label htmlFor="vatIncluded" className="cursor-pointer">
+                      {he.admin.suppliers.form.fields.vatIncluded}
+                    </Label>
+                  </div>
+                </div>
+
+                {/* Commission Exceptions */}
+                <CommissionExceptionsEditor
+                  exceptions={formData.commissionExceptions}
+                  onChange={(exceptions) => setFormData({ ...formData, commissionExceptions: exceptions })}
+                  disabled={isSubmitting}
+                />
+
+                {/* Commission Change Log Fields (only show when editing and rate is changing) */}
+                {isCommissionRateChanging && (
+                  <div className="rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-4">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <History className="h-5 w-5" />
+                      <span className="font-medium">
+                        {he.admin.suppliers.form.commissionChange.title}
+                      </span>
+                    </div>
+                    <p className="text-sm text-amber-600 dark:text-amber-300">
+                      {he.admin.suppliers.form.commissionChange.changingFrom
+                        .replace("{from}", editingSupplier?.defaultCommissionRate || "0")
+                        .replace("{to}", formData.defaultCommissionRate)}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="commissionEffectiveDate">
+                          {he.admin.suppliers.form.commissionChange.effectiveDate} *
+                        </Label>
+                        <Input
+                          id="commissionEffectiveDate"
+                          type="date"
+                          value={formData.commissionEffectiveDate}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              commissionEffectiveDate: e.target.value,
+                            })
+                          }
+                          disabled={isSubmitting}
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor="commissionChangeReason">
+                          {he.admin.suppliers.form.commissionChange.reason}
+                        </Label>
+                        <Input
+                          id="commissionChangeReason"
+                          value={formData.commissionChangeReason}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              commissionChangeReason: e.target.value,
+                            })
+                          }
+                          placeholder={he.admin.suppliers.form.commissionChange.reasonPlaceholder}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="commissionChangeNotes">
+                        {he.admin.suppliers.form.commissionChange.additionalNotes}
+                      </Label>
+                      <Input
+                        id="commissionChangeNotes"
+                        value={formData.commissionChangeNotes}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            commissionChangeNotes: e.target.value,
+                          })
+                        }
+                        placeholder={he.admin.suppliers.form.commissionChange.notesPlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tax & Payment */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Hash className="h-5 w-5" />
+                  {he.admin.suppliers.form.sections.taxPayment}
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="taxId">{he.admin.suppliers.form.fields.taxId}</Label>
+                    <Input
+                      id="taxId"
+                      value={formData.taxId}
+                      onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.taxIdPlaceholder}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
+                    <Input
+                      id="paymentTerms"
+                      value={formData.paymentTerms}
+                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Associated Brands */}
+              {brands.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-lg font-semibold">{he.admin.suppliers.form.sections.associatedBrands}</h3>
+                  <div className="flex flex-wrap gap-3">
+                    {brands.map((brand) => (
+                      <div
+                        key={brand.id}
+                        className="flex items-center space-x-2"
+                      >
+                        <Checkbox
+                          id={`brand-${brand.id}`}
+                          checked={formData.brandIds.includes(brand.id)}
+                          onCheckedChange={() => handleBrandToggle(brand.id)}
+                          disabled={isSubmitting}
+                        />
+                        <Label
+                          htmlFor={`brand-${brand.id}`}
+                          className="cursor-pointer"
+                        >
+                          {brand.nameHe}
+                          {brand.nameEn && (
+                            <span className="text-muted-foreground text-sm ml-1">
+                              ({brand.nameEn})
+                            </span>
+                          )}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Status */}
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="isActive"
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, isActive: checked as boolean })
+                    }
+                    disabled={isSubmitting}
+                  />
+                  <Label htmlFor="isActive" className="cursor-pointer">
+                    {he.admin.suppliers.form.fields.isActive}
+                  </Label>
+                </div>
+
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="isHidden"
+                    checked={formData.isHidden}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, isHidden: checked as boolean })
+                    }
+                    disabled={isSubmitting}
+                  />
+                  <div className="flex flex-col gap-1">
+                    <Label htmlFor="isHidden" className="cursor-pointer">
+                      {he.admin.suppliers.form.fields.isHidden}
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      {he.admin.suppliers.form.fields.isHiddenDescription}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={cancelForm} disabled={isSubmitting}>
+                  {he.common.cancel}
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      {he.common.saving}
+                    </>
+                  ) : (
+                    <>
+                      <Check className="ml-2 h-4 w-4" />
+                      {editingSupplier ? he.common.update : he.common.create}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Suppliers List */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Truck className="h-5 w-5" />
+            {filter === "active" ? he.admin.suppliers.list.titleActive : he.admin.suppliers.list.title}
+          </CardTitle>
+          <CardDescription>
+            {he.admin.suppliers.list.description}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {suppliers.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {filter === "active"
+                ? he.admin.suppliers.empty.noActiveSuppliers
+                : he.admin.suppliers.empty.noSuppliers}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {suppliers.map((supplier) => (
+                <div key={supplier.id} className="rounded-lg border bg-card">
+                  <div className="flex items-start justify-between p-4">
+                    <div className="space-y-2 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-lg">{supplier.name}</p>
+                        <Badge variant={supplier.isActive ? "success" : "secondary"}>
+                          {supplier.isActive ? he.common.active : he.common.inactive}
+                        </Badge>
+                        {supplier.isHidden && (
+                          <Badge variant="destructive" className="flex items-center gap-1">
+                            {he.admin.suppliers.badge.hidden}
+                          </Badge>
+                        )}
+                        {supplier.defaultCommissionRate && (
+                          <Badge variant="outline" className="flex items-center gap-1">
+                            <Percent className="h-3 w-3" />
+                            {supplier.defaultCommissionRate}%
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-muted-foreground">
+                        <p>
+                          <span className="font-medium">{he.admin.suppliers.card.code}</span>{" "}
+                          <span className="font-mono">{supplier.code}</span>
+                        </p>
+                        {supplier.companyId && (
+                          <p>
+                            <span className="font-medium">{he.admin.suppliers.card.companyId}</span> {supplier.companyId}
+                          </p>
+                        )}
+                        {supplier.settlementFrequency && (
+                          <p>
+                            <span className="font-medium">{he.admin.suppliers.card.settlement}</span>{" "}
+                            {supplier.settlementFrequency === "weekly" ? he.admin.suppliers.form.fields.settlementWeekly :
+                             supplier.settlementFrequency === "bi_weekly" ? he.admin.suppliers.form.fields.settlementBiWeekly :
+                             supplier.settlementFrequency === "monthly" ? he.admin.suppliers.form.fields.settlementMonthly :
+                             supplier.settlementFrequency === "quarterly" ? he.admin.suppliers.form.fields.settlementQuarterly :
+                             String(supplier.settlementFrequency).replace("_", "-")}
+                          </p>
+                        )}
+                        {supplier.vatIncluded !== null && (
+                          <p>
+                            <span className="font-medium">{he.admin.suppliers.card.vat}</span>{" "}
+                            {supplier.vatIncluded ? he.admin.suppliers.card.vatIncluded : he.admin.suppliers.card.vatNotIncluded}
+                          </p>
+                        )}
+                        {supplier.contactName && (
+                          <p>
+                            <span className="font-medium">{he.admin.suppliers.card.contact}</span> {supplier.contactName}
+                          </p>
+                        )}
+                      </div>
+                      {supplier.brands && supplier.brands.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap mt-2">
+                          <span className="text-sm font-medium">{he.admin.suppliers.card.brands}</span>
+                          {supplier.brands.map((brand) => (
+                            <Badge key={brand.id} variant="outline">
+                              {brand.nameHe}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {he.admin.suppliers.card.created} {new Date(supplier.createdAt).toLocaleDateString("he-IL")}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-4">
+                      <Link href={`/admin/suppliers/${supplier.id}`}>
+                        <Button size="sm" variant="default">
+                          <Eye className="h-4 w-4 mr-1" />
+                          {he.admin.suppliers.actions.view}
+                        </Button>
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleHistoryExpanded(supplier.id)}
+                        disabled={loadingHistoryId === supplier.id}
+                      >
+                        {loadingHistoryId === supplier.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <History className="h-4 w-4 mr-1" />
+                            {he.admin.suppliers.actions.history}
+                            {expandedHistoryId === supplier.id ? (
+                              <ChevronUp className="h-4 w-4 ml-1" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 ml-1" />
+                            )}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleFileMappingExpanded(supplier.id)}
+                      >
+                        <FileSpreadsheet className="h-4 w-4 mr-1" />
+                        {he.admin.suppliers.actions.fileMapping}
+                        {supplier.fileMapping && (
+                          <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                            {he.admin.suppliers.actions.set}
+                          </Badge>
+                        )}
+                        {expandedFileMappingId === supplier.id ? (
+                          <ChevronUp className="h-4 w-4 ml-1" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 ml-1" />
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => toggleDocumentsExpanded(supplier.id)}
+                        disabled={loadingDocumentsId === supplier.id}
+                      >
+                        {loadingDocumentsId === supplier.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <FileText className="h-4 w-4 mr-1" />
+                            {he.admin.suppliers.actions.documents}
+                            {supplierDocuments[supplier.id]?.length > 0 && (
+                              <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                                {supplierDocuments[supplier.id].length}
+                              </Badge>
+                            )}
+                            {expandedDocumentsId === supplier.id ? (
+                              <ChevronUp className="h-4 w-4 ml-1" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 ml-1" />
+                            )}
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleToggleStatus(supplier)}
+                      >
+                        {supplier.isActive ? he.admin.suppliers.actions.deactivate : he.admin.suppliers.actions.activate}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={supplier.isHidden ? "default" : "outline"}
+                        onClick={() => handleToggleHidden(supplier)}
+                      >
+                        {supplier.isHidden ? he.admin.suppliers.actions.show : he.admin.suppliers.actions.hide}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEdit(supplier)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      {userRole === "super_user" && (
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDelete(supplier.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Commission History Panel */}
+                  {expandedHistoryId === supplier.id && (
+                    <div className="border-t bg-muted/30 p-4">
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        <History className="h-4 w-4" />
+                        {he.admin.suppliers.history.title}
+                      </h4>
+                      {commissionHistories[supplier.id]?.length > 0 ? (
+                        <div className="space-y-2">
+                          {commissionHistories[supplier.id].map((entry) => (
+                            <div
+                              key={entry.id}
+                              className="flex items-start justify-between p-3 rounded-lg bg-card border text-sm"
+                            >
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">
+                                    {entry.previousRate ?? he.common.notApplicable}% → {entry.newRate}%
+                                  </span>
+                                  <Badge variant="outline" className="text-xs">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    {new Date(entry.effectiveDate).toLocaleDateString("he-IL")}
+                                  </Badge>
+                                </div>
+                                {entry.reason && (
+                                  <p className="text-muted-foreground">
+                                    <strong>{he.admin.suppliers.history.reason}</strong> {entry.reason}
+                                  </p>
+                                )}
+                                {entry.notes && (
+                                  <p className="text-muted-foreground">
+                                    <strong>{he.admin.suppliers.history.notes}</strong> {entry.notes}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-xs text-muted-foreground text-right">
+                                <div className="flex items-center gap-1">
+                                  <User className="h-3 w-3" />
+                                  {entry.createdByUser?.name || he.admin.suppliers.history.system}
+                                </div>
+                                <div>
+                                  {new Date(entry.createdAt).toLocaleString("he-IL")}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          {he.admin.suppliers.history.noChanges}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* File Mapping Configuration Panel */}
+                  {expandedFileMappingId === supplier.id && (
+                    <div className="border-t bg-muted/30 p-4">
+                      <FileMappingConfig
+                        supplierId={supplier.id}
+                        initialFileMapping={supplier.fileMapping}
+                        onSave={(fileMapping) =>
+                          handleFileMappingSave(supplier.id, fileMapping)
+                        }
+                      />
+                    </div>
+                  )}
+
+                  {/* Documents Panel */}
+                  {expandedDocumentsId === supplier.id && (
+                    <div className="border-t bg-muted/30 p-4">
+                      <DocumentManager
+                        entityType="supplier"
+                        entityId={supplier.id}
+                        entityName={supplier.name}
+                        documents={supplierDocuments[supplier.id] || []}
+                        onDocumentsChange={(docs) => handleDocumentsChange(supplier.id, docs)}
+                        canUpload={userRole === "super_user" || userRole === "admin"}
+                        canDelete={userRole === "super_user"}
+                        canEdit={userRole === "super_user" || userRole === "admin"}
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

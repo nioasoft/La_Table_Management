@@ -1,0 +1,16 @@
+{
+  "category": "feature",
+  "description": "Implement comprehensive supplier card view showing all details, commission history, documents, upload history, and cross-reference history in organized tabs/sections.",
+  "title": "Supplier Card Full View",
+  "dependencies": [
+    "supplier-commission-rate-history",
+    "document-management-system",
+    "cross-reference-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063704-164r6ttn3",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:52:41.804Z",
+  "updatedAt": "2026-01-09T19:02:16.196Z"
+}

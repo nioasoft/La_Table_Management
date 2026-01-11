@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement dashboard widget showing number of pending cross-references, discrepancies requiring attention, and items awaiting approval.",
+  "title": "Dashboard - Pending Actions",
+  "dependencies": [
+    "cross-reference-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063703-jjzosg0xl",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:45:07.762Z",
+  "updatedAt": "2026-01-09T18:51:17.350Z"
+}

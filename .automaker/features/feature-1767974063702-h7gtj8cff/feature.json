@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement variance detection report comparing current period to previous periods. Flag suppliers with >10% variance in purchase percentage to identify anomalies. Include clear visual indicators for flagged items and detailed breakdown of variance calculations. Export to Excel format.",
+  "title": "Variance Report",
+  "dependencies": [
+    "commission-calculation-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063702-h7gtj8cff",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:39:52.894Z",
+  "updatedAt": "2026-01-09T18:46:53.998Z"
+}

@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement reminder system for franchisees with types: lease_option, franchise_agreement, custom. Configure reminder date, days before notification, and recipients. Track status: pending/sent/dismissed.",
+  "title": "Franchisee Reminder System",
+  "dependencies": [
+    "franchisee-management-core-crud"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063697-389292k30",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:14:22.348Z",
+  "updatedAt": "2026-01-09T17:22:45.522Z"
+}

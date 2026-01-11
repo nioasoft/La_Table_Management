@@ -1,0 +1,14 @@
+{
+  "category": "enhancement",
+  "description": "Add semi_annual (חצי שנתי) and annual (שנתי) options to the settlement_frequency enum in the database schema. Create migration to update the enum.",
+  "title": "Schema Enhancement - Settlement Frequencies",
+  "dependencies": [
+    "feature-1767974063690-i7jpycwdd"
+  ],
+  "priority": 3,
+  "status": "verified",
+  "id": "feature-1768026238186-5d1lt3xhb",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:24:22.797Z",
+  "updatedAt": "2026-01-10T06:52:10.166Z"
+}

@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement brand entity management for Pat Vini, Mina Tomai, and King Kong. CRUD operations with code, Hebrew name, and English name fields.",
+  "title": "Brand Management",
+  "dependencies": [
+    "database-schema-drizzle-orm-setup"
+  ],
+  "priority": 2,
+  "status": "completed",
+  "id": "feature-1767974063693-xgnatxeqr",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:17:27.670Z",
+  "updatedAt": "2026-01-09T16:24:27.020Z"
+}

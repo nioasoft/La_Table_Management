@@ -1,0 +1,15 @@
+{
+  "category": "enhancement",
+  "description": "Enhance the dashboard to prominently display current period status including: reports received vs missing count, cross-reference status (matched/discrepancy counts), pending actions requiring attention. Provide at-a-glance visibility into settlement workflow progress.",
+  "title": "Dashboard Enhancement - Period Status Widget",
+  "dependencies": [
+    "feature-1767974063703-yrw30fp5q",
+    "feature-1767974063703-jjzosg0xl"
+  ],
+  "priority": 3,
+  "status": "verified",
+  "id": "feature-1768026238187-png3phsuh",
+  "branchName": "master",
+  "startedAt": "2026-01-10T06:24:23.917Z",
+  "updatedAt": "2026-01-10T07:04:59.154Z"
+}

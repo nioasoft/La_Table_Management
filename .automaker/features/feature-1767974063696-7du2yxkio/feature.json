@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement alias management for franchisees to handle different names used by suppliers. UI for adding/removing aliases with examples. Used for matching during file processing.",
+  "title": "Franchisee Alias Management",
+  "dependencies": [
+    "franchisee-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063696-7du2yxkio",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:34:17.374Z",
+  "updatedAt": "2026-01-09T16:41:45.372Z"
+}

@@ -1,0 +1,18 @@
+{
+  "category": "feature",
+  "description": "Implement reports page with report type selector, date range picker, brand filter, supplier/franchisee filters. Show preview before export.",
+  "title": "Reports Page with Filters",
+  "dependencies": [
+    "network-commission-summary-report",
+    "supplier-report",
+    "franchisee-report",
+    "brand-report",
+    "variance-report"
+  ],
+  "priority": 6,
+  "status": "completed",
+  "id": "feature-1767974063705-xh53wilyy",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:59:55.085Z",
+  "updatedAt": "2026-01-09T19:10:05.286Z"
+}

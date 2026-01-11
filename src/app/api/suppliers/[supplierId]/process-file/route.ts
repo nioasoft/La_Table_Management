@@ -1,0 +1,507 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/utils/auth";
+import { getSupplierById } from "@/data-access/suppliers";
+import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import { processSupplierFile, ISRAEL_VAT_RATE } from "@/lib/file-processor";
+import type { SupplierFileMapping } from "@/db/schema";
+import type { MatcherConfig } from "@/lib/franchisee-matcher";
+import {
+  createFileProcessingError,
+  determineProcessingStatus,
+  aggregateUnmatchedFranchisees,
+  formatErrorSummary,
+  getStatusMessage,
+  type FileProcessingError,
+} from "@/lib/file-processing-errors";
+import {
+  logFileProcessing,
+  createLogInputFromResults,
+} from "@/data-access/fileProcessingLog";
+import { createAuditContext } from "@/data-access/auditLog";
+
+interface RouteContext {
+  params: Promise<{ supplierId: string }>;
+}
+
+/**
+ * POST /api/suppliers/[supplierId]/process-file - Process an uploaded supplier file
+ *
+ * Accepts a file upload and processes it according to the supplier's file mapping configuration.
+ * Applies VAT adjustment based on the supplier's vatIncluded setting.
+ *
+ * Request body should be multipart/form-data with:
+ * - file: The file to process (Excel or CSV)
+ * - vatRate (optional): Custom VAT rate (defaults to Israel's 17%)
+ *
+ * Response includes:
+ * - success: boolean
+ * - data: Array of processed rows with:
+ *   - franchisee: Franchisee name from file
+ *   - date: Transaction date (if available)
+ *   - grossAmount: Amount including VAT
+ *   - netAmount: Amount before VAT (used for commission calculation)
+ *   - originalAmount: Original amount from file
+ *   - rowNumber: Source row number
+ * - summary: Processing summary with totals
+ * - errors: Any errors encountered
+ * - warnings: Any warnings during processing
+ */
+export async function POST(request: NextRequest, context: RouteContext) {
+  const startTime = Date.now();
+  let supplierId: string | undefined;
+  let supplierName: string | undefined;
+  let fileName: string | undefined;
+  let fileSize: number | undefined;
+  let mimeType: string | undefined;
+
+  try {
+    // Authenticate user
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userRole = (session.user as typeof session.user & { role?: string })
+      .role;
+
+    // Only admins and super users can process supplier files
+    if (userRole !== "super_user" && userRole !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const params = await context.params;
+    supplierId = params.supplierId;
+
+    // Get supplier to check file mapping and VAT configuration
+    const supplier = await getSupplierById(supplierId);
+    if (!supplier) {
+      return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
+    }
+
+    supplierName = supplier.name;
+
+    // Check if supplier has file mapping configured
+    if (!supplier.fileMapping) {
+      const error = createFileProcessingError('NO_FILE_MAPPING', {
+        details: `Supplier "${supplier.name}" does not have file mapping configured`,
+      });
+
+      // Log the configuration error
+      try {
+        const auditContext = createAuditContext(
+          { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+          request
+        );
+        await logFileProcessing(auditContext, {
+          supplierId,
+          supplierName: supplier.name,
+          fileName: 'N/A',
+          fileSize: 0,
+          mimeType: undefined,
+          status: 'failed',
+          totalRows: 0,
+          processedRows: 0,
+          skippedRows: 0,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          matchedFranchisees: 0,
+          unmatchedFranchisees: 0,
+          franchiseesNeedingReview: 0,
+          errors: [error],
+          warnings: [],
+          unmatchedFranchiseeSummary: [],
+          processingDurationMs: Date.now() - startTime,
+          processedBy: session.user.id,
+          processedByName: session.user.name,
+          processedByEmail: session.user.email,
+        });
+      } catch (logError) {
+        console.error("Failed to log file processing error:", logError);
+      }
+
+      return NextResponse.json(
+        {
+          error: "File mapping not configured",
+          errorCode: error.code,
+          errorCategory: error.category,
+          message: error.message,
+          suggestion: error.suggestion,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Parse the multipart form data
+    const formData = await request.formData();
+    const file = formData.get("file") as File | null;
+    const customVatRate = formData.get("vatRate") as string | null;
+    const enableMatching = formData.get("enableMatching") !== "false"; // Default to true
+    const matchConfigStr = formData.get("matchConfig") as string | null;
+
+    if (!file) {
+      return NextResponse.json(
+        { error: "No file provided" },
+        { status: 400 }
+      );
+    }
+
+    fileName = file.name;
+    fileSize = file.size;
+    mimeType = file.type || undefined;
+
+    // Validate file type matches configured type
+    const fileMapping = supplier.fileMapping as SupplierFileMapping;
+    const mimeTypes: Record<string, string[]> = {
+      xlsx: [
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+      ],
+      xls: ["application/vnd.ms-excel"],
+      csv: ["text/csv", "application/csv"],
+    };
+
+    const allowedMimeTypes = mimeTypes[fileMapping.fileType] || [];
+    if (!allowedMimeTypes.includes(file.type) && file.type !== "") {
+      const error = createFileProcessingError('FILE_TYPE_MISMATCH', {
+        details: `Expected ${fileMapping.fileType} file, got ${file.type}`,
+      });
+
+      // Log the file type error
+      try {
+        const auditContext = createAuditContext(
+          { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+          request
+        );
+        await logFileProcessing(auditContext, {
+          supplierId,
+          supplierName: supplier.name,
+          fileName: file.name,
+          fileSize: file.size,
+          mimeType: file.type || undefined,
+          status: 'failed',
+          totalRows: 0,
+          processedRows: 0,
+          skippedRows: 0,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          matchedFranchisees: 0,
+          unmatchedFranchisees: 0,
+          franchiseesNeedingReview: 0,
+          errors: [error],
+          warnings: [],
+          unmatchedFranchiseeSummary: [],
+          processingDurationMs: Date.now() - startTime,
+          processedBy: session.user.id,
+          processedByName: session.user.name,
+          processedByEmail: session.user.email,
+        });
+      } catch (logError) {
+        console.error("Failed to log file processing error:", logError);
+      }
+
+      return NextResponse.json(
+        {
+          error: "Invalid file type",
+          errorCode: error.code,
+          errorCategory: error.category,
+          message: error.message,
+          suggestion: error.suggestion,
+          expected: fileMapping.fileType,
+          received: file.type,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Convert file to buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Determine VAT rate to use
+    const vatRate = customVatRate
+      ? parseFloat(customVatRate) / 100 // Convert percentage to decimal
+      : ISRAEL_VAT_RATE;
+
+    // Process the file with VAT adjustment
+    const result = await processSupplierFile(
+      buffer,
+      fileMapping,
+      supplier.vatIncluded ?? false,
+      vatRate
+    );
+
+    // Apply franchisee name matching if enabled
+    let matchedData = result.data;
+    let matchSummary = null;
+
+    if (enableMatching && result.data.length > 0) {
+      // Parse match config if provided
+      let matchConfig: Partial<MatcherConfig> | undefined;
+      if (matchConfigStr) {
+        try {
+          matchConfig = JSON.parse(matchConfigStr);
+        } catch {
+          // Ignore invalid JSON, use defaults
+        }
+      }
+
+      // Match franchisee names from the processed file data
+      const matchedResults = await matchFranchiseeNamesFromFile(
+        result.data,
+        matchConfig
+      );
+
+      matchedData = matchedResults;
+
+      // Calculate match summary
+      const matched = matchedResults.filter(
+        r => r.matchResult.matchedFranchisee && !r.matchResult.requiresReview
+      );
+      const needsReview = matchedResults.filter(
+        r => r.matchResult.matchedFranchisee && r.matchResult.requiresReview
+      );
+      const unmatched = matchedResults.filter(
+        r => !r.matchResult.matchedFranchisee
+      );
+
+      const matchedWithScore = matchedResults.filter(
+        r => r.matchResult.matchedFranchisee
+      );
+      const averageConfidence = matchedWithScore.length > 0
+        ? matchedWithScore.reduce((sum, r) => sum + r.matchResult.confidence, 0) /
+          matchedWithScore.length
+        : 0;
+
+      matchSummary = {
+        total: matchedResults.length,
+        matched: matched.length,
+        needsReview: needsReview.length,
+        unmatched: unmatched.length,
+        averageConfidence: Math.round(averageConfidence * 100) / 100,
+        unmatchedNames: [...new Set(unmatched.map(u => u.franchisee))],
+        namesNeedingReview: needsReview.map(r => ({
+          name: r.franchisee,
+          suggestedMatch: r.matchResult.matchedFranchisee?.name,
+          suggestedId: r.matchResult.matchedFranchisee?.id,
+          confidence: r.matchResult.confidence,
+        })),
+      };
+
+      // Add unmatched franchisee errors to the result
+      for (const unmatchedItem of unmatched) {
+        result.errors.push(createFileProcessingError('FRANCHISEE_NOT_FOUND', {
+          rowNumber: unmatchedItem.rowNumber,
+          value: unmatchedItem.franchisee,
+          details: `Franchisee "${unmatchedItem.franchisee}" could not be matched`,
+        }));
+      }
+
+      // Add low-confidence match warnings
+      for (const reviewItem of needsReview) {
+        result.warnings.push(createFileProcessingError('FRANCHISEE_LOW_CONFIDENCE', {
+          rowNumber: reviewItem.rowNumber,
+          value: reviewItem.franchisee,
+          details: `Matched to "${reviewItem.matchResult.matchedFranchisee?.name}" with ${Math.round(reviewItem.matchResult.confidence * 100)}% confidence`,
+        }));
+      }
+    }
+
+    // Determine processing status
+    const processingStatus = determineProcessingStatus(
+      result.errors,
+      result.warnings,
+      result.summary.processedRows,
+      matchSummary?.unmatched || 0,
+      matchSummary?.needsReview || 0
+    );
+
+    // Aggregate unmatched franchisees for the log
+    const unmatchedFranchiseeSummary = enableMatching && matchedData.length > 0
+      ? aggregateUnmatchedFranchisees(
+          matchedData.map(item => {
+            const matchResultData = 'matchResult' in item ? item.matchResult : undefined;
+            return {
+              franchisee: item.franchisee,
+              rowNumber: item.rowNumber,
+              grossAmount: item.grossAmount,
+              matchResult: matchResultData as {
+                matchedFranchisee: { id: string; name: string } | null;
+                confidence: number;
+                alternatives?: Array<{ franchisee: { id: string; name: string }; confidence: number }>;
+              } | undefined,
+            };
+          })
+        )
+      : [];
+
+    // Log the file processing attempt
+    const processingDurationMs = Date.now() - startTime;
+    try {
+      const auditContext = createAuditContext(
+        { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+        request
+      );
+      await logFileProcessing(auditContext, {
+        supplierId,
+        supplierName: supplier.name,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || undefined,
+        status: processingStatus,
+        totalRows: result.summary.totalRows,
+        processedRows: result.summary.processedRows,
+        skippedRows: result.summary.skippedRows,
+        totalGrossAmount: result.summary.totalGrossAmount,
+        totalNetAmount: result.summary.totalNetAmount,
+        matchedFranchisees: matchSummary?.matched || 0,
+        unmatchedFranchisees: matchSummary?.unmatched || 0,
+        franchiseesNeedingReview: matchSummary?.needsReview || 0,
+        errors: result.errors,
+        warnings: result.warnings,
+        unmatchedFranchiseeSummary,
+        processingDurationMs,
+        processedBy: session.user.id,
+        processedByName: session.user.name,
+        processedByEmail: session.user.email,
+      });
+    } catch (logError) {
+      console.error("Failed to log file processing:", logError);
+      // Don't fail the request if logging fails
+    }
+
+    // Return processing results
+    return NextResponse.json({
+      success: result.success,
+      data: matchedData,
+      summary: {
+        ...result.summary,
+        supplierName: supplier.name,
+        supplierId: supplier.id,
+        vatIncluded: supplier.vatIncluded ?? false,
+        vatRate: vatRate * 100, // Return as percentage
+        fileName: file.name,
+        fileSize: file.size,
+      },
+      matchSummary,
+      // Enhanced error information
+      processingStatus,
+      processingStatusMessage: getStatusMessage(processingStatus),
+      errorSummary: formatErrorSummary(result.errors),
+      errors: result.errors,
+      warnings: result.warnings,
+      // Legacy format for backwards compatibility
+      legacyErrors: result.legacyErrors,
+      legacyWarnings: result.legacyWarnings,
+      // Unmatched franchisee summary
+      unmatchedFranchiseeSummary,
+      processingDurationMs,
+    });
+  } catch (error) {
+    console.error("Error processing supplier file:", error);
+
+    // Log the system error if we have enough context
+    if (supplierId && supplierName) {
+      try {
+        const session = await auth.api.getSession({
+          headers: request.headers,
+        });
+        if (session) {
+          const auditContext = createAuditContext(
+            { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+            request
+          );
+          const systemError = createFileProcessingError('SYSTEM_ERROR', {
+            details: error instanceof Error ? error.message : 'Unknown error',
+          });
+          await logFileProcessing(auditContext, {
+            supplierId,
+            supplierName,
+            fileName: fileName || 'Unknown',
+            fileSize: fileSize || 0,
+            mimeType,
+            status: 'failed',
+            totalRows: 0,
+            processedRows: 0,
+            skippedRows: 0,
+            totalGrossAmount: 0,
+            totalNetAmount: 0,
+            matchedFranchisees: 0,
+            unmatchedFranchisees: 0,
+            franchiseesNeedingReview: 0,
+            errors: [systemError],
+            warnings: [],
+            unmatchedFranchiseeSummary: [],
+            processingDurationMs: Date.now() - startTime,
+            processedBy: session.user.id,
+            processedByName: session.user.name,
+            processedByEmail: session.user.email,
+          });
+        }
+      } catch (logError) {
+        console.error("Failed to log system error:", logError);
+      }
+    }
+
+    return NextResponse.json(
+      {
+        error: "Failed to process file",
+        errorCode: "SYSTEM_ERROR",
+        errorCategory: "system",
+        message: error instanceof Error ? error.message : "Unknown error",
+        suggestion: "Please try again or contact support if the issue persists",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/suppliers/[supplierId]/process-file - Get processing configuration
+ *
+ * Returns the file processing configuration for a supplier including:
+ * - File mapping settings
+ * - VAT configuration
+ */
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const userRole = (session.user as typeof session.user & { role?: string })
+      .role;
+
+    if (userRole !== "super_user" && userRole !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const { supplierId } = await context.params;
+
+    const supplier = await getSupplierById(supplierId);
+    if (!supplier) {
+      return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({
+      supplierId: supplier.id,
+      supplierName: supplier.name,
+      vatIncluded: supplier.vatIncluded ?? false,
+      defaultVatRate: ISRAEL_VAT_RATE * 100, // Return as percentage
+      fileMapping: supplier.fileMapping,
+      hasFileMapping: !!supplier.fileMapping,
+    });
+  } catch (error) {
+    console.error("Error fetching processing configuration:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "category": "feature",
+  "description": "Implement cross-reference system comparing supplier vs franchisee reported amounts for each pair in a period. Calculate difference and apply matching logic: if |difference| <= ₪10 mark as 'matched', otherwise mark as 'discrepancy'.",
+  "title": "Cross-Reference Engine",
+  "dependencies": [
+    "settlement-period-management",
+    "franchisee-name-matching-engine",
+    "vat-handling-in-file-processing"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063700-zafezaat0",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:43:15.236Z",
+  "updatedAt": "2026-01-09T17:50:36.091Z"
+}

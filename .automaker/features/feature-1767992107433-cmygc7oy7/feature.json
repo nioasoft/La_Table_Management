@@ -1,0 +1,391 @@
+{
+  "category": "Uncategorized",
+  "description": "Comprehensive Hebrew Localization and RTL Implementation\n\nConvert the entire LaTable application to Hebrew language with right-to-left (RTL) layout support, ensuring \"LaTable\" remains the only English text throughout the system.\n\nScope:\n- All public-facing pages and user interfaces\n- Complete dashboard and internal pages\n- Email templates sent to franchisees (זכיינים)\n- System messages, notifications, and alerts\n- Form labels, buttons, and validation messages\n- Error messages and success confirmations\n\nRequirements:\n\n1. Content Audit:\n   - Scan all files for hardcoded English text\n   - Identify all user-facing strings in components, pages, and templates\n   - Document all email templates requiring translation\n   - Locate configuration files with English content\n   - Find database fields or content that may contain English text\n\n2. RTL Layout Implementation:\n   - Configure application-wide RTL direction\n   - Adjust CSS/styling for RTL layout (margins, paddings, flexbox direction)\n   - Mirror UI components appropriately (icons, arrows, navigation)\n   - Fix text alignment throughout the application\n   - Ensure forms, tables, and grids render correctly in RTL\n   - Test responsive layouts in RTL mode\n\n3. Translation Strategy:\n   - Create Hebrew translation files for all strings\n   - Translate all identified English content to Hebrew\n   - Maintain \"LaTable\" as the sole English term\n   - Review and ensure natural Hebrew phrasing (not literal translation)\n\n4. Email Localization:\n   - Convert all franchisee email templates to Hebrew\n   - Ensure proper RTL formatting in email clients\n   - Test email rendering across major email providers\n\n5. PRD Verification:\n   - Review original PRD document requirements\n   - Create checklist of all initial requirements\n   - Verify each PRD item has been fully implemented\n   - Document any gaps or incomplete features\n   - Cross-reference current implementation against specifications\n\n6. Testing Requirements:\n   - Visual regression testing for RTL layouts\n   - Functional testing of all user flows in Hebrew\n   - Verify data input/output handles Hebrew characters correctly\n   - Test email delivery and formatting\n   - Validate proper text truncation and overflow handling in RTL\n   - Browser compatibility testing for RTL support\n\nDeliverables:\n- Comprehensive implementation plan with file-by-file changes needed\n- Complete list of strings requiring translation\n- PRD compliance checklist with implementation status\n- Identified gaps or issues requiring attention",
+  "title": "Implement Hebrew localization with RTL support",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": false,
+  "model": "opus",
+  "thinkingLevel": "ultrathink",
+  "branchName": "master",
+  "priority": 1,
+  "planningMode": "full",
+  "requirePlanApproval": false,
+  "dependencies": [],
+  "titleGenerating": false,
+  "status": "completed",
+  "id": "feature-1767992107433-cmygc7oy7",
+  "startedAt": "2026-01-09T20:55:16.807Z",
+  "updatedAt": "2026-01-09T23:03:51.648Z",
+  "planSpec": {
+    "status": "approved",
+    "version": 1,
+    "reviewedByUser": false,
+    "content": "🔧 Tool: Glob\nInput: {\n  \"pattern\": \"**/*\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"**/package.json\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"**/*.{tsx,jsx,ts,js}\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"src/**/*\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/package.json\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/docs/PRD.md\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"src/app/**/*.tsx\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"src/components/**/*.tsx\"\n}\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"src/emails/**/*.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/layout.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/(auth)/sign-in/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/(protected)/dashboard/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/(protected)/admin/suppliers/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/emails/file-request.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/emails/components/email-layout.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/(protected)/admin/franchisees/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/styles/globals.css\"\n}\nLet me explore a few more key files to complete my analysis:\n\n🔧 Tool: Glob\nInput: {\n  \"pattern\": \"src/app/(protected)/admin/**/*.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/app/upload/[token]/page.tsx\"\n}\n\n🔧 Tool: Read\nInput: {\n  \"file_path\": \"/Users/asafbenatia/Projects/La_Table_Management/src/components/dashboard-widgets.tsx\"\n}\nNow I have a complete picture. Let me generate the comprehensive specification:\n\n---\n\n# Comprehensive Hebrew Localization and RTL Implementation Specification\n\n## 1. Problem Statement\n\nThe LaTable Management System currently has its basic RTL infrastructure in place but contains extensive hardcoded English text throughout all user-facing pages, components, and email templates. Users of this Israeli restaurant franchise management system need a fully Hebrew interface to effectively manage their operations, while maintaining \"LaTable\" as the sole English brand name across the application.\n\n## 2. User Story\n\n**As a** LaTable system administrator or franchisee user,  \n**I want** the entire application interface to be in Hebrew with proper RTL layout,  \n**So that** I can efficiently navigate and manage franchise operations in my native language without language barriers.\n\n## 3. Acceptance Criteria\n\n### Happy Path\n- **GIVEN** a user accesses any page in the application, **WHEN** the page loads, **THEN** all UI text (labels, buttons, messages, placeholders) is displayed in Hebrew except for \"LaTable\" branding\n- **GIVEN** a franchisee receives an email from the system, **WHEN** they open it, **THEN** the email content is fully in Hebrew with proper RTL formatting\n- **GIVEN** a user interacts with forms, **WHEN** they view validation messages, **THEN** all messages appear in Hebrew\n\n### Edge Cases\n- **GIVEN** a data field contains English text (e.g., supplier codes, email addresses), **WHEN** displayed, **THEN** it renders correctly with `dir=\"ltr\"` where appropriate\n- **GIVEN** mixed Hebrew/English content, **WHEN** displayed, **THEN** bidirectional text renders correctly\n- **GIVEN** numbers and dates, **WHEN** displayed, **THEN** they follow Hebrew locale formatting (he-IL)\n\n### Error Handling\n- **GIVEN** an API error occurs, **WHEN** the error message is displayed, **THEN** it appears in Hebrew\n- **GIVEN** a form validation fails, **WHEN** the error is shown, **THEN** all validation messages are in Hebrew\n- **GIVEN** a 404 or system error page, **WHEN** displayed, **THEN** the error page content is in Hebrew\n\n## 4. Technical Context\n\n| Aspect | Value |\n|--------|-------|\n| **Framework** | Next.js 15, React 19, TypeScript |\n| **Current i18n** | `next-intl` v3.26.5 (installed but unused) |\n| **RTL Status** | Basic RTL configured in layout.tsx |\n| **Font** | Rubik with Hebrew subset (already configured) |\n| **Email System** | React Email + Resend |\n| **UI Library** | shadcn/ui + Tailwind CSS |\n| **Total Pages** | 25 pages requiring translation |\n| **Total Components** | 26 components with text content |\n| **Email Templates** | 7 email templates |\n\n| **Affected Files** | **Count** |\n|--------------------|-----------|\n| App Pages (`src/app/`) | 25 files |\n| Components (`src/components/`) | 26 files |\n| Email Templates (`src/emails/`) | 7 files |\n| Styles (`src/styles/`) | 2 files |\n| Configuration | 3 files |\n\n| **Constraints** | |\n|-----------------|--|\n| \"LaTable\" must remain in English everywhere |\n| Existing functionality must not break |\n| Hebrew phrasing must be natural, not literal translations |\n\n| **Patterns to Follow** | |\n|------------------------|--|\n| Use centralized translation strings (not inline) |\n| Maintain existing component structure |\n| Follow existing RTL CSS patterns in globals.css |\n\n## 5. Non-Goals\n\nThis implementation explicitly does **NOT** include:\n- Multi-language support beyond Hebrew (no language switcher)\n- Database content translation (dynamic user data)\n- Third-party library UI translations (shadcn/ui primitives)\n- Automated translation services\n- Translation management system (CMS)\n- SEO optimization for Hebrew keywords\n- Accessibility improvements beyond RTL text direction\n\n## 6. Implementation Tasks\n\n```tasks\n## Phase 1: Foundation & Translation Infrastructure\n- [ ] T001: Create Hebrew translation constants file with all UI strings | File: src/lib/translations/he.ts\n- [ ] T002: Create translation helper utility function | File: src/lib/translations/index.ts\n- [ ] T003: Update globals.css with additional RTL utility classes | File: src/styles/globals.css\n- [ ] T004: Create email translation constants | File: src/lib/translations/emails.ts\n\n## Phase 2: Authentication & Public Pages\n- [ ] T005: Translate sign-in page to Hebrew | File: src/app/(auth)/sign-in/page.tsx\n- [ ] T006: Translate sign-up page to Hebrew | File: src/app/(auth)/sign-up/page.tsx\n- [ ] T007: Translate pending-approval page to Hebrew | File: src/app/(auth)/pending-approval/page.tsx\n- [ ] T008: Translate homepage to Hebrew | File: src/app/page.tsx\n- [ ] T009: Verify and fix upload page Hebrew content | File: src/app/upload/[token]/page.tsx\n\n## Phase 3: Dashboard & Core Admin Pages\n- [ ] T010: Translate dashboard page to Hebrew | File: src/app/(protected)/dashboard/page.tsx\n- [ ] T011: Translate dashboard-widgets component | File: src/components/dashboard-widgets.tsx\n- [ ] T012: Translate upcoming-reminders-widget component | File: src/components/upcoming-reminders-widget.tsx\n- [ ] T013: Translate commission-settlement-widget component | File: src/components/commission-settlement-widget.tsx\n- [ ] T014: Translate upload-status-widget component | File: src/components/upload-status-widget.tsx\n\n## Phase 4: Admin Management Pages\n- [ ] T015: Translate users management page to Hebrew | File: src/app/(protected)/admin/users/page.tsx\n- [ ] T016: Translate suppliers management page to Hebrew | File: src/app/(protected)/admin/suppliers/page.tsx\n- [ ] T017: Translate supplier detail page to Hebrew | File: src/app/(protected)/admin/suppliers/[supplierId]/page.tsx\n- [ ] T018: Translate franchisees management page to Hebrew | File: src/app/(protected)/admin/franchisees/page.tsx\n- [ ] T019: Translate brands management page to Hebrew | File: src/app/(protected)/admin/brands/page.tsx\n\n## Phase 5: Commission & Settlement Pages\n- [ ] T020: Translate settlements page to Hebrew | File: src/app/(protected)/admin/settlements/page.tsx\n- [ ] T021: Translate reconciliation page to Hebrew | File: src/app/(protected)/admin/reconciliation/page.tsx\n- [ ] T022: Translate discrepancy detail page to Hebrew | File: src/app/(protected)/admin/reconciliation/discrepancy/[crossRefId]/page.tsx\n- [ ] T023: Translate commission supplier page to Hebrew | File: src/app/(protected)/admin/commissions/supplier/page.tsx\n- [ ] T024: Translate commission brand page to Hebrew | File: src/app/(protected)/admin/commissions/brand/page.tsx\n- [ ] T025: Translate commission franchisee page to Hebrew | File: src/app/(protected)/admin/commissions/franchisee/page.tsx\n- [ ] T026: Translate commission invoice page to Hebrew | File: src/app/(protected)/admin/commissions/invoice/page.tsx\n- [ ] T027: Translate commission variance page to Hebrew | File: src/app/(protected)/admin/commissions/variance/page.tsx\n- [ ] T028: Translate commission report page to Hebrew | File: src/app/(protected)/admin/commissions/report/page.tsx\n\n## Phase 6: Additional Admin Pages & Components\n- [ ] T029: Translate email templates page to Hebrew | File: src/app/(protected)/admin/email-templates/page.tsx\n- [ ] T030: Translate franchisee reminders page to Hebrew | File: src/app/(protected)/admin/franchisee-reminders/page.tsx\n- [ ] T031: Translate reports page to Hebrew | File: src/app/(protected)/admin/reports/page.tsx\n- [ ] T032: Translate permissions-editor component | File: src/components/permissions-editor.tsx\n- [ ] T033: Translate alias-manager component | File: src/components/alias-manager.tsx\n- [ ] T034: Translate file-mapping-config component | File: src/components/file-mapping-config.tsx\n- [ ] T035: Translate document-manager component | File: src/components/document-manager.tsx\n- [ ] T036: Translate manual-adjustment-form component | File: src/components/manual-adjustment-form.tsx\n- [ ] T037: Translate franchisee-detail-card component | File: src/components/franchisee-detail-card.tsx\n\n## Phase 7: Email Templates\n- [ ] T038: Translate email-layout component to Hebrew | File: src/emails/components/email-layout.tsx\n- [ ] T039: Translate file-request email template to Hebrew | File: src/emails/file-request.tsx\n- [ ] T040: Translate supplier-request email template to Hebrew | File: src/emails/supplier-request.tsx\n- [ ] T041: Translate franchisee-request email template to Hebrew | File: src/emails/franchisee-request.tsx\n- [ ] T042: Translate reminder email template to Hebrew | File: src/emails/reminder.tsx\n- [ ] T043: Translate custom email template to Hebrew | File: src/emails/custom.tsx\n- [ ] T044: Translate upload-notification email template to Hebrew | File: src/emails/upload-notification.tsx\n\n## Phase 8: RTL Styling Refinements\n- [ ] T045: Fix RTL layout issues in form components | File: src/styles/globals.css\n- [ ] T046: Update icon/arrow directions for RTL context | File: multiple components\n- [ ] T047: Verify and fix table RTL rendering | File: src/components/ui/table.tsx\n\n## Phase 9: Testing & Verification\n- [ ] T048: Create Playwright verification test for Hebrew UI | File: tests/hebrew-verification.spec.ts\n- [ ] T049: Run visual verification across all pages | File: tests/hebrew-verification.spec.ts\n- [ ] T050: PRD compliance checklist verification | File: docs/prd-compliance.md\n- [ ] T051: Delete temporary verification test | File: tests/hebrew-verification.spec.ts\n```\n\n## 7. Success Metrics\n\n| Metric | Target |\n|--------|--------|\n| Pages with 100% Hebrew UI text | 25/25 |\n| Components with Hebrew translations | 26/26 |\n| Email templates fully in Hebrew | 7/7 |\n| \"LaTable\" remains only English text | ✓ |\n| RTL layout renders correctly on all pages | ✓ |\n| Form validation messages in Hebrew | ✓ |\n| Error messages in Hebrew | ✓ |\n| Playwright verification tests pass | ✓ |\n\n## 8. Risks & Mitigations\n\n| Risk | Mitigation |\n|------|------------|\n| Translation quality - literal translations may sound unnatural | Use natural Hebrew phrasing, review with native speakers |\n| RTL layout breaking existing UI | Incremental changes with visual verification after each page |\n| Icon/arrow directions incorrect in RTL | Explicitly handle directional icons (chevrons, arrows) |\n| Email clients may not render RTL correctly | Test across Gmail, Outlook, Apple Mail with inline RTL styles |\n| Long Hebrew text causing overflow | Apply text truncation and responsive handling |\n| Mixed LTR/RTL content issues | Use `dir` attribute on specific elements (codes, emails) |\n| Regression in existing functionality | Playwright tests to verify core flows still work |\n\n---",
+    "generatedAt": "2026-01-09T20:57:04.727Z",
+    "tasks": [
+      {
+        "id": "T001",
+        "description": "Create Hebrew translation constants file with all UI strings",
+        "filePath": "src/lib/translations/he.ts",
+        "phase": "Phase 1: Foundation & Translation Infrastructure",
+        "status": "pending"
+      },
+      {
+        "id": "T002",
+        "description": "Create translation helper utility function",
+        "filePath": "src/lib/translations/index.ts",
+        "phase": "Phase 1: Foundation & Translation Infrastructure",
+        "status": "pending"
+      },
+      {
+        "id": "T003",
+        "description": "Update globals.css with additional RTL utility classes",
+        "filePath": "src/styles/globals.css",
+        "phase": "Phase 1: Foundation & Translation Infrastructure",
+        "status": "pending"
+      },
+      {
+        "id": "T004",
+        "description": "Create email translation constants",
+        "filePath": "src/lib/translations/emails.ts",
+        "phase": "Phase 1: Foundation & Translation Infrastructure",
+        "status": "pending"
+      },
+      {
+        "id": "T005",
+        "description": "Translate sign-in page to Hebrew",
+        "filePath": "src/app/(auth)/sign-in/page.tsx",
+        "phase": "Phase 2: Authentication & Public Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T006",
+        "description": "Translate sign-up page to Hebrew",
+        "filePath": "src/app/(auth)/sign-up/page.tsx",
+        "phase": "Phase 2: Authentication & Public Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T007",
+        "description": "Translate pending-approval page to Hebrew",
+        "filePath": "src/app/(auth)/pending-approval/page.tsx",
+        "phase": "Phase 2: Authentication & Public Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T008",
+        "description": "Translate homepage to Hebrew",
+        "filePath": "src/app/page.tsx",
+        "phase": "Phase 2: Authentication & Public Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T009",
+        "description": "Verify and fix upload page Hebrew content",
+        "filePath": "src/app/upload/[token]/page.tsx",
+        "phase": "Phase 2: Authentication & Public Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T010",
+        "description": "Translate dashboard page to Hebrew",
+        "filePath": "src/app/(protected)/dashboard/page.tsx",
+        "phase": "Phase 3: Dashboard & Core Admin Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T011",
+        "description": "Translate dashboard-widgets component",
+        "filePath": "src/components/dashboard-widgets.tsx",
+        "phase": "Phase 3: Dashboard & Core Admin Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T012",
+        "description": "Translate upcoming-reminders-widget component",
+        "filePath": "src/components/upcoming-reminders-widget.tsx",
+        "phase": "Phase 3: Dashboard & Core Admin Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T013",
+        "description": "Translate commission-settlement-widget component",
+        "filePath": "src/components/commission-settlement-widget.tsx",
+        "phase": "Phase 3: Dashboard & Core Admin Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T014",
+        "description": "Translate upload-status-widget component",
+        "filePath": "src/components/upload-status-widget.tsx",
+        "phase": "Phase 3: Dashboard & Core Admin Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T015",
+        "description": "Translate users management page to Hebrew",
+        "filePath": "src/app/(protected)/admin/users/page.tsx",
+        "phase": "Phase 4: Admin Management Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T016",
+        "description": "Translate suppliers management page to Hebrew",
+        "filePath": "src/app/(protected)/admin/suppliers/page.tsx",
+        "phase": "Phase 4: Admin Management Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T017",
+        "description": "Translate supplier detail page to Hebrew",
+        "filePath": "src/app/(protected)/admin/suppliers/[supplierId]/page.tsx",
+        "phase": "Phase 4: Admin Management Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T018",
+        "description": "Translate franchisees management page to Hebrew",
+        "filePath": "src/app/(protected)/admin/franchisees/page.tsx",
+        "phase": "Phase 4: Admin Management Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T019",
+        "description": "Translate brands management page to Hebrew",
+        "filePath": "src/app/(protected)/admin/brands/page.tsx",
+        "phase": "Phase 4: Admin Management Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T020",
+        "description": "Translate settlements page to Hebrew",
+        "filePath": "src/app/(protected)/admin/settlements/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T021",
+        "description": "Translate reconciliation page to Hebrew",
+        "filePath": "src/app/(protected)/admin/reconciliation/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T022",
+        "description": "Translate discrepancy detail page to Hebrew",
+        "filePath": "src/app/(protected)/admin/reconciliation/discrepancy/[crossRefId]/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T023",
+        "description": "Translate commission supplier page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/supplier/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T024",
+        "description": "Translate commission brand page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/brand/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T025",
+        "description": "Translate commission franchisee page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/franchisee/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T026",
+        "description": "Translate commission invoice page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/invoice/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T027",
+        "description": "Translate commission variance page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/variance/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T028",
+        "description": "Translate commission report page to Hebrew",
+        "filePath": "src/app/(protected)/admin/commissions/report/page.tsx",
+        "phase": "Phase 5: Commission & Settlement Pages",
+        "status": "pending"
+      },
+      {
+        "id": "T029",
+        "description": "Translate email templates page to Hebrew",
+        "filePath": "src/app/(protected)/admin/email-templates/page.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T030",
+        "description": "Translate franchisee reminders page to Hebrew",
+        "filePath": "src/app/(protected)/admin/franchisee-reminders/page.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T031",
+        "description": "Translate reports page to Hebrew",
+        "filePath": "src/app/(protected)/admin/reports/page.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T032",
+        "description": "Translate permissions-editor component",
+        "filePath": "src/components/permissions-editor.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T033",
+        "description": "Translate alias-manager component",
+        "filePath": "src/components/alias-manager.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T034",
+        "description": "Translate file-mapping-config component",
+        "filePath": "src/components/file-mapping-config.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T035",
+        "description": "Translate document-manager component",
+        "filePath": "src/components/document-manager.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T036",
+        "description": "Translate manual-adjustment-form component",
+        "filePath": "src/components/manual-adjustment-form.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T037",
+        "description": "Translate franchisee-detail-card component",
+        "filePath": "src/components/franchisee-detail-card.tsx",
+        "phase": "Phase 6: Additional Admin Pages & Components",
+        "status": "pending"
+      },
+      {
+        "id": "T038",
+        "description": "Translate email-layout component to Hebrew",
+        "filePath": "src/emails/components/email-layout.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T039",
+        "description": "Translate file-request email template to Hebrew",
+        "filePath": "src/emails/file-request.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T040",
+        "description": "Translate supplier-request email template to Hebrew",
+        "filePath": "src/emails/supplier-request.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T041",
+        "description": "Translate franchisee-request email template to Hebrew",
+        "filePath": "src/emails/franchisee-request.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T042",
+        "description": "Translate reminder email template to Hebrew",
+        "filePath": "src/emails/reminder.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T043",
+        "description": "Translate custom email template to Hebrew",
+        "filePath": "src/emails/custom.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T044",
+        "description": "Translate upload-notification email template to Hebrew",
+        "filePath": "src/emails/upload-notification.tsx",
+        "phase": "Phase 7: Email Templates",
+        "status": "pending"
+      },
+      {
+        "id": "T045",
+        "description": "Fix RTL layout issues in form components",
+        "filePath": "src/styles/globals.css",
+        "phase": "Phase 8: RTL Styling Refinements",
+        "status": "pending"
+      },
+      {
+        "id": "T046",
+        "description": "Update icon/arrow directions for RTL context",
+        "filePath": "multiple components",
+        "phase": "Phase 8: RTL Styling Refinements",
+        "status": "pending"
+      },
+      {
+        "id": "T047",
+        "description": "Verify and fix table RTL rendering",
+        "filePath": "src/components/ui/table.tsx",
+        "phase": "Phase 8: RTL Styling Refinements",
+        "status": "pending"
+      },
+      {
+        "id": "T048",
+        "description": "Create Playwright verification test for Hebrew UI",
+        "filePath": "tests/hebrew-verification.spec.ts",
+        "phase": "Phase 9: Testing & Verification",
+        "status": "pending"
+      },
+      {
+        "id": "T049",
+        "description": "Run visual verification across all pages",
+        "filePath": "tests/hebrew-verification.spec.ts",
+        "phase": "Phase 9: Testing & Verification",
+        "status": "pending"
+      },
+      {
+        "id": "T050",
+        "description": "PRD compliance checklist verification",
+        "filePath": "docs/prd-compliance.md",
+        "phase": "Phase 9: Testing & Verification",
+        "status": "pending"
+      },
+      {
+        "id": "T051",
+        "description": "Delete temporary verification test",
+        "filePath": "tests/hebrew-verification.spec.ts",
+        "phase": "Phase 9: Testing & Verification",
+        "status": "pending"
+      }
+    ],
+    "tasksTotal": 51,
+    "tasksCompleted": 51,
+    "approvedAt": "2026-01-09T20:57:04.728Z",
+    "currentTaskId": "T051"
+  }
+}

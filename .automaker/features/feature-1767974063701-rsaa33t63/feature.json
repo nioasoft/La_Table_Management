@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement approval workflow for settlements. Super User reviews all calculations and provides final approval. Approval locks the period and records approver and timestamp.",
+  "title": "Settlement Approval Workflow",
+  "dependencies": [
+    "commission-calculation-engine",
+    "discrepancy-resolution-ui"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063701-rsaa33t63",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:21:36.316Z",
+  "updatedAt": "2026-01-09T18:28:48.793Z"
+}

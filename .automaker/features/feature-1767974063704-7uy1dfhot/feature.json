@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement comprehensive audit logging for all sensitive actions: user, timestamp, action type, before/after values. Cover commission changes, status changes, approvals, and adjustments.",
+  "title": "Audit Trail System",
+  "dependencies": [
+    "database-schema-drizzle-orm-setup"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063704-7uy1dfhot",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:13:29.000Z",
+  "updatedAt": "2026-01-09T17:23:26.928Z"
+}

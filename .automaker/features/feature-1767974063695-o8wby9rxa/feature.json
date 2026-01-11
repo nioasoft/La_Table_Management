@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement automatic logging of commission rate changes with old rate, new rate, changed by user, effective date, and notes. Display history on supplier card.",
+  "title": "Supplier Commission Rate History",
+  "dependencies": [
+    "supplier-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063695-o8wby9rxa",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:25:37.373Z",
+  "updatedAt": "2026-01-09T16:37:06.372Z"
+}

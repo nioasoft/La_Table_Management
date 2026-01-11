@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement discrepancy resolution screen with side-by-side comparison of supplier vs franchisee amounts. Include adjustment form, option to request corrected file, and approval workflow with explanation field.",
+  "title": "Discrepancy Resolution UI",
+  "dependencies": [
+    "adjustment-system",
+    "cross-reference-ui"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063701-jepjd2uyp",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:50:36.533Z",
+  "updatedAt": "2026-01-09T17:57:44.395Z"
+}

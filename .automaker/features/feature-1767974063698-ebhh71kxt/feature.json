@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Integrate Resend for email delivery. Implement email logging with status tracking (sent/delivered/bounced/failed), Resend message ID, and error logging.",
+  "title": "Email Sending with Resend",
+  "dependencies": [
+    "email-template-system"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063698-ebhh71kxt",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:08:25.218Z",
+  "updatedAt": "2026-01-09T17:14:21.936Z"
+}

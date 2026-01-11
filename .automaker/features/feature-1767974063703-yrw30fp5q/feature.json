@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement dashboard widget showing current period status, total commissions this period, and settlement workflow progress.",
+  "title": "Dashboard - Period Status Overview",
+  "dependencies": [
+    "settlement-period-management",
+    "commission-calculation-engine"
+  ],
+  "priority": 5,
+  "status": "completed",
+  "id": "feature-1767974063703-yrw30fp5q",
+  "branchName": "master",
+  "startedAt": "2026-01-09T18:52:20.145Z",
+  "updatedAt": "2026-01-09T18:56:56.659Z"
+}

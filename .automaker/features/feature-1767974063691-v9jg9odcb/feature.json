@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement user management with three roles: Super User, Admin, and Franchisee Owner. Include user approval workflow where Super User approves pending accounts and assigns roles.",
+  "title": "User Management & Role System",
+  "dependencies": [
+    "authentication-system-with-better-auth"
+  ],
+  "priority": 1,
+  "status": "completed",
+  "id": "feature-1767974063691-v9jg9odcb",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:05:39.720Z",
+  "updatedAt": "2026-01-09T16:16:35.948Z"
+}

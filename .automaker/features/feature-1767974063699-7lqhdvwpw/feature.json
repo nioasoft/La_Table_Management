@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement Excel file parsing using xlsx/exceljs. Use supplier-specific file mappings to extract data. Handle different formats, skip specified rows/keywords, extract franchisee name, amount, and date columns.",
+  "title": "Excel File Parser",
+  "dependencies": [
+    "supplier-file-mapping-configuration"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063699-7lqhdvwpw",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:30:38.166Z",
+  "updatedAt": "2026-01-09T17:33:54.246Z"
+}

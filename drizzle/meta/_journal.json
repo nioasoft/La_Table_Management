@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1766077875979,
+      "tag": "0000_amazing_logan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1767974260485,
+      "tag": "0001_square_lord_tyger",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1767975291667,
+      "tag": "0002_grey_dust",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1736464800000,
+      "tag": "0008_audit_log",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1736550000000,
+      "tag": "0015_management_companies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1736636400000,
+      "tag": "0016_file_processing_log",
+      "breakpoints": true
+    }
+  ]
+}

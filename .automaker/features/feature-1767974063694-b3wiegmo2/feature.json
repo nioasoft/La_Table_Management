@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement supplier card with all fields: name, company ID, address, primary/secondary contacts, commission rate, commission type (percentage/per_item), settlement frequency, VAT included flag, status, and associated brands. Include list view with filtering and quick status toggle.",
+  "title": "Supplier Management - Core CRUD",
+  "dependencies": [
+    "brand-management",
+    "granular-permission-system"
+  ],
+  "priority": 2,
+  "status": "completed",
+  "id": "feature-1767974063694-b3wiegmo2",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:24:27.355Z",
+  "updatedAt": "2026-01-09T16:32:32.792Z"
+}

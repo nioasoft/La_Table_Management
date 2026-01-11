@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement supplier-specific file mapping configuration: file type (xlsx/csv/xls), column mappings for franchisee/amount/date, header row, data start row, rows to skip, and skip keywords (e.g., 'פיקדון', 'deposit'). Store as JSONB.",
+  "title": "Supplier File Mapping Configuration",
+  "dependencies": [
+    "supplier-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063696-nfbj5pbo2",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:37:06.791Z",
+  "updatedAt": "2026-01-09T16:50:17.038Z"
+}

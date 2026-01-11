@@ -1,0 +1,15 @@
+{
+  "category": "feature",
+  "description": "Implement fuzzy matching of franchisee names from supplier files using the aliases system. Handle various name formats and spellings. Flag unmatched entries for manual review.",
+  "title": "Franchisee Name Matching Engine",
+  "dependencies": [
+    "excel-file-parser",
+    "franchisee-alias-management"
+  ],
+  "priority": 4,
+  "status": "completed",
+  "id": "feature-1767974063699-g0p27vt8o",
+  "branchName": "master",
+  "startedAt": "2026-01-09T17:32:30.690Z",
+  "updatedAt": "2026-01-09T17:43:14.864Z"
+}

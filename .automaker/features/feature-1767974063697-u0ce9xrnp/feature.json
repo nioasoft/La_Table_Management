@@ -1,0 +1,14 @@
+{
+  "category": "feature",
+  "description": "Implement automatic logging of franchisee status changes (active/suspended/closed) with old status, new status, changed by user, and reason. Display history on franchisee card.",
+  "title": "Franchisee Status History",
+  "dependencies": [
+    "franchisee-management-core-crud"
+  ],
+  "priority": 3,
+  "status": "completed",
+  "id": "feature-1767974063697-u0ce9xrnp",
+  "branchName": "master",
+  "startedAt": "2026-01-09T16:50:17.459Z",
+  "updatedAt": "2026-01-09T16:59:32.227Z"
+}

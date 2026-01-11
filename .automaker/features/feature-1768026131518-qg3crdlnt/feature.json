@@ -1,0 +1,22 @@
+{
+  "category": "feature",
+  "description": "Create a sidebar navigation layout for the protected admin area. Implement src/app/(protected)/layout.tsx with a persistent sidebar component (src/components/sidebar.tsx) containing: Dashboard, Settlement Workflow (main flow), Data Management (Suppliers, Franchisees, Brands), Reports, and Settings (Users, Email Templates). Ensure all existing admin pages integrate with the new layout.",
+  "title": "Sidebar Navigation Layout",
+  "images": [],
+  "imagePaths": [],
+  "textFilePaths": [],
+  "skipTests": true,
+  "model": "opus",
+  "thinkingLevel": "ultrathink",
+  "branchName": "master",
+  "priority": 2,
+  "planningMode": "skip",
+  "requirePlanApproval": false,
+  "dependencies": [],
+  "titleGenerating": false,
+  "status": "completed",
+  "id": "feature-1768026131518-qg3crdlnt",
+  "startedAt": "2026-01-10T06:24:22.502Z",
+  "updatedAt": "2026-01-10T06:29:32.575Z",
+  "justFinishedAt": "2026-01-10T06:29:32.575Z"
+}

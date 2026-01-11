@@ -1,0 +1,12 @@
+{
+  "category": "feature",
+  "description": "Initialize Next.js 16 project with React 19, TypeScript, Tailwind CSS, and shadcn/ui. Configure project structure, environment variables, and RTL support for Hebrew language.",
+  "title": "Project Setup & Configuration",
+  "dependencies": [],
+  "priority": 1,
+  "status": "completed",
+  "id": "feature-1767974063687-qygy7l0dh",
+  "branchName": "master",
+  "startedAt": "2026-01-09T15:54:27.672Z",
+  "updatedAt": "2026-01-09T16:05:37.975Z"
+}

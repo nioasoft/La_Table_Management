@@ -1,0 +1,14 @@
+{
+  "category": "enhancement",
+  "description": "Implement clean, professional UI design following LaTable brand guidelines: white background, black primary colors matching the logo, modern and minimal aesthetic. Ensure all interfaces are optimized for digital use (no print styling needed).",
+  "title": "UI Theme - Clean Professional Design",
+  "dependencies": [
+    "feature-1768026131518-qg3crdlnt"
+  ],
+  "priority": 4,
+  "status": "verified",
+  "id": "feature-1768026238188-32nkpv0e0",
+  "branchName": "master",
+  "startedAt": "2026-01-10T07:03:07.549Z",
+  "updatedAt": "2026-01-10T07:26:12.828Z"
+}

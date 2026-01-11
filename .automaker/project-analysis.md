@@ -1,0 +1,1 @@
+I'll analyze this project to provide you with a comprehensive overview. Let me start by exploring the project structure and key files.
