@@ -52,6 +52,16 @@ export const auth = betterAuth({
       enabled: true,
       maxAge: 60 * 5,
     },
+    cookie: {
+      sameSite: "lax", // Required for Google OAuth compatibility
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+    },
+  },
+  advanced: {
+    crossSubDomainCookies: {
+      enabled: false,
+    },
   },
   callbacks: {
     session: async ({ session, user }: { session: any; user: any }) => {

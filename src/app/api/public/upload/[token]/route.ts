@@ -13,6 +13,7 @@ import {
   getMaxFileSize,
   getAllowedMimeTypes,
 } from "@/lib/storage";
+import { validateFileType } from "@/lib/file-validation";
 import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
 
@@ -124,7 +125,7 @@ export async function POST(
       );
     }
 
-    // Validate file type
+    // Validate file type (client-provided MIME type)
     const allowedTypes = link.allowedFileTypes
       ? link.allowedFileTypes.split(",").map((t) => t.trim())
       : getAllowedMimeTypes();
@@ -140,9 +141,32 @@ export async function POST(
       );
     }
 
+    // Convert to buffer for magic byte validation
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Validate file content matches claimed type (magic byte detection)
+    // This prevents MIME type spoofing attacks
+    const fileValidation = await validateFileType(buffer, file.type);
+    if (!fileValidation.valid) {
+      console.warn("File upload rejected - type mismatch:", {
+        claimed: file.type,
+        detected: fileValidation.detectedMimeType,
+        error: fileValidation.error,
+        uploadLinkId: link.id,
+        uploaderEmail,
+      });
+      return NextResponse.json(
+        {
+          error: "תוכן הקובץ אינו תואם לסוג המוצהר",
+          code: "FILE_TYPE_MISMATCH",
+        },
+        { status: 400 }
+      );
+    }
+
     // Validate file size
     const maxSize = link.maxFileSize || getMaxFileSize();
-    if (file.size > maxSize) {
+    if (buffer.length > maxSize) {
       return NextResponse.json(
         {
           error: `גודל הקובץ חורג מהמקסימום המותר (${Math.round(maxSize / 1024 / 1024)}MB)`,
@@ -152,11 +176,11 @@ export async function POST(
       );
     }
 
-    // Upload the file to storage
+    // Upload the file to storage using validated buffer
     const uploadResult = await uploadDocument(
-      file,
+      buffer,
       file.name,
-      file.type,
+      fileValidation.detectedMimeType || file.type,
       link.entityType,
       link.entityId
     );
