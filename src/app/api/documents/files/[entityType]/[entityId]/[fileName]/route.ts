@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAuth,
+  isAuthError,
+} from "@/lib/api-middleware";
 import { readLocalFile } from "@/lib/storage";
 
 /**
@@ -11,13 +14,8 @@ export async function GET(
   { params }: { params: Promise<{ entityType: string; entityId: string; fileName: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { entityType, entityId, fileName } = await params;
 

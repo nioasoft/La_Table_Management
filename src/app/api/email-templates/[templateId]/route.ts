@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getEmailTemplateById,
   updateEmailTemplate,
@@ -19,20 +23,8 @@ interface RouteParams {
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { templateId } = await params;
     const template = await getEmailTemplateById(templateId);
@@ -59,20 +51,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { templateId } = await params;
     const existingTemplate = await getEmailTemplateById(templateId);
@@ -162,20 +142,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is super_user (only super_user can delete)
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // Only super_user can delete
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { templateId } = await params;
     const existingTemplate = await getEmailTemplateById(templateId);
@@ -211,20 +180,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { templateId } = await params;
     const body = await request.json();

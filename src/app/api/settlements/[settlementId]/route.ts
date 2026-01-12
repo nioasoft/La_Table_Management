@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireRole,
+  requireAnyAuthenticatedUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getSettlementPeriodById,
   getSettlementPeriodWithDetails,
@@ -21,18 +26,8 @@ export async function GET(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin" && userRole !== "franchisee_owner") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAnyAuthenticatedUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { settlementId } = await params;
     const searchParams = request.nextUrl.searchParams;
@@ -79,18 +74,9 @@ export async function PATCH(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { settlementId } = await params;
     const body = await request.json();
@@ -115,7 +101,7 @@ export async function PATCH(
       const disallowedFields = attemptedFields.filter(f => !allowedLockedFields.includes(f));
 
       if (disallowedFields.length > 0) {
-        if (userRole !== "super_user") {
+        if (user.role !== "super_user") {
           return NextResponse.json(
             {
               error: `Settlement is ${existingSettlement.status} and locked. Only super_user can modify notes/metadata.`,
@@ -141,7 +127,7 @@ export async function PATCH(
       }
 
       // Even for allowed fields, only super_user can update locked settlements
-      if (userRole !== "super_user") {
+      if (user.role !== "super_user") {
         return NextResponse.json(
           {
             error: `Settlement is ${existingSettlement.status} and locked. Only super_user can modify locked settlements.`,
@@ -162,7 +148,10 @@ export async function PATCH(
     }
 
     // Create audit context
-    const auditContext = createAuditContext(session, request);
+    const auditContext = createAuditContext(
+      { user: { id: user.id, name: user.name, email: user.email } },
+      request
+    );
 
     // Extract reason if provided (for status changes)
     const { reason, ...updateData } = body;
@@ -207,19 +196,8 @@ export async function DELETE(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Only super_user can delete
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
 
     const { settlementId } = await params;
 

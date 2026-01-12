@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import * as XLSX from "xlsx";
 import {
   getCommissionsGroupedByBrand,
@@ -355,25 +358,8 @@ function sanitizeSheetName(name: string): string {
  */
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check authorization - Only Super Users can generate invoice reports
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only Super Users can generate invoice reports" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);

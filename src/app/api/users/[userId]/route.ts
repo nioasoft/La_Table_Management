@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAuth,
+  requireRole,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getUserById,
   updateUser,
@@ -18,20 +22,14 @@ interface RouteContext {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
     const { userId } = await context.params;
 
     // Users can view their own profile, admins can view any profile
-    if (session.user.id !== userId && userRole !== "super_user" && userRole !== "admin") {
+    if (user.id !== userId && user.role !== "super_user" && user.role !== "admin") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -55,16 +53,10 @@ export async function GET(request: NextRequest, context: RouteContext) {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
     const { userId } = await context.params;
 
     // Only super_user can update other users' roles/status
@@ -82,7 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const isUpdatingRoleOrStatus = role !== undefined || status !== undefined;
 
     if (isUpdatingRoleOrStatus) {
-      if (userRole !== "super_user") {
+      if (user.role !== "super_user") {
         return NextResponse.json(
           { error: "Only Super User can change user role or status" },
           { status: 403 }
@@ -90,7 +82,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     } else {
       // For basic info updates, user can update their own profile or admins can update
-      if (session.user.id !== userId && userRole !== "super_user" && userRole !== "admin") {
+      if (user.id !== userId && user.role !== "super_user" && user.role !== "admin") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
@@ -129,26 +121,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
  */
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only super_user can delete users
-    if (userRole !== "super_user") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { userId } = await context.params;
 
     // Prevent self-deletion
-    if (session.user.id === userId) {
+    if (user.id === userId) {
       return NextResponse.json(
         { error: "Cannot delete your own account" },
         { status: 400 }

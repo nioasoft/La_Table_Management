@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import { previewEmailTemplate } from "@/lib/email";
 
 interface RouteParams {
@@ -11,20 +14,8 @@ interface RouteParams {
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { templateId } = await params;
     const body = await request.json();

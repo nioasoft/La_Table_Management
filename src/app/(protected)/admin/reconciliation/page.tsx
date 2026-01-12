@@ -56,7 +56,7 @@ import {
   CheckCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { he } from "@/lib/translations/he";
+import { he, formatCurrency } from "@/lib/translations";
 
 // Types matching the API response
 interface ReconciliationEntry {
@@ -107,15 +107,6 @@ interface Franchisee {
   name: string;
   code: string;
 }
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Get translations
 const t = he.admin.reconciliation;

@@ -50,6 +50,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import Link from "next/link";
+import { formatCurrency } from "@/lib/translations";
 
 // Types matching the API response
 interface CommissionWithDetails {
@@ -138,15 +139,6 @@ interface SupplierOption {
   name: string;
   code: string;
 }
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

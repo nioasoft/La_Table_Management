@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import { generatePeriodUploadLinks } from "@/data-access/uploadLinks";
 
 /**
@@ -24,20 +27,9 @@ export async function POST(
   { params }: { params: Promise<{ periodId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { periodId } = await params;
     const body = await request.json();
@@ -64,7 +56,7 @@ export async function POST(
     // Generate upload links for the period
     const uploadLinks = await generatePeriodUploadLinks(periodId, {
       documentTypes,
-      createdBy: session.user.id,
+      createdBy: user.id,
     });
 
     return NextResponse.json({ uploadLinks }, { status: 201 });

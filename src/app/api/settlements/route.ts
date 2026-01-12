@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireRole,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getSettlementPeriods,
   getSettlementPeriodsByStatus,
@@ -35,19 +39,8 @@ const VALID_STATUSES: SettlementStatus[] = [
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user has permission
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin" && userRole !== "franchisee_owner") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireRole(request, ["super_user", "admin", "franchisee_owner"]);
+    if (isAuthError(authResult)) return authResult;
 
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status") as SettlementStatus | null;
@@ -110,19 +103,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const body = await request.json();
     const {
@@ -176,7 +159,7 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         metadata: metadata || null,
         dueDate: dueDate || null,
-        createdBy: session.user.id,
+        createdBy: user.id,
       });
     } else {
       // Use automatic date calculation
@@ -185,7 +168,7 @@ export async function POST(request: NextRequest) {
         franchiseeId,
         periodType,
         refDate,
-        session.user.id,
+        user.id,
         {
           name: name || undefined,
           notes: notes || null,

@@ -41,6 +41,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
+import { formatCurrency } from "@/lib/translations";
 
 // Types
 interface Brand {
@@ -139,14 +140,6 @@ interface PerSupplierReportData {
     };
   };
 }
-
-// Format currency
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

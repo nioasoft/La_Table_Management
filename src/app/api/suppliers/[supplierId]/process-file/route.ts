@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+  type AuthenticatedUser,
+} from "@/lib/api-middleware";
 import { getSupplierById } from "@/data-access/suppliers";
 import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
 import { processSupplierFile, ISRAEL_VAT_RATE } from "@/lib/file-processor";
@@ -53,24 +57,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
   let fileName: string | undefined;
   let fileSize: number | undefined;
   let mimeType: string | undefined;
+  let user: AuthenticatedUser | undefined;
 
   try {
     // Authenticate user
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only admins and super users can process supplier files
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    user = authResult.user;
 
     const params = await context.params;
     supplierId = params.supplierId;
@@ -92,7 +85,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Log the configuration error
       try {
         const auditContext = createAuditContext(
-          { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+          { user: { id: user.id, name: user.name, email: user.email } },
           request
         );
         await logFileProcessing(auditContext, {
@@ -114,9 +107,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           warnings: [],
           unmatchedFranchiseeSummary: [],
           processingDurationMs: Date.now() - startTime,
-          processedBy: session.user.id,
-          processedByName: session.user.name,
-          processedByEmail: session.user.email,
+          processedBy: user.id,
+          processedByName: user.name,
+          processedByEmail: user.email,
         });
       } catch (logError) {
         console.error("Failed to log file processing error:", logError);
@@ -172,7 +165,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Log the file type error
       try {
         const auditContext = createAuditContext(
-          { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+          { user: { id: user.id, name: user.name, email: user.email } },
           request
         );
         await logFileProcessing(auditContext, {
@@ -194,9 +187,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
           warnings: [],
           unmatchedFranchiseeSummary: [],
           processingDurationMs: Date.now() - startTime,
-          processedBy: session.user.id,
-          processedByName: session.user.name,
-          processedByEmail: session.user.email,
+          processedBy: user.id,
+          processedByName: user.name,
+          processedByEmail: user.email,
         });
       } catch (logError) {
         console.error("Failed to log file processing error:", logError);
@@ -341,7 +334,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const processingDurationMs = Date.now() - startTime;
     try {
       const auditContext = createAuditContext(
-        { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+        { user: { id: user.id, name: user.name, email: user.email } },
         request
       );
       await logFileProcessing(auditContext, {
@@ -363,9 +356,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
         warnings: result.warnings,
         unmatchedFranchiseeSummary,
         processingDurationMs,
-        processedBy: session.user.id,
-        processedByName: session.user.name,
-        processedByEmail: session.user.email,
+        processedBy: user.id,
+        processedByName: user.name,
+        processedByEmail: user.email,
       });
     } catch (logError) {
       console.error("Failed to log file processing:", logError);
@@ -403,43 +396,38 @@ export async function POST(request: NextRequest, context: RouteContext) {
     console.error("Error processing supplier file:", error);
 
     // Log the system error if we have enough context
-    if (supplierId && supplierName) {
+    if (supplierId && supplierName && user) {
       try {
-        const session = await auth.api.getSession({
-          headers: request.headers,
+        const auditContext = createAuditContext(
+          { user: { id: user.id, name: user.name, email: user.email } },
+          request
+        );
+        const systemError = createFileProcessingError('SYSTEM_ERROR', {
+          details: error instanceof Error ? error.message : 'Unknown error',
         });
-        if (session) {
-          const auditContext = createAuditContext(
-            { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
-            request
-          );
-          const systemError = createFileProcessingError('SYSTEM_ERROR', {
-            details: error instanceof Error ? error.message : 'Unknown error',
-          });
-          await logFileProcessing(auditContext, {
-            supplierId,
-            supplierName,
-            fileName: fileName || 'Unknown',
-            fileSize: fileSize || 0,
-            mimeType,
-            status: 'failed',
-            totalRows: 0,
-            processedRows: 0,
-            skippedRows: 0,
-            totalGrossAmount: 0,
-            totalNetAmount: 0,
-            matchedFranchisees: 0,
-            unmatchedFranchisees: 0,
-            franchiseesNeedingReview: 0,
-            errors: [systemError],
-            warnings: [],
-            unmatchedFranchiseeSummary: [],
-            processingDurationMs: Date.now() - startTime,
-            processedBy: session.user.id,
-            processedByName: session.user.name,
-            processedByEmail: session.user.email,
-          });
-        }
+        await logFileProcessing(auditContext, {
+          supplierId,
+          supplierName,
+          fileName: fileName || 'Unknown',
+          fileSize: fileSize || 0,
+          mimeType,
+          status: 'failed',
+          totalRows: 0,
+          processedRows: 0,
+          skippedRows: 0,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          matchedFranchisees: 0,
+          unmatchedFranchisees: 0,
+          franchiseesNeedingReview: 0,
+          errors: [systemError],
+          warnings: [],
+          unmatchedFranchiseeSummary: [],
+          processingDurationMs: Date.now() - startTime,
+          processedBy: user.id,
+          processedByName: user.name,
+          processedByEmail: user.email,
+        });
       } catch (logError) {
         console.error("Failed to log system error:", logError);
       }
@@ -467,20 +455,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { supplierId } = await context.params;
 

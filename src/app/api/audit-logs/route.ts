@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getAuditLogs,
   getAuditLogStats,
@@ -24,23 +27,9 @@ import type { AuditAction, AuditEntityType } from "@/db/schema";
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     // Only super_user can view audit logs
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only Super User can view audit logs" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const searchParams = request.nextUrl.searchParams;
 

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getCrossReferenceById,
   updateCrossReference,
@@ -18,19 +21,8 @@ export async function GET(
   { params }: { params: Promise<{ crossRefId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user has permission
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { crossRefId } = await params;
     const crossRef = await getCrossReferenceById(crossRefId);
@@ -65,19 +57,9 @@ export async function PATCH(
   { params }: { params: Promise<{ crossRefId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { crossRefId } = await params;
     const body = await request.json();
@@ -113,7 +95,7 @@ export async function PATCH(
       updated = await updateMatchStatus(
         crossRefId,
         matchStatus,
-        session.user.id,
+        user.id,
         reviewNotes
       );
     }
@@ -124,7 +106,7 @@ export async function PATCH(
         metadata: {
           ...currentMetadata,
           reviewNotes,
-          reviewedBy: session.user.id,
+          reviewedBy: user.id,
           reviewedAt: new Date().toISOString(),
         },
       });
@@ -160,19 +142,8 @@ export async function DELETE(
   { params }: { params: Promise<{ crossRefId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { crossRefId } = await params;
     const deleted = await deleteCrossReference(crossRefId);

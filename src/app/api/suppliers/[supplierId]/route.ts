@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireRole,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getSupplierById,
   updateSupplier,
@@ -23,21 +27,8 @@ interface RouteContext {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only admins and super users can view supplier details
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { supplierId } = await context.params;
 
@@ -73,21 +64,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
  */
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only admins and super users can update suppliers
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { supplierId } = await context.params;
     const body = await request.json();
@@ -223,13 +202,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.commissionEffectiveDate = commissionEffectiveDate;
 
     // Create audit context for logging
-    const auditContext = createAuditContext(session, request);
+    const auditContext = createAuditContext(
+      { user: { id: user.id, name: user.name, email: user.email } },
+      request
+    );
 
     // Pass the user ID and audit context to log who made the commission change
     const updatedSupplier = await updateSupplier(
       supplierId,
       updateData,
-      session.user.id,
+      user.id,
       auditContext
     );
     if (!updatedSupplier) {
@@ -259,21 +241,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
  */
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only super_user can delete suppliers
-    if (userRole !== "super_user") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
 
     const { supplierId } = await context.params;
 

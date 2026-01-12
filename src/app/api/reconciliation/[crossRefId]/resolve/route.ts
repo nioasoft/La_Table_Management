@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getCrossReferenceById,
   updateCrossReference,
@@ -31,19 +34,9 @@ export async function POST(
   { params }: { params: Promise<{ crossRefId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { crossRefId } = await params;
     const body = await request.json();
@@ -130,9 +123,9 @@ export async function POST(
       manualReview: false, // No longer needs review
       resolutionType,
       resolutionExplanation: explanation.trim(),
-      resolvedBy: session.user.id,
+      resolvedBy: user.id,
       resolvedAt: new Date().toISOString(),
-      reviewedBy: session.user.id,
+      reviewedBy: user.id,
       reviewedAt: new Date().toISOString(),
       reviewNotes: explanation.trim(),
     };
@@ -160,7 +153,7 @@ export async function POST(
 
     // Create audit log entry
     try {
-      const auditContext = createAuditContext(session, request);
+      const auditContext = createAuditContext({ user: { id: user.id, name: user.name, email: user.email } }, request);
       await logAuditEvent(
         auditContext,
         "update",

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Font,
 } from "@react-pdf/renderer";
+import { formatCurrency } from "@/lib/translations";
 
 // Register Rubik font for Hebrew support
 // Using Google Fonts CDN for Rubik
@@ -264,15 +265,6 @@ const styles = StyleSheet.create({
     color: "#991b1b",
   },
 });
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAuth,
+  requireRole,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getUserById,
   updateUserPermissions,
@@ -18,21 +22,15 @@ interface RouteContext {
  */
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
     const { userId } = await context.params;
 
     // Only super_user can view other users' permissions
     // Users can view their own permissions
-    if (session.user.id !== userId && userRole !== "super_user") {
+    if (user.id !== userId && user.role !== "super_user") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
@@ -67,24 +65,8 @@ export async function GET(request: NextRequest, context: RouteContext) {
  */
 export async function PUT(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only super_user can update permissions
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only Super User can modify permissions" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
 
     const { userId } = await context.params;
     const body = await request.json();
@@ -130,24 +112,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
  */
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    // Only super_user can reset permissions
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only Super User can reset permissions" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
 
     const { userId } = await context.params;
 

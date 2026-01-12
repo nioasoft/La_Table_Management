@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   bulkApproveCommissions,
   bulkMarkCommissionsAsPaid,
@@ -25,20 +28,9 @@ import { createAuditContext } from "@/data-access/auditLog";
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const body = await request.json();
     const { action, ids, invoiceNumber, invoiceDate } = body;
@@ -58,7 +50,7 @@ export async function POST(request: NextRequest) {
     }
 
     const auditContext = createAuditContext(
-      { user: { id: session.user.id, name: session.user.name, email: session.user.email } },
+      { user: { id: user.id, name: user.name, email: user.email } },
       request
     );
 

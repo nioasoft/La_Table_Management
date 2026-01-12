@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireAnyAuthenticatedUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import { getSettlementPeriodById } from "@/data-access/settlements";
 import {
   createAdjustment,
@@ -62,18 +66,8 @@ export async function GET(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin" && userRole !== "franchisee_owner") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAnyAuthenticatedUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { settlementId } = await params;
 
@@ -120,19 +114,9 @@ export async function POST(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Only super_user and admin can create adjustments
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { settlementId } = await params;
 
@@ -195,7 +179,10 @@ export async function POST(
     }
 
     // Create audit context
-    const auditContext = createAuditContext(session, request);
+    const auditContext = createAuditContext(
+      { user: { id: user.id, name: user.name, email: user.email } },
+      request
+    );
 
     // Prepare adjustment data
     const adjustmentData = {
@@ -212,7 +199,7 @@ export async function POST(
         createdVia: "manual_discrepancy_adjustment",
         adjustmentTypeLabel: DISCREPANCY_ADJUSTMENT_TYPES[body.adjustmentType]?.labelHe,
       },
-      createdBy: session.user.id,
+      createdBy: user.id,
       createdAt: new Date(),
       updatedAt: new Date(),
     };

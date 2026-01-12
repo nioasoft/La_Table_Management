@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAuth,
+  requireAdminOrSuperUser,
+  requireSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getDocumentById,
   updateDocument,
@@ -17,13 +22,8 @@ export async function GET(
   { params }: { params: Promise<{ documentId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { documentId } = await params;
 
@@ -54,19 +54,8 @@ export async function PATCH(
   { params }: { params: Promise<{ documentId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { documentId } = await params;
 
@@ -156,22 +145,9 @@ export async function DELETE(
   { params }: { params: Promise<{ documentId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is super_user (only super_user can delete)
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only super users can delete documents" },
-        { status: 403 }
-      );
-    }
+    // Only super_user can delete
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { documentId } = await params;
 

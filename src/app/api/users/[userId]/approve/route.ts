@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireRole,
+  isAuthError,
+} from "@/lib/api-middleware";
 import { approveUser, getUserById } from "@/data-access/users";
 import { createAuditContext } from "@/data-access/auditLog";
 import type { UserRole } from "@/db/schema";
@@ -13,23 +16,9 @@ interface RouteContext {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Only super_user can approve users
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user") {
-      return NextResponse.json(
-        { error: "Only Super User can approve users" },
-        { status: 403 }
-      );
-    }
+    const authResult = await requireRole(request, ["super_user"]);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { userId } = await context.params;
     const body = await request.json();
@@ -62,9 +51,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     // Create audit context for logging
-    const auditContext = createAuditContext(session, request);
+    const auditContext = createAuditContext({ user }, request);
 
-    const approvedUser = await approveUser(userId, role, session.user.id, auditContext);
+    const approvedUser = await approveUser(userId, role, user.id, auditContext);
     if (!approvedUser) {
       return NextResponse.json(
         { error: "Failed to approve user" },

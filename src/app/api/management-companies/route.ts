@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getManagementCompanies,
   getActiveManagementCompanies,
@@ -15,20 +19,8 @@ import { randomUUID } from "crypto";
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get("filter");
@@ -59,26 +51,16 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     // Only super_user can create management companies
-    const userRole = (session.user as typeof session.user & { role?: string })
-      .role;
-    if (userRole !== "super_user") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const body = await request.json();
 
     // Check if this is a seed request
     if (body.seed === true) {
-      const seededCompanies = await seedManagementCompanies(session.user.id);
+      const seededCompanies = await seedManagementCompanies(user.id);
       return NextResponse.json({ managementCompanies: seededCompanies, seeded: true }, { status: 201 });
     }
 
@@ -134,7 +116,7 @@ export async function POST(request: NextRequest) {
       bankBranch: bankBranch || null,
       bankAccountNumber: bankAccountNumber || null,
       isActive: isActive !== undefined ? isActive : true,
-      createdBy: session.user.id,
+      createdBy: user.id,
     });
 
     return NextResponse.json({ managementCompany: newManagementCompany }, { status: 201 });

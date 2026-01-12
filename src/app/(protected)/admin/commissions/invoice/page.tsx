@@ -35,7 +35,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
-import { he } from "@/lib/translations/he";
+import { he, formatCurrency } from "@/lib/translations";
 
 // Types
 interface Supplier {
@@ -74,14 +74,6 @@ interface InvoiceData {
   };
   generatedAt: string;
 }
-
-// Format currency
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

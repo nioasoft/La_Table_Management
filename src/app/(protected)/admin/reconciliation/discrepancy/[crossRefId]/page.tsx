@@ -51,7 +51,7 @@ import {
   Store,
 } from "lucide-react";
 import Link from "next/link";
-import { he } from "@/lib/translations/he";
+import { he, formatCurrency } from "@/lib/translations";
 
 // Types for cross-reference metadata
 interface CrossReferenceMetadata {
@@ -119,15 +119,6 @@ const RESOLUTION_TYPES = [
   { value: "adjustment", label: t.resolutionTypes.adjustment },
   { value: "request_correction", label: t.resolutionTypes.request_correction },
 ];
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Get match status badge
 const getStatusBadge = (status: string) => {

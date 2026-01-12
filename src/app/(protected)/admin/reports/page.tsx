@@ -53,6 +53,7 @@ import {
   Truck,
 } from "lucide-react";
 import Link from "next/link";
+import { formatCurrency } from "@/lib/translations";
 
 // Report types
 type ReportType = "commissions" | "settlements" | "franchisees" | "suppliers";
@@ -114,15 +115,6 @@ interface ReportData {
   };
   generatedAt: string;
 }
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

@@ -53,7 +53,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import Link from "next/link";
-import { he } from "@/lib/translations/he";
+import { he, formatCurrency } from "@/lib/translations";
 
 // Translation constants
 const t = he.admin.commissions.variance;
@@ -102,15 +102,6 @@ interface FilterOption {
   nameHe?: string;
   nameEn?: string | null;
 }
-
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

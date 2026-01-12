@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAdminOrSuperUser,
+  requireRole,
+  requireAnyAuthenticatedUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getSettlementPeriodById,
   transitionSettlementStatus,
@@ -30,18 +35,8 @@ export async function GET(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin" && userRole !== "franchisee_owner") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAnyAuthenticatedUser(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { settlementId } = await params;
     const settlement = await getSettlementPeriodById(settlementId);
@@ -83,15 +78,10 @@ export async function POST(
   { params }: { params: Promise<{ settlementId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
+    // First, get basic auth to check the user
+    const authResult = await requireAnyAuthenticatedUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { settlementId } = await params;
     const body = await request.json();
@@ -107,14 +97,17 @@ export async function POST(
     }
 
     // Create audit context
-    const auditContext = createAuditContext(session, request);
+    const auditContext = createAuditContext(
+      { user: { id: user.id, name: user.name, email: user.email } },
+      request
+    );
 
     let result;
 
     // Handle action shortcuts
     if (action) {
       // Most actions require admin or super_user
-      if (userRole !== "super_user" && userRole !== "admin") {
+      if (user.role !== "super_user" && user.role !== "admin") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -127,7 +120,7 @@ export async function POST(
           break;
         case "approve":
           // Approval might require special permissions
-          if (userRole !== "super_user") {
+          if (user.role !== "super_user") {
             return NextResponse.json(
               { error: "Only super_user can approve settlements" },
               { status: 403 }
@@ -135,7 +128,7 @@ export async function POST(
           }
           result = await approveSettlementWithValidation(
             settlementId,
-            session.user.id,
+            user.id,
             auditContext
           );
           break;
@@ -168,7 +161,7 @@ export async function POST(
       }
     } else if (status) {
       // Direct status transition
-      if (userRole !== "super_user" && userRole !== "admin") {
+      if (user.role !== "super_user" && user.role !== "admin") {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
 
@@ -194,7 +187,7 @@ export async function POST(
 
       // Special handling for approve status
       if (status === "approved") {
-        if (userRole !== "super_user") {
+        if (user.role !== "super_user") {
           return NextResponse.json(
             { error: "Only super_user can approve settlements" },
             { status: 403 }
@@ -202,7 +195,7 @@ export async function POST(
         }
         result = await approveSettlementWithValidation(
           settlementId,
-          session.user.id,
+          user.id,
           auditContext
         );
       } else {

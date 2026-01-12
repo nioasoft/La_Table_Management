@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/utils/auth";
+import {
+  requireAuth,
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
 import {
   getDocumentsByEntity,
   createDocument,
@@ -30,13 +34,8 @@ export async function GET(
   { params }: { params: Promise<{ entityType: string; entityId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const authResult = await requireAuth(request);
+    if (isAuthError(authResult)) return authResult;
 
     const { entityType, entityId } = await params;
 
@@ -68,19 +67,9 @@ export async function POST(
   { params }: { params: Promise<{ entityType: string; entityId: string }> }
 ) {
   try {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // Check if user is admin or super_user
-    const userRole = (session.user as typeof session.user & { role?: string }).role;
-    if (userRole !== "super_user" && userRole !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+    const { user } = authResult;
 
     const { entityType, entityId } = await params;
 
@@ -177,15 +166,15 @@ export async function POST(
         originalFileName: uploadResult.originalFileName,
         storageType: uploadResult.storageType,
       },
-      createdBy: session.user.id,
+      createdBy: user.id,
     });
 
     return NextResponse.json(
       {
         document: {
           ...newDocument,
-          uploaderName: session.user.name,
-          uploaderEmail: session.user.email,
+          uploaderName: user.name,
+          uploaderEmail: user.email,
         },
       },
       { status: 201 }
