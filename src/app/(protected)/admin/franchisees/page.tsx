@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -80,6 +81,13 @@ interface StatusHistoryEntry {
   createdAt: string;
   createdBy: string | null;
   createdByUser: { name: string; email: string } | null;
+}
+
+// Brand stats type for sidebar
+interface BrandStat {
+  brandId: string;
+  count: number;
+  activeCount: number;
 }
 
 // Status change modal state
@@ -172,18 +180,7 @@ const emptyOwner: FranchiseeOwner = {
 
 export default function AdminFranchiseesPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [franchisees, setFranchisees] = useState<FranchiseeWithBrandAndContacts[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [stats, setStats] = useState<{
-    total: number;
-    active: number;
-    inactive: number;
-    pending: number;
-    suspended: number;
-    terminated: number;
-    byBrand: { brandId: string; brandName: string; count: number; activeCount: number }[];
-  } | null>(null);
+  const queryClient = useQueryClient();
   const [filterBrand, setFilterBrand] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
@@ -191,7 +188,6 @@ export default function AdminFranchiseesPage() {
     useState<FranchiseeWithBrandAndContacts | null>(null);
   const [formData, setFormData] =
     useState<FranchiseeFormData>(initialFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedDocumentsId, setExpandedDocumentsId] = useState<string | null>(null);
   const [loadingDocumentsId, setLoadingDocumentsId] = useState<string | null>(null);
@@ -225,54 +221,18 @@ export default function AdminFranchiseesPage() {
     ? (session.user as { role?: string })?.role
     : undefined;
 
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/sign-in?redirect=/admin/franchisees");
-      return;
-    }
+  // Redirect if not authenticated or authorized
+  if (!isPending && !session) {
+    router.push("/sign-in?redirect=/admin/franchisees");
+  }
+  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+    router.push("/dashboard");
+  }
 
-    // Check if user has permission
-    if (
-      !isPending &&
-      session?.user &&
-      userRole !== "super_user" &&
-      userRole !== "admin"
-    ) {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (!isPending && session) {
-      fetchData();
-    }
-  }, [session, isPending, router, userRole]);
-
-  useEffect(() => {
-    if (!isPending && session) {
-      fetchFranchisees();
-    }
-  }, [filterBrand, filterStatus]);
-
-  const fetchData = async () => {
-    await Promise.all([fetchFranchisees(), fetchBrands()]);
-  };
-
-  const fetchBrands = async () => {
-    try {
-      const response = await fetch("/api/brands?filter=active");
-      if (!response.ok) {
-        throw new Error("Failed to fetch brands");
-      }
-      const data = await response.json();
-      setBrands(data.brands || []);
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-    }
-  };
-
-  const fetchFranchisees = async () => {
-    try {
-      setIsLoading(true);
+  // Fetch franchisees with TanStack Query
+  const { data: franchiseesData, isLoading } = useQuery({
+    queryKey: ["franchisees", "list", { filterBrand, filterStatus, stats: true }],
+    queryFn: async () => {
       let url = "/api/franchisees?stats=true";
       if (filterBrand && filterBrand !== "all") {
         url += `&brandId=${filterBrand}`;
@@ -280,20 +240,32 @@ export default function AdminFranchiseesPage() {
       if (filterStatus && filterStatus !== "all") {
         url += `&filter=${filterStatus}`;
       }
-
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error("Failed to fetch franchisees");
       }
-      const data = await response.json();
-      setFranchisees(data.franchisees || []);
-      setStats(data.stats || null);
-    } catch (error) {
-      console.error("Error fetching franchisees:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const franchisees: FranchiseeWithBrandAndContacts[] = franchiseesData?.franchisees || [];
+  const stats = franchiseesData?.stats || null;
+
+  // Fetch brands with TanStack Query
+  const { data: brandsData } = useQuery({
+    queryKey: ["brands", "list", { filter: "active" }],
+    queryFn: async () => {
+      const response = await fetch("/api/brands?filter=active");
+      if (!response.ok) {
+        throw new Error("Failed to fetch brands");
+      }
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const brands: Brand[] = brandsData?.brands || [];
 
   const fetchFranchiseeDocuments = async (franchiseeId: string) => {
     try {
@@ -333,6 +305,76 @@ export default function AdminFranchiseesPage() {
     }));
   };
 
+  // Create franchisee mutation
+  const createFranchisee = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const response = await fetch("/api/franchisees", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          aliases: data.aliases.length > 0 ? data.aliases : null,
+          owners: data.owners.length > 0 ? data.owners : null,
+          openingDate: data.openingDate || null,
+          leaseOption1End: data.leaseOption1End || null,
+          leaseOption2End: data.leaseOption2End || null,
+          leaseOption3End: data.leaseOption3End || null,
+          franchiseAgreementEnd: data.franchiseAgreementEnd || null,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create franchisee");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+      setShowForm(false);
+      setEditingFranchisee(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Update franchisee mutation
+  const updateFranchisee = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
+      const response = await fetch(`/api/franchisees/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          aliases: data.aliases.length > 0 ? data.aliases : null,
+          owners: data.owners.length > 0 ? data.owners : null,
+          openingDate: data.openingDate || null,
+          leaseOption1End: data.leaseOption1End || null,
+          leaseOption2End: data.leaseOption2End || null,
+          leaseOption3End: data.leaseOption3End || null,
+          franchiseAgreementEnd: data.franchiseAgreementEnd || null,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update franchisee");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+      setShowForm(false);
+      setEditingFranchisee(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  const isSubmitting = createFranchisee.isPending || updateFranchisee.isPending;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -342,50 +384,10 @@ export default function AdminFranchiseesPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-
-      const url = editingFranchisee
-        ? `/api/franchisees/${editingFranchisee.id}`
-        : "/api/franchisees";
-
-      const method = editingFranchisee ? "PATCH" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          aliases: formData.aliases.length > 0 ? formData.aliases : null,
-          owners: formData.owners.length > 0 ? formData.owners : null,
-          openingDate: formData.openingDate || null,
-          leaseOption1End: formData.leaseOption1End || null,
-          leaseOption2End: formData.leaseOption2End || null,
-          leaseOption3End: formData.leaseOption3End || null,
-          franchiseAgreementEnd: formData.franchiseAgreementEnd || null,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(
-          data.error ||
-            `Failed to ${editingFranchisee ? "update" : "create"} franchisee`
-        );
-      }
-
-      // Reset form and refresh list
-      setShowForm(false);
-      setEditingFranchisee(null);
-      setFormData(initialFormData);
-      await fetchFranchisees();
-    } catch (error) {
-      console.error("Error saving franchisee:", error);
-      setFormError(
-        error instanceof Error ? error.message : he.errors.failedToSave
-      );
-    } finally {
-      setIsSubmitting(false);
+    if (editingFranchisee) {
+      updateFranchisee.mutate({ id: editingFranchisee.id, data: formData });
+    } else {
+      createFranchisee.mutate(formData);
     }
   };
 
@@ -434,40 +436,42 @@ export default function AdminFranchiseesPage() {
     });
   };
 
-  // Handle status change with reason
-  const handleStatusChangeConfirm = async () => {
-    if (!statusChangeModal.franchisee || !statusChangeModal.newStatus) return;
-
-    setStatusChangeModal((prev) => ({ ...prev, isSubmitting: true }));
-
-    try {
-      const response = await fetch(
-        `/api/franchisees/${statusChangeModal.franchisee.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            status: statusChangeModal.newStatus,
-            statusChangeReason: statusChangeModal.reason || undefined,
-            statusChangeNotes: statusChangeModal.notes || undefined,
-          }),
-        }
-      );
-
+  // Status change mutation
+  const changeStatusMutation = useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      reason,
+      notes,
+    }: {
+      id: string;
+      status: FranchiseeStatus;
+      reason?: string;
+      notes?: string;
+    }) => {
+      const response = await fetch(`/api/franchisees/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status,
+          statusChangeReason: reason || undefined,
+          statusChangeNotes: notes || undefined,
+        }),
+      });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "Failed to update franchisee status");
       }
-
+      return response.json();
+    },
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
       // Clear history cache for this franchisee to force refresh
       setFranchiseeHistory((prev) => {
         const updated = { ...prev };
-        delete updated[statusChangeModal.franchisee!.id];
+        delete updated[id];
         return updated;
       });
-
-      await fetchFranchisees();
-
       // Close modal
       setStatusChangeModal({
         isOpen: false,
@@ -477,15 +481,25 @@ export default function AdminFranchiseesPage() {
         notes: "",
         isSubmitting: false,
       });
-    } catch (error) {
-      console.error("Error updating franchisee status:", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : he.errors.failedToUpdate
-      );
+    },
+    onError: (error: Error) => {
+      alert(error.message);
       setStatusChangeModal((prev) => ({ ...prev, isSubmitting: false }));
-    }
+    },
+  });
+
+  // Handle status change with reason
+  const handleStatusChangeConfirm = async () => {
+    if (!statusChangeModal.franchisee || !statusChangeModal.newStatus) return;
+
+    setStatusChangeModal((prev) => ({ ...prev, isSubmitting: true }));
+
+    changeStatusMutation.mutate({
+      id: statusChangeModal.franchisee.id,
+      status: statusChangeModal.newStatus,
+      reason: statusChangeModal.reason || undefined,
+      notes: statusChangeModal.notes || undefined,
+    });
   };
 
   // Fetch status history for a franchisee
@@ -605,7 +619,7 @@ export default function AdminFranchiseesPage() {
               <span className="text-sm text-muted-foreground">כל הזכיינים</span>
             </button>
             {brands.map((brand) => {
-              const brandStats = stats?.byBrand?.find(b => b.brandId === brand.id);
+              const brandStats = stats?.byBrand?.find((b: BrandStat) => b.brandId === brand.id);
               const count = brandStats?.count || 0;
               const activeCount = brandStats?.activeCount || 0;
               return (

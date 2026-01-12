@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Sidebar, MobileSidebarToggle } from "@/components/sidebar";
+import { QueryProvider } from "@/lib/query-client";
 import type { UserRole, UserStatus } from "@/db/schema";
 import { cn } from "@/lib/utils";
 
@@ -99,7 +100,7 @@ export default function ProtectedLayout({
           "lg:ms-64" // Offset for desktop sidebar
         )}
       >
-        {children}
+        <QueryProvider>{children}</QueryProvider>
       </main>
     </div>
   );

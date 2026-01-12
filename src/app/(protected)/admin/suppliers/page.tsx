@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -143,20 +144,11 @@ const initialFormData: SupplierFormData = {
 
 export default function AdminSuppliersPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [suppliers, setSuppliers] = useState<SupplierWithBrands[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [stats, setStats] = useState<{
-    total: number;
-    active: number;
-    inactive: number;
-    hidden: number;
-  } | null>(null);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | "active">("all");
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierWithBrands | null>(null);
   const [formData, setFormData] = useState<SupplierFormData>(initialFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
@@ -173,55 +165,44 @@ export default function AdminSuppliersPage() {
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/sign-in?redirect=/admin/suppliers");
-      return;
-    }
+  // Redirect if not authenticated or authorized
+  if (!isPending && !session) {
+    router.push("/sign-in?redirect=/admin/suppliers");
+  }
+  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+    router.push("/dashboard");
+  }
 
-    // Check if user has permission
-    if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (!isPending && session) {
-      fetchSuppliers();
-      fetchBrands();
-    }
-  }, [session, isPending, router, userRole, filter]);
-
-  const fetchSuppliers = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(
-        `/api/suppliers?filter=${filter}&stats=true`
-      );
+  // Fetch suppliers with TanStack Query
+  const { data: suppliersData, isLoading, refetch: fetchSuppliers } = useQuery({
+    queryKey: ["suppliers", "list", { filter, stats: true }],
+    queryFn: async () => {
+      const response = await fetch(`/api/suppliers?filter=${filter}&stats=true`);
       if (!response.ok) {
         throw new Error("Failed to fetch suppliers");
       }
-      const data = await response.json();
-      setSuppliers(data.suppliers || []);
-      setStats(data.stats || null);
-    } catch (error) {
-      console.error("Error fetching suppliers:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
 
-  const fetchBrands = async () => {
-    try {
+  const suppliers: SupplierWithBrands[] = suppliersData?.suppliers || [];
+  const stats = suppliersData?.stats || null;
+
+  // Fetch brands with TanStack Query
+  const { data: brandsData } = useQuery({
+    queryKey: ["brands", "list", { filter: "active" }],
+    queryFn: async () => {
       const response = await fetch("/api/brands?filter=active");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
-      const data = await response.json();
-      setBrands(data.brands || []);
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const brands: Brand[] = brandsData?.brands || [];
 
   const fetchCommissionHistory = async (supplierId: string) => {
     try {
@@ -264,13 +245,9 @@ export default function AdminSuppliersPage() {
     }
   };
 
-  const handleFileMappingSave = (supplierId: string, fileMapping: SupplierFileMapping | null) => {
-    // Update the suppliers list with the new file mapping
-    setSuppliers((prev) =>
-      prev.map((s) =>
-        s.id === supplierId ? { ...s, fileMapping } : s
-      )
-    );
+  const handleFileMappingSave = () => {
+    // Invalidate the suppliers query to refetch the updated data
+    queryClient.invalidateQueries({ queryKey: ["suppliers"] });
   };
 
   const fetchSupplierDocuments = async (supplierId: string) => {
@@ -311,6 +288,140 @@ export default function AdminSuppliersPage() {
     }));
   };
 
+  // Create supplier mutation
+  const createSupplier = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const submitData = {
+        ...data,
+        defaultCommissionRate: data.defaultCommissionRate || null,
+        commissionExceptions: formDataToCommissionExceptions(data.commissionExceptions),
+      };
+      const response = await fetch("/api/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submitData),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create supplier");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      setShowForm(false);
+      setEditingSupplier(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Update supplier mutation
+  const updateSupplier = useMutation({
+    mutationFn: async ({ id, data, editingData }: { id: string; data: typeof formData; editingData: SupplierWithBrands }) => {
+      const isCommissionChanging =
+        data.defaultCommissionRate !== "" &&
+        data.defaultCommissionRate !== (editingData.defaultCommissionRate || "");
+
+      const submitData = {
+        ...data,
+        defaultCommissionRate: data.defaultCommissionRate || null,
+        commissionExceptions: formDataToCommissionExceptions(data.commissionExceptions),
+        ...(isCommissionChanging && {
+          commissionChangeReason: data.commissionChangeReason,
+          commissionChangeNotes: data.commissionChangeNotes,
+          commissionEffectiveDate: data.commissionEffectiveDate,
+        }),
+      };
+
+      const response = await fetch(`/api/suppliers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submitData),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update supplier");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      setCommissionHistories({});
+      setShowForm(false);
+      setEditingSupplier(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Delete supplier mutation
+  const deleteSupplier = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/suppliers/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to delete supplier");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+  });
+
+  // Toggle status mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const response = await fetch(`/api/suppliers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update supplier status");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  // Toggle hidden mutation
+  const toggleHiddenMutation = useMutation({
+    mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
+      const response = await fetch(`/api/suppliers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isHidden }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update supplier hidden status");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  const isSubmitting = createSupplier.isPending || updateSupplier.isPending;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -320,57 +431,10 @@ export default function AdminSuppliersPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-
-      const url = editingSupplier
-        ? `/api/suppliers/${editingSupplier.id}`
-        : "/api/suppliers";
-
-      const method = editingSupplier ? "PATCH" : "POST";
-
-      // Check if commission rate is changing (only for edit mode)
-      const isCommissionChanging =
-        editingSupplier &&
-        formData.defaultCommissionRate !== "" &&
-        formData.defaultCommissionRate !==
-          (editingSupplier.defaultCommissionRate || "");
-
-      const submitData = {
-        ...formData,
-        defaultCommissionRate: formData.defaultCommissionRate || null,
-        commissionExceptions: formDataToCommissionExceptions(formData.commissionExceptions),
-        // Only include commission change fields if rate is changing
-        ...(isCommissionChanging && {
-          commissionChangeReason: formData.commissionChangeReason,
-          commissionChangeNotes: formData.commissionChangeNotes,
-          commissionEffectiveDate: formData.commissionEffectiveDate,
-        }),
-      };
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submitData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || `Failed to ${editingSupplier ? "update" : "create"} supplier`);
-      }
-
-      // Reset form and refresh list
-      setShowForm(false);
-      setEditingSupplier(null);
-      setFormData(initialFormData);
-      // Clear commission history cache to force refresh
-      setCommissionHistories({});
-      await fetchSuppliers();
-    } catch (error) {
-      console.error("Error saving supplier:", error);
-      setFormError(error instanceof Error ? error.message : "Failed to save supplier");
-    } finally {
-      setIsSubmitting(false);
+    if (editingSupplier) {
+      updateSupplier.mutate({ id: editingSupplier.id, data: formData, editingData: editingSupplier });
+    } else {
+      createSupplier.mutate(formData);
     }
   };
 
@@ -410,62 +474,15 @@ export default function AdminSuppliersPage() {
     if (!confirm(he.admin.suppliers.confirmDelete)) {
       return;
     }
-
-    try {
-      const response = await fetch(`/api/suppliers/${supplierId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete supplier");
-      }
-
-      await fetchSuppliers();
-    } catch (error) {
-      console.error("Error deleting supplier:", error);
-      alert(error instanceof Error ? error.message : "Failed to delete supplier");
-    }
+    deleteSupplier.mutate(supplierId);
   };
 
   const handleToggleStatus = async (supplier: SupplierWithBrands) => {
-    try {
-      const response = await fetch(`/api/suppliers/${supplier.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !supplier.isActive }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update supplier status");
-      }
-
-      await fetchSuppliers();
-    } catch (error) {
-      console.error("Error updating supplier status:", error);
-      alert(error instanceof Error ? error.message : "Failed to update supplier status");
-    }
+    toggleStatusMutation.mutate({ id: supplier.id, isActive: !supplier.isActive });
   };
 
   const handleToggleHidden = async (supplier: SupplierWithBrands) => {
-    try {
-      const response = await fetch(`/api/suppliers/${supplier.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isHidden: !supplier.isHidden }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update supplier hidden status");
-      }
-
-      await fetchSuppliers();
-    } catch (error) {
-      console.error("Error updating supplier hidden status:", error);
-      alert(error instanceof Error ? error.message : "Failed to update supplier hidden status");
-    }
+    toggleHiddenMutation.mutate({ id: supplier.id, isHidden: !supplier.isHidden });
   };
 
   const cancelForm = () => {
@@ -562,7 +579,7 @@ export default function AdminSuppliersPage() {
               <SelectItem value="active">{he.admin.suppliers.filters.activeOnly}</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={fetchSuppliers}>
+          <Button variant="outline" onClick={() => fetchSuppliers()}>
             <RefreshCw className="ml-2 h-4 w-4" />
             {he.common.refresh}
           </Button>
@@ -1286,9 +1303,7 @@ export default function AdminSuppliersPage() {
                       <FileMappingConfig
                         supplierId={supplier.id}
                         initialFileMapping={supplier.fileMapping}
-                        onSave={(fileMapping) =>
-                          handleFileMappingSave(supplier.id, fileMapping)
-                        }
+                        onSave={() => handleFileMappingSave()}
                       />
                     </div>
                   )}

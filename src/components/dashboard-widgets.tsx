@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -18,46 +17,14 @@ import {
   RefreshCw,
   ChevronRight,
 } from "lucide-react";
-import type { DashboardStatsResponse } from "@/app/api/dashboard/stats/route";
 import { he } from "@/lib/translations";
-
-type DashboardStats = DashboardStatsResponse;
+import { useDashboardStats } from "@/queries/dashboard";
 
 export function DashboardWidgets() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: stats, isLoading, error, refetch } = useDashboardStats();
 
-  const fetchStats = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch("/api/dashboard/stats");
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError("insufficient_permissions");
-          return;
-        }
-        throw new Error("Failed to fetch dashboard stats");
-      }
-
-      const data = await response.json();
-      setStats(data.stats);
-    } catch (err) {
-      console.error("Error fetching dashboard stats:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStats();
-  }, []);
-
-  // Don't show widgets if user doesn't have permission
-  if (error === "insufficient_permissions") {
+  // Don't show widgets if user doesn't have permission (403 error)
+  if (error && (error as any)?.message?.includes("403")) {
     return null;
   }
 
@@ -82,7 +49,7 @@ export function DashboardWidgets() {
     );
   }
 
-  if (error === "failed_to_load") {
+  if (error) {
     return (
       <Card data-testid="dashboard-widgets-error">
         <CardHeader>
@@ -95,7 +62,7 @@ export function DashboardWidgets() {
           <p className="text-muted-foreground mb-4">
             {widgets.unableToLoad}
           </p>
-          <Button variant="outline" onClick={fetchStats}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="ms-2 h-4 w-4" />
             {he.common.retry}
           </Button>
@@ -129,7 +96,7 @@ export function DashboardWidgets() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchStats}
+            onClick={() => refetch()}
             className="h-8 w-8 p-0"
             title={he.common.refresh}
           >

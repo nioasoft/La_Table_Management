@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -22,9 +21,20 @@ import {
   Home,
   Tag,
 } from "lucide-react";
-import type { UpcomingRemindersResponse } from "@/app/api/dashboard/upcoming-reminders/route";
 import type { FranchiseeReminderType } from "@/db/schema";
 import { he, formatDate as formatHebrewDate } from "@/lib/translations";
+import { useUpcomingReminders } from "@/queries/dashboard";
+
+interface ReminderItem {
+  id: string;
+  title: string;
+  reminderType: FranchiseeReminderType;
+  reminderDate: string;
+  notificationDate: string;
+  franchisee?: {
+    name: string;
+  };
+}
 
 const t = he.dashboard.reminders;
 
@@ -47,40 +57,10 @@ const reminderTypeIcons: Record<FranchiseeReminderType, typeof Home> = {
 };
 
 export function UpcomingRemindersWidget() {
-  const [data, setData] = useState<UpcomingRemindersResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error, refetch } = useUpcomingReminders();
 
-  const fetchReminders = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch("/api/dashboard/upcoming-reminders?daysAhead=30&limit=5");
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError("insufficient_permissions");
-          return;
-        }
-        throw new Error("Failed to fetch upcoming reminders");
-      }
-
-      const responseData = await response.json();
-      setData(responseData);
-    } catch (err) {
-      console.error("Error fetching upcoming reminders:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchReminders();
-  }, []);
-
-  // Don't show widget if user doesn't have permission
-  if (error === "insufficient_permissions") {
+  // Don't show widget if user doesn't have permission (403 error)
+  if (error && (error as any)?.message?.includes("403")) {
     return null;
   }
 
@@ -102,7 +82,7 @@ export function UpcomingRemindersWidget() {
     );
   }
 
-  if (error === "failed_to_load") {
+  if (error) {
     return (
       <Card data-testid="upcoming-reminders-error">
         <CardHeader>
@@ -115,7 +95,7 @@ export function UpcomingRemindersWidget() {
           <p className="text-muted-foreground mb-4">
             {t.unableToLoad}
           </p>
-          <Button variant="outline" onClick={fetchReminders}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="ml-2 h-4 w-4" />
             {he.common.retry}
           </Button>
@@ -181,7 +161,7 @@ export function UpcomingRemindersWidget() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={fetchReminders}
+              onClick={() => refetch()}
               className="h-8 w-8 p-0"
               title={he.common.refresh}
             >
@@ -227,7 +207,7 @@ export function UpcomingRemindersWidget() {
           </div>
         ) : (
           <div className="space-y-3">
-            {data.reminders.map((reminder) => {
+            {data.reminders.map((reminder: ReminderItem) => {
               const TypeIcon = reminderTypeIcons[reminder.reminderType];
               return (
                 <div

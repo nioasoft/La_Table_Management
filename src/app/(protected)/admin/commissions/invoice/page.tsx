@@ -36,6 +36,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { he, formatCurrency } from "@/lib/translations";
+import { useSuppliers } from "@/queries/suppliers";
+import { useInvoiceCommissions } from "@/queries/commissions";
 
 // Types
 interface Supplier {
@@ -91,9 +93,7 @@ const t = he.admin.commissions;
 
 export default function InvoiceReportPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [invoiceData, setInvoiceData] = useState<InvoiceData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -105,6 +105,10 @@ export default function InvoiceReportPage() {
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
+
+  // Use TanStack Query hooks
+  const { data: suppliersData = [], isLoading: isLoadingSuppliers } = useSuppliers();
+  const suppliers: Supplier[] = suppliersData;
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -119,7 +123,6 @@ export default function InvoiceReportPage() {
     }
 
     if (!isPending && session) {
-      fetchSuppliers();
       // Set default dates to current month
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -129,25 +132,10 @@ export default function InvoiceReportPage() {
     }
   }, [session, isPending, router, userRole]);
 
-  const fetchSuppliers = async () => {
-    try {
-      const response = await fetch("/api/suppliers?filter=active");
-      if (!response.ok) throw new Error("Failed to fetch suppliers");
-      const data = await response.json();
-      setSuppliers(data.suppliers || []);
-    } catch (err) {
-      console.error("Error fetching suppliers:", err);
-      setError(t.invoice.errors.loadSuppliers);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const fetchInvoiceData = async () => {
     if (!selectedSupplierId || !periodStartDate || !periodEndDate) return;
 
     try {
-      setIsLoading(true);
       setError(null);
       const params = new URLSearchParams({
         supplierId: selectedSupplierId,
@@ -167,8 +155,6 @@ export default function InvoiceReportPage() {
       console.error("Error fetching invoice data:", err);
       setError(err instanceof Error ? err.message : t.invoice.errors.loadInvoiceData);
       setInvoiceData(null);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -224,7 +210,7 @@ export default function InvoiceReportPage() {
     router.push("/sign-in");
   };
 
-  if (isPending || (isLoading && !invoiceData && suppliers.length === 0)) {
+  if (isPending || isLoadingSuppliers) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -350,13 +336,9 @@ export default function InvoiceReportPage() {
             <Button
               variant="outline"
               onClick={fetchInvoiceData}
-              disabled={!selectedSupplierId || !periodStartDate || !periodEndDate || isLoading}
+              disabled={!selectedSupplierId || !periodStartDate || !periodEndDate}
             >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 ml-2" />
-              )}
+              <RefreshCw className="h-4 w-4 ml-2" />
               {t.invoice.actions.showData}
             </Button>
             <Button
@@ -555,7 +537,7 @@ export default function InvoiceReportPage() {
       )}
 
       {/* Empty State */}
-      {!invoiceData && !isLoading && !error && (
+      {!invoiceData && !error && (
         <Card className="py-12">
           <CardContent className="text-center">
             <Receipt className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

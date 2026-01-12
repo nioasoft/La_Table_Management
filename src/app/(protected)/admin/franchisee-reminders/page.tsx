@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -101,48 +102,29 @@ const statusColors: Record<ReminderStatus, "default" | "success" | "secondary" |
 
 export default function AdminFranchiseeRemindersPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [reminders, setReminders] = useState<FranchiseeReminderWithFranchisee[]>([]);
-  const [franchisees, setFranchisees] = useState<Franchisee[]>([]);
-  const [stats, setStats] = useState<{
-    total: number;
-    pending: number;
-    sent: number;
-    dismissed: number;
-    upcomingThisWeek: number;
-    upcomingThisMonth: number;
-  } | null>(null);
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | ReminderStatus>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | FranchiseeReminderType>("all");
   const [showForm, setShowForm] = useState(false);
   const [editingReminder, setEditingReminder] = useState<FranchiseeReminderWithFranchisee | null>(null);
   const [formData, setFormData] = useState<ReminderFormData>(initialFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const { data: session, isPending } = authClient.useSession();
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/sign-in?redirect=/admin/franchisee-reminders");
-      return;
-    }
+  // Redirect if not authenticated or authorized
+  if (!isPending && !session) {
+    router.push("/sign-in?redirect=/admin/franchisee-reminders");
+  }
+  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+    router.push("/dashboard");
+  }
 
-    if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (!isPending && session) {
-      fetchReminders();
-      fetchFranchisees();
-    }
-  }, [session, isPending, router, userRole, filter, typeFilter]);
-
-  const fetchReminders = async () => {
-    try {
-      setIsLoading(true);
+  // Fetch reminders with TanStack Query
+  const { data: remindersData, isLoading, refetch: fetchReminders } = useQuery({
+    queryKey: ["franchisee-reminders", "list", { filter, typeFilter, stats: true }],
+    queryFn: async () => {
       let url = `/api/franchisee-reminders?stats=true`;
       if (filter !== "all") {
         url += `&status=${filter}`;
@@ -150,33 +132,154 @@ export default function AdminFranchiseeRemindersPage() {
       if (typeFilter !== "all") {
         url += `&type=${typeFilter}`;
       }
-
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error("Failed to fetch reminders");
       }
-      const data = await response.json();
-      setReminders(data.reminders || []);
-      setStats(data.stats || null);
-    } catch (error) {
-      console.error("Error fetching reminders:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
 
-  const fetchFranchisees = async () => {
-    try {
+  const reminders: FranchiseeReminderWithFranchisee[] = remindersData?.reminders || [];
+  const stats = remindersData?.stats || null;
+
+  // Fetch franchisees with TanStack Query
+  const { data: franchiseesData } = useQuery({
+    queryKey: ["franchisees", "list", { filter: "active" }],
+    queryFn: async () => {
       const response = await fetch("/api/franchisees?filter=active");
       if (!response.ok) {
         throw new Error("Failed to fetch franchisees");
       }
-      const data = await response.json();
-      setFranchisees(data.franchisees || []);
-    } catch (error) {
-      console.error("Error fetching franchisees:", error);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const franchisees: Franchisee[] = franchiseesData?.franchisees || [];
+
+  // Create reminder mutation
+  const createReminder = useMutation({
+    mutationFn: async (data: { formData: typeof formData; recipients: string[] }) => {
+      const response = await fetch("/api/franchisee-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data.formData,
+          recipients: data.recipients,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || t.errors.failedToCreate);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+      setShowForm(false);
+      setEditingReminder(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Update reminder mutation
+  const updateReminder = useMutation({
+    mutationFn: async (data: { id: string; formData: typeof formData; recipients: string[] }) => {
+      const response = await fetch(`/api/franchisee-reminders/${data.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data.formData,
+          recipients: data.recipients,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || t.errors.failedToUpdate);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+      setShowForm(false);
+      setEditingReminder(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Delete reminder mutation
+  const deleteReminder = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/franchisee-reminders/${id}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || t.errors.failedToDelete);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  // Mark as sent mutation
+  const markAsSentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/franchisee-reminders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send" }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || t.errors.failedToMarkAsSent);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  // Dismiss mutation
+  const dismissMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/franchisee-reminders/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "dismiss" }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || t.errors.failedToDismiss);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  const isSubmitting = createReminder.isPending || updateReminder.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,38 +300,10 @@ export default function AdminFranchiseeRemindersPage() {
       }
     }
 
-    try {
-      setIsSubmitting(true);
-
-      const url = editingReminder
-        ? `/api/franchisee-reminders/${editingReminder.id}`
-        : "/api/franchisee-reminders";
-
-      const method = editingReminder ? "PATCH" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...formData,
-          recipients: recipientList,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || (editingReminder ? t.errors.failedToUpdate : t.errors.failedToCreate));
-      }
-
-      setShowForm(false);
-      setEditingReminder(null);
-      setFormData(initialFormData);
-      await fetchReminders();
-    } catch (error) {
-      console.error("Error saving reminder:", error);
-      setFormError(error instanceof Error ? error.message : t.errors.failedToSave);
-    } finally {
-      setIsSubmitting(false);
+    if (editingReminder) {
+      updateReminder.mutate({ id: editingReminder.id, formData, recipients: recipientList });
+    } else {
+      createReminder.mutate({ formData, recipients: recipientList });
     }
   };
 
@@ -251,62 +326,15 @@ export default function AdminFranchiseeRemindersPage() {
     if (!confirm(t.confirmDelete)) {
       return;
     }
-
-    try {
-      const response = await fetch(`/api/franchisee-reminders/${reminderId}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || t.errors.failedToDelete);
-      }
-
-      await fetchReminders();
-    } catch (error) {
-      console.error("Error deleting reminder:", error);
-      alert(error instanceof Error ? error.message : t.errors.failedToDelete);
-    }
+    deleteReminder.mutate(reminderId);
   };
 
   const handleMarkAsSent = async (reminderId: string) => {
-    try {
-      const response = await fetch(`/api/franchisee-reminders/${reminderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "send" }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || t.errors.failedToMarkAsSent);
-      }
-
-      await fetchReminders();
-    } catch (error) {
-      console.error("Error marking reminder as sent:", error);
-      alert(error instanceof Error ? error.message : t.errors.failedToMarkAsSent);
-    }
+    markAsSentMutation.mutate(reminderId);
   };
 
   const handleDismiss = async (reminderId: string) => {
-    try {
-      const response = await fetch(`/api/franchisee-reminders/${reminderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "dismiss" }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || t.errors.failedToDismiss);
-      }
-
-      await fetchReminders();
-    } catch (error) {
-      console.error("Error dismissing reminder:", error);
-      alert(error instanceof Error ? error.message : t.errors.failedToDismiss);
-    }
+    dismissMutation.mutate(reminderId);
   };
 
   const handleSignOut = async () => {
@@ -428,7 +456,7 @@ export default function AdminFranchiseeRemindersPage() {
               <SelectItem value="custom">{t.filters.custom}</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={fetchReminders}>
+          <Button variant="outline" onClick={() => fetchReminders()}>
             <RefreshCw className="ml-2 h-4 w-4" />
             {t.actions.refresh}
           </Button>

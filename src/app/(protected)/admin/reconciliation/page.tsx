@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { he, formatCurrency } from "@/lib/translations";
+import { useReconciliation, useDiscrepancies } from "@/queries/reconciliation";
 
 // Types matching the API response
 interface ReconciliationEntry {
@@ -142,9 +143,6 @@ const getStatusBadge = (status: string) => {
 
 export default function ReconciliationPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [report, setReport] = useState<ReconciliationReport | null>(null);
-  const [stats, setStats] = useState<ReconciliationStats | null>(null);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [franchisees, setFranchisees] = useState<Franchisee[]>([]);
 
@@ -154,6 +152,22 @@ export default function ReconciliationPage() {
   const [selectedSupplier, setSelectedSupplier] = useState<string>("all");
   const [selectedFranchisee, setSelectedFranchisee] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Build reconciliation query params
+  const [shouldFetchReport, setShouldFetchReport] = useState(false);
+  const reconciliationParams = shouldFetchReport && periodStartDate && periodEndDate ? {
+    periodStartDate,
+    periodEndDate,
+    ...(selectedSupplier !== "all" && { supplierId: selectedSupplier }),
+    ...(selectedFranchisee !== "all" && { franchiseeId: selectedFranchisee }),
+  } : undefined;
+
+  // Use TanStack Query hooks
+  const { data: statsData, isLoading: isLoadingStats, refetch: refetchStats } = useReconciliation({ stats: true });
+  const { data: reportData, isLoading: isLoadingReport, refetch: refetchReport } = useReconciliation(reconciliationParams as any);
+
+  const stats = statsData?.stats || null;
+  const report: ReconciliationReport | null = reportData?.report || null;
 
   // Manual comparison form
   const [showCompareForm, setShowCompareForm] = useState(false);
@@ -195,7 +209,6 @@ export default function ReconciliationPage() {
     }
 
     if (!isPending && session) {
-      fetchStats();
       fetchSuppliers();
       fetchFranchisees();
       // Set default dates to current month
@@ -206,17 +219,6 @@ export default function ReconciliationPage() {
       setPeriodEndDate(lastDay.toISOString().split("T")[0]);
     }
   }, [session, isPending, router, userRole]);
-
-  const fetchStats = async () => {
-    try {
-      const response = await fetch("/api/reconciliation?stats=true");
-      if (!response.ok) throw new Error("Failed to fetch stats");
-      const data = await response.json();
-      setStats(data.stats);
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-    }
-  };
 
   const fetchSuppliers = async () => {
     try {
@@ -240,31 +242,13 @@ export default function ReconciliationPage() {
     }
   };
 
-  const fetchReport = async () => {
+  const fetchReport = () => {
     if (!periodStartDate || !periodEndDate) {
       alert(t.filters.selectDateRange);
       return;
     }
-
-    try {
-      setIsLoading(true);
-      const params = new URLSearchParams({
-        periodStartDate,
-        periodEndDate,
-      });
-      if (selectedSupplier && selectedSupplier !== "all") params.append("supplierId", selectedSupplier);
-      if (selectedFranchisee && selectedFranchisee !== "all") params.append("franchiseeId", selectedFranchisee);
-
-      const response = await fetch(`/api/reconciliation?${params}`);
-      if (!response.ok) throw new Error("Failed to fetch report");
-      const data = await response.json();
-      setReport(data.report);
-    } catch (error) {
-      console.error("Error fetching report:", error);
-      alert(t.messages.failedToFetchReport);
-    } finally {
-      setIsLoading(false);
-    }
+    setShouldFetchReport(true);
+    refetchReport();
   };
 
   const handleCompare = async (e: React.FormEvent) => {
@@ -309,8 +293,8 @@ export default function ReconciliationPage() {
         periodEndDate: "",
         threshold: "10",
       });
-      fetchStats();
-      fetchReport();
+      refetchStats();
+      refetchReport();
     } catch (error) {
       console.error("Error comparing amounts:", error);
       alert(error instanceof Error ? error.message : t.messages.failedToCompare);
@@ -341,8 +325,8 @@ export default function ReconciliationPage() {
       setShowReviewDialog(false);
       setSelectedEntry(null);
       setReviewNotes("");
-      fetchStats();
-      fetchReport();
+      refetchStats();
+      refetchReport();
     } catch (error) {
       console.error("Error updating status:", error);
       alert(error instanceof Error ? error.message : t.messages.failedToUpdateStatus);
@@ -418,8 +402,8 @@ export default function ReconciliationPage() {
       setSelectedIds(new Set());
       setShowBulkApproveDialog(false);
       setBulkApproveNotes("");
-      fetchStats();
-      fetchReport();
+      refetchStats();
+      refetchReport();
     } catch (error) {
       console.error("Error bulk approving:", error);
       alert(error instanceof Error ? error.message : t.messages.failedToBulkApprove);
@@ -581,8 +565,8 @@ export default function ReconciliationPage() {
             </div>
           </div>
           <div className="flex items-center gap-4 mt-4">
-            <Button onClick={fetchReport} disabled={isLoading}>
-              {isLoading ? (
+            <Button onClick={fetchReport} disabled={isLoadingReport}>
+              {isLoadingReport ? (
                 <>
                   <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                   {t.actions.loading}
@@ -594,7 +578,7 @@ export default function ReconciliationPage() {
                 </>
               )}
             </Button>
-            <Button variant="outline" onClick={fetchStats}>
+            <Button variant="outline" onClick={() => refetchStats()}>
               <RefreshCw className="ml-2 h-4 w-4" />
               {t.actions.refreshStats}
             </Button>

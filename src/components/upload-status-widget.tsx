@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -24,45 +24,17 @@ import {
 } from "lucide-react";
 import type { UploadStatusResponse } from "@/app/api/dashboard/upload-status/route";
 import { t, formatDate as formatDateHe } from "@/lib/translations";
+import { useUploadStatus } from "@/queries/dashboard";
 
 type EntityUploadStatus = UploadStatusResponse["suppliers"][0];
+type PendingLink = EntityUploadStatus["pendingLinks"][0];
 
 export function UploadStatusWidget() {
-  const [data, setData] = useState<UploadStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error, refetch } = useUploadStatus();
   const [activeTab, setActiveTab] = useState<"overview" | "suppliers" | "franchisees">("overview");
 
-  const fetchUploadStatus = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch("/api/dashboard/upload-status");
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError("insufficient_permissions");
-          return;
-        }
-        throw new Error("Failed to fetch upload status");
-      }
-
-      const responseData = await response.json();
-      setData(responseData);
-    } catch (err) {
-      console.error("Error fetching upload status:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchUploadStatus();
-  }, []);
-
-  // Don't show widget if user doesn't have permission
-  if (error === "insufficient_permissions") {
+  // Don't show widget if user doesn't have permission (403 error)
+  if (error && (error as any)?.message?.includes("403")) {
     return null;
   }
 
@@ -84,7 +56,7 @@ export function UploadStatusWidget() {
     );
   }
 
-  if (error === "failed_to_load") {
+  if (error) {
     return (
       <Card data-testid="upload-status-error">
         <CardHeader>
@@ -97,7 +69,7 @@ export function UploadStatusWidget() {
           <p className="text-muted-foreground mb-4">
             {t("dashboard.uploadStatus.unableToLoad")}
           </p>
-          <Button variant="outline" onClick={fetchUploadStatus}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="ml-2 h-4 w-4" />
             {t("common.retry")}
           </Button>
@@ -159,8 +131,8 @@ export function UploadStatusWidget() {
 
   // Get all pending links sorted by expiry date
   const allPendingLinks = [...data.suppliers, ...data.franchisees]
-    .flatMap((e) =>
-      e.pendingLinks.map((l) => ({
+    .flatMap((e: EntityUploadStatus) =>
+      e.pendingLinks.map((l: PendingLink) => ({
         ...l,
         entityName: e.name,
         entityType: e.entityType,
@@ -191,7 +163,7 @@ export function UploadStatusWidget() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={fetchUploadStatus}
+              onClick={() => refetch()}
               className="h-8 w-8 p-0"
               title={t("common.refresh")}
             >

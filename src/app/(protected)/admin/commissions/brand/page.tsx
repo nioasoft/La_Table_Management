@@ -38,6 +38,7 @@ import {
   Receipt,
 } from "lucide-react";
 import Link from "next/link";
+import { useBrands } from "@/queries/brands";
 
 // Types
 interface Brand {
@@ -162,9 +163,7 @@ const statusLabels: Record<string, string> = {
 
 export default function BrandCommissionReportPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [brands, setBrands] = useState<Brand[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [reportData, setReportData] = useState<PerBrandReportData | null>(null);
 
@@ -182,6 +181,10 @@ export default function BrandCommissionReportPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
+  // Use TanStack Query hook
+  const { data: brandsData = [], isLoading: isLoadingBrands } = useBrands();
+  const brands: Brand[] = brandsData;
+
   useEffect(() => {
     if (!isPending && !session) {
       router.push("/sign-in?redirect=/admin/commissions/brand");
@@ -192,30 +195,12 @@ export default function BrandCommissionReportPage() {
       router.push("/dashboard");
       return;
     }
-
-    if (!isPending && session) {
-      fetchBrands();
-    }
   }, [session, isPending, router, userRole]);
-
-  const fetchBrands = async () => {
-    try {
-      const response = await fetch("/api/brands?filter=active");
-      if (!response.ok) throw new Error("Failed to fetch brands");
-      const data = await response.json();
-      setBrands(data.brands || []);
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchReport = async () => {
     if (!selectedBrandId) return;
 
     try {
-      setIsLoading(true);
       const params = new URLSearchParams();
       if (startDate) params.append("startDate", startDate);
       if (endDate) params.append("endDate", endDate);
@@ -231,8 +216,6 @@ export default function BrandCommissionReportPage() {
       setSuppliers(data.filters.suppliers || []);
     } catch (error) {
       console.error("Error fetching report:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -284,7 +267,7 @@ export default function BrandCommissionReportPage() {
     router.push("/sign-in");
   };
 
-  if (isPending || (isLoading && !reportData)) {
+  if (isPending || isLoadingBrands) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -407,13 +390,9 @@ export default function BrandCommissionReportPage() {
             <Button
               variant="outline"
               onClick={fetchReport}
-              disabled={!selectedBrandId || isLoading}
+              disabled={!selectedBrandId}
             >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 ml-2" />
-              )}
+              <RefreshCw className="h-4 w-4 ml-2" />
               הצג דוח
             </Button>
             <Button
@@ -843,7 +822,7 @@ export default function BrandCommissionReportPage() {
       )}
 
       {/* Empty State */}
-      {!reportData && !isLoading && (
+      {!reportData && (
         <Card className="py-12">
           <CardContent className="text-center">
             <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

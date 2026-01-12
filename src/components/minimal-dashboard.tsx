@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,70 +21,42 @@ import {
   Settings,
   ChevronRight,
 } from "lucide-react";
-import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
-import type { DashboardStatsResponse } from "@/app/api/dashboard/stats/route";
-import type { CommissionSettlementStatusResponse } from "@/app/api/dashboard/commission-settlement-status/route";
-import type { UpcomingRemindersResponse } from "@/app/api/dashboard/upcoming-reminders/route";
-import { he, formatDate as formatHebrewDate } from "@/lib/translations";
+import { he } from "@/lib/translations";
 import type { UserRole } from "@/db/schema";
+import { useDashboardStats, usePeriodStatus, useCommissionSettlementStatus, useUpcomingReminders } from "@/queries/dashboard";
 
 const t = he.dashboard;
+
+interface WorkflowStep {
+  name: string;
+  status: "completed" | "current" | "pending";
+  count: number;
+}
 
 interface MinimalDashboardProps {
   userRole?: UserRole | null;
 }
 
-interface DashboardData {
-  periodStatus: PeriodStatusResponse | null;
-  stats: DashboardStatsResponse | null;
-  commissionStatus: CommissionSettlementStatusResponse | null;
-  reminders: UpcomingRemindersResponse | null;
-}
-
 export function MinimalDashboard({ userRole }: MinimalDashboardProps) {
-  const [data, setData] = useState<DashboardData>({
-    periodStatus: null,
-    stats: null,
-    commissionStatus: null,
-    reminders: null,
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: periodStatusData, isLoading: isPeriodLoading, error: periodError, refetch: refetchPeriod } = usePeriodStatus();
+  const { data: statsData, isLoading: isStatsLoading, error: statsError, refetch: refetchStats } = useDashboardStats();
+  const { data: commissionStatusData, isLoading: isCommissionLoading, error: commissionError, refetch: refetchCommission } = useCommissionSettlementStatus();
+  const { data: remindersData, isLoading: isRemindersLoading, error: remindersError, refetch: refetchReminders } = useUpcomingReminders();
 
-  const fetchAllData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+  const isLoading = isPeriodLoading || isStatsLoading || isCommissionLoading || isRemindersLoading;
+  const error = periodError || statsError || commissionError || remindersError;
 
-      const [periodRes, statsRes, commissionRes, remindersRes] = await Promise.all([
-        fetch("/api/dashboard/period-status"),
-        fetch("/api/dashboard/stats"),
-        fetch("/api/dashboard/commission-settlement-status"),
-        fetch("/api/dashboard/upcoming-reminders?daysAhead=30&limit=3"),
-      ]);
-
-      const periodData = periodRes.ok ? (await periodRes.json()).data : null;
-      const statsData = statsRes.ok ? (await statsRes.json()).stats : null;
-      const commissionData = commissionRes.ok ? (await commissionRes.json()).data : null;
-      const remindersData = remindersRes.ok ? await remindersRes.json() : null;
-
-      setData({
-        periodStatus: periodData,
-        stats: statsData,
-        commissionStatus: commissionData,
-        reminders: remindersData,
-      });
-    } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
+  const fetchAllData = () => {
+    refetchPeriod();
+    refetchStats();
+    refetchCommission();
+    refetchReminders();
   };
 
-  useEffect(() => {
-    fetchAllData();
-  }, []);
+  const periodStatus = periodStatusData?.data ?? null;
+  const stats = statsData ?? null;
+  const commissionStatus = commissionStatusData?.data ?? null;
+  const reminders = remindersData ?? null;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("he-IL", {
@@ -127,8 +98,6 @@ export function MinimalDashboard({ userRole }: MinimalDashboardProps) {
       </Card>
     );
   }
-
-  const { periodStatus, stats, commissionStatus, reminders } = data;
 
   // Calculate action items count
   const actionItemsCount =
@@ -309,7 +278,7 @@ export function MinimalDashboard({ userRole }: MinimalDashboardProps) {
 
             {/* Progress Steps */}
             <div className="flex items-center justify-between mb-4">
-              {periodStatus?.workflowProgress?.steps?.map((step, index) => (
+              {periodStatus?.workflowProgress?.steps?.map((step: WorkflowStep, index: number) => (
                 <div key={step.name} className="flex items-center">
                   <div className="flex flex-col items-center">
                     <div
@@ -371,7 +340,7 @@ export function MinimalDashboard({ userRole }: MinimalDashboardProps) {
             {/* Progress Bar */}
             {periodStatus?.workflowProgress?.steps && (
               <div className="h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex">
-                {periodStatus.workflowProgress.steps.map((step, index) => (
+                {periodStatus.workflowProgress.steps.map((step: WorkflowStep, index: number) => (
                   <div
                     key={step.name}
                     className={`h-full flex-1 ${

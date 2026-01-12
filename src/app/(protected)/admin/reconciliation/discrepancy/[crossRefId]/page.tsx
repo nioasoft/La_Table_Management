@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { he, formatCurrency } from "@/lib/translations";
+import { useCrossReference, useResolveCrossReference } from "@/queries/reconciliation";
 
 // Types for cross-reference metadata
 interface CrossReferenceMetadata {
@@ -154,16 +155,18 @@ export default function DiscrepancyResolutionPage() {
   const params = useParams();
   const crossRefId = params.crossRefId as string;
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [crossRef, setCrossRef] = useState<CrossReference | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Use TanStack Query hooks
+  const { data: crossRefData, isLoading, error: queryError, refetch } = useCrossReference(crossRefId);
+  const resolveMutation = useResolveCrossReference();
+
+  const crossRef = crossRefData?.crossReference || null;
+  const error = queryError ? (queryError as Error).message : null;
 
   // Resolution form state
   const [resolutionType, setResolutionType] = useState<string>("");
   const [adjustmentType, setAdjustmentType] = useState<string>("");
   const [adjustmentAmount, setAdjustmentAmount] = useState<string>("");
   const [explanation, setExplanation] = useState<string>("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // File request dialog state
   const [showFileRequestDialog, setShowFileRequestDialog] = useState(false);
@@ -179,27 +182,6 @@ export default function DiscrepancyResolutionPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Fetch cross-reference data
-  const fetchCrossReference = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch(`/api/reconciliation/${crossRefId}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error("Cross-reference not found");
-        }
-        throw new Error("Failed to fetch cross-reference data");
-      }
-      const data = await response.json();
-      setCrossRef(data.crossReference);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [crossRefId]);
-
   useEffect(() => {
     if (!isPending && !session) {
       router.push(`/sign-in?redirect=/admin/reconciliation/discrepancy/${crossRefId}`);
@@ -210,11 +192,7 @@ export default function DiscrepancyResolutionPage() {
       router.push("/dashboard");
       return;
     }
-
-    if (!isPending && session && crossRefId) {
-      fetchCrossReference();
-    }
-  }, [session, isPending, router, userRole, crossRefId, fetchCrossReference]);
+  }, [session, isPending, router, userRole, crossRefId]);
 
   // Handle resolution submission
   const handleSubmitResolution = async () => {
@@ -233,8 +211,6 @@ export default function DiscrepancyResolutionPage() {
     }
 
     try {
-      setIsSubmitting(true);
-
       // Determine the new match status based on resolution type
       let newMatchStatus: "matched" | "discrepancy" = "matched";
       let resolvedAmount: string | undefined;
@@ -250,26 +226,17 @@ export default function DiscrepancyResolutionPage() {
         newMatchStatus = "discrepancy";
       }
 
-      const response = await fetch(`/api/reconciliation/${crossRefId}/resolve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await resolveMutation.mutateAsync({
+        id: crossRefId,
+        data: {
           resolutionType,
           adjustmentType: resolutionType === "adjustment" ? adjustmentType : undefined,
           adjustmentAmount: resolutionType === "adjustment" ? parseFloat(adjustmentAmount) : undefined,
           explanation: explanation.trim(),
           newMatchStatus,
           resolvedAmount,
-        }),
+        },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to submit resolution");
-      }
-
-      // Refresh data after successful submission
-      await fetchCrossReference();
 
       // Reset form
       setResolutionType("");
@@ -280,8 +247,6 @@ export default function DiscrepancyResolutionPage() {
       alert(t.messages.resolutionSuccess);
     } catch (err) {
       alert(err instanceof Error ? err.message : t.messages.failedToSubmit);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -333,7 +298,7 @@ export default function DiscrepancyResolutionPage() {
       setFileRequestMessage("");
 
       alert(t.messages.fileRequestSuccess);
-      await fetchCrossReference();
+      refetch();
     } catch (err) {
       alert(err instanceof Error ? err.message : t.messages.failedToSendRequest);
     } finally {
@@ -346,8 +311,6 @@ export default function DiscrepancyResolutionPage() {
     if (!crossRef) return;
 
     try {
-      setIsSubmitting(true);
-
       const newStatus = approvalAction === "approve" ? "matched" : "discrepancy";
       const defaultNote = approvalAction === "approve" ? t.approvalDialog.approve : t.approvalDialog.reject;
 
@@ -369,11 +332,9 @@ export default function DiscrepancyResolutionPage() {
       setExplanation("");
 
       alert(approvalAction === "approve" ? t.messages.approvalSuccess : t.messages.rejectionSuccess);
-      await fetchCrossReference();
+      refetch();
     } catch (err) {
       alert(err instanceof Error ? err.message : (approvalAction === "approve" ? t.messages.failedToApprove : t.messages.failedToReject));
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -698,10 +659,10 @@ export default function DiscrepancyResolutionPage() {
                 <Button
                   className="w-full"
                   onClick={handleSubmitResolution}
-                  disabled={isSubmitting || !resolutionType || !explanation.trim()}
+                  disabled={resolveMutation.isPending || !resolutionType || !explanation.trim()}
                   data-testid="submit-resolution-button"
                 >
-                  {isSubmitting ? (
+                  {resolveMutation.isPending ? (
                     <>
                       <Loader2 className="h-4 w-4 ml-2 animate-spin" />
                       {t.resolutionForm.submitting}
@@ -843,10 +804,10 @@ export default function DiscrepancyResolutionPage() {
             <Button
               variant={approvalAction === "approve" ? "default" : "destructive"}
               onClick={handleApproval}
-              disabled={isSubmitting}
+              disabled={resolveMutation.isPending}
               data-testid="confirm-approval-button"
             >
-              {isSubmitting ? (
+              {resolveMutation.isPending ? (
                 <Loader2 className="h-4 w-4 ml-2 animate-spin" />
               ) : approvalAction === "approve" ? (
                 <Check className="h-4 w-4 ml-2" />

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -25,46 +24,30 @@ import {
   Link2,
   ArrowLeft,
 } from "lucide-react";
-import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
 import { he } from "@/lib/translations";
+import { usePeriodStatus } from "@/queries/dashboard";
+
+interface PendingActionItem {
+  type: string;
+  priority: "low" | "medium" | "high";
+  count: number;
+}
+
+interface WorkflowStep {
+  name: string;
+  status: "completed" | "current" | "pending";
+  count: number;
+}
 
 const t = he.dashboard.periodStatus;
 
 export function PeriodStatusWidget() {
-  const [data, setData] = useState<PeriodStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: response, isLoading, error, refetch } = usePeriodStatus();
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch("/api/dashboard/period-status");
+  const data = response?.data ?? null;
 
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError("insufficient_permissions");
-          return;
-        }
-        throw new Error("Failed to fetch period status");
-      }
-
-      const result = await response.json();
-      setData(result.data);
-    } catch (err) {
-      console.error("Error fetching period status:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Don't show widget if user doesn't have permission
-  if (error === "insufficient_permissions") {
+  // Don't show widget if user doesn't have permission (403 error)
+  if (error && (error as any)?.message?.includes("403")) {
     return null;
   }
 
@@ -86,7 +69,7 @@ export function PeriodStatusWidget() {
     );
   }
 
-  if (error === "failed_to_load") {
+  if (error) {
     return (
       <Card data-testid="period-status-widget-error" className="col-span-1 lg:col-span-3">
         <CardHeader>
@@ -97,7 +80,7 @@ export function PeriodStatusWidget() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4">{t.unableToLoad}</p>
-          <Button variant="outline" onClick={fetchData}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="ms-2 h-4 w-4" />
             {he.common.retry}
           </Button>
@@ -193,7 +176,7 @@ export function PeriodStatusWidget() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="h-8 w-8 p-0"
             title={he.common.refresh}
           >
@@ -285,7 +268,7 @@ export function PeriodStatusWidget() {
             </div>
             {data.pendingActions.items.length > 0 ? (
               <div className="space-y-2">
-                {data.pendingActions.items.map((item, index) => (
+                {data.pendingActions.items.map((item: PendingActionItem, index: number) => (
                   <div
                     key={index}
                     className="flex items-center justify-between text-sm"
@@ -470,7 +453,7 @@ export function PeriodStatusWidget() {
 
           {/* Workflow Steps */}
           <div className="flex items-center justify-between">
-            {data.workflowProgress.steps.map((step, index) => (
+            {data.workflowProgress.steps.map((step: WorkflowStep, index: number) => (
               <div key={step.name} className="flex items-center">
                 <div className="flex flex-col items-center">
                   <div
@@ -524,7 +507,7 @@ export function PeriodStatusWidget() {
           {/* Progress Bar */}
           <div className="mt-4">
             <div className="h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 flex">
-              {data.workflowProgress.steps.map((step, index) => (
+              {data.workflowProgress.steps.map((step: WorkflowStep, index: number) => (
                 <div
                   key={step.name}
                   className={`h-full flex-1 ${getStepStatusColor(step.status)} ${

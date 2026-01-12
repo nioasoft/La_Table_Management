@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -22,46 +21,18 @@ import {
   FileText,
   ArrowLeft,
 } from "lucide-react";
-import type { CommissionSettlementStatusResponse } from "@/app/api/dashboard/commission-settlement-status/route";
 import { he } from "@/lib/translations";
+import { useCommissionSettlementStatus } from "@/queries/dashboard";
 
 const t = he.dashboard.commissionSettlement;
 
 export function CommissionSettlementWidget() {
-  const [data, setData] = useState<CommissionSettlementStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: response, isLoading, error, refetch } = useCommissionSettlementStatus();
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const response = await fetch("/api/dashboard/commission-settlement-status");
+  const data = response?.data ?? null;
 
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError("insufficient_permissions");
-          return;
-        }
-        throw new Error("Failed to fetch commission settlement status");
-      }
-
-      const result = await response.json();
-      setData(result.data);
-    } catch (err) {
-      console.error("Error fetching commission settlement status:", err);
-      setError("failed_to_load");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Don't show widget if user doesn't have permission
-  if (error === "insufficient_permissions") {
+  // Don't show widget if user doesn't have permission (403 error)
+  if (error && (error as any)?.message?.includes("403")) {
     return null;
   }
 
@@ -83,7 +54,7 @@ export function CommissionSettlementWidget() {
     );
   }
 
-  if (error === "failed_to_load") {
+  if (error) {
     return (
       <Card data-testid="commission-settlement-widget-error">
         <CardHeader>
@@ -96,7 +67,7 @@ export function CommissionSettlementWidget() {
           <p className="text-muted-foreground mb-4">
             {t.unableToLoad}
           </p>
-          <Button variant="outline" onClick={fetchData}>
+          <Button variant="outline" onClick={() => refetch()}>
             <RefreshCw className="ms-2 h-4 w-4" />
             {he.common.retry}
           </Button>
@@ -175,7 +146,7 @@ export function CommissionSettlementWidget() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={fetchData}
+            onClick={() => refetch()}
             className="h-8 w-8 p-0"
             title={he.common.refresh}
           >

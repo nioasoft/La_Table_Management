@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/translations";
+import { useSuppliers } from "@/queries/suppliers";
 
 // Types
 interface Brand {
@@ -171,9 +172,7 @@ const statusLabels: Record<string, string> = {
 
 export default function SupplierCommissionReportPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [reportData, setReportData] = useState<PerSupplierReportData | null>(null);
 
@@ -194,6 +193,10 @@ export default function SupplierCommissionReportPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
+  // Use TanStack Query hooks
+  const { data: suppliersData = [], isLoading: isLoadingSuppliers } = useSuppliers();
+  const suppliers: Supplier[] = suppliersData;
+
   useEffect(() => {
     if (!isPending && !session) {
       router.push("/sign-in?redirect=/admin/commissions/supplier");
@@ -204,30 +207,12 @@ export default function SupplierCommissionReportPage() {
       router.push("/dashboard");
       return;
     }
-
-    if (!isPending && session) {
-      fetchSuppliers();
-    }
   }, [session, isPending, router, userRole]);
-
-  const fetchSuppliers = async () => {
-    try {
-      const response = await fetch("/api/suppliers?filter=active");
-      if (!response.ok) throw new Error("Failed to fetch suppliers");
-      const data = await response.json();
-      setSuppliers(data.suppliers || []);
-    } catch (error) {
-      console.error("Error fetching suppliers:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const fetchReport = async () => {
     if (!selectedSupplierId) return;
 
     try {
-      setIsLoading(true);
       const params = new URLSearchParams();
       if (startDate) params.append("startDate", startDate);
       if (endDate) params.append("endDate", endDate);
@@ -245,8 +230,6 @@ export default function SupplierCommissionReportPage() {
       setBrands(data.filters.brands || []);
     } catch (error) {
       console.error("Error fetching report:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -321,7 +304,7 @@ export default function SupplierCommissionReportPage() {
     );
   };
 
-  if (isPending || (isLoading && !reportData)) {
+  if (isPending || isLoadingSuppliers) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -479,13 +462,9 @@ export default function SupplierCommissionReportPage() {
             <Button
               variant="outline"
               onClick={fetchReport}
-              disabled={!selectedSupplierId || isLoading}
+              disabled={!selectedSupplierId}
             >
-              {isLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
-              ) : (
-                <RefreshCw className="h-4 w-4 ml-2" />
-              )}
+              <RefreshCw className="h-4 w-4 ml-2" />
               הצג דוח
             </Button>
             <Button
@@ -916,7 +895,7 @@ export default function SupplierCommissionReportPage() {
       )}
 
       {/* Empty State */}
-      {!reportData && !isLoading && (
+      {!reportData && (
         <Card className="py-12">
           <CardContent className="text-center">
             <Truck className="h-12 w-12 mx-auto text-muted-foreground mb-4" />

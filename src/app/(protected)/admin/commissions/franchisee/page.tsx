@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/translations";
+import { useFranchisees } from "@/queries/franchisees";
 
 // Types matching the API response
 interface CommissionWithDetails {
@@ -171,10 +172,8 @@ const getStatusBadge = (status: string) => {
 export default function FranchiseePurchaseReportPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingFranchisees, setIsLoadingFranchisees] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [report, setReport] = useState<FranchiseeReport | null>(null);
-  const [franchisees, setFranchisees] = useState<FilterOption[]>([]);
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
 
   // Filters
@@ -188,6 +187,17 @@ export default function FranchiseePurchaseReportPage() {
   const userRole = session
     ? (session.user as { role?: string })?.role
     : undefined;
+
+  // Use TanStack Query hook
+  const { data: franchiseesData = [], isLoading: isLoadingFranchisees } = useFranchisees();
+
+  // Transform franchisees data to match expected format
+  const franchisees: FilterOption[] = franchiseesData.map((f: { id: string; name: string; code: string; brand?: { nameHe: string } }) => ({
+    id: f.id,
+    name: f.name,
+    code: f.code,
+    brandNameHe: f.brand?.nameHe || "",
+  }));
 
   // Redirect if not authenticated or not admin
   useEffect(() => {
@@ -205,34 +215,6 @@ export default function FranchiseePurchaseReportPage() {
       router.push("/dashboard");
     }
   }, [isPending, session, userRole, router]);
-
-  // Fetch franchisees list on mount
-  useEffect(() => {
-    async function fetchFranchisees() {
-      try {
-        const response = await fetch("/api/franchisees");
-        if (response.ok) {
-          const data = await response.json();
-          setFranchisees(
-            data.map((f: { id: string; name: string; code: string; brand?: { nameHe: string } }) => ({
-              id: f.id,
-              name: f.name,
-              code: f.code,
-              brandNameHe: f.brand?.nameHe || "",
-            }))
-          );
-        }
-      } catch (error) {
-        console.error("Error fetching franchisees:", error);
-      } finally {
-        setIsLoadingFranchisees(false);
-      }
-    }
-
-    if (session && (userRole === "super_user" || userRole === "admin")) {
-      fetchFranchisees();
-    }
-  }, [session, userRole]);
 
   // Build query string from filters
   const buildQueryString = useCallback(() => {

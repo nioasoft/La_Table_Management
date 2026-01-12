@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -60,12 +61,10 @@ const initialFormData: BrandFormData = {
 
 export default function AdminBrandsPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [brands, setBrands] = useState<Brand[]>([]);
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [formData, setFormData] = useState<BrandFormData>(initialFormData);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [brandToToggle, setBrandToToggle] = useState<Brand | null>(null);
   const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
@@ -73,37 +72,102 @@ export default function AdminBrandsPage() {
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  useEffect(() => {
-    if (!isPending && !session) {
-      router.push("/sign-in?redirect=/admin/brands");
-      return;
-    }
+  // Redirect if not authenticated or authorized
+  if (!isPending && !session) {
+    router.push("/sign-in?redirect=/admin/brands");
+  }
+  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+    router.push("/dashboard");
+  }
 
-    if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-      router.push("/dashboard");
-      return;
-    }
-
-    if (!isPending && session) {
-      fetchBrands();
-    }
-  }, [session, isPending, router, userRole]);
-
-  const fetchBrands = async () => {
-    try {
-      setIsLoading(true);
+  // Fetch brands with TanStack Query
+  const { data: brandsData, isLoading } = useQuery({
+    queryKey: ["brands", "list", { filter: "all" }],
+    queryFn: async () => {
       const response = await fetch("/api/brands?filter=all");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
-      const data = await response.json();
-      setBrands(data.brands || []);
-    } catch (error) {
-      console.error("Error fetching brands:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const brands: Brand[] = brandsData?.brands || [];
+
+  // Create brand mutation
+  const createBrand = useMutation({
+    mutationFn: async (data: typeof formData) => {
+      const response = await fetch("/api/brands", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to create brand");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["brands"] });
+      setShowForm(false);
+      setEditingBrand(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Update brand mutation
+  const updateBrand = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
+      const response = await fetch(`/api/brands/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update brand");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["brands"] });
+      setShowForm(false);
+      setEditingBrand(null);
+      setFormData(initialFormData);
+    },
+    onError: (error: Error) => {
+      setFormError(error.message);
+    },
+  });
+
+  // Toggle status mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const response = await fetch(`/api/brands/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isActive }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to update brand status");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["brands"] });
+    },
+    onError: (error: Error) => {
+      alert(error.message);
+    },
+  });
+
+  const isSubmitting = createBrand.isPending || updateBrand.isPending;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,35 +178,10 @@ export default function AdminBrandsPage() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-
-      const url = editingBrand
-        ? `/api/brands/${editingBrand.id}`
-        : "/api/brands";
-
-      const method = editingBrand ? "PATCH" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || `Failed to ${editingBrand ? "update" : "create"} brand`);
-      }
-
-      setShowForm(false);
-      setEditingBrand(null);
-      setFormData(initialFormData);
-      await fetchBrands();
-    } catch (error) {
-      console.error("Error saving brand:", error);
-      setFormError(error instanceof Error ? error.message : he.errors.failedToSave);
-    } finally {
-      setIsSubmitting(false);
+    if (editingBrand) {
+      updateBrand.mutate({ id: editingBrand.id, data: formData });
+    } else {
+      createBrand.mutate(formData);
     }
   };
 
@@ -165,25 +204,10 @@ export default function AdminBrandsPage() {
   const handleToggleStatus = async () => {
     if (!brandToToggle) return;
 
-    try {
-      const response = await fetch(`/api/brands/${brandToToggle.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isActive: !brandToToggle.isActive }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to update brand status");
-      }
-
-      await fetchBrands();
-    } catch (error) {
-      console.error("Error updating brand status:", error);
-      alert(error instanceof Error ? error.message : he.errors.failedToUpdate);
-    } finally {
-      setBrandToToggle(null);
-    }
+    toggleStatusMutation.mutate(
+      { id: brandToToggle.id, isActive: !brandToToggle.isActive },
+      { onSettled: () => setBrandToToggle(null) }
+    );
   };
 
   const handleSignOut = async () => {
