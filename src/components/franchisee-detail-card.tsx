@@ -56,6 +56,7 @@ import {
 import type { FranchiseeStatus, Document, FranchiseeReminderType, ReminderStatus, Contact } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
 import { DocumentManager } from "@/components/document-manager";
+import { formatCurrency } from "@/lib/translations";
 
 // Document type with uploader info
 interface DocumentWithUploader extends Document {
@@ -159,14 +160,6 @@ const reminderTypeLabels: Record<FranchiseeReminderType, string> = {
   custom: "מותאם אישית",
 };
 
-// Format currency in ILS
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    minimumFractionDigits: 2,
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {

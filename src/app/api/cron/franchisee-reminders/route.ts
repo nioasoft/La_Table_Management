@@ -366,14 +366,15 @@ export async function POST(request: NextRequest) {
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = request.headers.get("authorization");
 
-    if (cronSecret) {
-      if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-    } else {
-      console.warn(
-        "CRON_SECRET not set - cron endpoint is accessible without authentication"
+    if (!cronSecret) {
+      console.error("CRON_SECRET must be configured");
+      return NextResponse.json(
+        { error: "Server misconfigured" },
+        { status: 503 }
       );
+    }
+    if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;
@@ -478,7 +479,14 @@ export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
 
-  if (cronSecret && (!authHeader || authHeader !== `Bearer ${cronSecret}`)) {
+  if (!cronSecret) {
+    console.error("CRON_SECRET must be configured");
+    return NextResponse.json(
+      { error: "Server misconfigured" },
+      { status: 503 }
+    );
+  }
+  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatCurrency } from "@/lib/translations";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -130,14 +131,6 @@ interface PerBrandReportData {
   byPeriod: BrandCommissionPeriod[];
   details: CommissionDetail[];
 }
-
-// Format currency
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-  }).format(amount);
-};
 
 // Format percentage
 const formatPercent = (rate: number): string => {
