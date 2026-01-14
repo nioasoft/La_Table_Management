@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -109,8 +109,8 @@ export default function FilesManagementPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   const fetchSuppliers = useCallback(async (periodType: SettlementPeriodType) => {
     try {
@@ -327,11 +327,11 @@ export default function FilesManagementPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => periodInfo && fetchSuppliers(periodInfo.type)}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Button onClick={handleSendAllRequests} disabled={stats.notSent === 0}>
-            <Send className="ml-2 h-4 w-4" />
+            <Send className="me-2 h-4 w-4" />
             שלח לכולם ({stats.notSent})
           </Button>
         </div>
@@ -432,9 +432,9 @@ export default function FilesManagementPage() {
                               disabled={isSending}
                             >
                               {isSending ? (
-                                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                                <Loader2 className="me-2 h-4 w-4 animate-spin" />
                               ) : (
-                                <Send className="ml-2 h-4 w-4" />
+                                <Send className="me-2 h-4 w-4" />
                               )}
                               שלח בקשה
                             </DropdownMenuItem>
@@ -444,13 +444,13 @@ export default function FilesManagementPage() {
                               <DropdownMenuItem
                                 onClick={() => handleCopyUploadLink(supplier.fileRequest!.uploadUrl!)}
                               >
-                                <Copy className="ml-2 h-4 w-4" />
+                                <Copy className="me-2 h-4 w-4" />
                                 העתק קישור
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onClick={() => window.open(supplier.fileRequest!.uploadUrl!, "_blank")}
                               >
-                                <ExternalLink className="ml-2 h-4 w-4" />
+                                <ExternalLink className="me-2 h-4 w-4" />
                                 פתח קישור
                               </DropdownMenuItem>
                             </>
@@ -458,7 +458,7 @@ export default function FilesManagementPage() {
                           <DropdownMenuItem
                             onClick={() => setUploadDialog({ open: true, supplier })}
                           >
-                            <FileUp className="ml-2 h-4 w-4" />
+                            <FileUp className="me-2 h-4 w-4" />
                             העלאה ידנית
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -516,12 +516,12 @@ export default function FilesManagementPage() {
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
                   מעלה...
                 </>
               ) : (
                 <>
-                  <Upload className="ml-2 h-4 w-4" />
+                  <Upload className="me-2 h-4 w-4" />
                   העלאה
                 </>
               )}

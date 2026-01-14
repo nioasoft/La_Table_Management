@@ -241,7 +241,7 @@ export default function SettlementsPage() {
           <h1 className="text-3xl font-bold">תקופות התחשבנות</h1>
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="ml-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           התנתקות
         </Button>
       </div>
@@ -323,7 +323,7 @@ export default function SettlementsPage() {
               </CardDescription>
             </div>
             <Button variant="outline" onClick={fetchPeriods}>
-              <RefreshCw className="ml-2 h-4 w-4" />
+              <RefreshCw className="me-2 h-4 w-4" />
               רענון
             </Button>
           </div>
@@ -336,7 +336,7 @@ export default function SettlementsPage() {
                   {tab.icon}
                   {tab.label}
                   {periodsData && (
-                    <Badge variant="secondary" className="mr-1">
+                    <Badge variant="secondary" className="ms-1">
                       {periodsData.summary.byFrequency[tab.value]}
                     </Badge>
                   )}
@@ -380,7 +380,7 @@ export default function SettlementsPage() {
                                   onClick={() => handleStartSettlement(periodData)}
                                   disabled={periodData.supplierCount === 0}
                                 >
-                                  <Play className="ml-2 h-4 w-4" />
+                                  <Play className="me-2 h-4 w-4" />
                                   התחל התחשבנות
                                 </Button>
                               </div>
@@ -519,12 +519,12 @@ export default function SettlementsPage() {
             >
               {createDialog.isSubmitting ? (
                 <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
                   יוצר תקופה...
                 </>
               ) : (
                 <>
-                  <Play className="ml-2 h-4 w-4" />
+                  <Play className="me-2 h-4 w-4" />
                   התחל התחשבנות
                 </>
               )}

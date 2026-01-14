@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -109,8 +109,8 @@ export default function ReconciliationPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   const fetchReconciliationData = useCallback(async () => {
     try {
@@ -242,18 +242,18 @@ export default function ReconciliationPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={fetchReconciliationData}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Button onClick={handleRunReconciliation} disabled={isRunning}>
             {isRunning ? (
               <>
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
                 מריץ...
               </>
             ) : (
               <>
-                <Play className="ml-2 h-4 w-4" />
+                <Play className="me-2 h-4 w-4" />
                 הרץ הצלבה
               </>
             )}
@@ -358,14 +358,14 @@ export default function ReconciliationPage() {
                   <TableRow key={cr.id}>
                     <TableCell className="font-medium">{cr.supplierName}</TableCell>
                     <TableCell>{cr.franchiseeName}</TableCell>
-                    <TableCell className="text-left" dir="ltr">
+                    <TableCell className="text-start" dir="ltr">
                       {formatCurrency(cr.supplierAmount)}
                     </TableCell>
-                    <TableCell className="text-left" dir="ltr">
+                    <TableCell className="text-start" dir="ltr">
                       {formatCurrency(cr.franchiseeAmount)}
                     </TableCell>
                     <TableCell
-                      className={`text-left font-medium ${
+                      className={`text-start font-medium ${
                         cr.difference > 0
                           ? "text-red-600"
                           : cr.difference < 0
@@ -376,7 +376,7 @@ export default function ReconciliationPage() {
                     >
                       {formatCurrency(cr.difference)}
                     </TableCell>
-                    <TableCell className="text-left" dir="ltr">
+                    <TableCell className="text-start" dir="ltr">
                       {cr.differencePercentage.toFixed(1)}%
                     </TableCell>
                     <TableCell>

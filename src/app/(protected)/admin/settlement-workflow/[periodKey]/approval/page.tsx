@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -93,8 +93,8 @@ export default function ApprovalPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   const fetchApprovalSummary = useCallback(async () => {
     try {
@@ -208,7 +208,7 @@ export default function ApprovalPage() {
               <Badge variant="outline">{periodInfo.nameHe}</Badge>
               {summary?.approval.isApproved && (
                 <Badge variant="default" className="bg-green-600">
-                  <CheckCircle2 className="h-3 w-3 ml-1" />
+                  <CheckCircle2 className="h-3 w-3 me-1" />
                   מאושר
                 </Badge>
               )}
@@ -219,7 +219,7 @@ export default function ApprovalPage() {
           </div>
         </div>
         <Button variant="outline" onClick={fetchApprovalSummary}>
-          <RefreshCw className="ml-2 h-4 w-4" />
+          <RefreshCw className="me-2 h-4 w-4" />
           רענון
         </Button>
       </div>
@@ -445,17 +445,17 @@ export default function ApprovalPage() {
           >
             {isApproving ? (
               <>
-                <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                <Loader2 className="me-2 h-4 w-4 animate-spin" />
                 מאשר...
               </>
             ) : summary?.approval.isApproved ? (
               <>
-                <CheckCircle2 className="ml-2 h-4 w-4" />
+                <CheckCircle2 className="me-2 h-4 w-4" />
                 מאושר
               </>
             ) : (
               <>
-                <Check className="ml-2 h-4 w-4" />
+                <Check className="me-2 h-4 w-4" />
                 אשר תקופה
               </>
             )}

@@ -304,11 +304,11 @@ export default function SettlementDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={fetchSettlement}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Button variant="outline" onClick={handleSignOut}>
-            <LogOut className="ml-2 h-4 w-4" />
+            <LogOut className="me-2 h-4 w-4" />
             התנתקות
           </Button>
         </div>
@@ -470,13 +470,13 @@ export default function SettlementDetailPage() {
             <div className="flex flex-wrap gap-2">
               {allowedTransitions.includes("start_processing") && (
                 <Button onClick={() => handleStatusChange("start_processing")}>
-                  <Play className="ml-2 h-4 w-4" />
+                  <Play className="me-2 h-4 w-4" />
                   התחל עיבוד
                 </Button>
               )}
               {allowedTransitions.includes("submit_for_approval") && (
                 <Button onClick={() => handleStatusChange("submit_for_approval")}>
-                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  <CheckCircle2 className="me-2 h-4 w-4" />
                   שלח לאישור
                 </Button>
               )}
@@ -485,13 +485,13 @@ export default function SettlementDetailPage() {
                   onClick={() => handleStatusChange("approve")}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  <CheckCircle2 className="ml-2 h-4 w-4" />
+                  <CheckCircle2 className="me-2 h-4 w-4" />
                   אשר תקופה
                 </Button>
               )}
               {allowedTransitions.includes("invoice") && isSuperUser && (
                 <Button onClick={() => handleStatusChange("invoice")} variant="outline">
-                  <FileCheck className="ml-2 h-4 w-4" />
+                  <FileCheck className="me-2 h-4 w-4" />
                   הפק חשבונית
                 </Button>
               )}

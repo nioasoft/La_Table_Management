@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -74,8 +74,8 @@ export default function PeriodWorkflowPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -225,11 +225,11 @@ export default function PeriodWorkflowPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => periodInfo && fetchSuppliers(periodInfo.type)}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Button variant="outline" onClick={handleSignOut}>
-            <LogOut className="ml-2 h-4 w-4" />
+            <LogOut className="me-2 h-4 w-4" />
             התנתקות
           </Button>
         </div>
@@ -238,7 +238,7 @@ export default function PeriodWorkflowPage() {
       {/* Status */}
       <div className="mb-6">
         <Badge variant="secondary" className="text-sm px-3 py-1">
-          <Clock className="h-3 w-3 mr-1" />
+          <Clock className="h-3 w-3 ms-1" />
           איסוף קבצים
         </Badge>
       </div>

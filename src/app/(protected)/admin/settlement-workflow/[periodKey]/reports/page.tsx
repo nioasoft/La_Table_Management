@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -128,8 +128,8 @@ export default function ReportsPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   const fetchReportData = useCallback(async () => {
     try {
@@ -245,14 +245,14 @@ export default function ReportsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={fetchReportData}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Button onClick={() => handleExportExcel(false)} disabled={isExporting}>
             {isExporting ? (
-              <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+              <Loader2 className="me-2 h-4 w-4 animate-spin" />
             ) : (
-              <Download className="ml-2 h-4 w-4" />
+              <Download className="me-2 h-4 w-4" />
             )}
             ייצוא Excel
           </Button>
@@ -328,16 +328,16 @@ export default function ReportsPage() {
                     <TableRow key={brand.brandId}>
                       <TableCell className="font-medium">{brand.brandNameHe}</TableCell>
                       <TableCell>{brand.commissionCount}</TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {formatCurrency(brand.totalGrossAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {formatCurrency(brand.totalNetAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left font-medium text-green-600">
+                      <TableCell dir="ltr" className="text-start font-medium text-green-600">
                         {formatCurrency(brand.totalCommissionAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {brand.avgCommissionRate.toFixed(2)}%
                       </TableCell>
                     </TableRow>
@@ -379,16 +379,16 @@ export default function ReportsPage() {
                       <TableCell className="font-medium">{supplier.supplierName}</TableCell>
                       <TableCell>{supplier.supplierCode}</TableCell>
                       <TableCell>{supplier.commissionCount}</TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {formatCurrency(supplier.totalGrossAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {formatCurrency(supplier.totalNetAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left font-medium text-green-600">
+                      <TableCell dir="ltr" className="text-start font-medium text-green-600">
                         {formatCurrency(supplier.totalCommissionAmount)}
                       </TableCell>
-                      <TableCell dir="ltr" className="text-left">
+                      <TableCell dir="ltr" className="text-start">
                         {supplier.avgCommissionRate.toFixed(2)}%
                       </TableCell>
                     </TableRow>
@@ -434,7 +434,7 @@ export default function ReportsPage() {
                       </TableCell>
                       <TableCell
                         dir="ltr"
-                        className={`text-left font-medium ${
+                        className={`text-start font-medium ${
                           adj.amount >= 0 ? "text-green-600" : "text-red-600"
                         }`}
                       >

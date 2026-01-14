@@ -313,7 +313,7 @@ export default function SettlementWorkflowPage() {
           <h1 className="text-3xl font-bold">תהליך התחשבנות</h1>
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="ml-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           התנתקות
         </Button>
       </div>
@@ -552,12 +552,12 @@ export default function SettlementWorkflowPage() {
                   data-testid={`step-action-${step.id}`}
                 >
                   {isProcessing && step.status === "current" ? (
-                    <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                    <Loader2 className="h-4 w-4 animate-spin me-2" />
                   ) : (
-                    step.actionIcon && <span className="ml-2">{step.actionIcon}</span>
+                    step.actionIcon && <span className="me-2">{step.actionIcon}</span>
                   )}
                   {step.actionLabel}
-                  {step.status === "current" && <ArrowRight className="h-4 w-4 mr-2 rtl-flip" />}
+                  {step.status === "current" && <ArrowRight className="h-4 w-4 ms-2 rtl-flip" />}
                 </Button>
               )}
             </CardContent>
@@ -573,27 +573,27 @@ export default function SettlementWorkflowPage() {
         <CardContent>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" onClick={() => router.push("/admin/settlements")}>
-              <FileText className="h-4 w-4 ml-2" />
+              <FileText className="h-4 w-4 me-2" />
               ניהול תקופות
             </Button>
             <Button variant="outline" onClick={() => router.push("/admin/reconciliation")}>
-              <RefreshCw className="h-4 w-4 ml-2" />
+              <RefreshCw className="h-4 w-4 me-2" />
               הצלבת נתונים
             </Button>
             <Button variant="outline" onClick={() => router.push("/admin/commissions")}>
-              <Calculator className="h-4 w-4 ml-2" />
+              <Calculator className="h-4 w-4 me-2" />
               עמלות
             </Button>
             <Button variant="outline" onClick={() => router.push("/admin/franchisee-reminders")}>
-              <Bell className="h-4 w-4 ml-2" />
+              <Bell className="h-4 w-4 me-2" />
               תזכורות
             </Button>
             <Button variant="outline" onClick={() => router.push("/admin/suppliers")}>
-              <Users className="h-4 w-4 ml-2" />
+              <Users className="h-4 w-4 me-2" />
               ספקים
             </Button>
             <Button variant="outline" onClick={() => router.push("/admin/franchisees")}>
-              <Users className="h-4 w-4 ml-2" />
+              <Users className="h-4 w-4 me-2" />
               זכיינים
             </Button>
           </div>

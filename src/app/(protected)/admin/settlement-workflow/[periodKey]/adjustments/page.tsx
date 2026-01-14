@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -140,8 +140,8 @@ export default function AdjustmentsPage() {
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  // Parse period info from key
-  const periodInfo = getPeriodByKey(periodKey);
+  // Parse period info from key (memoized to prevent infinite loop)
+  const periodInfo = useMemo(() => getPeriodByKey(periodKey), [periodKey]);
 
   const fetchAdjustments = useCallback(async () => {
     try {
@@ -389,13 +389,13 @@ export default function AdjustmentsPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={fetchAdjustments}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             רענון
           </Button>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={() => handleOpenDialog()}>
-                <Plus className="ml-2 h-4 w-4" />
+                <Plus className="me-2 h-4 w-4" />
                 התאמה חדשה
               </Button>
             </DialogTrigger>
@@ -446,7 +446,7 @@ export default function AdjustmentsPage() {
                       setFormData({ ...formData, amount: e.target.value })
                     }
                     dir="ltr"
-                    className="text-left"
+                    className="text-start"
                   />
                   <p className="text-xs text-muted-foreground">
                     סכום חיובי = זיכוי, סכום שלילי = חיוב
@@ -516,7 +516,7 @@ export default function AdjustmentsPage() {
                 <Button onClick={handleSubmit} disabled={isSaving}>
                   {isSaving ? (
                     <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
                       שומר...
                     </>
                   ) : editingAdjustment ? (
@@ -592,7 +592,7 @@ export default function AdjustmentsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell
-                    className={`text-left font-medium ${
+                    className={`text-start font-medium ${
                       adj.amount >= 0 ? "text-green-600" : "text-red-600"
                     }`}
                     dir="ltr"
@@ -632,11 +632,11 @@ export default function AdjustmentsPage() {
                         {!adj.approvedAt && (
                           <>
                             <DropdownMenuItem onClick={() => handleOpenDialog(adj)}>
-                              <Pencil className="ml-2 h-4 w-4" />
+                              <Pencil className="me-2 h-4 w-4" />
                               עריכה
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleApprove(adj.id)}>
-                              <Check className="ml-2 h-4 w-4" />
+                              <Check className="me-2 h-4 w-4" />
                               אישור
                             </DropdownMenuItem>
                           </>
@@ -645,7 +645,7 @@ export default function AdjustmentsPage() {
                           onClick={() => handleDelete(adj.id)}
                           className="text-destructive"
                         >
-                          <Trash2 className="ml-2 h-4 w-4" />
+                          <Trash2 className="me-2 h-4 w-4" />
                           מחיקה
                         </DropdownMenuItem>
                       </DropdownMenuContent>
