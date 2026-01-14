@@ -93,11 +93,13 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/settlements - Create a new settlement period
  * Body:
- * - franchiseeId: Required - The franchisee ID
+ * - franchiseeId: Optional - The franchisee ID (for per-franchisee settlements)
  * - periodType: Required - The period type (monthly, quarterly, semi_annual, annual)
+ * - periodKey: Optional - Unique period key like "2025-Q4" (for period-based settlements)
  * - name: Optional - Custom name (auto-generated if not provided)
  * - periodStartDate: Optional - Custom start date (auto-calculated if not provided)
  * - periodEndDate: Optional - Custom end date (auto-calculated if not provided)
+ * - startDate/endDate: Aliases for periodStartDate/periodEndDate
  * - referenceDate: Optional - Reference date for auto-calculation (defaults to current date)
  * - Additional fields: notes, metadata, dueDate
  */
@@ -111,22 +113,21 @@ export async function POST(request: NextRequest) {
     const {
       franchiseeId,
       periodType,
+      periodKey,
       name,
       periodStartDate,
       periodEndDate,
+      startDate,   // alias for periodStartDate
+      endDate,     // alias for periodEndDate
       referenceDate,
       notes,
       metadata,
       dueDate,
     } = body;
 
-    // Validate required fields
-    if (!franchiseeId) {
-      return NextResponse.json(
-        { error: "franchiseeId is required" },
-        { status: 400 }
-      );
-    }
+    // Use aliases if primary fields not provided
+    const finalStartDate = periodStartDate || startDate;
+    const finalEndDate = periodEndDate || endDate;
 
     if (!periodType) {
       return NextResponse.json(
@@ -146,23 +147,23 @@ export async function POST(request: NextRequest) {
     let newSettlement;
 
     // If custom dates are provided, use manual creation
-    if (periodStartDate && periodEndDate) {
+    if (finalStartDate && finalEndDate) {
       const id = randomUUID();
       newSettlement = await createSettlementPeriod({
         id,
         name: name || `${periodType} Period`,
-        franchiseeId,
+        franchiseeId: franchiseeId || null, // Allow null for period-based settlements
         periodType,
-        periodStartDate,
-        periodEndDate,
+        periodStartDate: finalStartDate,
+        periodEndDate: finalEndDate,
         status: "open",
         notes: notes || null,
-        metadata: metadata || null,
+        metadata: periodKey ? { periodKey, ...metadata } : metadata || null,
         dueDate: dueDate || null,
         createdBy: user.id,
       });
-    } else {
-      // Use automatic date calculation
+    } else if (franchiseeId) {
+      // Use automatic date calculation (requires franchiseeId for legacy behavior)
       const refDate = referenceDate ? new Date(referenceDate) : new Date();
       newSettlement = await createSettlementPeriodWithType(
         franchiseeId,
@@ -172,9 +173,14 @@ export async function POST(request: NextRequest) {
         {
           name: name || undefined,
           notes: notes || null,
-          metadata: metadata || null,
+          metadata: periodKey ? { periodKey, ...metadata } : metadata || null,
           dueDate: dueDate || null,
         }
+      );
+    } else {
+      return NextResponse.json(
+        { error: "Either franchiseeId or both startDate and endDate are required" },
+        { status: 400 }
       );
     }
 

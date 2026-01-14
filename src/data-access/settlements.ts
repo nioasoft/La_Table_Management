@@ -9,7 +9,8 @@ import {
   type SettlementStatus,
   type SettlementPeriodType,
 } from "@/db/schema";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, isNull } from "drizzle-orm";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 import {
   logSettlementStatusChange,
   logSettlementApproval,
@@ -656,4 +657,74 @@ export async function reopenSettlementPeriod(
   }
 
   return transitionSettlementStatus(id, "processing", auditContext, reason);
+}
+
+// ============================================================================
+// PERIOD KEY FUNCTIONS (for settlement workflow)
+// ============================================================================
+
+/**
+ * Get an existing settlement period by period key (e.g., "2025-Q4", "2025-01")
+ * This finds a settlement_period record that matches the period dates and has no franchisee
+ * (period-based settlements vs per-franchisee settlements)
+ */
+export async function getSettlementPeriodByPeriodKey(
+  periodKey: string
+): Promise<SettlementPeriod | null> {
+  const periodInfo = getPeriodByKey(periodKey);
+  if (!periodInfo) return null;
+
+  const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
+  const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+
+  const results = await database
+    .select()
+    .from(settlementPeriod)
+    .where(
+      and(
+        eq(settlementPeriod.periodStartDate, periodStartDate),
+        eq(settlementPeriod.periodEndDate, periodEndDate),
+        isNull(settlementPeriod.franchiseeId),
+        eq(settlementPeriod.periodType, periodInfo.type)
+      )
+    )
+    .limit(1) as unknown as SettlementPeriod[];
+
+  return results[0] || null;
+}
+
+/**
+ * Get or create a settlement period by period key
+ * Creates a new period-based settlement (franchiseeId = null) if one doesn't exist
+ */
+export async function getOrCreateSettlementPeriodByPeriodKey(
+  periodKey: string,
+  createdBy?: string
+): Promise<{ settlementPeriod: SettlementPeriod; created: boolean } | null> {
+  const periodInfo = getPeriodByKey(periodKey);
+  if (!periodInfo) return null;
+
+  // Try to find existing
+  const existing = await getSettlementPeriodByPeriodKey(periodKey);
+  if (existing) {
+    return { settlementPeriod: existing, created: false };
+  }
+
+  // Create new period-based settlement
+  const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
+  const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+
+  const newSettlement = await createSettlementPeriod({
+    id: crypto.randomUUID(),
+    name: periodInfo.nameHe,
+    franchiseeId: null, // Period-based, not per-franchisee
+    periodType: periodInfo.type,
+    periodStartDate,
+    periodEndDate,
+    status: "open",
+    createdBy: createdBy || null,
+    metadata: { periodKey },
+  });
+
+  return { settlementPeriod: newSettlement, created: true };
 }

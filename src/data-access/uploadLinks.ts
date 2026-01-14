@@ -589,6 +589,11 @@ export async function generatePeriodUploadLinks(
 
   const period = periodResults[0];
 
+  // Period-based settlements (franchiseeId = null) don't generate franchisee upload links
+  if (!period.franchiseeId) {
+    throw new Error(`Cannot generate franchisee upload links for period-based settlement: ${periodId}`);
+  }
+
   const periodInfo: UploadLinkPeriodInfo = {
     periodId: period.id,
     periodName: period.name,
@@ -599,7 +604,7 @@ export async function generatePeriodUploadLinks(
   // Generate upload links for each document type
   const links = await Promise.all(
     options.documentTypes.map((docType) =>
-      generateFranchiseeUploadLink(period.franchiseeId, {
+      generateFranchiseeUploadLink(period.franchiseeId!, {
         name: docType.name,
         description: docType.description,
         allowedFileTypes: docType.allowedFileTypes,

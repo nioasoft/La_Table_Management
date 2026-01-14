@@ -897,8 +897,8 @@ export const settlementPeriod = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    // Optional: null for period-based settlements, set for per-franchisee settlements
     franchiseeId: text("franchisee_id")
-      .notNull()
       .references(() => franchisee.id, { onDelete: "restrict" }),
     // Period type: monthly, quarterly, semi_annual, annual
     periodType: settlementPeriodTypeEnum("period_type")
