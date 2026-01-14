@@ -141,6 +141,18 @@ export async function POST(
       );
     }
 
+    // Early size check BEFORE loading file into memory to prevent memory exhaustion attacks
+    const maxSize = link.maxFileSize || getMaxFileSize();
+    if (file.size > maxSize) {
+      return NextResponse.json(
+        {
+          error: `גודל הקובץ חורג מהמקסימום המותר (${Math.round(maxSize / 1024 / 1024)}MB)`,
+          code: "FILE_TOO_LARGE",
+        },
+        { status: 400 }
+      );
+    }
+
     // Convert to buffer for magic byte validation
     const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -164,8 +176,8 @@ export async function POST(
       );
     }
 
-    // Validate file size
-    const maxSize = link.maxFileSize || getMaxFileSize();
+    // Secondary size validation using actual buffer length (defense in depth)
+    // This catches cases where file.size was spoofed or inaccurate
     if (buffer.length > maxSize) {
       return NextResponse.json(
         {
