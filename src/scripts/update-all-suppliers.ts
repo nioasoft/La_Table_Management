@@ -78,7 +78,7 @@ const supplierConfigs: Record<
     commissionRate: "14",
     fileMapping: {
       fileType: "xlsx",
-      columnMappings: { franchiseeColumn: "B", amountColumn: "D" },
+      columnMappings: { franchiseeColumn: "B", amountColumn: "G" },
       headerRow: 1,
       dataStartRow: 2,
       sheetName: "DataSheet",
@@ -145,7 +145,7 @@ const supplierConfigs: Record<
     commissionRate: "10",
     fileMapping: {
       fileType: "csv",
-      columnMappings: { franchiseeColumn: "1", amountColumn: "7", dateColumn: "0" },
+      columnMappings: { franchiseeColumn: "B", amountColumn: "H", dateColumn: "A" },
       headerRow: 1,
       dataStartRow: 2,
     },
@@ -237,11 +237,11 @@ const supplierConfigs: Record<
   PASTA_LA_CASA: {
     commissionRate: "15",
     fileMapping: {
-      fileType: "xls",
-      columnMappings: { franchiseeColumn: "C", amountColumn: "F", dateColumn: "E" },
-      headerRow: 1,
-      dataStartRow: 2,
-      skipKeywords: ['סה"כ', "סהכ"],
+      fileType: "zip", // Accepts ZIP with multiple XLS files or single XLS
+      columnMappings: { franchiseeColumn: "", amountColumn: "" },
+      headerRow: 0,
+      dataStartRow: 1,
+      customParser: true,
     },
   },
 

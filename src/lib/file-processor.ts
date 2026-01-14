@@ -273,8 +273,17 @@ export function parseSupplierFile(
       return createFailedResult();
     }
 
-    // Get the first sheet
-    const sheetName = workbook.SheetNames[0];
+    // Get the sheet (use configured sheetName or first sheet)
+    let sheetName = workbook.SheetNames[0];
+    if (fileMapping.sheetName) {
+      if (workbook.SheetNames.includes(fileMapping.sheetName)) {
+        sheetName = fileMapping.sheetName;
+      } else {
+        addWarning(createFileProcessingError('PARSE_ERROR', {
+          details: `Configured sheet "${fileMapping.sheetName}" not found, using "${sheetName}"`,
+        }));
+      }
+    }
     if (!sheetName) {
       addError(createFileProcessingError('NO_WORKSHEETS'));
       return createFailedResult();
@@ -521,13 +530,27 @@ export function parseSupplierFile(
 /**
  * Process a supplier file and return commission-ready data
  * This function handles the complete flow from file parsing to VAT adjustment
+ *
+ * For suppliers with customParser: true in their fileMapping, this will use
+ * the appropriate custom parser from the custom-parsers module.
  */
 export async function processSupplierFile(
   fileBuffer: Buffer,
   fileMapping: SupplierFileMapping,
   vatIncluded: boolean,
-  vatRate?: number
+  vatRate?: number,
+  supplierCode?: string
 ): Promise<FileProcessingResult> {
+  // Check if supplier requires custom parser
+  if (fileMapping.customParser && supplierCode) {
+    const { getCustomParser } = await import("./custom-parsers");
+    const customParser = getCustomParser(supplierCode);
+
+    if (customParser) {
+      return customParser(fileBuffer);
+    }
+  }
+
   const vatConfig: VatConfig = {
     vatIncluded,
     vatRate,

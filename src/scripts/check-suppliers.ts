@@ -10,9 +10,9 @@ async function main() {
   console.log("|------|------|------------|-----------|-------------|");
 
   for (const s of allSuppliers) {
-    const hasMapping = s.fileMappingConfig ? "Yes" : "No";
+    const hasMapping = s.fileMapping ? "Yes" : "No";
     console.log(
-      `| ${s.name} | ${s.code || "-"} | ${s.commissionRate || "-"} | ${s.settlementFrequency || "-"} | ${hasMapping} |`
+      `| ${s.name} | ${s.code || "-"} | ${s.defaultCommissionRate || "-"} | ${s.settlementFrequency || "-"} | ${hasMapping} |`
     );
   }
 

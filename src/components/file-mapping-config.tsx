@@ -80,19 +80,21 @@ export function FileMappingConfig({
 
   const handleAddKeyword = () => {
     const keyword = newKeyword.trim();
-    if (keyword && !formData.skipKeywords.includes(keyword)) {
+    const currentKeywords = formData.skipKeywords || [];
+    if (keyword && !currentKeywords.includes(keyword)) {
       setFormData({
         ...formData,
-        skipKeywords: [...formData.skipKeywords, keyword],
+        skipKeywords: [...currentKeywords, keyword],
       });
       setNewKeyword("");
     }
   };
 
   const handleRemoveKeyword = (keyword: string) => {
+    const currentKeywords = formData.skipKeywords || [];
     setFormData({
       ...formData,
-      skipKeywords: formData.skipKeywords.filter((k) => k !== keyword),
+      skipKeywords: currentKeywords.filter((k) => k !== keyword),
     });
   };
 
@@ -387,7 +389,7 @@ export function FileMappingConfig({
               {t.skipKeywords.description}
             </p>
             <div className="flex flex-wrap gap-2 mb-2">
-              {formData.skipKeywords.map((keyword) => (
+              {(formData.skipKeywords || []).map((keyword) => (
                 <Badge
                   key={keyword}
                   variant="secondary"
@@ -403,7 +405,7 @@ export function FileMappingConfig({
                   </button>
                 </Badge>
               ))}
-              {formData.skipKeywords.length === 0 && (
+              {(formData.skipKeywords || []).length === 0 && (
                 <span className="text-sm text-muted-foreground">
                   {t.skipKeywords.noKeywords}
                 </span>

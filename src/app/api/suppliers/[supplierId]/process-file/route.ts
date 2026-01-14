@@ -154,6 +154,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       ],
       xls: ["application/vnd.ms-excel"],
       csv: ["text/csv", "application/csv"],
+      zip: [
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/vnd.ms-excel", // Allow XLS for suppliers with ZIP config (single file upload)
+      ],
     };
 
     const allowedMimeTypes = mimeTypes[fileMapping.fileType] || [];
@@ -219,11 +224,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       : ISRAEL_VAT_RATE;
 
     // Process the file with VAT adjustment
+    // Pass supplier code for custom parser lookup
     const result = await processSupplierFile(
       buffer,
       fileMapping,
       supplier.vatIncluded ?? false,
-      vatRate
+      vatRate,
+      supplier.code ?? undefined
     );
 
     // Apply franchisee name matching if enabled

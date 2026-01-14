@@ -13,6 +13,7 @@ export { parseUnikoFile } from "./uniko-parser";
 export { parseTuviotHatzafonFile } from "./tuviot-hatzafon-parser";
 export { parseMachlavotGadFile } from "./machlavot-gad-parser";
 export { parseArelArizotFile } from "./arel-arizot-parser";
+export { parsePastaLaCasaFile } from "./pasta-la-casa-parser";
 
 // Registry of custom parsers by supplier code
 export const CUSTOM_PARSERS: Record<
@@ -50,6 +51,10 @@ export const CUSTOM_PARSERS: Record<
   EREL_PACKAGING: async (buffer) => {
     const { parseArelArizotFile } = await import("./arel-arizot-parser");
     return parseArelArizotFile(buffer);
+  },
+  PASTA_LA_CASA: async (buffer) => {
+    const { parsePastaLaCasaFile } = await import("./pasta-la-casa-parser");
+    return parsePastaLaCasaFile(buffer);
   },
 };
 

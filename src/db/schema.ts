@@ -597,7 +597,7 @@ export type ColumnMapping = {
 };
 
 // File type enum for supplier file mapping
-export type SupplierFileType = "xlsx" | "csv" | "xls";
+export type SupplierFileType = "xlsx" | "csv" | "xls" | "zip";
 
 // Complete file mapping configuration stored as JSONB
 export type SupplierFileMapping = {
@@ -606,7 +606,9 @@ export type SupplierFileMapping = {
   headerRow: number; // Row number where headers are located (1-indexed)
   dataStartRow: number; // Row number where data starts (1-indexed)
   rowsToSkip?: number; // Optional: number of rows to skip at the end
-  skipKeywords: string[]; // Keywords to skip rows (e.g., 'פיקדון', 'deposit')
+  skipKeywords?: string[]; // Keywords to skip rows (e.g., 'פיקדון', 'deposit')
+  sheetName?: string; // Optional: specific sheet name to read
+  customParser?: boolean; // If true, use custom parser from custom-parsers module
 };
 
 // Franchisees table - Franchise operators/owners
