@@ -9,9 +9,12 @@ import {
   type CrossReference,
   type CreateCrossReferenceData,
   type UpdateCrossReferenceData,
+  type Supplier,
 } from "@/db/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import type { AuditContext } from "./auditLog";
+import type { BkmvParseResult, SupplierPurchaseSummary } from "@/lib/bkmvdata-parser";
+import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 
 // ============================================================================
 // CROSS-REFERENCE TYPES
@@ -752,4 +755,346 @@ export async function updateFranchiseeAmount(
   return updateCrossReference(crossRefId, {
     metadata: updatedMetadata,
   });
+}
+
+// ============================================================================
+// BKMVDATA PROCESSING FUNCTIONS
+// ============================================================================
+
+/**
+ * Result of processing BKMVDATA for a franchisee
+ */
+export interface BkmvDataProcessingResult {
+  franchiseeId: string;
+  franchiseeName: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  suppliersProcessed: number;
+  suppliersMatched: number;
+  suppliersUnmatched: number;
+  crossReferencesUpdated: number;
+  crossReferencesCreated: number;
+  matchedSuppliers: Array<{
+    bkmvName: string;
+    supplierId: string;
+    supplierName: string;
+    amount: number;
+    confidence: number;
+    crossRefId: string;
+    matchStatus: CrossReferenceMatchStatus;
+  }>;
+  unmatchedSuppliers: Array<{
+    bkmvName: string;
+    amount: number;
+    transactionCount: number;
+  }>;
+  errors: string[];
+}
+
+/**
+ * Find or create cross-reference for a supplier-franchisee pair in a period
+ */
+async function findOrCreateCrossReference(
+  supplierId: string,
+  franchiseeId: string,
+  periodStartDate: string,
+  periodEndDate: string,
+  createdBy?: string
+): Promise<CrossReference> {
+  // Look for existing cross-reference
+  const existingRefs = await database
+    .select()
+    .from(crossReference)
+    .where(
+      and(
+        eq(crossReference.sourceType, "supplier"),
+        eq(crossReference.sourceId, supplierId),
+        eq(crossReference.targetType, "franchisee"),
+        eq(crossReference.targetId, franchiseeId),
+        eq(crossReference.referenceType, "amount_comparison")
+      )
+    );
+
+  // Check if one exists for this period
+  const existingForPeriod = existingRefs.find((ref) => {
+    const metadata = ref.metadata as CrossReferenceComparisonMetadata;
+    return (
+      metadata?.periodStartDate === periodStartDate &&
+      metadata?.periodEndDate === periodEndDate
+    );
+  });
+
+  if (existingForPeriod) {
+    return existingForPeriod;
+  }
+
+  // Create new cross-reference with franchisee amount = 0
+  // This will be updated when we have both amounts
+  return createComparisonCrossReference(
+    supplierId,
+    franchiseeId,
+    0, // Supplier amount - to be filled when supplier report arrives
+    0, // Franchisee amount - to be filled now
+    periodStartDate,
+    periodEndDate,
+    DEFAULT_MATCH_THRESHOLD,
+    undefined,
+    createdBy
+  );
+}
+
+/**
+ * Process BKMVDATA file for a franchisee and update cross-references
+ *
+ * @param franchiseeId - The franchisee ID
+ * @param bkmvData - Parsed BKMVDATA result
+ * @param periodStartDate - Start date of the period (YYYY-MM-DD)
+ * @param periodEndDate - End date of the period (YYYY-MM-DD)
+ * @param createdBy - User who initiated the processing
+ * @returns Processing result with statistics
+ */
+export async function processFranchiseeBkmvData(
+  franchiseeId: string,
+  bkmvData: BkmvParseResult,
+  periodStartDate: string,
+  periodEndDate: string,
+  createdBy?: string
+): Promise<BkmvDataProcessingResult> {
+  // Get franchisee info
+  const [franchiseeData] = await database
+    .select({ name: franchisee.name })
+    .from(franchisee)
+    .where(eq(franchisee.id, franchiseeId))
+    .limit(1);
+
+  if (!franchiseeData) {
+    throw new Error(`Franchisee not found: ${franchiseeId}`);
+  }
+
+  // Get all suppliers for matching
+  const suppliers = await database
+    .select()
+    .from(supplier)
+    .where(eq(supplier.isActive, true)) as unknown as Supplier[];
+
+  // Match BKMV suppliers to system suppliers
+  const matchingResults = matchBkmvSuppliers(
+    bkmvData.supplierSummary,
+    suppliers,
+    { minConfidence: 0.6, reviewThreshold: 0.85 }
+  );
+
+  const result: BkmvDataProcessingResult = {
+    franchiseeId,
+    franchiseeName: franchiseeData.name,
+    periodStartDate,
+    periodEndDate,
+    suppliersProcessed: matchingResults.length,
+    suppliersMatched: 0,
+    suppliersUnmatched: 0,
+    crossReferencesUpdated: 0,
+    crossReferencesCreated: 0,
+    matchedSuppliers: [],
+    unmatchedSuppliers: [],
+    errors: [],
+  };
+
+  // Process each matched supplier
+  for (const match of matchingResults) {
+    if (match.matchResult.matchedSupplier) {
+      const matchedSupplier = match.matchResult.matchedSupplier;
+      result.suppliersMatched++;
+
+      try {
+        // Find or create cross-reference
+        const crossRef = await findOrCreateCrossReference(
+          matchedSupplier.id,
+          franchiseeId,
+          periodStartDate,
+          periodEndDate,
+          createdBy
+        );
+
+        const isNew = !crossRef.updatedAt || crossRef.createdAt === crossRef.updatedAt;
+
+        // Update the franchisee amount
+        const metadata = crossRef.metadata as CrossReferenceComparisonMetadata;
+        const supplierAmount = parseFloat(metadata?.supplierAmount || "0");
+        const comparison = compareAmounts(supplierAmount, match.amount);
+
+        const updatedMetadata: CrossReferenceComparisonMetadata = {
+          ...metadata,
+          franchiseeAmount: match.amount.toFixed(2),
+          difference: comparison.difference.toFixed(2),
+          differencePercentage: comparison.differencePercentage,
+          matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
+          threshold: comparison.threshold,
+          autoMatched: supplierAmount > 0 && comparison.matchStatus === "matched",
+          manualReview: supplierAmount > 0 && comparison.matchStatus === "discrepancy",
+          comparisonDate: new Date().toISOString(),
+          franchiseeName: franchiseeData.name,
+          supplierName: matchedSupplier.name,
+        };
+
+        await updateCrossReference(crossRef.id, {
+          metadata: updatedMetadata,
+        });
+
+        if (isNew) {
+          result.crossReferencesCreated++;
+        } else {
+          result.crossReferencesUpdated++;
+        }
+
+        result.matchedSuppliers.push({
+          bkmvName: match.bkmvName,
+          supplierId: matchedSupplier.id,
+          supplierName: matchedSupplier.name,
+          amount: match.amount,
+          confidence: match.matchResult.confidence,
+          crossRefId: crossRef.id,
+          matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
+        });
+      } catch (error) {
+        result.errors.push(`Error processing ${match.bkmvName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    } else {
+      result.suppliersUnmatched++;
+      result.unmatchedSuppliers.push({
+        bkmvName: match.bkmvName,
+        amount: match.amount,
+        transactionCount: match.transactionCount,
+      });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Get cross-references for a specific franchisee and period
+ */
+export async function getCrossReferencesByFranchiseeAndPeriod(
+  franchiseeId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<CrossReferenceWithDetails[]> {
+  const results = await database
+    .select({
+      crossRef: crossReference,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+      franchiseeName: franchisee.name,
+      franchiseeCode: franchisee.code,
+      createdByName: user.name,
+      createdByEmail: user.email,
+    })
+    .from(crossReference)
+    .leftJoin(supplier, eq(crossReference.sourceId, supplier.id))
+    .leftJoin(franchisee, eq(crossReference.targetId, franchisee.id))
+    .leftJoin(user, eq(crossReference.createdBy, user.id))
+    .where(
+      and(
+        eq(crossReference.targetType, "franchisee"),
+        eq(crossReference.targetId, franchiseeId),
+        eq(crossReference.referenceType, "amount_comparison"),
+        eq(crossReference.isActive, true)
+      )
+    )
+    .orderBy(desc(crossReference.createdAt));
+
+  // Filter by period dates in metadata
+  return results
+    .filter((row) => {
+      const metadata = row.crossRef.metadata as CrossReferenceComparisonMetadata;
+      return (
+        metadata?.periodStartDate === periodStartDate &&
+        metadata?.periodEndDate === periodEndDate
+      );
+    })
+    .map((row) => ({
+      ...row.crossRef,
+      supplierInfo: row.supplierName
+        ? {
+            id: row.crossRef.sourceId,
+            name: row.supplierName,
+            code: row.supplierCode!,
+          }
+        : null,
+      franchiseeInfo: row.franchiseeName
+        ? {
+            id: row.crossRef.targetId,
+            name: row.franchiseeName,
+            code: row.franchiseeCode!,
+          }
+        : null,
+      createdByUser: row.createdByName
+        ? { name: row.createdByName, email: row.createdByEmail! }
+        : null,
+      comparisonMetadata: row.crossRef.metadata as CrossReferenceComparisonMetadata,
+    }));
+}
+
+/**
+ * Get all cross-references for comparison view (admin)
+ */
+export async function getAllCrossReferencesForComparison(
+  periodStartDate?: string,
+  periodEndDate?: string
+): Promise<CrossReferenceWithDetails[]> {
+  const results = await database
+    .select({
+      crossRef: crossReference,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+      franchiseeName: franchisee.name,
+      franchiseeCode: franchisee.code,
+      createdByName: user.name,
+      createdByEmail: user.email,
+    })
+    .from(crossReference)
+    .leftJoin(supplier, eq(crossReference.sourceId, supplier.id))
+    .leftJoin(franchisee, eq(crossReference.targetId, franchisee.id))
+    .leftJoin(user, eq(crossReference.createdBy, user.id))
+    .where(
+      and(
+        eq(crossReference.referenceType, "amount_comparison"),
+        eq(crossReference.isActive, true)
+      )
+    )
+    .orderBy(desc(crossReference.createdAt));
+
+  // Filter by period if provided
+  let filteredResults = results;
+  if (periodStartDate && periodEndDate) {
+    filteredResults = results.filter((row) => {
+      const metadata = row.crossRef.metadata as CrossReferenceComparisonMetadata;
+      return (
+        metadata?.periodStartDate === periodStartDate &&
+        metadata?.periodEndDate === periodEndDate
+      );
+    });
+  }
+
+  return filteredResults.map((row) => ({
+    ...row.crossRef,
+    supplierInfo: row.supplierName
+      ? {
+          id: row.crossRef.sourceId,
+          name: row.supplierName,
+          code: row.supplierCode!,
+        }
+      : null,
+    franchiseeInfo: row.franchiseeName
+      ? {
+          id: row.crossRef.targetId,
+          name: row.franchiseeName,
+          code: row.franchiseeCode!,
+        }
+      : null,
+    createdByUser: row.createdByName
+      ? { name: row.createdByName, email: row.createdByEmail! }
+      : null,
+    comparisonMetadata: row.crossRef.metadata as CrossReferenceComparisonMetadata,
+  }));
 }

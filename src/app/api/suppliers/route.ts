@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
       brandIds,
       fileMapping,
       commissionExceptions,
+      bkmvAliases,
     } = body;
 
     // Validate required fields
@@ -151,6 +152,11 @@ export async function POST(request: NextRequest) {
         }));
     }
 
+    // Validate bkmvAliases if provided
+    const validatedBkmvAliases = Array.isArray(bkmvAliases)
+      ? bkmvAliases.filter((a: string) => typeof a === "string" && a.trim() !== "").map((a: string) => a.trim())
+      : null;
+
     const supplierId = randomUUID();
     const newSupplier = await createSupplier({
       id: supplierId,
@@ -173,6 +179,7 @@ export async function POST(request: NextRequest) {
       vatIncluded: vatIncluded !== undefined ? vatIncluded : false,
       fileMapping: validatedFileMapping,
       commissionExceptions: validatedCommissionExceptions,
+      bkmvAliases: validatedBkmvAliases,
       isActive: isActive !== undefined ? isActive : true,
       createdBy: user.id,
     });

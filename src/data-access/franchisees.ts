@@ -234,6 +234,38 @@ export async function getFranchiseeByCode(
 }
 
 /**
+ * Get a single franchisee by company ID (ח.פ)
+ * Used for auto-matching BKMVDATA files
+ */
+export async function getFranchiseeByCompanyId(
+  companyId: string
+): Promise<FranchiseeWithBrand | null> {
+  if (!companyId || companyId.trim() === '') return null;
+
+  const results = await database
+    .select({
+      franchisee: franchisee,
+      brand: {
+        id: brand.id,
+        code: brand.code,
+        nameHe: brand.nameHe,
+        nameEn: brand.nameEn,
+      },
+    })
+    .from(franchisee)
+    .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(eq(franchisee.companyId, companyId.trim()))
+    .limit(1);
+
+  if (results.length === 0) return null;
+
+  return {
+    ...results[0].franchisee,
+    brand: results[0].brand,
+  };
+}
+
+/**
  * Create a new franchisee
  * Automatically logs initial status if set
  */

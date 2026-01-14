@@ -16,6 +16,8 @@ import {
 import { validateFileType } from "@/lib/file-validation";
 import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
+import { isBkmvDataFile, parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
+import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -230,6 +232,62 @@ export async function POST(
       console.error("Failed to notify super users about upload:", error);
     });
 
+    // Automatic BKMVDATA processing for franchisee uploads
+    let bkmvProcessingResult = null;
+    if (link.entityType === "franchisee" && isBkmvDataFile(buffer)) {
+      try {
+        console.log("Detected BKMVDATA file upload from franchisee:", link.entityId);
+
+        // Parse the BKMVDATA file
+        const parseResult = parseBkmvData(buffer);
+
+        // Extract date range from transactions
+        const dateRange = extractDateRange(parseResult);
+
+        if (dateRange) {
+          // Format dates as YYYY-MM-DD
+          const periodStartDate = dateRange.startDate.toISOString().split("T")[0];
+          const periodEndDate = dateRange.endDate.toISOString().split("T")[0];
+
+          // Process the BKMVDATA and update cross-references
+          const processingResult = await processFranchiseeBkmvData(
+            link.entityId,
+            parseResult,
+            periodStartDate,
+            periodEndDate,
+            undefined // No user ID for public uploads
+          );
+
+          bkmvProcessingResult = {
+            processed: true,
+            companyId: parseResult.companyId,
+            periodStartDate,
+            periodEndDate,
+            totalSuppliers: parseResult.supplierSummary.size,
+            matched: processingResult.suppliersMatched,
+            unmatched: processingResult.suppliersUnmatched,
+            crossReferencesUpdated: processingResult.crossReferencesUpdated,
+            crossReferencesCreated: processingResult.crossReferencesCreated,
+            errors: processingResult.errors,
+          };
+
+          console.log("BKMVDATA processing completed:", bkmvProcessingResult);
+        } else {
+          console.warn("Could not extract date range from BKMVDATA file");
+          bkmvProcessingResult = {
+            processed: false,
+            error: "Could not extract date range from file",
+          };
+        }
+      } catch (bkmvError) {
+        console.error("Error processing BKMVDATA file:", bkmvError);
+        bkmvProcessingResult = {
+          processed: false,
+          error: bkmvError instanceof Error ? bkmvError.message : "Unknown error",
+        };
+      }
+    }
+
     return NextResponse.json(
       {
         success: true,
@@ -241,6 +299,7 @@ export async function POST(
           mimeType: uploadedFileRecord.mimeType,
         },
         filesRemaining: link.maxFiles - newFilesCount,
+        bkmvProcessing: bkmvProcessingResult,
       },
       { status: 201 }
     );

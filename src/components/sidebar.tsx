@@ -28,6 +28,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Menu,
+  FileUp,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
@@ -131,6 +132,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.brands,
                 href: "/admin/brands",
                 icon: <Tag className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.bkmvdata,
+                href: "/admin/bkmvdata",
+                icon: <FileUp className="h-4 w-4" />,
               },
             ],
           },

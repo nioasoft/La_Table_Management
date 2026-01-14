@@ -530,6 +530,9 @@ export const supplier = pgTable(
     // Commission exceptions for item-level rate overrides
     // e.g., "פיקדון" at 0%, "קפסולות" at 8%
     commissionExceptions: jsonb("commission_exceptions").$type<CommissionException[]>(),
+    // BKMV aliases - alternative names as they appear in franchisee unified reports (מבנה אחיד)
+    // Used for matching supplier names from BKMVDATA files to this supplier
+    bkmvAliases: jsonb("bkmv_aliases").$type<string[]>(),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),

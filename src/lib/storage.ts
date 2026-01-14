@@ -249,6 +249,67 @@ export async function readLocalFile(
 }
 
 /**
+ * Get a document from storage (cloud or local) by URL
+ * Supports both cloud storage URLs and local file paths
+ */
+export async function getDocument(fileUrl: string): Promise<Buffer | null> {
+  try {
+    // Check if it's a cloud storage URL
+    if (fileUrl.startsWith("http://") || fileUrl.startsWith("https://")) {
+      // Cloud storage - fetch via signed URL or direct download
+      if (isCloudStorageConfigured && s3Client && R2_BUCKET) {
+        // Extract the key from the URL
+        // URLs look like: https://endpoint/bucket/path or just the key path
+        const url = new URL(fileUrl);
+        let key = url.pathname;
+
+        // Remove leading slash and bucket name if present
+        key = key.replace(/^\//, "");
+        if (key.startsWith(R2_BUCKET + "/")) {
+          key = key.substring(R2_BUCKET.length + 1);
+        }
+
+        const command = new GetObjectCommand({
+          Bucket: R2_BUCKET,
+          Key: key,
+        });
+
+        const response = await s3Client.send(command);
+        if (response.Body) {
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of response.Body as AsyncIterable<Uint8Array>) {
+            chunks.push(chunk);
+          }
+          return Buffer.concat(chunks);
+        }
+      } else {
+        // No cloud storage configured, try to fetch via HTTP
+        const response = await fetch(fileUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return Buffer.from(await response.arrayBuffer());
+      }
+    } else {
+      // Local file path - check if it's an absolute path or relative to uploads
+      let filePath = fileUrl;
+
+      // If it's a relative path, resolve it relative to uploads directory
+      if (!path.isAbsolute(filePath)) {
+        filePath = path.join(LOCAL_UPLOAD_DIR, filePath);
+      }
+
+      return await fs.readFile(filePath);
+    }
+  } catch (error) {
+    console.error("Error getting document:", error);
+    return null;
+  }
+
+  return null;
+}
+
+/**
  * Check if storage is using cloud
  */
 export function isUsingCloudStorage(): boolean {

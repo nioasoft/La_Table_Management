@@ -44,6 +44,7 @@ import {
   FileSpreadsheet,
   FileText,
   Eye,
+  Tags,
 } from "lucide-react";
 import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
 import { FileMappingConfig } from "@/components/file-mapping-config";
@@ -109,6 +110,7 @@ interface SupplierFormData {
   isHidden: boolean;
   brandIds: string[];
   commissionExceptions: CommissionExceptionFormData[];
+  bkmvAliases: string[];
   // Commission change logging fields
   commissionChangeReason: string;
   commissionChangeNotes: string;
@@ -137,6 +139,7 @@ const initialFormData: SupplierFormData = {
   isHidden: false,
   brandIds: [],
   commissionExceptions: [],
+  bkmvAliases: [],
   commissionChangeReason: "",
   commissionChangeNotes: "",
   commissionEffectiveDate: new Date().toISOString().split("T")[0],
@@ -150,6 +153,7 @@ export default function AdminSuppliersPage() {
   const [editingSupplier, setEditingSupplier] = useState<SupplierWithBrands | null>(null);
   const [formData, setFormData] = useState<SupplierFormData>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
+  const [newAliasInput, setNewAliasInput] = useState<string>("");
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [loadingHistoryId, setLoadingHistoryId] = useState<string | null>(null);
   const [commissionHistories, setCommissionHistories] = useState<
@@ -462,6 +466,7 @@ export default function AdminSuppliersPage() {
       isHidden: supplier.isHidden || false,
       brandIds: supplier.brands?.map((b) => b.id) || [],
       commissionExceptions: commissionExceptionsToFormData(supplier.commissionExceptions as CommissionException[] | null | undefined),
+      bkmvAliases: supplier.bkmvAliases || [],
       commissionChangeReason: "",
       commissionChangeNotes: "",
       commissionEffectiveDate: new Date().toISOString().split("T")[0],
@@ -991,6 +996,102 @@ export default function AdminSuppliersPage() {
                   </div>
                 </div>
               )}
+
+              {/* BKMV Aliases - Collapsible */}
+              <Collapsible defaultOpen={formData.bkmvAliases.length > 0}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors">
+                  <Tags className="h-5 w-5" />
+                  <span className="text-lg font-semibold">{he.admin.suppliers.form.sections.bkmvAliases}</span>
+                  {formData.bkmvAliases.length > 0 && (
+                    <Badge variant="secondary" className="mr-2">
+                      {formData.bkmvAliases.length}
+                    </Badge>
+                  )}
+                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4 space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {he.admin.suppliers.form.fields.bkmvAliasesDescription}
+                  </p>
+
+                  {/* Existing aliases */}
+                  {formData.bkmvAliases.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {formData.bkmvAliases.map((alias, index) => (
+                        <Badge
+                          key={index}
+                          variant="outline"
+                          className="py-1.5 px-3 text-sm flex items-center gap-2"
+                        >
+                          {alias}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                bkmvAliases: formData.bkmvAliases.filter((_, i) => i !== index),
+                              });
+                            }}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                            disabled={isSubmitting}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add new alias */}
+                  <div className="flex gap-2">
+                    <Input
+                      value={newAliasInput}
+                      onChange={(e) => setNewAliasInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const trimmed = newAliasInput.trim();
+                          if (trimmed && !formData.bkmvAliases.includes(trimmed)) {
+                            setFormData({
+                              ...formData,
+                              bkmvAliases: [...formData.bkmvAliases, trimmed],
+                            });
+                            setNewAliasInput("");
+                          }
+                        }
+                      }}
+                      placeholder={he.admin.suppliers.form.fields.bkmvAliasesPlaceholder}
+                      disabled={isSubmitting}
+                      className="flex-1"
+                      dir="rtl"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const trimmed = newAliasInput.trim();
+                        if (trimmed && !formData.bkmvAliases.includes(trimmed)) {
+                          setFormData({
+                            ...formData,
+                            bkmvAliases: [...formData.bkmvAliases, trimmed],
+                          });
+                          setNewAliasInput("");
+                        }
+                      }}
+                      disabled={isSubmitting || !newAliasInput.trim()}
+                    >
+                      <Plus className="h-4 w-4 ms-2" />
+                      {he.admin.suppliers.form.fields.addAlias}
+                    </Button>
+                  </div>
+
+                  {formData.bkmvAliases.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">
+                      {he.admin.suppliers.form.fields.noAliases}
+                    </p>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Status */}
               <div className="flex flex-col gap-4">

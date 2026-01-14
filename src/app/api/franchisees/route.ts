@@ -8,6 +8,7 @@ import {
   getActiveFranchisees,
   getFranchiseesByBrand,
   getFranchiseesByStatus,
+  getFranchiseeByCompanyId,
   createFranchisee,
   getFranchiseeStats,
   isFranchiseeCodeUnique,
@@ -26,8 +27,18 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get("filter"); // "all", "active", or a specific status
     const brandId = searchParams.get("brandId");
+    const companyId = searchParams.get("companyId"); // ח.פ - for BKMVDATA matching
 
     let franchisees;
+
+    // If companyId is provided, return single franchisee match
+    if (companyId) {
+      const franchisee = await getFranchiseeByCompanyId(companyId);
+      return NextResponse.json({
+        franchisee,
+        found: !!franchisee
+      });
+    }
 
     if (brandId) {
       // Filter by brand

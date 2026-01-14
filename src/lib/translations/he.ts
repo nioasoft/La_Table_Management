@@ -522,6 +522,7 @@ export const he = {
           commissionSettings: "הגדרות עמלות",
           taxPayment: "מס ותשלום",
           associatedBrands: "מותגים מקושרים",
+          bkmvAliases: "שמות חלופיים (מבנה אחיד)",
         },
 
         fields: {
@@ -567,6 +568,12 @@ export const he = {
           isActive: "פעיל",
           isHidden: "הסתר מדוחות עמלות",
           isHiddenDescription: "ספק מוסתר לא יופיע בדוחות עמלות (לדוגמה: הדברה, ביטוח, סליקה)",
+          bkmvAliases: "שמות חלופיים",
+          bkmvAliasesPlaceholder: "הקלד שם וליחץ Enter להוספה",
+          bkmvAliasesDescription: "שמות הספק כפי שהם מופיעים בקבצי מבנה אחיד (BKMVDATA) של זכיינים. משמש להתאמת אוטומטית של שמות.",
+          addAlias: "הוסף שם חלופי",
+          removeAlias: "הסר",
+          noAliases: "לא הוגדרו שמות חלופיים",
         },
 
         commissionChange: {
@@ -2682,6 +2689,7 @@ export const he = {
       suppliers: "ספקים",
       franchisees: "זכיינים",
       brands: "מותגים",
+      bkmvdata: "מבנה אחיד",
 
       // Reports
       commissionsReport: "דוח עמלות",

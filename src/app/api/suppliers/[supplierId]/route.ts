@@ -92,6 +92,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       brandIds,
       fileMapping,
       commissionExceptions,
+      bkmvAliases,
       // Commission change logging fields
       commissionChangeReason,
       commissionChangeNotes,
@@ -190,6 +191,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             notes: e.notes || undefined,
           }));
         updateData.commissionExceptions = validatedExceptions.length > 0 ? validatedExceptions : null;
+      }
+    }
+
+    // Handle BKMV aliases update
+    if (bkmvAliases !== undefined) {
+      if (bkmvAliases === null || (Array.isArray(bkmvAliases) && bkmvAliases.length === 0)) {
+        // Clear BKMV aliases
+        updateData.bkmvAliases = null;
+      } else if (Array.isArray(bkmvAliases)) {
+        // Validate and set BKMV aliases
+        const validatedAliases = bkmvAliases
+          .filter((a: string) => typeof a === "string" && a.trim() !== "")
+          .map((a: string) => a.trim());
+        updateData.bkmvAliases = validatedAliases.length > 0 ? validatedAliases : null;
       }
     }
 
