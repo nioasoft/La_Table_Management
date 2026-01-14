@@ -262,6 +262,15 @@ const franchiseesData: FranchiseeData[] = [
       { name: "סמאן", phone: "054-2665522", email: "simonshamshoum8@gmail.com" },
     ],
   },
+  {
+    name: "פט ויני עזריאלי חיפה",
+    code: "FV-AZRIELI-HAIFA",
+    companyId: null,
+    city: "חיפה",
+    address: "קניון עזריאלי חיפה",
+    brandId: BRAND_IDS.FAT_VINNY,
+    contacts: [],
+  },
 ];
 
 // Brand-level contacts (not associated with any franchisee)

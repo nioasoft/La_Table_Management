@@ -9,8 +9,8 @@ import {
   FILE_PROCESSING_ERROR_CODES,
 } from "./file-processing-errors";
 
-// Israel's standard VAT rate (17%)
-export const ISRAEL_VAT_RATE = 0.17;
+// Israel's standard VAT rate (18%)
+export const ISRAEL_VAT_RATE = 0.18;
 
 // Parsed row data from supplier files
 export interface ParsedRowData {

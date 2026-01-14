@@ -146,3 +146,4 @@ The application is configured for Hebrew language by default:
 - **architecture** - see `docs/architecture.md` for layered architecture details
 - **ux** - see `docs/ux.md` for user experience guidelines
 - **file-uploads** - see `docs/file-uploads.md` for file upload implementation
+- **suppliers** - see `docs/suppliers-reference.md` for supplier configuration, file mapping rules, commission rates, and franchisee aliases
