@@ -142,6 +142,16 @@ export const contactRoleEnum = pgEnum("contact_role", [
   "other", // אחר
 ]);
 
+// Uploaded file review status for BKMVDATA automatic processing workflow
+export const uploadedFileReviewStatusEnum = pgEnum("uploaded_file_review_status", [
+  "pending", // Initial state, not processed yet
+  "processing", // Currently being processed
+  "auto_approved", // Automatically approved (100% match)
+  "needs_review", // Has unmatched or fuzzy matches, requires manual review
+  "approved", // Manually approved after review
+  "rejected", // Rejected during review
+]);
+
 // User role type (defined early for use in permissions)
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
 
@@ -884,6 +894,12 @@ export const uploadedFile = pgTable(
     uploadedByEmail: text("uploaded_by_email"),
     uploadedByIp: text("uploaded_by_ip"),
     metadata: jsonb("metadata"),
+    // BKMVDATA processing fields
+    processingStatus: uploadedFileReviewStatusEnum("processing_status").$default(() => "pending"),
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+    bkmvProcessingResult: jsonb("bkmv_processing_result").$type<BkmvProcessingResult>(),
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())
       .notNull(),
@@ -891,8 +907,43 @@ export const uploadedFile = pgTable(
   (table) => [
     index("idx_uploaded_file_upload_link").on(table.uploadLinkId),
     index("idx_uploaded_file_created_at").on(table.createdAt),
+    index("idx_uploaded_file_processing_status").on(table.processingStatus),
   ]
 );
+
+// Type for BKMV processing result stored in JSONB
+export type BkmvProcessingResult = {
+  /** Company ID from the file */
+  companyId: string | null;
+  /** File version */
+  fileVersion: string;
+  /** Total records parsed */
+  totalRecords: number;
+  /** Date range in the file */
+  dateRange: { startDate: string; endDate: string } | null;
+  /** Match statistics */
+  matchStats: {
+    total: number;
+    exactMatches: number;
+    fuzzyMatches: number;
+    unmatched: number;
+  };
+  /** Matched franchisee ID if detected */
+  matchedFranchiseeId: string | null;
+  /** Supplier matching results */
+  supplierMatches: Array<{
+    bkmvName: string;
+    amount: number;
+    transactionCount: number;
+    matchedSupplierId: string | null;
+    matchedSupplierName: string | null;
+    confidence: number;
+    matchType: string;
+    requiresReview: boolean;
+  }>;
+  /** Timestamp of processing */
+  processedAt: string;
+};
 
 // Settlement Periods table - Financial settlement periods
 export const settlementPeriod = pgTable(

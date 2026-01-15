@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   LayoutDashboard,
@@ -35,11 +37,18 @@ import { useRouter } from "next/navigation";
 import { he } from "@/lib/translations/he";
 import type { UserRole } from "@/db/schema";
 
+interface NavChild {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  badge?: number | null;
+}
+
 interface NavItem {
   label: string;
   href?: string;
   icon: React.ReactNode;
-  children?: { label: string; href: string; icon: React.ReactNode }[];
+  children?: NavChild[];
 }
 
 interface SidebarProps {
@@ -60,6 +69,21 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const isSuperUserOrAdmin = userRole === "super_user" || userRole === "admin";
+
+  // Fetch count of files needing review for badge
+  const { data: reviewData } = useQuery({
+    queryKey: ["bkmvdata", "review", "count"],
+    queryFn: async () => {
+      const response = await fetch("/api/bkmvdata/review");
+      if (!response.ok) return { total: 0 };
+      return response.json();
+    },
+    enabled: isSuperUserOrAdmin,
+    refetchInterval: 60000, // Refetch every minute
+    staleTime: 30000, // Consider data stale after 30 seconds
+  });
+
+  const filesNeedingReviewCount = reviewData?.total || 0;
 
   const handleSignOut = async () => {
     await authClient.signOut();
@@ -137,6 +161,7 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.bkmvdata,
                 href: "/admin/bkmvdata",
                 icon: <FileUp className="h-4 w-4" />,
+                badge: filesNeedingReviewCount > 0 ? filesNeedingReviewCount : null,
               },
             ],
           },
@@ -276,7 +301,12 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                               )}
                             >
                               {child.icon}
-                              <span>{child.label}</span>
+                              <span className="flex-1">{child.label}</span>
+                              {child.badge !== null && child.badge !== undefined && (
+                                <Badge variant="destructive" className="h-5 min-w-5 px-1.5 text-xs font-medium">
+                                  {child.badge}
+                                </Badge>
+                              )}
                             </Link>
                           </li>
                         ))}

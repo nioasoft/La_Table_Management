@@ -12,6 +12,7 @@ import {
   type UploadedFile,
   type CreateUploadedFileData,
   type UploadLinkStatus,
+  type BkmvProcessingResult,
 } from "@/db/schema";
 import { eq, and, desc, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -287,6 +288,66 @@ export async function createUploadedFile(
     .values(data)
     .returning()) as unknown as UploadedFile[];
   return newFile;
+}
+
+/**
+ * Update an uploaded file's processing status and result
+ */
+export async function updateUploadedFileProcessingStatus(
+  fileId: string,
+  status: "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected",
+  bkmvProcessingResult?: BkmvProcessingResult | null,
+  reviewedBy?: string | null,
+  reviewNotes?: string | null
+): Promise<UploadedFile | null> {
+  const updateData: Partial<UploadedFile> = {
+    processingStatus: status,
+  };
+
+  if (bkmvProcessingResult !== undefined) {
+    updateData.bkmvProcessingResult = bkmvProcessingResult;
+  }
+
+  if (reviewedBy !== undefined) {
+    updateData.reviewedBy = reviewedBy;
+    updateData.reviewedAt = new Date();
+  }
+
+  if (reviewNotes !== undefined) {
+    updateData.reviewNotes = reviewNotes;
+  }
+
+  const [updated] = (await database
+    .update(uploadedFile)
+    .set(updateData)
+    .where(eq(uploadedFile.id, fileId))
+    .returning()) as unknown as UploadedFile[];
+
+  return updated || null;
+}
+
+/**
+ * Get uploaded files that need review (needs_review status)
+ */
+export async function getUploadedFilesNeedingReview(): Promise<UploadedFile[]> {
+  return await database
+    .select()
+    .from(uploadedFile)
+    .where(eq(uploadedFile.processingStatus, "needs_review"))
+    .orderBy(desc(uploadedFile.createdAt));
+}
+
+/**
+ * Get uploaded file by ID
+ */
+export async function getUploadedFileById(
+  fileId: string
+): Promise<UploadedFile | null> {
+  const [file] = await database
+    .select()
+    .from(uploadedFile)
+    .where(eq(uploadedFile.id, fileId));
+  return file || null;
 }
 
 /**

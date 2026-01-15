@@ -44,9 +44,11 @@ import {
   Calendar,
   User,
   AlertCircle,
+  Filter,
+  X,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
-import { parseBkmvData, formatAmount, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
@@ -109,6 +111,11 @@ export default function BkmvDataPage() {
   const [franchiseeError, setFranchiseeError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ minDate: Date | null; maxDate: Date | null }>({ minDate: null, maxDate: null });
 
+  // Date filter state
+  const [filterStartDate, setFilterStartDate] = useState<string>("");
+  const [filterEndDate, setFilterEndDate] = useState<string>("");
+  const [isDateFiltered, setIsDateFiltered] = useState(false);
+
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
@@ -121,7 +128,7 @@ export default function BkmvDataPage() {
   }
 
   // Fetch suppliers
-  const { data: suppliersData } = useQuery({
+  const { data: suppliersData, isLoading: isLoadingSuppliers, error: suppliersError } = useQuery({
     queryKey: ["suppliers", "list", { filter: "all" }],
     queryFn: async () => {
       const response = await fetch("/api/suppliers?filter=all");
@@ -132,6 +139,11 @@ export default function BkmvDataPage() {
   });
 
   const suppliers: Supplier[] = suppliersData?.suppliers || [];
+
+  // Sorted suppliers for dropdown (alphabetically by name)
+  const sortedSuppliers = useMemo(() => {
+    return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [suppliers]);
 
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
@@ -179,6 +191,13 @@ export default function BkmvDataPage() {
       // Extract date range from transactions
       const range = getDateRange(result.transactions);
       setDateRange(range);
+
+      // Auto-initialize date filter with file's date range
+      if (range.minDate && range.maxDate) {
+        setFilterStartDate(range.minDate.toISOString().split("T")[0]);
+        setFilterEndDate(range.maxDate.toISOString().split("T")[0]);
+      }
+      setIsDateFiltered(false); // Reset filter state for new file
 
       // Auto-match franchisee by company ID
       if (result.companyId) {
@@ -244,6 +263,42 @@ export default function BkmvDataPage() {
     }
   }, [suppliers, updateSupplierMutation, parseResult]);
 
+  // Handle date filter
+  const handleDateFilter = useCallback(() => {
+    if (!parseResult || !filterStartDate || !filterEndDate) return;
+
+    const startDate = new Date(filterStartDate);
+    const endDate = new Date(filterEndDate);
+
+    // Get filtered supplier summary for the date range
+    const filteredSummary = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+
+    // Re-run matching with filtered summary
+    const matches = matchBkmvSuppliers(
+      filteredSummary,
+      suppliers,
+      { minConfidence: 0.6, reviewThreshold: 0.85 }
+    );
+    setMatchingResults(matches);
+    setIsDateFiltered(true);
+  }, [parseResult, filterStartDate, filterEndDate, suppliers]);
+
+  // Clear date filter
+  const handleClearDateFilter = useCallback(() => {
+    if (!parseResult) return;
+
+    // Re-run matching with original full summary
+    const matches = matchBkmvSuppliers(
+      parseResult.supplierSummary,
+      suppliers,
+      { minConfidence: 0.6, reviewThreshold: 0.85 }
+    );
+    setMatchingResults(matches);
+    setFilterStartDate("");
+    setFilterEndDate("");
+    setIsDateFiltered(false);
+  }, [parseResult, suppliers]);
+
   // Filter and search results
   const filteredResults = useMemo(() => {
     return matchingResults.filter(result => {
@@ -283,11 +338,19 @@ export default function BkmvDataPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">עיבוד קובץ מבנה אחיד</h1>
-        <p className="text-muted-foreground mt-2">
-          העלה קובץ BKMVDATA כדי לזהות ספקים ולהשוות מול דוחות ספקים
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">עיבוד קובץ מבנה אחיד</h1>
+          <p className="text-muted-foreground mt-2">
+            העלה קובץ BKMVDATA כדי לזהות ספקים ולהשוות מול דוחות ספקים
+          </p>
+        </div>
+        <a href="/admin/bkmvdata/review">
+          <Button variant="outline" className="gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            תור סקירת קבצים
+          </Button>
+        </a>
       </div>
 
       {/* Upload Section */}
@@ -315,12 +378,17 @@ export default function BkmvDataPage() {
             </div>
             <Button
               onClick={handleProcessFile}
-              disabled={!selectedFile || isProcessing}
+              disabled={!selectedFile || isProcessing || isLoadingSuppliers || suppliers.length === 0}
             >
               {isProcessing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin ms-2" />
                   מעבד...
+                </>
+              ) : isLoadingSuppliers ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                  טוען ספקים...
                 </>
               ) : (
                 <>
@@ -340,6 +408,33 @@ export default function BkmvDataPage() {
           {error && (
             <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
               <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
+
+          {/* Suppliers loading status */}
+          {isLoadingSuppliers && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              טוען רשימת ספקים...
+            </div>
+          )}
+
+          {suppliersError && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+              <p className="text-sm text-destructive">שגיאה בטעינת רשימת הספקים</p>
+            </div>
+          )}
+
+          {!isLoadingSuppliers && !suppliersError && suppliers.length === 0 && (
+            <div className="rounded-lg border border-amber-500/50 bg-amber-50 p-3">
+              <p className="text-sm text-amber-700">לא נמצאו ספקים במערכת. יש להוסיף ספקים לפני עיבוד קובץ.</p>
+            </div>
+          )}
+
+          {!isLoadingSuppliers && suppliers.length > 0 && (
+            <div className="flex items-center gap-2 text-sm text-green-600">
+              <CheckCircle2 className="h-4 w-4" />
+              {suppliers.length} ספקים נטענו
             </div>
           )}
         </CardContent>
@@ -430,6 +525,71 @@ export default function BkmvDataPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Date Filter */}
+          <Card className={`mb-6 ${isDateFiltered ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                סינון לפי טווח תאריכים
+                {isDateFiltered && (
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                    מסונן
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                סנן את הסכומים לפי תקופה מסוימת (חודש, רבעון וכו&apos;)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="filterStartDate">מתאריך</Label>
+                  <Input
+                    id="filterStartDate"
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-[160px]"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="filterEndDate">עד תאריך</Label>
+                  <Input
+                    id="filterEndDate"
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="w-[160px]"
+                  />
+                </div>
+                <Button
+                  onClick={handleDateFilter}
+                  disabled={!filterStartDate || !filterEndDate}
+                  variant="default"
+                >
+                  <Filter className="h-4 w-4 ms-2" />
+                  סנן
+                </Button>
+                {isDateFiltered && (
+                  <Button
+                    onClick={handleClearDateFilter}
+                    variant="outline"
+                  >
+                    <X className="h-4 w-4 ms-2" />
+                    נקה סינון
+                  </Button>
+                )}
+                {isDateFiltered && (
+                  <div className="text-sm text-blue-700 flex items-center gap-2 me-auto">
+                    <Calendar className="h-4 w-4" />
+                    מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Matching Stats */}
           <div className="grid gap-4 md:grid-cols-5 mb-6">
@@ -590,20 +750,38 @@ export default function BkmvDataPage() {
                           </TableCell>
                           <TableCell>
                             {result.matchResult.matchedSupplier && result.matchResult.matchType.startsWith("fuzzy") && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() =>
-                                  handleAddAlias(
-                                    result.matchResult.matchedSupplier!.id,
-                                    result.bkmvName
-                                  )
-                                }
-                                disabled={updateSupplierMutation.isPending}
-                              >
-                                <Plus className="h-4 w-4 ms-1" />
-                                הוסף כשם חלופי
-                              </Button>
+                              <div className="flex flex-wrap items-center gap-2 justify-end">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    handleAddAlias(
+                                      result.matchResult.matchedSupplier!.id,
+                                      result.bkmvName
+                                    )
+                                  }
+                                  disabled={updateSupplierMutation.isPending}
+                                >
+                                  <Plus className="h-4 w-4 ms-1" />
+                                  אשר והוסף כינוי
+                                </Button>
+                                <Select
+                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
+                                >
+                                  <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="בחר אחר" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-[300px]">
+                                    {sortedSuppliers
+                                      .filter(s => s.id !== result.matchResult.matchedSupplier?.id)
+                                      .map((s) => (
+                                        <SelectItem key={s.id} value={s.id}>
+                                          {s.name} ({s.code})
+                                        </SelectItem>
+                                      ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
                             )}
                             {result.matchResult.matchType.startsWith("exact") && (
                               <Badge variant="success" className="gap-1">
@@ -631,13 +809,16 @@ export default function BkmvDataPage() {
                               <Select
                                 onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
                               >
-                                <SelectTrigger className="w-[180px]">
+                                <SelectTrigger className="w-[220px]">
                                   <SelectValue placeholder="בחר ספק מהרשימה" />
                                 </SelectTrigger>
-                                <SelectContent>
-                                  {suppliers.map((s) => (
+                                <SelectContent className="max-h-[300px]">
+                                  {sortedSuppliers.map((s) => (
                                     <SelectItem key={s.id} value={s.id}>
-                                      {s.name}
+                                      <span className="flex items-center gap-2">
+                                        <span>{s.name}</span>
+                                        <span className="text-xs text-muted-foreground">({s.code})</span>
+                                      </span>
                                     </SelectItem>
                                   ))}
                                 </SelectContent>

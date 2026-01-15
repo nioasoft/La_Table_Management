@@ -384,6 +384,14 @@ export interface BkmvSupplierMatchingResult {
 
 /**
  * Match all suppliers from a BKMVDATA summary against the database
+ *
+ * IMPORTANT: Uses a two-pass approach to prevent duplicate supplier matches:
+ * 1. First pass: Find all exact matches (100% confidence)
+ * 2. Second pass: For non-exact matches, exclude suppliers already matched exactly
+ *
+ * This prevents cases like:
+ * - "ארגל" matching supplier "ארגל" at 100%
+ * - "אראל" also matching supplier "ארגל" at 82% (wrong - should look for different supplier)
  */
 export function matchBkmvSuppliers(
   supplierSummary: Map<string, { totalAmount: number; transactionCount: number }>,
@@ -392,14 +400,61 @@ export function matchBkmvSuppliers(
 ): BkmvSupplierMatchingResult[] {
   const results: BkmvSupplierMatchingResult[] = [];
 
+  // Track suppliers that have been matched with exact (100%) confidence
+  const exactMatchedSupplierIds = new Set<string>();
+
+  // First pass: Find all exact matches
+  const firstPassResults: Array<{
+    bkmvName: string;
+    summary: { totalAmount: number; transactionCount: number };
+    matchResult: SupplierMatchResult;
+  }> = [];
+
   for (const [bkmvName, summary] of supplierSummary) {
     const matchResult = matchSupplierName(bkmvName, suppliers, config);
-    results.push({
-      bkmvName,
-      amount: summary.totalAmount,
-      transactionCount: summary.transactionCount,
-      matchResult,
-    });
+    firstPassResults.push({ bkmvName, summary, matchResult });
+
+    // Track exact matches (confidence === 1)
+    if (matchResult.matchedSupplier && matchResult.confidence === 1) {
+      exactMatchedSupplierIds.add(matchResult.matchedSupplier.id);
+    }
+  }
+
+  // Second pass: Re-match non-exact matches, excluding already-matched suppliers
+  for (const { bkmvName, summary, matchResult } of firstPassResults) {
+    // If this was an exact match, keep it as-is
+    if (matchResult.matchedSupplier && matchResult.confidence === 1) {
+      results.push({
+        bkmvName,
+        amount: summary.totalAmount,
+        transactionCount: summary.transactionCount,
+        matchResult,
+      });
+      continue;
+    }
+
+    // For non-exact matches, check if the matched supplier was already claimed
+    if (matchResult.matchedSupplier && exactMatchedSupplierIds.has(matchResult.matchedSupplier.id)) {
+      // This supplier was already matched exactly to another name
+      // Try to find a different match excluding already-matched suppliers
+      const availableSuppliers = suppliers.filter(s => !exactMatchedSupplierIds.has(s.id));
+      const newMatchResult = matchSupplierName(bkmvName, availableSuppliers, config);
+
+      results.push({
+        bkmvName,
+        amount: summary.totalAmount,
+        transactionCount: summary.transactionCount,
+        matchResult: newMatchResult,
+      });
+    } else {
+      // Keep the original match result
+      results.push({
+        bkmvName,
+        amount: summary.totalAmount,
+        transactionCount: summary.transactionCount,
+        matchResult,
+      });
+    }
   }
 
   // Sort by amount descending (largest suppliers first)

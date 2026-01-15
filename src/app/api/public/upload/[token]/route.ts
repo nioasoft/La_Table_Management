@@ -5,7 +5,12 @@ import {
   createUploadedFile,
   getUploadedFilesCount,
   markUploadLinkAsUsed,
+  updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
+import { getSuppliers } from "@/data-access/suppliers";
+import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
+import { getFranchiseeByCompanyId } from "@/data-access/franchisees";
+import type { BkmvProcessingResult } from "@/db/schema";
 import {
   uploadDocument,
   isAllowedFileType,
@@ -227,16 +232,15 @@ export async function POST(
       await markUploadLinkAsUsed(link.id, uploaderEmail || undefined);
     }
 
-    // Notify super users about the new upload (non-blocking)
-    notifySuperUsersAboutUpload(link.id, uploadedFileRecord).catch((error) => {
-      console.error("Failed to notify super users about upload:", error);
-    });
-
     // Automatic BKMVDATA processing for franchisee uploads
     let bkmvProcessingResult = null;
+    let shouldNotify = true; // Default: notify for all non-BKMVDATA uploads
     if (link.entityType === "franchisee" && isBkmvDataFile(buffer)) {
       try {
         console.log("Detected BKMVDATA file upload from franchisee:", link.entityId);
+
+        // Mark file as processing
+        await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "processing");
 
         // Parse the BKMVDATA file
         const parseResult = parseBkmvData(buffer);
@@ -248,6 +252,75 @@ export async function POST(
           // Format dates as YYYY-MM-DD
           const periodStartDate = dateRange.startDate.toISOString().split("T")[0];
           const periodEndDate = dateRange.endDate.toISOString().split("T")[0];
+
+          // Get all suppliers for matching
+          const allSuppliers = await getSuppliers();
+
+          // Match suppliers from BKMVDATA
+          const matchResults = matchBkmvSuppliers(
+            parseResult.supplierSummary,
+            allSuppliers,
+            { minConfidence: 0.6, reviewThreshold: 0.85 }
+          );
+
+          // Calculate match statistics
+          const exactMatches = matchResults.filter(r =>
+            r.matchResult.matchedSupplier && r.matchResult.confidence === 1
+          ).length;
+          const fuzzyMatches = matchResults.filter(r =>
+            r.matchResult.matchedSupplier && r.matchResult.confidence < 1
+          ).length;
+          const unmatched = matchResults.filter(r => !r.matchResult.matchedSupplier).length;
+
+          // Try to match franchisee by company ID
+          let matchedFranchiseeId: string | null = null;
+          if (parseResult.companyId) {
+            const franchisee = await getFranchiseeByCompanyId(parseResult.companyId);
+            if (franchisee) {
+              matchedFranchiseeId = franchisee.id;
+            }
+          }
+
+          // Determine processing status
+          // Auto-approve if all matches are exact (100% confidence) and no unmatched
+          const shouldAutoApprove = exactMatches === matchResults.length && unmatched === 0;
+          const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
+
+          // Prepare processing result for storage
+          const storedResult: BkmvProcessingResult = {
+            companyId: parseResult.companyId,
+            fileVersion: parseResult.fileVersion,
+            totalRecords: parseResult.totalRecords,
+            dateRange: {
+              startDate: periodStartDate,
+              endDate: periodEndDate,
+            },
+            matchStats: {
+              total: matchResults.length,
+              exactMatches,
+              fuzzyMatches,
+              unmatched,
+            },
+            matchedFranchiseeId,
+            supplierMatches: matchResults.map(r => ({
+              bkmvName: r.bkmvName,
+              amount: r.amount,
+              transactionCount: r.transactionCount,
+              matchedSupplierId: r.matchResult.matchedSupplier?.id || null,
+              matchedSupplierName: r.matchResult.matchedSupplier?.name || null,
+              confidence: r.matchResult.confidence,
+              matchType: r.matchResult.matchType,
+              requiresReview: r.matchResult.requiresReview,
+            })),
+            processedAt: new Date().toISOString(),
+          };
+
+          // Update file with processing status and result
+          await updateUploadedFileProcessingStatus(
+            uploadedFileRecord.id,
+            processingStatus,
+            storedResult
+          );
 
           // Process the BKMVDATA and update cross-references
           const processingResult = await processFranchiseeBkmvData(
@@ -269,11 +342,17 @@ export async function POST(
             crossReferencesUpdated: processingResult.crossReferencesUpdated,
             crossReferencesCreated: processingResult.crossReferencesCreated,
             errors: processingResult.errors,
+            processingStatus,
+            autoApproved: shouldAutoApprove,
           };
+
+          // Only notify if file needs manual review
+          shouldNotify = processingStatus === "needs_review";
 
           console.log("BKMVDATA processing completed:", bkmvProcessingResult);
         } else {
           console.warn("Could not extract date range from BKMVDATA file");
+          await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
           bkmvProcessingResult = {
             processed: false,
             error: "Could not extract date range from file",
@@ -281,11 +360,22 @@ export async function POST(
         }
       } catch (bkmvError) {
         console.error("Error processing BKMVDATA file:", bkmvError);
+        await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
         bkmvProcessingResult = {
           processed: false,
           error: bkmvError instanceof Error ? bkmvError.message : "Unknown error",
         };
+        // Still notify on error since file needs manual review
+        shouldNotify = true;
       }
+    }
+
+    // Notify super users about the upload (non-blocking)
+    // Only notify if the file needs review (auto-approved BKMVDATA files skip notification)
+    if (shouldNotify) {
+      notifySuperUsersAboutUpload(link.id, uploadedFileRecord).catch((error) => {
+        console.error("Failed to notify super users about upload:", error);
+      });
     }
 
     return NextResponse.json(
