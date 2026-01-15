@@ -516,7 +516,7 @@ export default function BkmvDataPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6" dir="rtl">
       {/* Duplicate Dialog */}
       <Dialog open={duplicateDialog.open} onOpenChange={(open) => setDuplicateDialog({ ...duplicateDialog, open })}>
         <DialogContent>
@@ -563,7 +563,7 @@ export default function BkmvDataPage() {
       </div>
 
       {/* Tabs for Upload and History */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6" dir="rtl">
         <TabsList className="grid w-full max-w-md grid-cols-2">
           <TabsTrigger value="upload" className="gap-2">
             <Upload className="h-4 w-4" />
@@ -1142,7 +1142,6 @@ export default function BkmvDataPage() {
           </Card>
         </>
       )}
-
         </TabsContent>
 
         {/* History Tab */}
