@@ -61,47 +61,49 @@ export default function ProtectedLayout({
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar
-          userRole={userRole}
-          userName={userName}
-          userEmail={userEmail}
-        />
-      </div>
-
-      {/* Mobile Sidebar Overlay */}
-      {isMobileSidebarOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-            onClick={() => setIsMobileSidebarOpen(false)}
+    <QueryProvider>
+      <div className="min-h-screen bg-background">
+        {/* Desktop Sidebar */}
+        <div className="hidden lg:block">
+          <Sidebar
+            userRole={userRole}
+            userName={userName}
+            userEmail={userEmail}
           />
-          {/* Mobile Sidebar */}
-          <div className="lg:hidden">
-            <Sidebar
-              userRole={userRole}
-              userName={userName}
-              userEmail={userEmail}
+        </div>
+
+        {/* Mobile Sidebar Overlay */}
+        {isMobileSidebarOpen && (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+              onClick={() => setIsMobileSidebarOpen(false)}
             />
-          </div>
-        </>
-      )}
-
-      {/* Mobile Toggle Button */}
-      <MobileSidebarToggle onClick={() => setIsMobileSidebarOpen(true)} />
-
-      {/* Main Content */}
-      <main
-        className={cn(
-          "transition-all duration-300",
-          "lg:ms-64" // Offset for desktop sidebar
+            {/* Mobile Sidebar */}
+            <div className="lg:hidden">
+              <Sidebar
+                userRole={userRole}
+                userName={userName}
+                userEmail={userEmail}
+              />
+            </div>
+          </>
         )}
-      >
-        <QueryProvider>{children}</QueryProvider>
-      </main>
-    </div>
+
+        {/* Mobile Toggle Button */}
+        <MobileSidebarToggle onClick={() => setIsMobileSidebarOpen(true)} />
+
+        {/* Main Content */}
+        <main
+          className={cn(
+            "transition-all duration-300",
+            "lg:ms-64" // Offset for desktop sidebar
+          )}
+        >
+          {children}
+        </main>
+      </div>
+    </QueryProvider>
   );
 }
