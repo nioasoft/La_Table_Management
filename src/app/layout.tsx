@@ -12,10 +12,16 @@ const assistant = Assistant({
 });
 
 export const metadata: Metadata = {
-  title: "La Table Management",
-  description: "Restaurant Table Management System",
+  title: "La Table Management - מערכת ניהול עמלות",
+  description: "מערכת לניהול עמלות, התאמות ותקשורת עם ספקים וזכיינים עבור קבוצת המסעדות La Table",
   icons: {
     icon: "/favicon.ico",
+  },
+  openGraph: {
+    title: "La Table Management - מערכת ניהול עמלות",
+    description: "מערכת לניהול עמלות, התאמות ותקשורת עם ספקים וזכיינים עבור קבוצת המסעדות La Table",
+    locale: "he_IL",
+    type: "website",
   },
 };
 
