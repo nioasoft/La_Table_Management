@@ -877,13 +877,13 @@ export const uploadLink = pgTable(
   ]
 );
 
-// Uploaded Files table - Files uploaded through upload links
+// Uploaded Files table - Files uploaded through upload links or admin uploads
 export const uploadedFile = pgTable(
   "uploaded_file",
   {
     id: text("id").primaryKey(),
+    // uploadLinkId is nullable for admin uploads
     uploadLinkId: text("upload_link_id")
-      .notNull()
       .references(() => uploadLink.id, { onDelete: "cascade" }),
     fileName: text("file_name").notNull(),
     originalFileName: text("original_file_name").notNull(),
@@ -900,6 +900,11 @@ export const uploadedFile = pgTable(
     reviewedAt: timestamp("reviewed_at"),
     reviewNotes: text("review_notes"),
     bkmvProcessingResult: jsonb("bkmv_processing_result").$type<BkmvProcessingResult>(),
+    // Direct franchisee reference for admin uploads (bypasses uploadLink)
+    franchiseeId: text("franchisee_id").references(() => franchisee.id, { onDelete: "set null" }),
+    // Period dates for organizing BKMVDATA history
+    periodStartDate: date("period_start_date"),
+    periodEndDate: date("period_end_date"),
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())
       .notNull(),
@@ -908,6 +913,8 @@ export const uploadedFile = pgTable(
     index("idx_uploaded_file_upload_link").on(table.uploadLinkId),
     index("idx_uploaded_file_created_at").on(table.createdAt),
     index("idx_uploaded_file_processing_status").on(table.processingStatus),
+    index("idx_uploaded_file_franchisee").on(table.franchiseeId),
+    index("idx_uploaded_file_period").on(table.periodStartDate, table.periodEndDate),
   ]
 );
 
@@ -1546,6 +1553,10 @@ export const uploadedFileRelations = relations(uploadedFile, ({ one }) => ({
   uploadLink: one(uploadLink, {
     fields: [uploadedFile.uploadLinkId],
     references: [uploadLink.id],
+  }),
+  franchisee: one(franchisee, {
+    fields: [uploadedFile.franchiseeId],
+    references: [franchisee.id],
   }),
 }));
 

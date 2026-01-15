@@ -31,6 +31,20 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   FileUp,
   Loader2,
   CheckCircle2,
@@ -46,6 +60,12 @@ import {
   AlertCircle,
   Filter,
   X,
+  History,
+  Eye,
+  Upload,
+  Clock,
+  FileCheck,
+  ExternalLink,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
 import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
@@ -62,6 +82,41 @@ interface FranchiseeWithBrand extends Franchisee {
     nameHe: string;
     nameEn: string | null;
   } | null;
+}
+
+// Type for history item
+interface BkmvHistoryItem {
+  id: string;
+  fileName: string;
+  fileSize: number;
+  fileUrl: string;
+  processingStatus: string;
+  periodStartDate: string | null;
+  periodEndDate: string | null;
+  createdAt: string;
+  franchisee: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
+  matchStats: {
+    total: number;
+    exactMatches: number;
+    fuzzyMatches: number;
+    unmatched: number;
+  } | null;
+  companyId: string | null;
+}
+
+// Type for duplicate check response
+interface DuplicateCheckResult {
+  exists: boolean;
+  existingFile?: {
+    id: string;
+    fileName: string;
+    createdAt: string;
+    processingStatus: string;
+  };
 }
 
 // Helper to get date range from transactions
@@ -116,6 +171,17 @@ export default function BkmvDataPage() {
   const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [isDateFiltered, setIsDateFiltered] = useState(false);
 
+  // History and upload state
+  const [activeTab, setActiveTab] = useState<string>("upload");
+  const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
+  const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; autoApproved: boolean } | null>(null);
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    open: boolean;
+    existingFile?: DuplicateCheckResult["existingFile"];
+  }>({ open: false });
+
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
@@ -140,10 +206,49 @@ export default function BkmvDataPage() {
 
   const suppliers: Supplier[] = suppliersData?.suppliers || [];
 
+  // Fetch franchisees for filter dropdown
+  const { data: franchiseesData } = useQuery({
+    queryKey: ["franchisees", "list"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchisees");
+      if (!response.ok) throw new Error("Failed to fetch franchisees");
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const franchisees: FranchiseeWithBrand[] = franchiseesData?.franchisees || [];
+
+  // Fetch upload history
+  const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery({
+    queryKey: ["bkmvdata", "history", historyFilterFranchisee, historyFilterStatus],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (historyFilterFranchisee && historyFilterFranchisee !== "all") {
+        params.set("franchiseeId", historyFilterFranchisee);
+      }
+      if (historyFilterStatus && historyFilterStatus !== "all") {
+        params.set("status", historyFilterStatus);
+      }
+      params.set("limit", "50");
+      const response = await fetch(`/api/bkmvdata/history?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch history");
+      return response.json();
+    },
+    enabled: !isPending && !!session && activeTab === "history",
+  });
+
+  const historyItems: BkmvHistoryItem[] = historyData?.files || [];
+
   // Sorted suppliers for dropdown (alphabetically by name)
   const sortedSuppliers = useMemo(() => {
     return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [suppliers]);
+
+  // Sorted franchisees for dropdown
+  const sortedFranchisees = useMemo(() => {
+    return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [franchisees]);
 
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
@@ -172,8 +277,60 @@ export default function BkmvDataPage() {
       setMatchedFranchisee(null);
       setFranchiseeError(null);
       setDateRange({ minDate: null, maxDate: null });
+      setUploadSuccess(null);
     }
   }, []);
+
+  // Upload file to server
+  const handleUploadToServer = useCallback(async (forceReplace = false) => {
+    if (!selectedFile || !parseResult || !matchedFranchisee) return;
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      formData.append("franchiseeId", matchedFranchisee.id);
+      if (filterStartDate) formData.append("periodStartDate", filterStartDate);
+      if (filterEndDate) formData.append("periodEndDate", filterEndDate);
+      if (forceReplace) formData.append("forceReplace", "true");
+
+      const response = await fetch("/api/bkmvdata/admin-upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === "duplicate") {
+          // Show duplicate dialog
+          setDuplicateDialog({
+            open: true,
+            existingFile: data.existingFile,
+          });
+          return;
+        }
+        throw new Error(data.error || "Failed to upload file");
+      }
+
+      // Success
+      setUploadSuccess({
+        fileId: data.file.id,
+        autoApproved: data.processing.autoApproved,
+      });
+
+      // Refresh history
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "history"] });
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      setError(err instanceof Error ? err.message : "Failed to upload file");
+    } finally {
+      setIsUploading(false);
+      setDuplicateDialog({ open: false });
+    }
+  }, [selectedFile, parseResult, matchedFranchisee, filterStartDate, filterEndDate, queryClient]);
 
   // Process uploaded file
   const handleProcessFile = useCallback(async () => {
@@ -267,8 +424,12 @@ export default function BkmvDataPage() {
   const handleDateFilter = useCallback(() => {
     if (!parseResult || !filterStartDate || !filterEndDate) return;
 
-    const startDate = new Date(filterStartDate);
-    const endDate = new Date(filterEndDate);
+    // Parse dates in local time (same as BKMV parser) to avoid timezone issues
+    const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
+    const startDate = new Date(startYear, startMonth - 1, startDay);
+
+    const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
+    const endDate = new Date(endYear, endMonth - 1, endDay);
 
     // Get filtered supplier summary for the date range
     const filteredSummary = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
@@ -336,8 +497,56 @@ export default function BkmvDataPage() {
     );
   }
 
+  // Helper to get status badge variant
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "auto_approved":
+        return <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" />אושר אוטומטית</Badge>;
+      case "approved":
+        return <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" />אושר</Badge>;
+      case "needs_review":
+        return <Badge variant="warning" className="gap-1"><AlertTriangle className="h-3 w-3" />ממתין לסקירה</Badge>;
+      case "processing":
+        return <Badge variant="secondary" className="gap-1"><Loader2 className="h-3 w-3 animate-spin" />מעבד</Badge>;
+      case "rejected":
+        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" />נדחה</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   return (
     <div className="container mx-auto p-6">
+      {/* Duplicate Dialog */}
+      <Dialog open={duplicateDialog.open} onOpenChange={(open) => setDuplicateDialog({ ...duplicateDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              קובץ קיים לתקופה זו
+            </DialogTitle>
+            <DialogDescription>
+              כבר קיים קובץ BKMVDATA לזכיין ולתקופה שנבחרו.
+            </DialogDescription>
+          </DialogHeader>
+          {duplicateDialog.existingFile && (
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <p><strong>שם קובץ:</strong> {duplicateDialog.existingFile.fileName}</p>
+              <p><strong>תאריך העלאה:</strong> {new Date(duplicateDialog.existingFile.createdAt).toLocaleDateString("he-IL")}</p>
+              <p><strong>סטטוס:</strong> {getStatusBadge(duplicateDialog.existingFile.processingStatus)}</p>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDuplicateDialog({ open: false })}>
+              ביטול
+            </Button>
+            <Button variant="destructive" onClick={() => handleUploadToServer(true)}>
+              החלף קובץ קיים
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="mb-8 flex items-start justify-between">
         <div>
           <h1 className="text-3xl font-bold">עיבוד קובץ מבנה אחיד</h1>
@@ -352,6 +561,22 @@ export default function BkmvDataPage() {
           </Button>
         </a>
       </div>
+
+      {/* Tabs for Upload and History */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="upload" className="gap-2">
+            <Upload className="h-4 w-4" />
+            העלאה חדשה
+          </TabsTrigger>
+          <TabsTrigger value="history" className="gap-2">
+            <History className="h-4 w-4" />
+            היסטוריה
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Upload Tab */}
+        <TabsContent value="upload" className="space-y-6">
 
       {/* Upload Section */}
       <Card className="mb-6">
@@ -525,6 +750,86 @@ export default function BkmvDataPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Save to Server Section */}
+          {matchedFranchisee && parseResult && (
+            <Card className={uploadSuccess ? "border-green-500/50 bg-green-50/30" : ""}>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileCheck className="h-5 w-5" />
+                  שמירת קובץ בשרת
+                </CardTitle>
+                <CardDescription>
+                  שמור את הקובץ והעיבוד בהיסטוריה לשימוש עתידי
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {uploadSuccess ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <span className="font-medium text-green-700">קובץ נשמר בהצלחה!</span>
+                    </div>
+                    <div className="bg-green-100 rounded-lg p-3 space-y-2">
+                      {uploadSuccess.autoApproved ? (
+                        <p className="text-sm text-green-800">
+                          הקובץ אושר אוטומטית - כל הספקים הותאמו בדיוק של 100%
+                        </p>
+                      ) : (
+                        <p className="text-sm text-amber-800">
+                          הקובץ נשלח לתור הסקירה - יש התאמות שדורשות אישור ידני
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <a href={`/admin/bkmvdata/review/${uploadSuccess.fileId}`}>
+                          <Button size="sm" variant="outline" className="gap-1">
+                            <Eye className="h-3 w-3" />
+                            צפה בפרטים
+                          </Button>
+                        </a>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setUploadSuccess(null);
+                            setActiveTab("history");
+                          }}
+                        >
+                          <History className="h-3 w-3 ms-1" />
+                          לצפייה בהיסטוריה
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 text-sm text-muted-foreground">
+                      <p>זכיין: <strong>{matchedFranchisee.name}</strong></p>
+                      {filterStartDate && filterEndDate && (
+                        <p>תקופה: {new Date(filterStartDate).toLocaleDateString("he-IL")} - {new Date(filterEndDate).toLocaleDateString("he-IL")}</p>
+                      )}
+                    </div>
+                    <Button
+                      onClick={() => handleUploadToServer(false)}
+                      disabled={isUploading}
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                          שומר...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 ms-2" />
+                          שמור בשרת
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Date Filter */}
           <Card className={`mb-6 ${isDateFiltered ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
@@ -700,6 +1005,7 @@ export default function BkmvDataPage() {
                     <TableRow>
                       <TableHead className="text-right">שם במבנה אחיד</TableHead>
                       <TableHead className="text-right">סכום</TableHead>
+                      <TableHead className="text-right">לפני מע״מ</TableHead>
                       <TableHead className="text-right">עסקאות</TableHead>
                       <TableHead className="text-right">התאמה לספק</TableHead>
                       <TableHead className="text-right">ביטחון</TableHead>
@@ -709,7 +1015,7 @@ export default function BkmvDataPage() {
                   <TableBody>
                     {filteredResults.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                           {matchingResults.length === 0 ? "לא נמצאו ספקים בקובץ" : "לא נמצאו תוצאות מתאימות לסינון"}
                         </TableCell>
                       </TableRow>
@@ -718,6 +1024,7 @@ export default function BkmvDataPage() {
                         <TableRow key={index}>
                           <TableCell className="font-medium">{result.bkmvName}</TableCell>
                           <TableCell className="font-mono">{formatAmount(result.amount)}</TableCell>
+                          <TableCell className="font-mono text-muted-foreground">{formatAmount(result.amount / 1.18)}</TableCell>
                           <TableCell>{result.transactionCount}</TableCell>
                           <TableCell>
                             {result.matchResult.matchedSupplier ? (
@@ -835,6 +1142,176 @@ export default function BkmvDataPage() {
           </Card>
         </>
       )}
+
+        </TabsContent>
+
+        {/* History Tab */}
+        <TabsContent value="history" className="space-y-6">
+          {/* Filters */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Filter className="h-5 w-5" />
+                סינון היסטוריה
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap items-end gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="historyFranchisee">זכיין</Label>
+                  <Select
+                    value={historyFilterFranchisee}
+                    onValueChange={setHistoryFilterFranchisee}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="כל הזכיינים" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      <SelectItem value="all">כל הזכיינים</SelectItem>
+                      {sortedFranchisees.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name} ({f.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="historyStatus">סטטוס</Label>
+                  <Select
+                    value={historyFilterStatus}
+                    onValueChange={setHistoryFilterStatus}
+                  >
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="כל הסטטוסים" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">כל הסטטוסים</SelectItem>
+                      <SelectItem value="auto_approved">אושר אוטומטית</SelectItem>
+                      <SelectItem value="needs_review">ממתין לסקירה</SelectItem>
+                      <SelectItem value="approved">אושר</SelectItem>
+                      <SelectItem value="rejected">נדחה</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => refetchHistory()}
+                  disabled={isLoadingHistory}
+                >
+                  <RefreshCw className={`h-4 w-4 ms-2 ${isLoadingHistory ? 'animate-spin' : ''}`} />
+                  רענן
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* History Table */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                היסטוריית העלאות
+              </CardTitle>
+              <CardDescription>
+                קבצי BKMVDATA שהועלו בעבר
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingHistory ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : historyItems.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>לא נמצאו קבצים בהיסטוריה</p>
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-right">זכיין</TableHead>
+                        <TableHead className="text-right">שם קובץ</TableHead>
+                        <TableHead className="text-right">תקופה</TableHead>
+                        <TableHead className="text-right">סטטוס</TableHead>
+                        <TableHead className="text-right">התאמות</TableHead>
+                        <TableHead className="text-right">תאריך העלאה</TableHead>
+                        <TableHead className="text-right">פעולות</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {historyItems.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>
+                            {item.franchisee ? (
+                              <div>
+                                <span className="font-medium">{item.franchisee.name}</span>
+                                <span className="text-xs text-muted-foreground me-2">({item.franchisee.code})</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">לא זוהה</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="font-mono text-sm">{item.fileName}</TableCell>
+                          <TableCell>
+                            {item.periodStartDate && item.periodEndDate ? (
+                              <span className="text-sm">
+                                {new Date(item.periodStartDate).toLocaleDateString("he-IL")} - {new Date(item.periodEndDate).toLocaleDateString("he-IL")}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(item.processingStatus)}</TableCell>
+                          <TableCell>
+                            {item.matchStats ? (
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="text-green-600">{item.matchStats.exactMatches}</span>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="text-amber-600">{item.matchStats.fuzzyMatches}</span>
+                                <span className="text-muted-foreground">/</span>
+                                <span className="text-red-600">{item.matchStats.unmatched}</span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {new Date(item.createdAt).toLocaleDateString("he-IL")}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <a href={`/admin/bkmvdata/review/${item.id}`}>
+                                <Button size="sm" variant="outline" className="gap-1">
+                                  <Eye className="h-3 w-3" />
+                                  צפה
+                                </Button>
+                              </a>
+                              {item.fileUrl && (
+                                <a href={item.fileUrl} target="_blank" rel="noopener noreferrer">
+                                  <Button size="sm" variant="ghost" className="gap-1">
+                                    <ExternalLink className="h-3 w-3" />
+                                  </Button>
+                                </a>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

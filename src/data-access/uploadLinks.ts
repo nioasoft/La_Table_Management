@@ -14,7 +14,7 @@ import {
   type UploadLinkStatus,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, desc, lt, or, sql } from "drizzle-orm";
+import { eq, and, desc, lt, or, sql, isNotNull, gte, lte, inArray, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Entity types that can have upload links
@@ -836,8 +836,10 @@ export async function getDashboardUploadStatus(): Promise<DashboardUploadStatus>
 
   const fileCountByLink = new Map<string, number>();
   for (const file of allUploadedFiles) {
-    const count = fileCountByLink.get(file.uploadLinkId) || 0;
-    fileCountByLink.set(file.uploadLinkId, count + 1);
+    if (file.uploadLinkId) {
+      const count = fileCountByLink.get(file.uploadLinkId) || 0;
+      fileCountByLink.set(file.uploadLinkId, count + 1);
+    }
   }
 
   // Group links by entity
@@ -1048,4 +1050,157 @@ export async function getAllUploadLinks(options?: {
   );
 
   return linksWithCount;
+}
+
+// ============================================================================
+// BKMVDATA ADMIN UPLOAD FUNCTIONS
+// ============================================================================
+
+/**
+ * Create an uploaded file record for admin uploads (without upload link)
+ */
+export async function createAdminUploadedFile(data: {
+  id: string;
+  fileName: string;
+  originalFileName: string;
+  fileUrl: string;
+  fileSize: number;
+  mimeType: string;
+  franchiseeId: string;
+  periodStartDate?: string;
+  periodEndDate?: string;
+  uploadedByEmail?: string;
+  uploadedByIp?: string;
+  processingStatus?: "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected";
+  bkmvProcessingResult?: BkmvProcessingResult | null;
+  metadata?: Record<string, unknown>;
+}): Promise<typeof uploadedFile.$inferSelect> {
+  const [newFile] = await database
+    .insert(uploadedFile)
+    .values({
+      id: data.id,
+      uploadLinkId: null, // Admin uploads don't have upload links
+      fileName: data.fileName,
+      originalFileName: data.originalFileName,
+      fileUrl: data.fileUrl,
+      fileSize: data.fileSize,
+      mimeType: data.mimeType,
+      franchiseeId: data.franchiseeId,
+      periodStartDate: data.periodStartDate,
+      periodEndDate: data.periodEndDate,
+      uploadedByEmail: data.uploadedByEmail,
+      uploadedByIp: data.uploadedByIp,
+      processingStatus: data.processingStatus || "pending",
+      bkmvProcessingResult: data.bkmvProcessingResult,
+      metadata: data.metadata,
+    })
+    .returning();
+
+  return newFile;
+}
+
+/**
+ * Get BKMVDATA upload history with filters
+ */
+export async function getBkmvUploadHistory(options: {
+  franchiseeId?: string;
+  periodStartDate?: string;
+  periodEndDate?: string;
+  status?: string[];
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  files: Array<typeof uploadedFile.$inferSelect & { franchisee: typeof franchisee.$inferSelect | null }>;
+  total: number;
+}> {
+  const conditions = [
+    // Only include BKMVDATA files (those with processing result or admin uploads with franchiseeId)
+    or(
+      isNotNull(uploadedFile.bkmvProcessingResult),
+      isNotNull(uploadedFile.franchiseeId)
+    ),
+  ];
+
+  if (options.franchiseeId) {
+    conditions.push(eq(uploadedFile.franchiseeId, options.franchiseeId));
+  }
+
+  if (options.periodStartDate) {
+    conditions.push(gte(uploadedFile.periodStartDate, options.periodStartDate));
+  }
+
+  if (options.periodEndDate) {
+    conditions.push(lte(uploadedFile.periodEndDate, options.periodEndDate));
+  }
+
+  if (options.status && options.status.length > 0) {
+    conditions.push(
+      inArray(
+        uploadedFile.processingStatus,
+        options.status as ("pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")[]
+      )
+    );
+  }
+
+  // Get total count
+  const countResult = await database
+    .select({ count: sql<number>`count(*)` })
+    .from(uploadedFile)
+    .where(and(...conditions));
+
+  const total = Number(countResult[0]?.count || 0);
+
+  // Get files with franchisee info
+  let query = database
+    .select()
+    .from(uploadedFile)
+    .leftJoin(franchisee, eq(uploadedFile.franchiseeId, franchisee.id))
+    .where(and(...conditions))
+    .orderBy(desc(uploadedFile.createdAt));
+
+  if (options.limit) {
+    query = query.limit(options.limit) as typeof query;
+  }
+
+  if (options.offset) {
+    query = query.offset(options.offset) as typeof query;
+  }
+
+  const results = await query;
+
+  const files = results.map((row) => ({
+    ...row.uploaded_file,
+    franchisee: row.franchisee,
+  }));
+
+  return { files, total };
+}
+
+/**
+ * Check for duplicate BKMVDATA upload for same franchisee and period
+ */
+export async function checkDuplicateBkmvUpload(
+  franchiseeId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<{ exists: boolean; existingFile?: typeof uploadedFile.$inferSelect }> {
+  const existing = await database
+    .select()
+    .from(uploadedFile)
+    .where(
+      and(
+        eq(uploadedFile.franchiseeId, franchiseeId),
+        eq(uploadedFile.periodStartDate, periodStartDate),
+        eq(uploadedFile.periodEndDate, periodEndDate),
+        // Don't count rejected files as duplicates
+        ne(uploadedFile.processingStatus, "rejected")
+      )
+    )
+    .limit(1);
+
+  if (existing.length > 0) {
+    return { exists: true, existingFile: existing[0] };
+  }
+
+  return { exists: false };
 }

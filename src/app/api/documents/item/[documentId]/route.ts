@@ -161,13 +161,8 @@ export async function DELETE(
     }
 
     // Delete the file from storage
-    if (document.fileUrl && document.fileName) {
-      await deleteDocumentFile(
-        document.fileUrl,
-        document.entityType,
-        document.entityId,
-        document.fileName
-      );
+    if (document.fileUrl) {
+      await deleteDocumentFile(document.fileUrl);
     }
 
     // Delete the document record

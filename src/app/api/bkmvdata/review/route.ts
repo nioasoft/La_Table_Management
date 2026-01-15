@@ -27,12 +27,18 @@ export async function GET(request: NextRequest) {
     // Enrich with upload link and franchisee info
     const enrichedFiles = await Promise.all(
       filesNeedingReview.map(async (file) => {
-        // Get upload link for entity info
-        const uploadLink = await getUploadLinkById(file.uploadLinkId);
+        // Get upload link for entity info (if exists)
+        const uploadLink = file.uploadLinkId
+          ? await getUploadLinkById(file.uploadLinkId)
+          : null;
 
-        // Get franchisee if this is a franchisee upload
+        // Get franchisee - either from direct reference or via upload link
         let franchisee = null;
-        if (uploadLink?.entityType === "franchisee") {
+        if (file.franchiseeId) {
+          // Admin upload - direct franchisee reference
+          franchisee = await getFranchiseeById(file.franchiseeId);
+        } else if (uploadLink?.entityType === "franchisee") {
+          // Franchisee upload - via upload link
           franchisee = await getFranchiseeById(uploadLink.entityId);
         }
 
