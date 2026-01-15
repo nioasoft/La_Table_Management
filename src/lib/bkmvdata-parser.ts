@@ -320,8 +320,10 @@ function buildSupplierSummary(result: BkmvParseResult): void {
 
   for (const tx of result.transactions) {
     // Skip debit transactions (we want credits to suppliers)
-    // Also skip zero or negative amounts
-    if (tx.side !== 'credit' || tx.amount <= 0) {
+    // Credit transactions include:
+    // - Positive amounts: regular invoices (חשבוניות)
+    // - Negative amounts: credit notes (חשבוניות זיכוי) - these reduce the total
+    if (tx.side !== 'credit' || tx.amount === 0) {
       continue;
     }
 
@@ -399,7 +401,8 @@ export function getSupplierSummaryForPeriod(
   const summary = new Map<string, SupplierPurchaseSummary>();
 
   for (const tx of filteredTransactions) {
-    if (tx.side !== 'credit' || tx.amount <= 0) continue;
+    // Include both positive (invoices) and negative (credit notes) amounts
+    if (tx.side !== 'credit' || tx.amount === 0) continue;
 
     const supplierKey = tx.counterpartyName.trim();
     if (!supplierKey) continue;
