@@ -59,8 +59,9 @@ export async function middleware(request: NextRequest) {
   // Check if this is an auth route
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
 
-  // Get session token from cookie
-  const sessionToken = request.cookies.get("better-auth.session_token")?.value;
+  // Get session token from cookie (Better Auth uses this name)
+  const sessionToken = request.cookies.get("better-auth.session_token")?.value
+    || request.cookies.get("__Secure-better-auth.session_token")?.value;
 
   // If accessing auth routes and has session, redirect to dashboard
   if (isAuthRoute && sessionToken) {
