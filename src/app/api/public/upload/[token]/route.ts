@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
 import { isBkmvDataFile, parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
+import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -253,24 +254,27 @@ export async function POST(
           const periodStartDate = dateRange.startDate.toISOString().split("T")[0];
           const periodEndDate = dateRange.endDate.toISOString().split("T")[0];
 
-          // Get all suppliers for matching
+          // Get all suppliers and blacklist for matching
           const allSuppliers = await getSuppliers();
+          const blacklistedNames = await getBlacklistedNamesSet();
 
-          // Match suppliers from BKMVDATA
+          // Match suppliers from BKMVDATA with blacklist support
           const matchResults = matchBkmvSuppliers(
             parseResult.supplierSummary,
             allSuppliers,
-            { minConfidence: 0.6, reviewThreshold: 0.85 }
+            { minConfidence: 0.6, reviewThreshold: 0.85 },
+            blacklistedNames
           );
 
-          // Calculate match statistics
-          const exactMatches = matchResults.filter(r =>
+          // Calculate match statistics (excluding blacklisted items)
+          const nonBlacklistedResults = matchResults.filter(r => r.matchResult.matchType !== "blacklisted");
+          const exactMatches = nonBlacklistedResults.filter(r =>
             r.matchResult.matchedSupplier && r.matchResult.confidence === 1
           ).length;
-          const fuzzyMatches = matchResults.filter(r =>
+          const fuzzyMatches = nonBlacklistedResults.filter(r =>
             r.matchResult.matchedSupplier && r.matchResult.confidence < 1
           ).length;
-          const unmatched = matchResults.filter(r => !r.matchResult.matchedSupplier).length;
+          const unmatched = nonBlacklistedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
           // Try to match franchisee by company ID
           let matchedFranchiseeId: string | null = null;
@@ -282,8 +286,8 @@ export async function POST(
           }
 
           // Determine processing status
-          // Auto-approve if all matches are exact (100% confidence) and no unmatched
-          const shouldAutoApprove = exactMatches === matchResults.length && unmatched === 0;
+          // Auto-approve if all non-blacklisted matches are exact (100% confidence) and no unmatched
+          const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
           const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
           // Prepare processing result for storage

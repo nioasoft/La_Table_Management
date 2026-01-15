@@ -11,6 +11,7 @@ import {
   updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
+import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { randomUUID } from "crypto";
 import type { BkmvProcessingResult } from "@/db/schema";
 
@@ -129,25 +130,29 @@ export async function POST(request: NextRequest) {
       processingStatus: "processing",
     });
 
-    // Process BKMVDATA
+    // Process BKMVDATA with blacklist support
     const allSuppliers = await getSuppliers();
+    const blacklistedNames = await getBlacklistedNamesSet();
     const matchResults = matchBkmvSuppliers(
       parseResult.supplierSummary,
       allSuppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 }
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      blacklistedNames
     );
 
-    // Calculate match statistics
-    const exactMatches = matchResults.filter(r =>
+    // Calculate match statistics (excluding blacklisted items)
+    const nonBlacklistedResults = matchResults.filter(r => r.matchResult.matchType !== "blacklisted");
+    const blacklistedCount = matchResults.length - nonBlacklistedResults.length;
+    const exactMatches = nonBlacklistedResults.filter(r =>
       r.matchResult.matchedSupplier && r.matchResult.confidence === 1
     ).length;
-    const fuzzyMatches = matchResults.filter(r =>
+    const fuzzyMatches = nonBlacklistedResults.filter(r =>
       r.matchResult.matchedSupplier && r.matchResult.confidence < 1
     ).length;
-    const unmatched = matchResults.filter(r => !r.matchResult.matchedSupplier).length;
+    const unmatched = nonBlacklistedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
-    // Determine processing status
-    const shouldAutoApprove = exactMatches === matchResults.length && unmatched === 0;
+    // Determine processing status (blacklisted items don't count as unmatched)
+    const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
     const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
     // Prepare processing result
@@ -160,10 +165,11 @@ export async function POST(request: NextRequest) {
         endDate: periodEndDate,
       },
       matchStats: {
-        total: matchResults.length,
+        total: matchResults.length, // Total includes blacklisted items
         exactMatches,
         fuzzyMatches,
         unmatched,
+        // Note: blacklisted items are counted separately (total - exactMatches - fuzzyMatches - unmatched = blacklisted)
       },
       matchedFranchiseeId: franchiseeId,
       supplierMatches: matchResults.map(r => ({

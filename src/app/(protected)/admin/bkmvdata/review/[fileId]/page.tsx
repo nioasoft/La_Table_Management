@@ -51,6 +51,7 @@ import {
   X,
   Edit,
   Plus,
+  Ban,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
@@ -119,6 +120,9 @@ export default function FileDetailsPage() {
   const [editingMatch, setEditingMatch] = useState<SupplierMatch | null>(null);
   const [selectedNewSupplier, setSelectedNewSupplier] = useState<string>("");
   const [addAsAlias, setAddAsAlias] = useState(true);
+  // Blacklist state
+  const [blacklistingMatch, setBlacklistingMatch] = useState<SupplierMatch | null>(null);
+  const [blacklistNotes, setBlacklistNotes] = useState("");
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -193,6 +197,28 @@ export default function FileDetailsPage() {
     },
   });
 
+  // Blacklist mutation
+  const blacklistMutation = useMutation({
+    mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
+      const response = await fetch("/api/bkmvdata/blacklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, notes }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to add to blacklist");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "blacklist"] });
+      setBlacklistingMatch(null);
+      setBlacklistNotes("");
+    },
+  });
+
   const handleApprove = useCallback(() => {
     reviewMutation.mutate({ action: "approve", notes: reviewNotes });
   }, [reviewMutation, reviewNotes]);
@@ -209,6 +235,14 @@ export default function FileDetailsPage() {
       addAlias: addAsAlias,
     });
   }, [editingMatch, selectedNewSupplier, addAsAlias, matchMutation]);
+
+  const handleBlacklist = useCallback(() => {
+    if (!blacklistingMatch) return;
+    blacklistMutation.mutate({
+      name: blacklistingMatch.bkmvName,
+      notes: blacklistNotes || undefined,
+    });
+  }, [blacklistingMatch, blacklistNotes, blacklistMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -234,6 +268,10 @@ export default function FileDetailsPage() {
   };
 
   const getMatchBadge = (match: SupplierMatch) => {
+    // Check for blacklisted items
+    if (match.matchType === "blacklisted") {
+      return <Badge variant="secondary" className="gap-1 bg-gray-200"><Ban className="h-3 w-3" />לא רלוונטי</Badge>;
+    }
     if (!match.matchedSupplierId) {
       return <Badge variant="destructive">לא מותאם</Badge>;
     }
@@ -480,18 +518,36 @@ export default function FileDetailsPage() {
                       <TableCell>{getMatchBadge(match)}</TableCell>
                       {!isReviewed && (
                         <TableCell>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setEditingMatch(match);
-                              setSelectedNewSupplier(match.matchedSupplierId || "");
-                              setAddAsAlias(true);
-                            }}
-                          >
-                            <Edit className="h-4 w-4 ms-1" />
-                            עריכה
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setEditingMatch(match);
+                                setSelectedNewSupplier(match.matchedSupplierId || "");
+                                setAddAsAlias(true);
+                              }}
+                            >
+                              <Edit className="h-4 w-4 ms-1" />
+                              עריכה
+                            </Button>
+                            {/* Show blacklist button only for unmatched items */}
+                            {!match.matchedSupplierId && match.matchType !== "blacklisted" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-gray-600 hover:text-gray-900"
+                                onClick={() => {
+                                  setBlacklistingMatch(match);
+                                  setBlacklistNotes("");
+                                }}
+                                title="סמן כלא רלוונטי"
+                              >
+                                <Ban className="h-4 w-4 ms-1" />
+                                לא מתאים
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       )}
                     </TableRow>
@@ -623,6 +679,46 @@ export default function FileDetailsPage() {
                 <Plus className="h-4 w-4 ms-2" />
               )}
               שמור התאמה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Blacklist Dialog */}
+      <Dialog open={!!blacklistingMatch} onOpenChange={(open) => !open && setBlacklistingMatch(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>הוספה לרשימה שחורה</DialogTitle>
+            <DialogDescription>
+              האם להוסיף את &quot;{blacklistingMatch?.bkmvName}&quot; לרשימה השחורה?
+              שם זה יסומן כ&quot;לא רלוונטי&quot; ולא יופיע בהתאמות עתידיות.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium">הערות (אופציונלי)</label>
+            <Textarea
+              value={blacklistNotes}
+              onChange={(e) => setBlacklistNotes(e.target.value)}
+              placeholder="למה השם הזה לא רלוונטי? (למשל: חשבון פנימי, לא ספק)"
+              rows={3}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlacklistingMatch(null)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleBlacklist}
+              disabled={blacklistMutation.isPending}
+              className="bg-gray-600 hover:bg-gray-700"
+            >
+              {blacklistMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin ms-2" />
+              ) : (
+                <Ban className="h-4 w-4 ms-2" />
+              )}
+              הוסף לרשימה שחורה
             </Button>
           </DialogFooter>
         </DialogContent>

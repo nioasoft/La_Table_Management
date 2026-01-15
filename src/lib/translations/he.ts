@@ -2697,8 +2697,7 @@ export const he = {
 
       // Settings
       users: "משתמשים",
-      emailTemplates: "תבניות אימייל",
-      franchiseeReminders: "תזכורות זכיינים",
+      communications: "תקשורת",
     },
 
     // User section

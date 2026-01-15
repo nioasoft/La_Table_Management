@@ -69,6 +69,7 @@ export type SupplierMatchType =
   | "exact_code"        // Exact match on supplier code
   | "fuzzy_name"        // Fuzzy match on primary name
   | "fuzzy_alias"       // Fuzzy match on a BKMV alias
+  | "blacklisted"       // Name is in the blacklist (not a real supplier)
   | "no_match";         // No match found
 
 /**
@@ -392,11 +393,17 @@ export interface BkmvSupplierMatchingResult {
  * This prevents cases like:
  * - "ארגל" matching supplier "ארגל" at 100%
  * - "אראל" also matching supplier "ארגל" at 82% (wrong - should look for different supplier)
+ *
+ * @param supplierSummary - Map of supplier names to their totals from BKMVDATA
+ * @param suppliers - List of suppliers from the database to match against
+ * @param config - Optional matching configuration
+ * @param blacklistedNames - Optional set of normalized names to mark as blacklisted
  */
 export function matchBkmvSuppliers(
   supplierSummary: Map<string, { totalAmount: number; transactionCount: number }>,
   suppliers: Supplier[],
-  config: Partial<SupplierMatcherConfig> = {}
+  config: Partial<SupplierMatcherConfig> = {},
+  blacklistedNames?: Set<string>
 ): BkmvSupplierMatchingResult[] {
   const results: BkmvSupplierMatchingResult[] = [];
 
@@ -408,20 +415,51 @@ export function matchBkmvSuppliers(
     bkmvName: string;
     summary: { totalAmount: number; transactionCount: number };
     matchResult: SupplierMatchResult;
+    isBlacklisted: boolean;
   }> = [];
 
   for (const [bkmvName, summary] of supplierSummary) {
-    const matchResult = matchSupplierName(bkmvName, suppliers, config);
-    firstPassResults.push({ bkmvName, summary, matchResult });
+    // Check if this name is blacklisted
+    const normalizedBkmvName = normalizeName(bkmvName);
+    const isBlacklisted = blacklistedNames?.has(normalizedBkmvName) ?? false;
 
-    // Track exact matches (confidence === 1)
-    if (matchResult.matchedSupplier && matchResult.confidence === 1) {
-      exactMatchedSupplierIds.add(matchResult.matchedSupplier.id);
+    if (isBlacklisted) {
+      // Create a blacklisted match result
+      const blacklistedResult: SupplierMatchResult = {
+        originalName: bkmvName,
+        matchedSupplier: null,
+        confidence: 1, // 100% confident this is blacklisted
+        matchType: "blacklisted",
+        matchedOn: "blacklist",
+        requiresReview: false, // No review needed, it's intentionally blacklisted
+        alternatives: [],
+      };
+      firstPassResults.push({ bkmvName, summary, matchResult: blacklistedResult, isBlacklisted: true });
+    } else {
+      // Regular supplier matching
+      const matchResult = matchSupplierName(bkmvName, suppliers, config);
+      firstPassResults.push({ bkmvName, summary, matchResult, isBlacklisted: false });
+
+      // Track exact matches (confidence === 1)
+      if (matchResult.matchedSupplier && matchResult.confidence === 1) {
+        exactMatchedSupplierIds.add(matchResult.matchedSupplier.id);
+      }
     }
   }
 
   // Second pass: Re-match non-exact matches, excluding already-matched suppliers
-  for (const { bkmvName, summary, matchResult } of firstPassResults) {
+  for (const { bkmvName, summary, matchResult, isBlacklisted } of firstPassResults) {
+    // If this is blacklisted, keep it as-is (no supplier matching needed)
+    if (isBlacklisted) {
+      results.push({
+        bkmvName,
+        amount: summary.totalAmount,
+        transactionCount: summary.transactionCount,
+        matchResult,
+      });
+      continue;
+    }
+
     // If this was an exact match, keep it as-is
     if (matchResult.matchedSupplier && matchResult.confidence === 1) {
       results.push({

@@ -918,6 +918,46 @@ export const uploadedFile = pgTable(
   ]
 );
 
+// BKMV Blacklist table - Names to exclude from supplier matching
+// These are names that appear in BKMVDATA files but are not actual suppliers
+// (e.g., "ביגי", "מור מזון" - internal accounts or irrelevant entries)
+export const bkmvBlacklist = pgTable(
+  "bkmv_blacklist",
+  {
+    id: text("id").primaryKey(),
+    // Original name as it appears in the BKMVDATA file
+    name: text("name").notNull(),
+    // Normalized name for matching (lowercase, trimmed, etc.)
+    normalizedName: text("normalized_name").notNull(),
+    // Who added this to the blacklist
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Optional notes explaining why this was blacklisted
+    notes: text("notes"),
+    // Timestamps
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("idx_bkmv_blacklist_normalized_name").on(table.normalizedName),
+    uniqueIndex("idx_bkmv_blacklist_name_unique").on(table.normalizedName),
+  ]
+);
+
+// BKMV Blacklist relations
+export const bkmvBlacklistRelations = relations(bkmvBlacklist, ({ one }) => ({
+  createdByUser: one(user, {
+    fields: [bkmvBlacklist.createdBy],
+    references: [user.id],
+  }),
+}));
+
+// BKMV Blacklist types
+export type BkmvBlacklist = typeof bkmvBlacklist.$inferSelect;
+export type CreateBkmvBlacklistData = typeof bkmvBlacklist.$inferInsert;
+
 // Type for BKMV processing result stored in JSONB
 export type BkmvProcessingResult = {
   /** Company ID from the file */
