@@ -6,6 +6,11 @@ import * as schema from "../db/schema";
 export const auth = betterAuth({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL || "http://localhost:3000",
   secret: process.env.BETTER_AUTH_SECRET,
+  trustedOrigins: [
+    "https://www.latable.co.il",
+    "https://latable.co.il",
+    "http://localhost:3000",
+  ],
   database: drizzleAdapter(database, {
     provider: "pg",
     schema: {
