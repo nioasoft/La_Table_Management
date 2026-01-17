@@ -1,0 +1,882 @@
+"use client";
+
+import { useState, useCallback, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { authClient } from "@/lib/auth-client";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  FileUp,
+  Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  XCircle,
+  FileSpreadsheet,
+  Search,
+  RefreshCw,
+  Truck,
+  ChevronDown,
+  ChevronRight,
+  Upload,
+  Eye,
+  Edit,
+  Ban,
+  Check,
+  Plus,
+  ClipboardList,
+} from "lucide-react";
+import Link from "next/link";
+import type { Supplier, SupplierFileMapping, Franchisee } from "@/db/schema";
+import { formatCurrency } from "@/lib/translations";
+
+// Types
+interface SupplierWithMapping extends Supplier {
+  fileMapping: SupplierFileMapping | null;
+}
+
+interface ProcessedRow {
+  franchisee: string;
+  rowNumber: number;
+  grossAmount: number;
+  netAmount: number;
+  date?: string;
+  matchResult?: {
+    matchedFranchisee: { id: string; name: string; code: string } | null;
+    confidence: number;
+    requiresReview: boolean;
+  };
+  // For manual matching
+  manualMatch?: {
+    franchiseeId: string;
+    franchiseeName: string;
+    franchiseeCode: string;
+  };
+  isBlacklisted?: boolean;
+}
+
+interface ProcessingResult {
+  success: boolean;
+  data: ProcessedRow[];
+  summary: {
+    totalRows: number;
+    processedRows: number;
+    skippedRows: number;
+    totalGrossAmount: number;
+    totalNetAmount: number;
+    supplierName: string;
+    supplierId: string;
+    vatIncluded: boolean;
+    vatRate: number;
+    fileName: string;
+    fileSize: number;
+  };
+  matchSummary?: {
+    total: number;
+    matched: number;
+    needsReview: number;
+    unmatched: number;
+    averageConfidence: number;
+    unmatchedNames: string[];
+  };
+  processingStatus: string;
+  errors: Array<{ code: string; message: string; rowNumber?: number }>;
+  warnings: Array<{ code: string; message: string; rowNumber?: number }>;
+}
+
+export default function SupplierFilesPage() {
+  const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
+
+  const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [expandedResults, setExpandedResults] = useState(false);
+
+  // Manual matching state
+  const [editingRow, setEditingRow] = useState<ProcessedRow | null>(null);
+  const [selectedFranchiseeId, setSelectedFranchiseeId] = useState<string>("");
+  const [addAsAlias, setAddAsAlias] = useState(true);
+  const [franchiseeSearch, setFranchiseeSearch] = useState("");
+
+  // Blacklist state
+  const [blacklistingRow, setBlacklistingRow] = useState<ProcessedRow | null>(null);
+  const [blacklistNotes, setBlacklistNotes] = useState("");
+
+  const { data: session, isPending } = authClient.useSession();
+  const userRole = session ? (session.user as { role?: string })?.role : undefined;
+
+  // Redirect if not authenticated or authorized
+  if (!isPending && !session) {
+    router.push("/sign-in?redirect=/admin/supplier-files");
+  }
+  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
+    router.push("/dashboard");
+  }
+
+  // Fetch suppliers with file mapping
+  const { data: suppliersData, isLoading: suppliersLoading, refetch } = useQuery({
+    queryKey: ["suppliers", "with-file-mapping"],
+    queryFn: async () => {
+      const response = await fetch("/api/suppliers?filter=active");
+      if (!response.ok) throw new Error("Failed to fetch suppliers");
+      const data = await response.json();
+      // Filter to only suppliers with file mapping
+      return data.suppliers.filter((s: SupplierWithMapping) => s.fileMapping !== null);
+    },
+    enabled: !isPending && !!session,
+  });
+
+  // Fetch franchisees for manual matching
+  const { data: franchiseesData } = useQuery({
+    queryKey: ["franchisees", "list"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchisees");
+      if (!response.ok) throw new Error("Failed to fetch franchisees");
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const suppliers: SupplierWithMapping[] = suppliersData || [];
+  const franchisees: Franchisee[] = franchiseesData?.franchisees || [];
+
+  const sortedFranchisees = useMemo(() => {
+    return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
+  }, [franchisees]);
+
+  const filteredFranchisees = useMemo(() => {
+    if (!franchiseeSearch) return sortedFranchisees;
+    const search = franchiseeSearch.toLowerCase();
+    return sortedFranchisees.filter(f =>
+      f.name.toLowerCase().includes(search) ||
+      f.code.toLowerCase().includes(search)
+    );
+  }, [sortedFranchisees, franchiseeSearch]);
+
+  // Filter suppliers by search
+  const filteredSuppliers = suppliers.filter(s =>
+    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    s.code.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+
+  // Add alias mutation
+  const addAliasMutation = useMutation({
+    mutationFn: async ({ franchiseeId, aliasName }: { franchiseeId: string; aliasName: string }) => {
+      const response = await fetch(`/api/franchisees/${franchiseeId}/aliases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alias: aliasName }),
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to add alias");
+      }
+      return response.json();
+    },
+  });
+
+  // Handle file upload
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedSupplierId) return;
+
+    setIsUploading(true);
+    setUploadError(null);
+    setProcessingResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("enableMatching", "true");
+
+      const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setUploadError(result.message || result.error || "Failed to process file");
+        return;
+      }
+
+      setProcessingResult(result);
+      setExpandedResults(true);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setIsUploading(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }, [selectedSupplierId]);
+
+  // Handle manual match save
+  const handleSaveMatch = useCallback(async () => {
+    if (!editingRow || !selectedFranchiseeId || !processingResult) return;
+
+    const selectedFranchisee = franchisees.find(f => f.id === selectedFranchiseeId);
+    if (!selectedFranchisee) return;
+
+    // Add alias if requested
+    if (addAsAlias && editingRow.franchisee) {
+      try {
+        await addAliasMutation.mutateAsync({
+          franchiseeId: selectedFranchiseeId,
+          aliasName: editingRow.franchisee,
+        });
+      } catch (error) {
+        console.error("Failed to add alias:", error);
+        // Continue anyway - the manual match will still work
+      }
+    }
+
+    // Update the processing result with the manual match
+    setProcessingResult(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        data: prev.data.map(row => {
+          if (row.rowNumber === editingRow.rowNumber) {
+            return {
+              ...row,
+              manualMatch: {
+                franchiseeId: selectedFranchisee.id,
+                franchiseeName: selectedFranchisee.name,
+                franchiseeCode: selectedFranchisee.code,
+              },
+            };
+          }
+          return row;
+        }),
+        matchSummary: prev.matchSummary ? {
+          ...prev.matchSummary,
+          matched: prev.matchSummary.matched + 1,
+          unmatched: Math.max(0, prev.matchSummary.unmatched - 1),
+          unmatchedNames: prev.matchSummary.unmatchedNames.filter(n => n !== editingRow.franchisee),
+        } : undefined,
+      };
+    });
+
+    setEditingRow(null);
+    setSelectedFranchiseeId("");
+    setFranchiseeSearch("");
+  }, [editingRow, selectedFranchiseeId, processingResult, franchisees, addAsAlias, addAliasMutation]);
+
+  // Handle blacklist
+  const handleBlacklist = useCallback(() => {
+    if (!blacklistingRow || !processingResult) return;
+
+    // Update the processing result to mark as blacklisted
+    setProcessingResult(prev => {
+      if (!prev) return null;
+      return {
+        ...prev,
+        data: prev.data.map(row => {
+          if (row.rowNumber === blacklistingRow.rowNumber) {
+            return {
+              ...row,
+              isBlacklisted: true,
+            };
+          }
+          return row;
+        }),
+        matchSummary: prev.matchSummary ? {
+          ...prev.matchSummary,
+          unmatched: Math.max(0, prev.matchSummary.unmatched - 1),
+          unmatchedNames: prev.matchSummary.unmatchedNames.filter(n => n !== blacklistingRow.franchisee),
+        } : undefined,
+      };
+    });
+
+    setBlacklistingRow(null);
+    setBlacklistNotes("");
+  }, [blacklistingRow, processingResult]);
+
+  // Get effective match for a row
+  const getEffectiveMatch = (row: ProcessedRow) => {
+    if (row.isBlacklisted) {
+      return { type: "blacklisted" as const, name: null };
+    }
+    if (row.manualMatch) {
+      return { type: "manual" as const, name: row.manualMatch.franchiseeName, code: row.manualMatch.franchiseeCode };
+    }
+    if (row.matchResult?.matchedFranchisee) {
+      return {
+        type: row.matchResult.confidence === 1 ? "exact" as const : "fuzzy" as const,
+        name: row.matchResult.matchedFranchisee.name,
+        code: row.matchResult.matchedFranchisee.code,
+        confidence: row.matchResult.confidence,
+      };
+    }
+    return { type: "unmatched" as const, name: null };
+  };
+
+  // Get status badge color
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "success":
+        return <Badge variant="success" className="gap-1"><CheckCircle2 className="h-3 w-3" /> הצלחה</Badge>;
+      case "partial_success":
+        return <Badge variant="outline" className="gap-1 bg-yellow-50 text-yellow-700 border-yellow-300"><AlertTriangle className="h-3 w-3" /> הצלחה חלקית</Badge>;
+      case "needs_review":
+        return <Badge variant="secondary" className="gap-1"><Eye className="h-3 w-3" /> נדרשת סקירה</Badge>;
+      case "failed":
+        return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> נכשל</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  // Get match badge
+  const getMatchBadge = (row: ProcessedRow) => {
+    const match = getEffectiveMatch(row);
+    switch (match.type) {
+      case "blacklisted":
+        return <Badge variant="secondary" className="gap-1 bg-gray-200"><Ban className="h-3 w-3" />לא רלוונטי</Badge>;
+      case "manual":
+        return <Badge variant="success" className="gap-1"><Check className="h-3 w-3" />ידני</Badge>;
+      case "exact":
+        return <Badge variant="success">100%</Badge>;
+      case "fuzzy":
+        return <Badge variant="outline" className="bg-yellow-50 text-yellow-700">{Math.round((match.confidence || 0) * 100)}%</Badge>;
+      case "unmatched":
+        return <Badge variant="destructive">לא מותאם</Badge>;
+    }
+  };
+
+  if (isPending || suppliersLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto py-6 space-y-6" dir="rtl">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">העלאת קבצי ספקים</h1>
+          <p className="text-muted-foreground mt-1">
+            העלאה וניתוח של קבצי עמלות מספקים
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link href="/admin/supplier-files/review">
+            <Button variant="outline">
+              <ClipboardList className="h-4 w-4 ml-2" />
+              תור אישורים
+            </Button>
+          </Link>
+          <Button variant="outline" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4 ml-2" />
+            רענון
+          </Button>
+        </div>
+      </div>
+
+      {/* Supplier Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Truck className="h-5 w-5" />
+            בחירת ספק
+          </CardTitle>
+          <CardDescription>
+            בחר ספק מהרשימה כדי להעלות קובץ עמלות
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Search */}
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="חיפוש לפי שם או קוד..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pr-9"
+              />
+            </div>
+            <Select value={selectedSupplierId} onValueChange={setSelectedSupplierId}>
+              <SelectTrigger className="w-[300px]">
+                <SelectValue placeholder="בחר ספק" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredSuppliers.map((supplier) => (
+                  <SelectItem key={supplier.id} value={supplier.id}>
+                    {supplier.name} ({supplier.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Selected Supplier Info */}
+          {selectedSupplier && (
+            <div className="rounded-lg border bg-muted/50 p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-lg">{selectedSupplier.name}</p>
+                  <p className="text-sm text-muted-foreground">קוד: {selectedSupplier.code}</p>
+                </div>
+                <div className="text-left text-sm space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span>סוג קובץ:</span>
+                    <Badge variant="outline">{selectedSupplier.fileMapping?.fileType.toUpperCase()}</Badge>
+                  </div>
+                  <div>מע"מ כלול: {selectedSupplier.vatIncluded ? "כן" : "לא"}</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* File Upload */}
+      {selectedSupplier && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5" />
+              העלאת קובץ
+            </CardTitle>
+            <CardDescription>
+              העלה קובץ {selectedSupplier.fileMapping?.fileType.toUpperCase()} מהספק
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={selectedSupplier.fileMapping?.fileType === "csv" ? ".csv" : ".xlsx,.xls"}
+                onChange={handleFileUpload}
+                disabled={isUploading}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload">
+                <Button asChild disabled={isUploading}>
+                  <span>
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                        מעבד...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 ml-2" />
+                        בחר קובץ להעלאה
+                      </>
+                    )}
+                  </span>
+                </Button>
+              </label>
+              <p className="text-sm text-muted-foreground">
+                קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
+              </p>
+            </div>
+
+            {/* Upload Error */}
+            {uploadError && (
+              <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                <div className="flex items-center gap-2 text-destructive">
+                  <XCircle className="h-5 w-5" />
+                  <p className="font-medium">שגיאה בעיבוד הקובץ</p>
+                </div>
+                <p className="mt-1 text-sm text-destructive">{uploadError}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Processing Results */}
+      {processingResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5" />
+                תוצאות עיבוד
+              </span>
+              {getStatusBadge(processingResult.processingStatus)}
+            </CardTitle>
+            <CardDescription>
+              {processingResult.summary.fileName} ({(processingResult.summary.fileSize / 1024).toFixed(1)} KB)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold">{processingResult.summary.processedRows}</p>
+                <p className="text-sm text-muted-foreground">שורות שעובדו</p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-2xl font-bold">{formatCurrency(processingResult.summary.totalNetAmount)}</p>
+                <p className="text-sm text-muted-foreground">סה"כ נטו</p>
+              </div>
+              {processingResult.matchSummary && (
+                <>
+                  <div className="rounded-lg border p-3 text-center">
+                    <p className="text-2xl font-bold text-green-600">{processingResult.matchSummary.matched}</p>
+                    <p className="text-sm text-muted-foreground">זכיינים מותאמים</p>
+                  </div>
+                  <div className="rounded-lg border p-3 text-center">
+                    <p className="text-2xl font-bold text-orange-600">{processingResult.matchSummary.unmatched}</p>
+                    <p className="text-sm text-muted-foreground">לא מותאמים</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Errors and Warnings */}
+            {processingResult.errors.length > 0 && (
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                <p className="font-medium text-destructive mb-2">שגיאות ({processingResult.errors.length})</p>
+                <ul className="list-disc list-inside text-sm text-destructive space-y-1">
+                  {processingResult.errors.slice(0, 5).map((err, i) => (
+                    <li key={i}>{err.message}</li>
+                  ))}
+                  {processingResult.errors.length > 5 && (
+                    <li>...ועוד {processingResult.errors.length - 5} שגיאות</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {processingResult.warnings.length > 0 && (
+              <div className="rounded-lg border border-yellow-500/50 bg-yellow-50 p-4">
+                <p className="font-medium text-yellow-700 mb-2">אזהרות ({processingResult.warnings.length})</p>
+                <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
+                  {processingResult.warnings.slice(0, 5).map((warn, i) => (
+                    <li key={i}>{warn.message}</li>
+                  ))}
+                  {processingResult.warnings.length > 5 && (
+                    <li>...ועוד {processingResult.warnings.length - 5} אזהרות</li>
+                  )}
+                </ul>
+              </div>
+            )}
+
+            {/* Unmatched Franchisees */}
+            {processingResult.matchSummary && processingResult.matchSummary.unmatchedNames.length > 0 && (
+              <div className="rounded-lg border border-orange-500/50 bg-orange-50 p-4">
+                <p className="font-medium text-orange-700 mb-2">
+                  זכיינים שלא נמצאו ({processingResult.matchSummary.unmatchedNames.length})
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {processingResult.matchSummary.unmatchedNames.map((name, i) => (
+                    <Badge key={i} variant="outline" className="bg-white">
+                      {name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Data Table */}
+            <Collapsible open={expandedResults} onOpenChange={setExpandedResults}>
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="w-full justify-between">
+                  <span>צפייה בנתונים ({processingResult.data.length} שורות)</span>
+                  {expandedResults ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="rounded-lg border mt-2 max-h-[500px] overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[50px]">#</TableHead>
+                        <TableHead>זכיין (מקובץ)</TableHead>
+                        <TableHead>התאמה</TableHead>
+                        <TableHead>סטטוס</TableHead>
+                        <TableHead>סכום ברוטו</TableHead>
+                        <TableHead>סכום נטו</TableHead>
+                        <TableHead className="w-[120px]">פעולות</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {processingResult.data.slice(0, 100).map((row, i) => {
+                        const match = getEffectiveMatch(row);
+                        const isUnmatched = match.type === "unmatched";
+                        const isBlacklisted = match.type === "blacklisted";
+
+                        return (
+                          <TableRow
+                            key={i}
+                            className={isUnmatched ? "bg-red-50/50" : isBlacklisted ? "bg-gray-50" : ""}
+                          >
+                            <TableCell className="font-mono text-sm">{row.rowNumber}</TableCell>
+                            <TableCell className="font-medium">{row.franchisee}</TableCell>
+                            <TableCell>
+                              {match.name ? (
+                                <div>
+                                  <span className={match.type === "manual" ? "text-blue-600" : "text-green-600"}>
+                                    {match.name}
+                                  </span>
+                                  {match.code && (
+                                    <span className="text-xs text-muted-foreground mr-1">({match.code})</span>
+                                  )}
+                                </div>
+                              ) : isBlacklisted ? (
+                                <span className="text-gray-500">לא רלוונטי</span>
+                              ) : (
+                                <span className="text-orange-600">לא נמצא</span>
+                              )}
+                            </TableCell>
+                            <TableCell>{getMatchBadge(row)}</TableCell>
+                            <TableCell>{formatCurrency(row.grossAmount)}</TableCell>
+                            <TableCell>{formatCurrency(row.netAmount)}</TableCell>
+                            <TableCell>
+                              {!isBlacklisted && (
+                                <div className="flex gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingRow(row);
+                                      setSelectedFranchiseeId(
+                                        row.manualMatch?.franchiseeId ||
+                                        row.matchResult?.matchedFranchisee?.id ||
+                                        ""
+                                      );
+                                      setAddAsAlias(true);
+                                      setFranchiseeSearch("");
+                                    }}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  {isUnmatched && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-gray-600 hover:text-gray-900"
+                                      onClick={() => {
+                                        setBlacklistingRow(row);
+                                        setBlacklistNotes("");
+                                      }}
+                                      title="סמן כלא רלוונטי"
+                                    >
+                                      <Ban className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                  {processingResult.data.length > 100 && (
+                    <p className="p-2 text-center text-sm text-muted-foreground">
+                      מציג 100 מתוך {processingResult.data.length} שורות
+                    </p>
+                  )}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Suppliers List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>ספקים עם מיפוי קבצים ({suppliers.length})</CardTitle>
+          <CardDescription>
+            רשימת כל הספקים שיש להם הגדרת פרסור
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border max-h-[300px] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>שם</TableHead>
+                  <TableHead>קוד</TableHead>
+                  <TableHead>סוג קובץ</TableHead>
+                  <TableHead>מע"מ</TableHead>
+                  <TableHead>פעולות</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSuppliers.map((supplier) => (
+                  <TableRow key={supplier.id} className={supplier.id === selectedSupplierId ? "bg-muted/50" : ""}>
+                    <TableCell className="font-medium">{supplier.name}</TableCell>
+                    <TableCell className="font-mono text-sm">{supplier.code}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{supplier.fileMapping?.fileType.toUpperCase()}</Badge>
+                    </TableCell>
+                    <TableCell>{supplier.vatIncluded ? "כלול" : "לא כלול"}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setSelectedSupplierId(supplier.id)}
+                      >
+                        בחר
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit Match Dialog */}
+      <Dialog open={!!editingRow} onOpenChange={(open) => !open && setEditingRow(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>עריכת התאמה</DialogTitle>
+            <DialogDescription>
+              בחר זכיין עבור &quot;{editingRow?.franchisee}&quot;
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium">חיפוש זכיין</label>
+              <Input
+                placeholder="חפש לפי שם או קוד..."
+                value={franchiseeSearch}
+                onChange={(e) => setFranchiseeSearch(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">בחר זכיין</label>
+              <Select value={selectedFranchiseeId} onValueChange={setSelectedFranchiseeId}>
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="בחר זכיין..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {filteredFranchisees.map((f) => (
+                    <SelectItem key={f.id} value={f.id}>
+                      {f.name} ({f.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="addAsAlias"
+                checked={addAsAlias}
+                onCheckedChange={(checked) => setAddAsAlias(checked === true)}
+              />
+              <label htmlFor="addAsAlias" className="text-sm">
+                הוסף &quot;{editingRow?.franchisee}&quot; ככינוי לזכיין
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingRow(null)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleSaveMatch}
+              disabled={addAliasMutation.isPending || !selectedFranchiseeId}
+            >
+              {addAliasMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+              ) : (
+                <Plus className="h-4 w-4 ml-2" />
+              )}
+              שמור התאמה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Blacklist Dialog */}
+      <Dialog open={!!blacklistingRow} onOpenChange={(open) => !open && setBlacklistingRow(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>סימון כלא רלוונטי</DialogTitle>
+            <DialogDescription>
+              האם לסמן את &quot;{blacklistingRow?.franchisee}&quot; כלא רלוונטי?
+              שורה זו תסומן ולא תיכלל בחישובים.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium">הערות (אופציונלי)</label>
+            <Textarea
+              value={blacklistNotes}
+              onChange={(e) => setBlacklistNotes(e.target.value)}
+              placeholder="למה לא רלוונטי? (למשל: לא זכיין, חשבון פנימי)"
+              rows={3}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBlacklistingRow(null)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleBlacklist}
+              className="bg-gray-600 hover:bg-gray-700"
+            >
+              <Ban className="h-4 w-4 ml-2" />
+              סמן כלא רלוונטי
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
