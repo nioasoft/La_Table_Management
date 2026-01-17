@@ -86,6 +86,20 @@ La Table Management is a commission management system for a restaurant franchise
 - **Granular Permissions**: Module-level (view/edit/create/delete/approve) × 10 modules
 - **Audit Trail**: Comprehensive logging of all entity changes with before/after values
 
+## Database Environment
+
+**IMPORTANT: Always work with the PRODUCTION database only.**
+
+- **Production URL**: `www.latable.co.il`
+- **Production Database**: Neon PostgreSQL (connection string in `.env` as `DATABASE_URL`)
+- **Do NOT use** the local Docker database for data operations
+- All data queries, migrations, and changes should target production
+
+To run queries directly on production:
+```bash
+PGPASSWORD=<password> psql "postgresql://neondb_owner@ep-withered-sunset-ag7zdsgi-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+```
+
 ## Common Development Commands
 
 ```bash
@@ -95,10 +109,8 @@ npm run build              # Build for production
 npm run start              # Start production server
 npm run lint               # Run ESLint
 
-# Database
-npm run db:up              # Start PostgreSQL Docker container
-npm run db:down            # Stop PostgreSQL Docker container
-npm run db:migrate         # Run database migrations
+# Database (runs against DATABASE_URL from .env - PRODUCTION)
+npm run db:migrate         # Run database migrations on production
 npm run db:generate        # Generate new migration files
 npm run db:studio          # Open Drizzle Studio for database management
 
@@ -109,15 +121,14 @@ npm run test:e2e           # Run Playwright end-to-end tests
 ## Environment Setup
 
 1. Copy `.env.example` to `.env` and configure:
-   - Database connection (PostgreSQL)
+   - Database connection (PostgreSQL) - uses production Neon database
    - Better Auth secrets
    - AWS S3/R2 credentials (for file storage)
    - Resend API key (for emails)
    - Public variables with NEXT_PUBLIC_ prefix
 
-2. Start database and run migrations:
+2. Run migrations on production:
    ```bash
-   npm run db:up
    npm run db:migrate
    ```
 
