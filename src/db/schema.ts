@@ -958,6 +958,156 @@ export const bkmvBlacklistRelations = relations(bkmvBlacklist, ({ one }) => ({
 export type BkmvBlacklist = typeof bkmvBlacklist.$inferSelect;
 export type CreateBkmvBlacklistData = typeof bkmvBlacklist.$inferInsert;
 
+// ============================================================================
+// SUPPLIER FILE PROCESSING RESULT TYPE
+// ============================================================================
+
+// Type for supplier file processing result stored in JSONB
+export interface SupplierFileProcessingResult {
+  totalRows: number;
+  processedRows: number;
+  skippedRows: number;
+  totalGrossAmount: number;
+  totalNetAmount: number;
+  vatAdjusted: boolean;
+
+  matchStats: {
+    total: number;
+    exactMatches: number;
+    fuzzyMatches: number;
+    unmatched: number;
+  };
+
+  franchiseeMatches: Array<{
+    originalName: string;
+    rowNumber: number;
+    grossAmount: number;
+    netAmount: number;
+    matchedFranchiseeId: string | null;
+    matchedFranchiseeName: string | null;
+    confidence: number;
+    matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none";
+    requiresReview: boolean;
+  }>;
+
+  processedAt: string;
+}
+
+// ============================================================================
+// SUPPLIER FILE UPLOAD TABLE
+// ============================================================================
+
+// Supplier file upload table - Tracks supplier file uploads for review queue
+export const supplierFileUpload = pgTable(
+  "supplier_file_upload",
+  {
+    id: text("id").primaryKey(),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => supplier.id, { onDelete: "restrict" }),
+    originalFileName: text("original_file_name").notNull(),
+    fileUrl: text("file_url"),
+    fileSize: integer("file_size"),
+    filePath: text("file_path"),
+
+    // Processing
+    processingStatus: uploadedFileReviewStatusEnum("processing_status")
+      .$default(() => "pending")
+      .notNull(),
+    processingResult: jsonb("processing_result").$type<SupplierFileProcessingResult>(),
+
+    // Review
+    reviewedBy: text("reviewed_by").references(() => user.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+
+    // Period
+    periodStartDate: date("period_start_date"),
+    periodEndDate: date("period_end_date"),
+
+    // Timestamps
+    createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
+    updatedAt: timestamp("updated_at").$defaultFn(() => new Date()).notNull(),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  },
+  (table) => [
+    index("idx_supplier_file_upload_supplier").on(table.supplierId),
+    index("idx_supplier_file_upload_status").on(table.processingStatus),
+    index("idx_supplier_file_upload_created").on(table.createdAt),
+  ]
+);
+
+// Supplier File Upload relations
+export const supplierFileUploadRelations = relations(supplierFileUpload, ({ one }) => ({
+  supplier: one(supplier, {
+    fields: [supplierFileUpload.supplierId],
+    references: [supplier.id],
+  }),
+  reviewedByUser: one(user, {
+    fields: [supplierFileUpload.reviewedBy],
+    references: [user.id],
+    relationName: "reviewedSupplierFiles",
+  }),
+  createdByUser: one(user, {
+    fields: [supplierFileUpload.createdBy],
+    references: [user.id],
+    relationName: "createdSupplierFiles",
+  }),
+}));
+
+// Supplier File Upload types
+export type SupplierFileUpload = typeof supplierFileUpload.$inferSelect;
+export type CreateSupplierFileUploadData = typeof supplierFileUpload.$inferInsert;
+export type UpdateSupplierFileUploadData = Partial<
+  Omit<CreateSupplierFileUploadData, "id" | "createdAt">
+>;
+
+// ============================================================================
+// SUPPLIER FILE BLACKLIST TABLE
+// ============================================================================
+
+// Blacklist for irrelevant franchisee names in supplier files
+// These are names that appear in supplier files but are not actual franchisees
+// (e.g., "סה״כ", "total", "summary" - summary rows or irrelevant entries)
+export const supplierFileBlacklist = pgTable(
+  "supplier_file_blacklist",
+  {
+    id: text("id").primaryKey(),
+    // Original name as it appears in the supplier file
+    name: text("name").notNull(),
+    // Normalized name for matching (lowercase, trimmed, etc.)
+    normalizedName: text("normalized_name").notNull().unique(),
+    // Optional: specific to a supplier (null means applies to all suppliers)
+    supplierId: text("supplier_id").references(() => supplier.id, { onDelete: "cascade" }),
+    // Optional notes explaining why this was blacklisted
+    notes: text("notes"),
+    // Who added this to the blacklist
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    // Timestamps
+    createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
+  },
+  (table) => [
+    index("idx_supplier_file_blacklist_normalized").on(table.normalizedName),
+    index("idx_supplier_file_blacklist_supplier").on(table.supplierId),
+  ]
+);
+
+// Supplier File Blacklist relations
+export const supplierFileBlacklistRelations = relations(supplierFileBlacklist, ({ one }) => ({
+  supplier: one(supplier, {
+    fields: [supplierFileBlacklist.supplierId],
+    references: [supplier.id],
+  }),
+  createdByUser: one(user, {
+    fields: [supplierFileBlacklist.createdBy],
+    references: [user.id],
+  }),
+}));
+
+// Supplier File Blacklist types
+export type SupplierFileBlacklist = typeof supplierFileBlacklist.$inferSelect;
+export type CreateSupplierFileBlacklistData = typeof supplierFileBlacklist.$inferInsert;
+
 // Type for BKMV processing result stored in JSONB
 export type BkmvProcessingResult = {
   /** Company ID from the file */
