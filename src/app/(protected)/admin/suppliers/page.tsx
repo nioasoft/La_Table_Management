@@ -12,6 +12,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,7 +107,6 @@ interface SupplierFormData {
   secondaryContactEmail: string;
   secondaryContactPhone: string;
   address: string;
-  taxId: string;
   paymentTerms: string;
   defaultCommissionRate: string;
   commissionType: CommissionType;
@@ -129,7 +135,6 @@ const initialFormData: SupplierFormData = {
   secondaryContactEmail: "",
   secondaryContactPhone: "",
   address: "",
-  taxId: "",
   paymentTerms: "",
   defaultCommissionRate: "",
   commissionType: "percentage",
@@ -456,7 +461,6 @@ export default function AdminSuppliersPage() {
       secondaryContactEmail: supplier.secondaryContactEmail || "",
       secondaryContactPhone: supplier.secondaryContactPhone || "",
       address: supplier.address || "",
-      taxId: supplier.taxId || "",
       paymentTerms: supplier.paymentTerms || "",
       defaultCommissionRate: supplier.defaultCommissionRate || "",
       commissionType: supplier.commissionType || "percentage",
@@ -596,17 +600,16 @@ export default function AdminSuppliersPage() {
       </div>
 
       {/* Supplier Form Modal */}
-      {showForm && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>{editingSupplier ? he.admin.suppliers.form.editTitle : he.admin.suppliers.form.createTitle}</CardTitle>
-            <CardDescription>
+      <Dialog open={showForm} onOpenChange={(open) => { if (!open) cancelForm(); }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{editingSupplier ? he.admin.suppliers.form.editTitle : he.admin.suppliers.form.createTitle}</DialogTitle>
+            <DialogDescription>
               {editingSupplier
                 ? he.admin.suppliers.form.editDescription
                 : he.admin.suppliers.form.createDescription}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+            </DialogDescription>
+          </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-6">
               {formError && (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
@@ -933,34 +936,21 @@ export default function AdminSuppliersPage() {
                 )}
               </div>
 
-              {/* Tax & Payment */}
+              {/* Payment */}
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold flex items-center gap-2">
                   <Hash className="h-5 w-5" />
                   {he.admin.suppliers.form.sections.taxPayment}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="taxId">{he.admin.suppliers.form.fields.taxId}</Label>
-                    <Input
-                      id="taxId"
-                      value={formData.taxId}
-                      onChange={(e) => setFormData({ ...formData, taxId: e.target.value })}
-                      placeholder={he.admin.suppliers.form.fields.taxIdPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
-                    <Input
-                      id="paymentTerms"
-                      value={formData.paymentTerms}
-                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                      placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
+                  <Input
+                    id="paymentTerms"
+                    value={formData.paymentTerms}
+                    onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                    placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
+                    disabled={isSubmitting}
+                  />
                 </div>
               </div>
 
@@ -1148,9 +1138,8 @@ export default function AdminSuppliersPage() {
                 </Button>
               </div>
             </form>
-          </CardContent>
-        </Card>
-      )}
+        </DialogContent>
+      </Dialog>
 
       {/* Suppliers List */}
       <Card>

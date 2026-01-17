@@ -857,13 +857,13 @@ export default function ReportsPage() {
                         <TableCell>{row.contactEmail || "-"}</TableCell>
                         <TableCell>{row.contactPhone || "-"}</TableCell>
                         <TableCell>
-                          {row.defaultCommissionRate
+                          {row.defaultCommissionRate != null
                             ? formatPercent(Number(row.defaultCommissionRate))
                             : "-"}
                         </TableCell>
-                        <TableCell>{row.totalCommissions}</TableCell>
+                        <TableCell>{row.totalCommissions ?? 0}</TableCell>
                         <TableCell className="font-medium">
-                          {formatCurrency(row.totalCommissionAmount)}
+                          {formatCurrency(row.totalCommissionAmount ?? 0)}
                         </TableCell>
                       </TableRow>
                     ))}

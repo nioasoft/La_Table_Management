@@ -486,17 +486,6 @@ export default function SupplierCardPage() {
                     </div>
                   </div>
                 )}
-                {supplier.taxId && (
-                  <div className="flex items-start gap-3">
-                    <Hash className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.basicInfo.taxId}
-                      </p>
-                      <p>{supplier.taxId}</p>
-                    </div>
-                  </div>
-                )}
                 {supplier.address && (
                   <div className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
