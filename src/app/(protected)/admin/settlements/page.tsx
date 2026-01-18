@@ -329,8 +329,8 @@ export default function SettlementsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SettlementPeriodType)}>
-            <TabsList className="grid w-full grid-cols-4 mb-6">
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SettlementPeriodType)} dir="rtl">
+            <TabsList className="flex w-full gap-1 mb-6">
               {frequencyTabs.map((tab) => (
                 <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-2">
                   {tab.icon}

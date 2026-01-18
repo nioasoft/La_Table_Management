@@ -568,22 +568,22 @@ export default function ReconciliationPage() {
             <Button onClick={fetchReport} disabled={isLoadingReport}>
               {isLoadingReport ? (
                 <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
                   {t.actions.loading}
                 </>
               ) : (
                 <>
-                  <Search className="ml-2 h-4 w-4" />
+                  <Search className="me-2 h-4 w-4" />
                   {t.actions.search}
                 </>
               )}
             </Button>
             <Button variant="outline" onClick={() => refetchStats()}>
-              <RefreshCw className="ml-2 h-4 w-4" />
+              <RefreshCw className="me-2 h-4 w-4" />
               {t.actions.refreshStats}
             </Button>
             <Button variant="secondary" onClick={() => setShowCompareForm(true)}>
-              <ArrowRightLeft className="ml-2 h-4 w-4" />
+              <ArrowRightLeft className="me-2 h-4 w-4" />
               {t.actions.manualCompare}
             </Button>
           </div>
@@ -705,12 +705,12 @@ export default function ReconciliationPage() {
                 <Button type="submit" disabled={isComparing}>
                   {isComparing ? (
                     <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
                       {t.manualCompare.comparing}
                     </>
                   ) : (
                     <>
-                      <ArrowRightLeft className="ml-2 h-4 w-4" />
+                      <ArrowRightLeft className="me-2 h-4 w-4" />
                       {t.manualCompare.compare}
                     </>
                   )}
@@ -810,7 +810,7 @@ export default function ReconciliationPage() {
                   onClick={() => setShowBulkApproveDialog(true)}
                   className="bg-green-600 hover:bg-green-700"
                 >
-                  <CheckCheck className="h-4 w-4 mr-1" />
+                  <CheckCheck className="h-4 w-4 me-1" />
                   {t.bulkActions.bulkApprove.replace("{count}", String(selectedIds.size))}
                 </Button>
               </div>
@@ -976,7 +976,7 @@ export default function ReconciliationPage() {
               onClick={() => handleUpdateStatus("discrepancy")}
               disabled={isUpdating}
             >
-              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
+              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4 me-1" />}
               {t.reviewDialog.confirmDiscrepancy}
             </Button>
             <Button
@@ -984,7 +984,7 @@ export default function ReconciliationPage() {
               onClick={() => handleUpdateStatus("matched")}
               disabled={isUpdating}
             >
-              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
+              {isUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4 me-1" />}
               {t.reviewDialog.markAsMatched}
             </Button>
           </DialogFooter>
@@ -1053,12 +1053,12 @@ export default function ReconciliationPage() {
             >
               {isBulkApproving ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  <Loader2 className="h-4 w-4 me-1 animate-spin" />
                   {t.bulkApproveDialog.approving}
                 </>
               ) : (
                 <>
-                  <CheckCheck className="h-4 w-4 mr-1" />
+                  <CheckCheck className="h-4 w-4 me-1" />
                   {t.bulkApproveDialog.approve.replace("{count}", String(selectedIds.size))}
                 </>
               )}

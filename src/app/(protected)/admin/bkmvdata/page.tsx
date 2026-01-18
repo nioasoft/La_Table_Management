@@ -564,7 +564,7 @@ export default function BkmvDataPage() {
 
       {/* Tabs for Upload and History */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6" dir="rtl">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+        <TabsList className="flex w-full max-w-md gap-1">
           <TabsTrigger value="upload" className="gap-2">
             <Upload className="h-4 w-4" />
             העלאה חדשה

@@ -609,12 +609,12 @@ export default function AdminSuppliersPage() {
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => fetchSuppliers()}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             {he.common.refresh}
           </Button>
         </div>
         <Button onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }} className="w-full sm:w-auto">
-          <Plus className="ml-2 h-4 w-4" />
+          <Plus className="me-2 h-4 w-4" />
           {he.common.create}
         </Button>
       </div>
@@ -716,7 +716,7 @@ export default function AdminSuppliersPage() {
                   {(formData.contactName || formData.contactEmail || formData.contactPhone) && (
                     <Check className="h-4 w-4 text-green-500" />
                   )}
-                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -766,7 +766,7 @@ export default function AdminSuppliersPage() {
                   {(formData.secondaryContactName || formData.secondaryContactEmail || formData.secondaryContactPhone) && (
                     <Check className="h-4 w-4 text-green-500" />
                   )}
-                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -996,7 +996,7 @@ export default function AdminSuppliersPage() {
                         >
                           {brand.nameHe}
                           {brand.nameEn && (
-                            <span className="text-muted-foreground text-sm ml-1">
+                            <span className="text-muted-foreground text-sm ms-1">
                               ({brand.nameEn})
                             </span>
                           )}
@@ -1013,11 +1013,11 @@ export default function AdminSuppliersPage() {
                   <Tags className="h-5 w-5" />
                   <span className="text-lg font-semibold">{he.admin.suppliers.form.sections.bkmvAliases}</span>
                   {formData.bkmvAliases.length > 0 && (
-                    <Badge variant="secondary" className="mr-2">
+                    <Badge variant="secondary" className="ms-2">
                       {formData.bkmvAliases.length}
                     </Badge>
                   )}
-                  <ChevronDown className="h-4 w-4 mr-auto transition-transform data-[state=open]:rotate-180" />
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-4 space-y-4">
                   <p className="text-sm text-muted-foreground">
@@ -1090,7 +1090,7 @@ export default function AdminSuppliersPage() {
                       }}
                       disabled={isSubmitting || !newAliasInput.trim()}
                     >
-                      <Plus className="h-4 w-4 ms-2" />
+                      <Plus className="h-4 w-4 me-2" />
                       {he.admin.suppliers.form.fields.addAlias}
                     </Button>
                   </div>
@@ -1146,12 +1146,12 @@ export default function AdminSuppliersPage() {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
                       {he.common.saving}
                     </>
                   ) : (
                     <>
-                      <Check className="ml-2 h-4 w-4" />
+                      <Check className="me-2 h-4 w-4" />
                       {editingSupplier ? he.common.update : he.common.create}
                     </>
                   )}
@@ -1266,7 +1266,7 @@ export default function AdminSuppliersPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/admin/suppliers/${supplier.id}`}>
                         <Button size="sm" variant="default">
-                          <Eye className="h-4 w-4 mr-1" />
+                          <Eye className="h-4 w-4 me-1" />
                           {he.admin.suppliers.actions.view}
                         </Button>
                       </Link>
@@ -1280,12 +1280,12 @@ export default function AdminSuppliersPage() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <>
-                            <History className="h-4 w-4 mr-1" />
+                            <History className="h-4 w-4 me-1" />
                             {he.admin.suppliers.actions.history}
                             {expandedHistoryId === supplier.id ? (
-                              <ChevronUp className="h-4 w-4 ml-1" />
+                              <ChevronUp className="h-4 w-4 ms-1" />
                             ) : (
-                              <ChevronDown className="h-4 w-4 ml-1" />
+                              <ChevronDown className="h-4 w-4 ms-1" />
                             )}
                           </>
                         )}
@@ -1295,17 +1295,17 @@ export default function AdminSuppliersPage() {
                         variant="outline"
                         onClick={() => toggleFileMappingExpanded(supplier.id)}
                       >
-                        <FileSpreadsheet className="h-4 w-4 mr-1" />
+                        <FileSpreadsheet className="h-4 w-4 me-1" />
                         {he.admin.suppliers.actions.fileMapping}
                         {supplier.fileMapping && (
-                          <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                          <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
                             {he.admin.suppliers.actions.set}
                           </Badge>
                         )}
                         {expandedFileMappingId === supplier.id ? (
-                          <ChevronUp className="h-4 w-4 ml-1" />
+                          <ChevronUp className="h-4 w-4 ms-1" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 ml-1" />
+                          <ChevronDown className="h-4 w-4 ms-1" />
                         )}
                       </Button>
                       <Button
@@ -1318,17 +1318,17 @@ export default function AdminSuppliersPage() {
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           <>
-                            <FileText className="h-4 w-4 mr-1" />
+                            <FileText className="h-4 w-4 me-1" />
                             {he.admin.suppliers.actions.documents}
                             {supplierDocuments[supplier.id]?.length > 0 && (
-                              <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                              <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
                                 {supplierDocuments[supplier.id].length}
                               </Badge>
                             )}
                             {expandedDocumentsId === supplier.id ? (
-                              <ChevronUp className="h-4 w-4 ml-1" />
+                              <ChevronUp className="h-4 w-4 ms-1" />
                             ) : (
-                              <ChevronDown className="h-4 w-4 ml-1" />
+                              <ChevronDown className="h-4 w-4 ms-1" />
                             )}
                           </>
                         )}
@@ -1386,7 +1386,7 @@ export default function AdminSuppliersPage() {
                                     {entry.previousRate ?? he.common.notApplicable}% → {entry.newRate}%
                                   </span>
                                   <Badge variant="outline" className="text-xs">
-                                    <Calendar className="h-3 w-3 mr-1" />
+                                    <Calendar className="h-3 w-3 me-1" />
                                     {new Date(entry.effectiveDate).toLocaleDateString("he-IL")}
                                   </Badge>
                                 </div>
@@ -1401,7 +1401,7 @@ export default function AdminSuppliersPage() {
                                   </p>
                                 )}
                               </div>
-                              <div className="text-xs text-muted-foreground text-right">
+                              <div className="text-xs text-muted-foreground text-end">
                                 <div className="flex items-center gap-1">
                                   <User className="h-3 w-3" />
                                   {entry.createdByUser?.name || he.admin.suppliers.history.system}

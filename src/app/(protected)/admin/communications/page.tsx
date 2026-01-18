@@ -72,8 +72,8 @@ export default function CommunicationsPage() {
         <p className="text-muted-foreground">ניהול תבניות אימייל ותזכורות זכיינים</p>
       </div>
 
-      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" dir="rtl">
+        <TabsList className="flex w-full max-w-md gap-1">
           <TabsTrigger value="email-templates" className="gap-2">
             <Mail className="h-4 w-4" />
             תבניות אימייל

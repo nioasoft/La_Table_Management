@@ -340,7 +340,7 @@ export default function FranchiseePurchaseReportPage() {
             disabled={isLoading || !selectedFranchisee}
           >
             <RefreshCw
-              className={`h-4 w-4 ml-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`h-4 w-4 me-2 ${isLoading ? "animate-spin" : ""}`}
             />
             רענון
           </Button>
@@ -350,9 +350,9 @@ export default function FranchiseePurchaseReportPage() {
             className="bg-green-600 hover:bg-green-700"
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
             ) : (
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
             )}
             ייצוא לאקסל
           </Button>
@@ -383,7 +383,7 @@ export default function FranchiseePurchaseReportPage() {
           </div>
           {selectedFranchisee && (
             <Button onClick={fetchReport} className="mt-4" disabled={isLoading}>
-              {isLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
               טען דוח
             </Button>
           )}
@@ -420,7 +420,7 @@ export default function FranchiseePurchaseReportPage() {
               <div className="space-y-2">
                 <Label htmlFor="supplier">ספק</Label>
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                  <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-right">
+                  <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end">
                     <SelectValue placeholder="כל הספקים" />
                   </SelectTrigger>
                   <SelectContent>
@@ -452,7 +452,7 @@ export default function FranchiseePurchaseReportPage() {
             </div>
             <div className="flex gap-2 mt-4">
               <Button onClick={handleApplyFilters} disabled={isLoading}>
-                {isLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
                 החל סינון
               </Button>
               <Button variant="outline" onClick={handleResetFilters}>
@@ -592,8 +592,8 @@ export default function FranchiseePurchaseReportPage() {
           </div>
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="bySupplier" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+          <Tabs defaultValue="bySupplier" className="w-full" dir="rtl">
+            <TabsList className="flex w-full gap-1">
               <TabsTrigger value="bySupplier" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 לפי ספק

@@ -500,12 +500,12 @@ export default function SupplierFilesPage() {
         <div className="flex items-center gap-2">
           <Link href="/admin/supplier-files/review">
             <Button variant="outline">
-              <ClipboardList className="h-4 w-4 ml-2" />
+              <ClipboardList className="h-4 w-4 me-2" />
               תור אישורים
             </Button>
           </Link>
           <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 ml-2" />
+            <RefreshCw className="h-4 w-4 me-2" />
             רענון
           </Button>
         </div>
@@ -556,7 +556,7 @@ export default function SupplierFilesPage() {
                   <p className="font-medium text-lg">{selectedSupplier.name}</p>
                   <p className="text-sm text-muted-foreground">קוד: {selectedSupplier.code}</p>
                 </div>
-                <div className="text-left text-sm space-y-1">
+                <div className="text-start text-sm space-y-1">
                   <div className="flex items-center gap-2">
                     <span>סוג קובץ:</span>
                     <Badge variant="outline">{selectedSupplier.fileMapping?.fileType.toUpperCase()}</Badge>
@@ -597,12 +597,12 @@ export default function SupplierFilesPage() {
                   <span>
                     {isUploading ? (
                       <>
-                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
                         מעבד...
                       </>
                     ) : (
                       <>
-                        <Upload className="h-4 w-4 ml-2" />
+                        <Upload className="h-4 w-4 me-2" />
                         בחר קובץ להעלאה
                       </>
                     )}
@@ -684,7 +684,7 @@ export default function SupplierFilesPage() {
                 {savedFileId ? (
                   <Link href={`/admin/supplier-files/review/${savedFileId}`}>
                     <Button variant="outline">
-                      <Eye className="h-4 w-4 ml-2" />
+                      <Eye className="h-4 w-4 me-2" />
                       צפייה בקובץ
                     </Button>
                   </Link>
@@ -695,12 +695,12 @@ export default function SupplierFilesPage() {
                   >
                     {isSaving ? (
                       <>
-                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
                         שומר...
                       </>
                     ) : (
                       <>
-                        <Save className="h-4 w-4 ml-2" />
+                        <Save className="h-4 w-4 me-2" />
                         שמור לתור הבדיקה
                       </>
                     )}
@@ -796,7 +796,7 @@ export default function SupplierFilesPage() {
                                     {match.name}
                                   </span>
                                   {match.code && (
-                                    <span className="text-xs text-muted-foreground mr-1">({match.code})</span>
+                                    <span className="text-xs text-muted-foreground ms-1">({match.code})</span>
                                   )}
                                 </div>
                               ) : isBlacklisted ? (
@@ -961,9 +961,9 @@ export default function SupplierFilesPage() {
               disabled={addAliasMutation.isPending || !selectedFranchiseeId}
             >
               {addAliasMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <Plus className="h-4 w-4 ml-2" />
+                <Plus className="h-4 w-4 me-2" />
               )}
               שמור התאמה
             </Button>
@@ -999,7 +999,7 @@ export default function SupplierFilesPage() {
               onClick={handleBlacklist}
               className="bg-gray-600 hover:bg-gray-700"
             >
-              <Ban className="h-4 w-4 ml-2" />
+              <Ban className="h-4 w-4 me-2" />
               סמן כלא רלוונטי
             </Button>
           </DialogFooter>

@@ -407,7 +407,7 @@ export default function VarianceReportPage() {
             disabled={isLoading}
           >
             <RefreshCw
-              className={`h-4 w-4 ml-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`h-4 w-4 me-2 ${isLoading ? "animate-spin" : ""}`}
             />
             {t.actions.refresh}
           </Button>
@@ -417,9 +417,9 @@ export default function VarianceReportPage() {
             className="bg-green-600 hover:bg-green-700"
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
             ) : (
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
             )}
             {t.actions.exportToExcel}
           </Button>
@@ -555,7 +555,7 @@ export default function VarianceReportPage() {
             </div>
             <div className="flex items-end">
               <Button onClick={handleApplyFilters} disabled={isLoading} className="w-full">
-                {isLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+                {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
                 {t.actions.generateReport}
               </Button>
             </div>
@@ -679,8 +679,8 @@ export default function VarianceReportPage() {
           )}
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="flagged" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+          <Tabs defaultValue="flagged" className="w-full" dir="rtl">
+            <TabsList className="flex w-full gap-1">
               <TabsTrigger value="flagged" className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4" />
                 {t.tabs.flagged} ({report.flaggedOnly.length})

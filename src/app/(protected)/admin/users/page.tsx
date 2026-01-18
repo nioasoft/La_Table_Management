@@ -451,36 +451,36 @@ export default function AdminUsersPage() {
             />
           </div>
           <Button variant="outline" onClick={fetchUsers}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="me-2 h-4 w-4" />
             {he.common.refresh}
           </Button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)}>
-          <TabsList className="grid w-full grid-cols-4 max-w-xl">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)} dir="rtl">
+          <TabsList className="flex w-full max-w-xl gap-1">
             <TabsTrigger value="all" className="gap-2">
               {he.admin.users.tabs.all}
-              <Badge variant="secondary" className="mr-1">
+              <Badge variant="secondary" className="ms-1">
                 {getTabCount("all")}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="pending" className="gap-2">
               {he.admin.users.tabs.pending}
               {stats && stats.pending > 0 && (
-                <Badge variant="warning" className="mr-1">
+                <Badge variant="warning" className="ms-1">
                   {stats.pending}
                 </Badge>
               )}
             </TabsTrigger>
             <TabsTrigger value="active" className="gap-2">
               {he.admin.users.tabs.active}
-              <Badge variant="secondary" className="mr-1">
+              <Badge variant="secondary" className="ms-1">
                 {getTabCount("active")}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="suspended" className="gap-2">
               {he.admin.users.tabs.suspended}
-              <Badge variant="secondary" className="mr-1">
+              <Badge variant="secondary" className="ms-1">
                 {getTabCount("suspended")}
               </Badge>
             </TabsTrigger>
@@ -574,7 +574,7 @@ export default function AdminUsersPage() {
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              <CheckCircle className="ml-1 h-4 w-4" />
+                              <CheckCircle className="me-1 h-4 w-4" />
                               {he.admin.users.actions.approve}
                             </>
                           )}
@@ -589,7 +589,7 @@ export default function AdminUsersPage() {
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
                             <>
-                              <XCircle className="ml-1 h-4 w-4" />
+                              <XCircle className="me-1 h-4 w-4" />
                               {he.admin.users.actions.reject}
                             </>
                           )}
@@ -605,7 +605,7 @@ export default function AdminUsersPage() {
                           variant="outline"
                           onClick={() => handleOpenRoleChangeDialog(user)}
                         >
-                          <UserCog className="ml-1 h-4 w-4" />
+                          <UserCog className="me-1 h-4 w-4" />
                           {he.admin.users.actions.changeRole}
                         </Button>
                         <Button
@@ -613,7 +613,7 @@ export default function AdminUsersPage() {
                           variant="outline"
                           onClick={() => handleOpenPermissions(user)}
                         >
-                          <Settings className="ml-1 h-4 w-4" />
+                          <Settings className="me-1 h-4 w-4" />
                           {he.admin.users.actions.permissions}
                         </Button>
                         {session?.user?.id !== user.id && (
@@ -623,7 +623,7 @@ export default function AdminUsersPage() {
                               variant="outline"
                               onClick={() => handleSuspend(user.id)}
                             >
-                              <UserX className="ml-1 h-4 w-4" />
+                              <UserX className="me-1 h-4 w-4" />
                               {he.admin.users.actions.suspend}
                             </Button>
                             <Button
@@ -647,7 +647,7 @@ export default function AdminUsersPage() {
                           variant="outline"
                           onClick={() => handleReactivate(user.id)}
                         >
-                          <UserCheck className="ml-1 h-4 w-4" />
+                          <UserCheck className="me-1 h-4 w-4" />
                           {he.admin.users.actions.reactivate}
                         </Button>
                         <Button
@@ -704,9 +704,9 @@ export default function AdminUsersPage() {
               disabled={rejectingUserId !== null}
             >
               {rejectingUserId ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <XCircle className="h-4 w-4 ml-2" />
+                <XCircle className="h-4 w-4 me-2" />
               )}
               {he.admin.users.dialogs.reject.confirmButton}
             </Button>
@@ -754,9 +754,9 @@ export default function AdminUsersPage() {
               disabled={isDeleting}
             >
               {isDeleting ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <Trash2 className="h-4 w-4 ml-2" />
+                <Trash2 className="h-4 w-4 me-2" />
               )}
               {he.admin.users.dialogs.delete.confirmButton}
             </Button>
@@ -814,9 +814,9 @@ export default function AdminUsersPage() {
               disabled={isChangingRole || !newRole || newRole === userForRoleChange?.role}
             >
               {isChangingRole ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <UserCog className="h-4 w-4 ml-2" />
+                <UserCog className="h-4 w-4 me-2" />
               )}
               {he.admin.users.dialogs.changeRole.confirmButton}
             </Button>

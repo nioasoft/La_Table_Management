@@ -237,14 +237,14 @@ export default function AdminBrandsPage() {
         <div className="flex items-center gap-4">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm">
-              <ChevronRight className="h-4 w-4 ml-1" />
+              <ChevronRight className="h-4 w-4 me-1" />
               {he.common.dashboard}
             </Button>
           </Link>
           <h1 className="text-3xl font-bold">{he.admin.brands.title}</h1>
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="ml-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           {he.common.signOut}
         </Button>
       </div>
@@ -347,12 +347,12 @@ export default function AdminBrandsPage() {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
                       {he.common.saving}
                     </>
                   ) : (
                     <>
-                      <Check className="ml-2 h-4 w-4" />
+                      <Check className="me-2 h-4 w-4" />
                       {editingBrand ? he.common.update : he.common.create}
                     </>
                   )}

@@ -658,7 +658,7 @@ export default function AdminFranchiseesPage() {
               setFormData(initialFormData);
             }}
           >
-            <Plus className="ml-2 h-5 w-5" />
+            <Plus className="me-2 h-5 w-5" />
             הוספת זכיין
           </Button>
         </div>
@@ -950,7 +950,7 @@ export default function AdminFranchiseesPage() {
                     onClick={addOwner}
                     disabled={isSubmitting}
                   >
-                    <Plus className="h-4 w-4 ml-1" />
+                    <Plus className="h-4 w-4 me-1" />
                     {he.admin.franchisees.form.owners.addOwner}
                   </Button>
                 </div>
@@ -1161,12 +1161,12 @@ export default function AdminFranchiseesPage() {
                 <Button type="submit" disabled={isSubmitting}>
                   {isSubmitting ? (
                     <>
-                      <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
                       {he.common.saving}
                     </>
                   ) : (
                     <>
-                      <Check className="ml-2 h-4 w-4" />
+                      <Check className="me-2 h-4 w-4" />
                       {editingFranchisee ? he.common.update : he.common.create}
                     </>
                   )}
@@ -1315,7 +1315,7 @@ export default function AdminFranchiseesPage() {
             >
               {statusChangeModal.isSubmitting ? (
                 <>
-                  <Loader2 className="ml-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="me-2 h-4 w-4 animate-spin" />
                   {he.common.saving}
                 </>
               ) : (
@@ -1446,7 +1446,7 @@ function FranchiseeCard({
             title={he.common.viewDetails}
             data-testid={`view-details-${franchisee.id}`}
           >
-            <Eye className="h-4 w-4 mr-1" />
+            <Eye className="h-4 w-4 me-1" />
             {he.admin.franchisees.card.details}
           </Button>
           <Button
@@ -1466,17 +1466,17 @@ function FranchiseeCard({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <FileText className="h-4 w-4 mr-1" />
+                <FileText className="h-4 w-4 me-1" />
                 {he.admin.franchisees.card.documents}
                 {documents.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                  <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
                     {documents.length}
                   </Badge>
                 )}
                 {isDocumentsExpanded ? (
-                  <ChevronUp className="h-4 w-4 ml-1" />
+                  <ChevronUp className="h-4 w-4 ms-1" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 ml-1" />
+                  <ChevronDown className="h-4 w-4 ms-1" />
                 )}
               </>
             )}
@@ -1491,17 +1491,17 @@ function FranchiseeCard({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <History className="h-4 w-4 mr-1" />
+                <History className="h-4 w-4 me-1" />
                 {he.admin.franchisees.card.history}
                 {statusHistory.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 px-1 py-0 text-xs">
+                  <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
                     {statusHistory.length}
                   </Badge>
                 )}
                 {isHistoryExpanded ? (
-                  <ChevronUp className="h-4 w-4 ml-1" />
+                  <ChevronUp className="h-4 w-4 ms-1" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 ml-1" />
+                  <ChevronDown className="h-4 w-4 ms-1" />
                 )}
               </>
             )}
@@ -1525,7 +1525,7 @@ function FranchiseeCard({
                 <MapPin className="h-4 w-4" />
                 {he.admin.franchisees.card.address}
               </div>
-              <div className="text-sm text-muted-foreground mr-6">
+              <div className="text-sm text-muted-foreground me-6">
                 {[
                   franchisee.address,
                   franchisee.city,
@@ -1548,7 +1548,7 @@ function FranchiseeCard({
                 <UserCircle className="h-4 w-4" />
                 {he.admin.franchisees.card.primaryContact}
               </div>
-              <div className="text-sm text-muted-foreground mr-6 flex flex-wrap gap-4">
+              <div className="text-sm text-muted-foreground me-6 flex flex-wrap gap-4">
                 {franchisee.primaryContactName && (
                   <span>{franchisee.primaryContactName}</span>
                 )}
@@ -1575,7 +1575,7 @@ function FranchiseeCard({
                 <Users className="h-4 w-4" />
                 אנשי קשר ({franchisee.contacts.length})
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mr-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 me-6">
                 {franchisee.contacts.map((contact) => (
                   <div
                     key={contact.id}
@@ -1621,7 +1621,7 @@ function FranchiseeCard({
                 <Calendar className="h-4 w-4" />
                 {he.admin.franchisees.card.importantDates}
               </div>
-              <div className="text-sm text-muted-foreground mr-6 flex flex-wrap gap-4">
+              <div className="text-sm text-muted-foreground me-6 flex flex-wrap gap-4">
                 {franchisee.openingDate && (
                   <span>
                     {he.admin.franchisees.card.opening}{" "}
@@ -1673,7 +1673,7 @@ function FranchiseeCard({
                 <FileText className="h-4 w-4" />
                 {he.admin.franchisees.card.notes}
               </div>
-              <div className="text-sm text-muted-foreground mr-6">
+              <div className="text-sm text-muted-foreground me-6">
                 {franchisee.notes}
               </div>
             </div>

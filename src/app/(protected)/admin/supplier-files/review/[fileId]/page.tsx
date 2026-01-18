@@ -547,13 +547,13 @@ export default function SupplierFileDetailPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right">#</TableHead>
-                  <TableHead className="text-right">שם בקובץ ספק</TableHead>
-                  <TableHead className="text-right">סכום ברוטו</TableHead>
-                  <TableHead className="text-right">סכום נטו</TableHead>
-                  <TableHead className="text-right">זכיין מותאם</TableHead>
-                  <TableHead className="text-right">סטטוס</TableHead>
-                  {!isReviewed && <TableHead className="text-right">פעולות</TableHead>}
+                  <TableHead className="text-end">#</TableHead>
+                  <TableHead className="text-end">שם בקובץ ספק</TableHead>
+                  <TableHead className="text-end">סכום ברוטו</TableHead>
+                  <TableHead className="text-end">סכום נטו</TableHead>
+                  <TableHead className="text-end">זכיין מותאם</TableHead>
+                  <TableHead className="text-end">סטטוס</TableHead>
+                  {!isReviewed && <TableHead className="text-end">פעולות</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>

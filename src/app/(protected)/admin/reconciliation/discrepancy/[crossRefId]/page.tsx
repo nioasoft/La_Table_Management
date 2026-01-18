@@ -360,7 +360,7 @@ export default function DiscrepancyResolutionPage() {
           <p className="text-muted-foreground mb-4">{error}</p>
           <Link href="/admin/reconciliation">
             <Button variant="outline">
-              <ChevronLeft className="h-4 w-4 ml-2" />
+              <ChevronLeft className="h-4 w-4 me-2" />
               {t.backToReconciliation}
             </Button>
           </Link>
@@ -386,7 +386,7 @@ export default function DiscrepancyResolutionPage() {
         <div className="flex items-center gap-4">
           <Link href="/admin/reconciliation">
             <Button variant="ghost" size="sm">
-              <ChevronLeft className="h-4 w-4 ml-1" />
+              <ChevronLeft className="h-4 w-4 me-1" />
               {tCommon.back}
             </Button>
           </Link>
@@ -397,7 +397,7 @@ export default function DiscrepancyResolutionPage() {
           {getStatusBadge(metadata.matchStatus || "pending")}
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="ml-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           {tCommon.signOut}
         </Button>
       </div>
@@ -556,7 +556,7 @@ export default function DiscrepancyResolutionPage() {
                   }}
                   disabled={isResolved}
                 >
-                  <Check className="h-4 w-4 ml-2" />
+                  <Check className="h-4 w-4 me-2" />
                   {t.quickActions.approve}
                 </Button>
                 <Button
@@ -568,7 +568,7 @@ export default function DiscrepancyResolutionPage() {
                   }}
                   disabled={isResolved}
                 >
-                  <X className="h-4 w-4 ml-2" />
+                  <X className="h-4 w-4 me-2" />
                   {t.quickActions.reject}
                 </Button>
               </div>
@@ -578,7 +578,7 @@ export default function DiscrepancyResolutionPage() {
                 onClick={() => setShowFileRequestDialog(true)}
                 disabled={isResolved}
               >
-                <FileUp className="h-4 w-4 ml-2" />
+                <FileUp className="h-4 w-4 me-2" />
                 {t.quickActions.requestFile}
               </Button>
             </CardContent>
@@ -664,12 +664,12 @@ export default function DiscrepancyResolutionPage() {
                 >
                   {resolveMutation.isPending ? (
                     <>
-                      <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
                       {t.resolutionForm.submitting}
                     </>
                   ) : (
                     <>
-                      <Send className="h-4 w-4 ml-2" />
+                      <Send className="h-4 w-4 me-2" />
                       {t.resolutionForm.submit}
                     </>
                   )}
@@ -757,12 +757,12 @@ export default function DiscrepancyResolutionPage() {
             <Button onClick={handleRequestFile} disabled={isRequestingFile || !fileRequestEmail.trim()}>
               {isRequestingFile ? (
                 <>
-                  <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                  <Loader2 className="h-4 w-4 me-2 animate-spin" />
                   {t.fileRequestDialog.sending}
                 </>
               ) : (
                 <>
-                  <Send className="h-4 w-4 ml-2" />
+                  <Send className="h-4 w-4 me-2" />
                   {t.fileRequestDialog.send}
                 </>
               )}
@@ -808,11 +808,11 @@ export default function DiscrepancyResolutionPage() {
               data-testid="confirm-approval-button"
             >
               {resolveMutation.isPending ? (
-                <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                <Loader2 className="h-4 w-4 me-2 animate-spin" />
               ) : approvalAction === "approve" ? (
-                <Check className="h-4 w-4 ml-2" />
+                <Check className="h-4 w-4 me-2" />
               ) : (
-                <X className="h-4 w-4 ml-2" />
+                <X className="h-4 w-4 me-2" />
               )}
               {approvalAction === "approve" ? t.approvalDialog.approve : t.approvalDialog.reject}
             </Button>

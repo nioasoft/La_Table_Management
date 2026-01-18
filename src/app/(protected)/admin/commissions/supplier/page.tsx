@@ -318,14 +318,14 @@ export default function SupplierCommissionReportPage() {
         <div className="flex items-center gap-4">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm">
-              <ChevronRight className="h-4 w-4 ml-1" />
+              <ChevronRight className="h-4 w-4 me-1" />
               לוח בקרה
             </Button>
           </Link>
           <h1 className="text-3xl font-bold">דוח עמלות לפי ספק</h1>
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="mr-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           התנתקות
         </Button>
       </div>
@@ -427,9 +427,9 @@ export default function SupplierCommissionReportPage() {
                 onClick={() => setShowComparison(!showComparison)}
               >
                 {showComparison ? (
-                  <ChevronUp className="h-4 w-4 ml-2" />
+                  <ChevronUp className="h-4 w-4 me-2" />
                 ) : (
-                  <ChevronDown className="h-4 w-4 ml-2" />
+                  <ChevronDown className="h-4 w-4 me-2" />
                 )}
                 השוואה היסטורית
               </Button>
@@ -464,7 +464,7 @@ export default function SupplierCommissionReportPage() {
               onClick={fetchReport}
               disabled={!selectedSupplierId}
             >
-              <RefreshCw className="h-4 w-4 ml-2" />
+              <RefreshCw className="h-4 w-4 me-2" />
               הצג דוח
             </Button>
             <Button
@@ -472,9 +472,9 @@ export default function SupplierCommissionReportPage() {
               disabled={!reportData || isExporting}
             >
               {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <Download className="h-4 w-4 ml-2" />
+                <Download className="h-4 w-4 me-2" />
               )}
               ייצוא ל-Excel
             </Button>
@@ -499,7 +499,7 @@ export default function SupplierCommissionReportPage() {
                 <div className="flex gap-2 flex-wrap">
                   {reportData.supplier.defaultCommissionRate && (
                     <Badge variant="outline">
-                      <Percent className="h-3 w-3 ml-1" />
+                      <Percent className="h-3 w-3 me-1" />
                       {reportData.supplier.defaultCommissionRate}%
                     </Badge>
                   )}
@@ -671,21 +671,21 @@ export default function SupplierCommissionReportPage() {
               variant={activeTab === "franchisees" ? "default" : "outline"}
               onClick={() => setActiveTab("franchisees")}
             >
-              <Users className="h-4 w-4 ml-2" />
+              <Users className="h-4 w-4 me-2" />
               לפי זכיין ({reportData.byFranchisee.length})
             </Button>
             <Button
               variant={activeTab === "periods" ? "default" : "outline"}
               onClick={() => setActiveTab("periods")}
             >
-              <Calendar className="h-4 w-4 ml-2" />
+              <Calendar className="h-4 w-4 me-2" />
               לפי תקופה ({reportData.byPeriod.length})
             </Button>
             <Button
               variant={activeTab === "details" ? "default" : "outline"}
               onClick={() => setActiveTab("details")}
             >
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
               פירוט מלא ({reportData.details.length})
             </Button>
           </div>
@@ -709,14 +709,14 @@ export default function SupplierCommissionReportPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-right py-3 px-4">זכיין</th>
-                          <th className="text-right py-3 px-4">קוד</th>
-                          <th className="text-right py-3 px-4">מותג</th>
-                          <th className="text-right py-3 px-4">עמלות</th>
-                          <th className="text-right py-3 px-4">סכום ברוטו</th>
-                          <th className="text-right py-3 px-4">סכום נטו</th>
-                          <th className="text-right py-3 px-4">סכום עמלה</th>
-                          <th className="text-right py-3 px-4">שיעור ממוצע</th>
+                          <th className="text-end py-3 px-4">זכיין</th>
+                          <th className="text-end py-3 px-4">קוד</th>
+                          <th className="text-end py-3 px-4">מותג</th>
+                          <th className="text-end py-3 px-4">עמלות</th>
+                          <th className="text-end py-3 px-4">סכום ברוטו</th>
+                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום עמלה</th>
+                          <th className="text-end py-3 px-4">שיעור ממוצע</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -773,12 +773,12 @@ export default function SupplierCommissionReportPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-right py-3 px-4">תאריך התחלה</th>
-                          <th className="text-right py-3 px-4">תאריך סיום</th>
-                          <th className="text-right py-3 px-4">עמלות</th>
-                          <th className="text-right py-3 px-4">סכום ברוטו</th>
-                          <th className="text-right py-3 px-4">סכום נטו</th>
-                          <th className="text-right py-3 px-4">סכום עמלה</th>
+                          <th className="text-end py-3 px-4">תאריך התחלה</th>
+                          <th className="text-end py-3 px-4">תאריך סיום</th>
+                          <th className="text-end py-3 px-4">עמלות</th>
+                          <th className="text-end py-3 px-4">סכום ברוטו</th>
+                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום עמלה</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -841,14 +841,14 @@ export default function SupplierCommissionReportPage() {
                     <table className="w-full">
                       <thead>
                         <tr className="border-b">
-                          <th className="text-right py-3 px-4">זכיין</th>
-                          <th className="text-right py-3 px-4">מותג</th>
-                          <th className="text-right py-3 px-4">תקופה</th>
-                          <th className="text-right py-3 px-4">ברוטו</th>
-                          <th className="text-right py-3 px-4">נטו</th>
-                          <th className="text-right py-3 px-4">שיעור</th>
-                          <th className="text-right py-3 px-4">עמלה</th>
-                          <th className="text-right py-3 px-4">סטטוס</th>
+                          <th className="text-end py-3 px-4">זכיין</th>
+                          <th className="text-end py-3 px-4">מותג</th>
+                          <th className="text-end py-3 px-4">תקופה</th>
+                          <th className="text-end py-3 px-4">ברוטו</th>
+                          <th className="text-end py-3 px-4">נטו</th>
+                          <th className="text-end py-3 px-4">שיעור</th>
+                          <th className="text-end py-3 px-4">עמלה</th>
+                          <th className="text-end py-3 px-4">סטטוס</th>
                         </tr>
                       </thead>
                       <tbody>

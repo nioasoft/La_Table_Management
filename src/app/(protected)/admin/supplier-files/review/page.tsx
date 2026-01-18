@@ -270,12 +270,12 @@ export default function SupplierFilesReviewPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="text-right">שם קובץ</TableHead>
-                    <TableHead className="text-right">ספק</TableHead>
-                    <TableHead className="text-right">תאריך העלאה</TableHead>
-                    <TableHead className="text-right">התאמות זכיינים</TableHead>
-                    <TableHead className="text-right">תקופה</TableHead>
-                    <TableHead className="text-right">פעולות</TableHead>
+                    <TableHead className="text-end">שם קובץ</TableHead>
+                    <TableHead className="text-end">ספק</TableHead>
+                    <TableHead className="text-end">תאריך העלאה</TableHead>
+                    <TableHead className="text-end">התאמות זכיינים</TableHead>
+                    <TableHead className="text-end">תקופה</TableHead>
+                    <TableHead className="text-end">פעולות</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

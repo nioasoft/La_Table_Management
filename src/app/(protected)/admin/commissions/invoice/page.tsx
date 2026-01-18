@@ -338,7 +338,7 @@ export default function InvoiceReportPage() {
               onClick={fetchInvoiceData}
               disabled={!selectedSupplierId || !periodStartDate || !periodEndDate}
             >
-              <RefreshCw className="h-4 w-4 ml-2" />
+              <RefreshCw className="h-4 w-4 me-2" />
               {t.invoice.actions.showData}
             </Button>
             <Button
@@ -346,9 +346,9 @@ export default function InvoiceReportPage() {
               disabled={!selectedSupplierId || !periodStartDate || !periodEndDate || isExporting}
             >
               {isExporting ? (
-                <Loader2 className="h-4 w-4 animate-spin ml-2" />
+                <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
-                <Download className="h-4 w-4 ml-2" />
+                <Download className="h-4 w-4 me-2" />
               )}
               {t.invoice.actions.exportToExcel}
             </Button>
@@ -461,13 +461,13 @@ export default function InvoiceReportPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-right py-3 px-4">{t.invoice.table.brandCode}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.brandName}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.commissions}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.grossAmount}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.netAmount}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.avgRate}</th>
-                        <th className="text-right py-3 px-4">{t.invoice.table.invoiceAmount}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.brandCode}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.brandName}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.commissions}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.grossAmount}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.netAmount}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.avgRate}</th>
+                        <th className="text-end py-3 px-4">{t.invoice.table.invoiceAmount}</th>
                       </tr>
                     </thead>
                     <tbody>

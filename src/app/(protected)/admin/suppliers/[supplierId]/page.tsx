@@ -436,8 +436,8 @@ export default function SupplierCardPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6" dir="rtl">
+        <TabsList className="flex w-full flex-wrap gap-1">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             {he.admin.suppliers.detail.tabs.overview}

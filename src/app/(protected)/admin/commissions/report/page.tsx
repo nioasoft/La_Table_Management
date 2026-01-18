@@ -431,7 +431,7 @@ export default function CommissionReportPage() {
             <div className="space-y-2">
               <Label htmlFor="supplier">ספק</Label>
               <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-right">
+                <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end">
                   <SelectValue placeholder="כל הספקים" />
                 </SelectTrigger>
                 <SelectContent>
@@ -558,8 +558,8 @@ export default function CommissionReportPage() {
           </div>
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="byBrand" className="w-full">
-            <TabsList className="grid w-full grid-cols-4" dir="rtl">
+          <Tabs defaultValue="byBrand" className="w-full" dir="rtl">
+            <TabsList className="flex w-full gap-1">
               <TabsTrigger value="byBrand" className="flex items-center gap-2">
                 לפי מותג
                 <Building2 className="h-4 w-4" />
@@ -581,7 +581,7 @@ export default function CommissionReportPage() {
             {/* By Brand Tab */}
             <TabsContent value="byBrand">
               <Card>
-                <CardHeader className="text-right">
+                <CardHeader className="text-end">
                   <CardTitle>סיכום לפי מותג</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי מותג
@@ -635,7 +635,7 @@ export default function CommissionReportPage() {
             {/* By Period Tab */}
             <TabsContent value="byPeriod">
               <Card>
-                <CardHeader className="text-right">
+                <CardHeader className="text-end">
                   <CardTitle>סיכום לפי תקופה</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי תקופת התחשבנות
@@ -689,7 +689,7 @@ export default function CommissionReportPage() {
             {/* By Supplier Tab */}
             <TabsContent value="bySupplier">
               <Card>
-                <CardHeader className="text-right">
+                <CardHeader className="text-end">
                   <CardTitle>סיכום לפי ספק</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי ספק
@@ -745,7 +745,7 @@ export default function CommissionReportPage() {
             {/* Details Tab */}
             <TabsContent value="details">
               <Card>
-                <CardHeader className="text-right">
+                <CardHeader className="text-end">
                   <CardTitle>פירוט מלא</CardTitle>
                   <CardDescription>
                     כל רשומות העמלות בפירוט מלא

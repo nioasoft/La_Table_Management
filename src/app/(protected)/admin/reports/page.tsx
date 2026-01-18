@@ -915,7 +915,7 @@ export default function ReportsPage() {
             disabled={isLoading}
           >
             <RefreshCw
-              className={`h-4 w-4 ml-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`h-4 w-4 me-2 ${isLoading ? "animate-spin" : ""}`}
             />
             רענון
           </Button>
@@ -924,7 +924,7 @@ export default function ReportsPage() {
             onClick={handlePreview}
             disabled={isLoading || !reportData || reportData.rows.length === 0}
           >
-            <Eye className="h-4 w-4 ml-2" />
+            <Eye className="h-4 w-4 me-2" />
             תצוגה מקדימה
           </Button>
           <Button
@@ -933,9 +933,9 @@ export default function ReportsPage() {
             className="bg-green-600 hover:bg-green-700"
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
             ) : (
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
             )}
             ייצוא לאקסל
           </Button>
@@ -1032,7 +1032,7 @@ export default function ReportsPage() {
               <div className="space-y-2">
                 <Label htmlFor="supplier">ספק</Label>
                 <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                  <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-right">
+                  <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end">
                     <SelectValue placeholder="כל הספקים" />
                   </SelectTrigger>
                   <SelectContent>
@@ -1087,7 +1087,7 @@ export default function ReportsPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleApplyFilters} disabled={isLoading}>
-              {isLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
               החל סינון
             </Button>
             <Button variant="outline" onClick={handleResetFilters}>
@@ -1143,7 +1143,7 @@ export default function ReportsPage() {
               }}
               className="bg-green-600 hover:bg-green-700"
             >
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
               ייצוא לאקסל
             </Button>
           </DialogFooter>

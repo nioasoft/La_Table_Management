@@ -107,14 +107,14 @@ export default function CommissionsPage() {
         <div className="flex items-center gap-4">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm">
-              <ChevronRight className="h-4 w-4 ml-1" />
+              <ChevronRight className="h-4 w-4 me-1" />
               לוח בקרה
             </Button>
           </Link>
           <h1 className="text-3xl font-bold">ניהול עמלות</h1>
         </div>
         <Button variant="outline" onClick={handleSignOut}>
-          <LogOut className="ml-2 h-4 w-4" />
+          <LogOut className="me-2 h-4 w-4" />
           התנתק
         </Button>
       </div>
