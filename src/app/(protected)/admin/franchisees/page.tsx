@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -46,6 +46,7 @@ import {
   History,
   ArrowRight,
   Eye,
+  Search,
 } from "lucide-react";
 import {
   Dialog,
@@ -183,6 +184,7 @@ export default function AdminFranchiseesPage() {
   const queryClient = useQueryClient();
   const [filterBrand, setFilterBrand] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingFranchisee, setEditingFranchisee] =
     useState<FranchiseeWithBrandAndContacts | null>(null);
@@ -251,6 +253,19 @@ export default function AdminFranchiseesPage() {
 
   const franchisees: FranchiseeWithBrandAndContacts[] = franchiseesData?.franchisees || [];
   const stats = franchiseesData?.stats || null;
+
+  // Filter franchisees by search term
+  const filteredFranchisees = useMemo(() => {
+    if (!searchTerm.trim()) return franchisees;
+    const term = searchTerm.toLowerCase().trim();
+    return franchisees.filter((f) =>
+      f.name.toLowerCase().includes(term) ||
+      f.code?.toLowerCase().includes(term) ||
+      f.aliases?.some((a) => a.toLowerCase().includes(term)) ||
+      f.primaryContactName?.toLowerCase().includes(term) ||
+      f.city?.toLowerCase().includes(term)
+    );
+  }, [franchisees, searchTerm]);
 
   // Fetch brands with TanStack Query
   const { data: brandsData } = useQuery({
@@ -1177,50 +1192,54 @@ export default function AdminFranchiseesPage() {
       </Dialog>
 
       {/* Franchisees List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Building2 className="h-5 w-5" />
-            {filterBrand !== "all"
-              ? `${he.admin.franchisees.list.title} - ${brands.find((b) => b.id === filterBrand)?.nameHe || ""}`
-              : he.admin.franchisees.list.title}
-          </CardTitle>
-          <CardDescription>
-            {he.admin.franchisees.list.description}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {franchisees.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {filterBrand !== "all" || filterStatus !== "all"
-                ? he.admin.franchisees.empty.noMatchingFilters
-                : he.admin.franchisees.empty.noFranchisees}
+      <div className="border rounded-lg">
+        {/* Search */}
+        <div className="p-3 border-b bg-muted/30">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="חיפוש לפי שם, קוד, כינוי או עיר..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-8 text-sm pr-9"
+            />
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="divide-y">
+          {filteredFranchisees.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              {searchTerm.trim()
+                ? "לא נמצאו זכיינים התואמים לחיפוש"
+                : filterBrand !== "all" || filterStatus !== "all"
+                  ? he.admin.franchisees.empty.noMatchingFilters
+                  : he.admin.franchisees.empty.noFranchisees}
             </div>
           ) : (
-            <div className="space-y-4">
-              {franchisees.map((franchisee) => (
-                <FranchiseeCard
-                  key={franchisee.id}
-                  franchisee={franchisee}
-                  userRole={userRole}
-                  onEdit={handleEdit}
-                  onStatusChange={openStatusChangeModal}
-                  documents={franchiseeDocuments[franchisee.id] || []}
-                  onDocumentsChange={(docs) => handleDocumentsChange(franchisee.id, docs)}
-                  isDocumentsExpanded={expandedDocumentsId === franchisee.id}
-                  isLoadingDocuments={loadingDocumentsId === franchisee.id}
-                  onToggleDocuments={() => toggleDocumentsExpanded(franchisee.id)}
-                  statusHistory={franchiseeHistory[franchisee.id] || []}
-                  isHistoryExpanded={expandedHistoryId === franchisee.id}
-                  isLoadingHistory={loadingHistoryId === franchisee.id}
-                  onToggleHistory={() => toggleHistoryExpanded(franchisee.id)}
-                  onViewDetails={handleViewDetails}
-                />
-              ))}
-            </div>
+            filteredFranchisees.map((franchisee) => (
+              <FranchiseeCard
+                key={franchisee.id}
+                franchisee={franchisee}
+                userRole={userRole}
+                onEdit={handleEdit}
+                onStatusChange={openStatusChangeModal}
+                documents={franchiseeDocuments[franchisee.id] || []}
+                onDocumentsChange={(docs) => handleDocumentsChange(franchisee.id, docs)}
+                isDocumentsExpanded={expandedDocumentsId === franchisee.id}
+                isLoadingDocuments={loadingDocumentsId === franchisee.id}
+                onToggleDocuments={() => toggleDocumentsExpanded(franchisee.id)}
+                statusHistory={franchiseeHistory[franchisee.id] || []}
+                isHistoryExpanded={expandedHistoryId === franchisee.id}
+                isLoadingHistory={loadingHistoryId === franchisee.id}
+                onToggleHistory={() => toggleHistoryExpanded(franchisee.id)}
+                onViewDetails={handleViewDetails}
+              />
+            ))
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Status Change Modal */}
       <Dialog
@@ -1383,52 +1402,50 @@ function FranchiseeCard({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-lg border bg-card p-4 space-y-3">
+    <div className="p-3 hover:bg-muted/30 transition-colors">
       {/* Header Row */}
-      <div className="flex items-start justify-between">
-        <div className="space-y-1 flex-1">
+      <div className="flex items-start justify-between gap-2">
+        <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-lg">{franchisee.name}</p>
-            <Badge variant={statusVariants[franchisee.status]}>
+            <span className="font-medium">{franchisee.name}</span>
+            <span className="text-xs text-muted-foreground font-mono">{franchisee.code}</span>
+            <Badge variant={statusVariants[franchisee.status]} className="text-xs px-1.5 py-0">
               {statusLabels[franchisee.status]}
             </Badge>
             {franchisee.brand && (
-              <Badge variant="outline">{franchisee.brand.nameHe}</Badge>
+              <Badge variant="outline" className="text-xs px-1.5 py-0">{franchisee.brand.nameHe}</Badge>
             )}
-          </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span className="font-mono">{he.admin.franchisees.card.code} {franchisee.code}</span>
-            {franchisee.companyId && (
-              <span>{he.admin.franchisees.card.companyId} {franchisee.companyId}</span>
-            )}
-          </div>
-          {franchisee.aliases && franchisee.aliases.length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap mt-1">
-              <span className="text-sm text-muted-foreground flex items-center gap-1">
-                <Tag className="h-3 w-3" />
-                {he.admin.franchisees.card.aliases}
-              </span>
-              {franchisee.aliases.map((alias, idx) => (
+            {franchisee.aliases && franchisee.aliases.length > 0 && (
+              franchisee.aliases.slice(0, 3).map((alias, idx) => (
                 <Badge
                   key={`${alias}-${idx}`}
                   variant="outline"
-                  className="text-xs px-1.5 py-0"
+                  className="text-xs px-1.5 py-0 text-muted-foreground"
                 >
                   {alias}
                 </Badge>
-              ))}
+              ))
+            )}
+            {franchisee.aliases && franchisee.aliases.length > 3 && (
+              <span className="text-xs text-muted-foreground">+{franchisee.aliases.length - 3}</span>
+            )}
+          </div>
+          {(franchisee.city || franchisee.primaryContactName) && (
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              {franchisee.city && <span>{franchisee.city}</span>}
+              {franchisee.primaryContactName && <span>{franchisee.primaryContactName}</span>}
             </div>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <Select
             value={franchisee.status}
             onValueChange={(value: FranchiseeStatus) =>
               onStatusChange(franchisee, value)
             }
           >
-            <SelectTrigger className="w-[130px] h-8">
+            <SelectTrigger className="w-[100px] h-7 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -1441,73 +1458,63 @@ function FranchiseeCard({
           </Select>
           <Button
             size="sm"
-            variant="default"
+            variant="ghost"
+            className="h-7 px-2"
             onClick={() => onViewDetails(franchisee)}
             title={he.common.viewDetails}
-            data-testid={`view-details-${franchisee.id}`}
           >
-            <Eye className="h-4 w-4 me-1" />
-            {he.admin.franchisees.card.details}
+            <Eye className="h-3.5 w-3.5" />
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
+            className="h-7 px-2"
             onClick={() => setExpanded(!expanded)}
+            title={expanded ? he.admin.franchisees.card.less : he.admin.franchisees.card.more}
           >
-            {expanded ? he.admin.franchisees.card.less : he.admin.franchisees.card.more}
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
+            className="h-7 px-2"
             onClick={onToggleDocuments}
             disabled={isLoadingDocuments}
+            title={he.admin.franchisees.card.documents}
           >
             {isLoadingDocuments ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <>
-                <FileText className="h-4 w-4 me-1" />
-                {he.admin.franchisees.card.documents}
+                <FileText className="h-3.5 w-3.5" />
                 {documents.length > 0 && (
-                  <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
-                    {documents.length}
-                  </Badge>
-                )}
-                {isDocumentsExpanded ? (
-                  <ChevronUp className="h-4 w-4 ms-1" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 ms-1" />
+                  <span className="text-xs ms-0.5">{documents.length}</span>
                 )}
               </>
             )}
           </Button>
           <Button
             size="sm"
-            variant="outline"
+            variant="ghost"
+            className="h-7 px-2"
             onClick={onToggleHistory}
             disabled={isLoadingHistory}
+            title={he.admin.franchisees.card.history}
           >
             {isLoadingHistory ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
-              <>
-                <History className="h-4 w-4 me-1" />
-                {he.admin.franchisees.card.history}
-                {statusHistory.length > 0 && (
-                  <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
-                    {statusHistory.length}
-                  </Badge>
-                )}
-                {isHistoryExpanded ? (
-                  <ChevronUp className="h-4 w-4 ms-1" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 ms-1" />
-                )}
-              </>
+              <History className="h-3.5 w-3.5" />
             )}
           </Button>
-          <Button size="sm" variant="outline" onClick={() => onEdit(franchisee)}>
-            <Pencil className="h-4 w-4" />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2"
+            onClick={() => onEdit(franchisee)}
+            title={he.admin.franchisees.form.editTitle}
+          >
+            <Pencil className="h-3.5 w-3.5" />
           </Button>
         </div>
       </div>
