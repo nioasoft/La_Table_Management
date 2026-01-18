@@ -8,9 +8,15 @@ import {
   createCustomError,
   FILE_PROCESSING_ERROR_CODES,
 } from "./file-processing-errors";
+import {
+  getCurrentVatRate as getDbVatRate,
+  getVatRateForDate as getDbVatRateForDate,
+  DEFAULT_VAT_RATE,
+} from "@/data-access/vatRates";
 
-// Israel's standard VAT rate (18%)
-export const ISRAEL_VAT_RATE = 0.18;
+// Israel's standard VAT rate (18%) - kept as fallback for direct use in non-async contexts
+// Prefer using getProcessingVatRate() or getCurrentVatRate() which read from DB
+export const ISRAEL_VAT_RATE = DEFAULT_VAT_RATE;
 
 // Parsed row data from supplier files
 export interface ParsedRowData {
@@ -547,7 +553,8 @@ export async function processSupplierFile(
     const customParser = getCustomParser(supplierCode);
 
     if (customParser) {
-      return customParser(fileBuffer);
+      // Pass vatRate to custom parsers for consistency
+      return customParser(fileBuffer, vatRate);
     }
   }
 
@@ -576,4 +583,25 @@ export function calculateCommission(
   // For per_item, the commission rate is the fixed amount per item
   // This would need item count which isn't supported in current schema
   return roundToTwoDecimals(commissionRate);
+}
+
+/**
+ * Get the current VAT rate from the database
+ * Returns the rate effective for today's date
+ *
+ * This is the recommended way to get the VAT rate for new transactions
+ */
+export async function getCurrentVatRate(): Promise<number> {
+  return getDbVatRate();
+}
+
+/**
+ * Get the VAT rate effective for a specific date from the database
+ * Useful for processing historical files where the VAT rate may have been different
+ *
+ * @param date - The date to get the VAT rate for
+ * @returns The VAT rate as a decimal (e.g., 0.18 for 18%)
+ */
+export async function getVatRateForDate(date: Date): Promise<number> {
+  return getDbVatRateForDate(date);
 }

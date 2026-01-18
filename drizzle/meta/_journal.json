@@ -43,6 +43,13 @@
       "when": 1736636400000,
       "tag": "0016_file_processing_log",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1737216000000,
+      "tag": "0023_vat_rates",
+      "breakpoints": true
     }
   ]
 }

@@ -21,9 +21,9 @@ import {
   type FileProcessingResult,
   type ParsedRowData,
   roundToTwoDecimals,
-  ISRAEL_VAT_RATE,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
+import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 
 // Column indices
 const FRANCHISEE_NAME_COL = 2; // Column C
@@ -153,8 +153,13 @@ function isZipFile(buffer: Buffer): boolean {
 /**
  * Parse פסטה לה קאזה supplier files
  * Supports both single XLS files and ZIP archives containing multiple XLS files
+ *
+ * @param buffer - The file buffer
+ * @param vatRate - Optional VAT rate (defaults to DEFAULT_VAT_RATE from DB config)
  */
-export function parsePastaLaCasaFile(buffer: Buffer): FileProcessingResult {
+export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProcessingResult {
+  // Use provided vatRate or fall back to default
+  const effectiveVatRate = vatRate ?? DEFAULT_VAT_RATE;
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
   const warnings: import("../file-processing-errors").FileProcessingError[] = [];
   const legacyErrors: string[] = [];
@@ -248,7 +253,7 @@ export function parsePastaLaCasaFile(buffer: Buffer): FileProcessingResult {
       if (info.amount === 0) continue;
 
       const netAmount = roundToTwoDecimals(info.amount);
-      const grossAmount = roundToTwoDecimals(info.amount * (1 + ISRAEL_VAT_RATE));
+      const grossAmount = roundToTwoDecimals(info.amount * (1 + effectiveVatRate));
 
       data.push({
         franchisee,

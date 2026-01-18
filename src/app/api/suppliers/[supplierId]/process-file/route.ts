@@ -6,7 +6,7 @@ import {
 } from "@/lib/api-middleware";
 import { getSupplierById } from "@/data-access/suppliers";
 import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
-import { processSupplierFile, ISRAEL_VAT_RATE } from "@/lib/file-processor";
+import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import type { SupplierFileMapping } from "@/db/schema";
 import type { MatcherConfig } from "@/lib/franchisee-matcher";
 import {
@@ -35,7 +35,7 @@ interface RouteContext {
  *
  * Request body should be multipart/form-data with:
  * - file: The file to process (Excel or CSV)
- * - vatRate (optional): Custom VAT rate (defaults to Israel's 17%)
+ * - vatRate (optional): Custom VAT rate (defaults to current Israel VAT rate from DB)
  *
  * Response includes:
  * - success: boolean
@@ -218,10 +218,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Determine VAT rate to use
+    // Determine VAT rate to use - get current rate from DB if not provided
+    const currentVatRate = await getCurrentVatRate();
     const vatRate = customVatRate
       ? parseFloat(customVatRate) / 100 // Convert percentage to decimal
-      : ISRAEL_VAT_RATE;
+      : currentVatRate;
 
     // Process the file with VAT adjustment
     // Pass supplier code for custom parser lookup
@@ -472,11 +473,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Supplier not found" }, { status: 404 });
     }
 
+    // Get current VAT rate from DB
+    const currentVatRate = await getCurrentVatRate();
+
     return NextResponse.json({
       supplierId: supplier.id,
       supplierName: supplier.name,
       vatIncluded: supplier.vatIncluded ?? false,
-      defaultVatRate: ISRAEL_VAT_RATE * 100, // Return as percentage
+      defaultVatRate: currentVatRate * 100, // Return as percentage
       fileMapping: supplier.fileMapping,
       hasFileMapping: !!supplier.fileMapping,
     });

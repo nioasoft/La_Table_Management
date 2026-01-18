@@ -2040,6 +2040,55 @@ export type AuditAction = (typeof auditActionEnum.enumValues)[number];
 export type AuditEntityType = (typeof auditEntityTypeEnum.enumValues)[number];
 
 // ============================================================================
+// VAT RATE TABLE
+// ============================================================================
+
+// VAT Rate table - Track historical VAT rates with effective dates
+// This allows for accurate historical commission calculations when VAT rates change
+export const vatRate = pgTable(
+  "vat_rate",
+  {
+    id: text("id").primaryKey(),
+    // The VAT rate as a decimal (e.g., 0.18 for 18%)
+    rate: decimal("rate", { precision: 5, scale: 4 }).notNull(),
+    // The date from which this rate is effective
+    effectiveFrom: date("effective_from").notNull(),
+    // Optional description (e.g., "Standard VAT rate increase")
+    description: text("description"),
+    // Optional notes for internal documentation
+    notes: text("notes"),
+    // Audit fields
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_vat_rate_effective_from").on(table.effectiveFrom),
+    // Only one rate per effective date
+    uniqueIndex("idx_vat_rate_effective_from_unique").on(table.effectiveFrom),
+  ]
+);
+
+// VAT Rate relations
+export const vatRateRelations = relations(vatRate, ({ one }) => ({
+  createdByUser: one(user, {
+    fields: [vatRate.createdBy],
+    references: [user.id],
+  }),
+}));
+
+// VAT Rate types
+export type VatRate = typeof vatRate.$inferSelect;
+export type CreateVatRateData = typeof vatRate.$inferInsert;
+export type UpdateVatRateData = Partial<Omit<CreateVatRateData, "id" | "createdAt">>;
+
+// ============================================================================
 // FILE PROCESSING LOG TABLE
 // ============================================================================
 
