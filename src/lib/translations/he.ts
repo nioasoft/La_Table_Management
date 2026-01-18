@@ -534,8 +534,8 @@ export const he = {
           companyIdPlaceholder: "מספר רישום חברה",
           address: "כתובת",
           addressPlaceholder: "כתובת מלאה",
-          description: "תיאור",
-          descriptionPlaceholder: "תיאור הספק",
+          description: "הערות",
+          descriptionPlaceholder: "הערות על הספק",
 
           contactName: "שם איש קשר",
           contactNamePlaceholder: "שם איש הקשר",

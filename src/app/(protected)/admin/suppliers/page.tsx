@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -52,6 +52,7 @@ import {
   FileText,
   Eye,
   Tags,
+  Search,
 } from "lucide-react";
 import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
 import { FileMappingConfig } from "@/components/file-mapping-config";
@@ -154,6 +155,7 @@ export default function AdminSuppliersPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | "active">("all");
+  const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<SupplierWithBrands | null>(null);
   const [formData, setFormData] = useState<SupplierFormData>(initialFormData);
@@ -197,6 +199,24 @@ export default function AdminSuppliersPage() {
 
   const suppliers: SupplierWithBrands[] = suppliersData?.suppliers || [];
   const stats = suppliersData?.stats || null;
+
+  // Filter and sort suppliers by search term and name
+  const filteredSuppliers = useMemo(() => {
+    let result = suppliers;
+
+    // Filter by search term
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.name.toLowerCase().includes(search) ||
+          s.code.toLowerCase().includes(search)
+      );
+    }
+
+    // Sort alphabetically by name (Hebrew)
+    return result.sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }, [suppliers, searchTerm]);
 
   // Fetch brands with TanStack Query
   const { data: brandsData } = useQuery({
@@ -533,7 +553,7 @@ export default function AdminSuppliersPage() {
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid gap-4 md:grid-cols-4 mb-8">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.totalSuppliers}</CardTitle>
@@ -574,8 +594,8 @@ export default function AdminSuppliersPage() {
       )}
 
       {/* Filter and Actions */}
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4">
           <Select
             value={filter}
             onValueChange={(value) => setFilter(value as "all" | "active")}
@@ -593,7 +613,7 @@ export default function AdminSuppliersPage() {
             {he.common.refresh}
           </Button>
         </div>
-        <Button onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }}>
+        <Button onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }} className="w-full sm:w-auto">
           <Plus className="ml-2 h-4 w-4" />
           {he.common.create}
         </Button>
@@ -1153,18 +1173,32 @@ export default function AdminSuppliersPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {suppliers.length === 0 ? (
+          {/* Search Input */}
+          <div className="relative mb-4">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="חיפוש לפי שם או קוד..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pr-10"
+            />
+          </div>
+
+          {filteredSuppliers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {filter === "active"
-                ? he.admin.suppliers.empty.noActiveSuppliers
-                : he.admin.suppliers.empty.noSuppliers}
+              {searchTerm.trim()
+                ? "לא נמצאו ספקים התואמים לחיפוש"
+                : filter === "active"
+                  ? he.admin.suppliers.empty.noActiveSuppliers
+                  : he.admin.suppliers.empty.noSuppliers}
             </div>
           ) : (
             <div className="space-y-4">
-              {suppliers.map((supplier) => (
+              {filteredSuppliers.map((supplier) => (
                 <div key={supplier.id} className="rounded-lg border bg-card">
-                  <div className="flex items-start justify-between p-4">
-                    <div className="space-y-2 flex-1">
+                  <div className="flex flex-col gap-4 p-4">
+                    <div className="space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-lg">{supplier.name}</p>
                         <Badge variant={supplier.isActive ? "success" : "secondary"}>
@@ -1229,7 +1263,7 @@ export default function AdminSuppliersPage() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/admin/suppliers/${supplier.id}`}>
                         <Button size="sm" variant="default">
                           <Eye className="h-4 w-4 mr-1" />
