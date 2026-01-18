@@ -37,7 +37,13 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  ChevronDown,
 } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import type {
   Supplier,
   Brand,
@@ -394,45 +400,77 @@ export default function SupplierCardPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
+    <div className="container mx-auto p-4 md:p-6 max-w-6xl">
+      {/* Header - Minimal */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
           <Link href="/admin/suppliers">
             <Button variant="ghost" size="sm">
               <ArrowRight className="h-4 w-4 ms-2" />
               {he.admin.suppliers.detail.backToSuppliers}
             </Button>
           </Link>
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-full bg-primary/10">
-              <Truck className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold">{supplier.name}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="outline" className="font-mono">
-                  {supplier.code}
-                </Badge>
-                <Badge variant={supplier.isActive ? "success" : "secondary"}>
-                  {supplier.isActive ? he.common.active : he.common.inactive}
-                </Badge>
-                {supplier.defaultCommissionRate && (
-                  <Badge variant="outline" className="flex items-center gap-1">
-                    <Percent className="h-3 w-3" />
-                    {supplier.defaultCommissionRate}%
-                  </Badge>
-                )}
-              </div>
-            </div>
-          </div>
+          <div className="h-6 w-px bg-border" />
+          <h1 className="text-xl md:text-2xl font-bold">{supplier.name}</h1>
+          <Badge variant={supplier.isActive ? "success" : "secondary"}>
+            {supplier.isActive ? he.common.active : he.common.inactive}
+          </Badge>
         </div>
         <Link href={`/admin/suppliers?edit=${supplier.id}`}>
-          <Button variant="outline">
-            <Pencil className="h-4 w-4 ms-2" />
+          <Button>
+            <Pencil className="h-4 w-4 me-2" />
             {he.admin.suppliers.detail.editSupplier}
           </Button>
         </Link>
+      </div>
+
+      {/* Stats Bar */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="p-2 rounded-md bg-primary/10">
+            <Hash className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">קוד</p>
+            <p className="font-mono font-medium">{supplier.code}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="p-2 rounded-md bg-green-500/10">
+            <Percent className="h-4 w-4 text-green-600" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">עמלה</p>
+            <p className="font-medium">{supplier.defaultCommissionRate ? `${supplier.defaultCommissionRate}%` : "לא הוגדר"}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="p-2 rounded-md bg-blue-500/10">
+            <Clock className="h-4 w-4 text-blue-600" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">התחשבנות</p>
+            <p className="font-medium">{formatSettlementFrequency(supplier.settlementFrequency)}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="p-2 rounded-md bg-purple-500/10">
+            <Building2 className="h-4 w-4 text-purple-600" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">מותגים</p>
+            <p className="font-medium">{supplier.brands?.length || 0}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border">
+          <div className="p-2 rounded-md bg-orange-500/10">
+            <Users className="h-4 w-4 text-orange-600" />
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">אנשי קשר</p>
+            <p className="font-medium">{(supplier.contactName ? 1 : 0) + (supplier.secondaryContactName ? 1 : 0)}</p>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -464,353 +502,217 @@ export default function SupplierCardPage() {
         </TabsList>
 
         {/* Overview Tab */}
-        <TabsContent value="overview" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Basic Information */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  {he.admin.suppliers.detail.overview.basicInfo.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {supplier.companyId && (
-                  <div className="flex items-start gap-3">
-                    <Hash className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.basicInfo.companyId}
-                      </p>
-                      <p>{supplier.companyId}</p>
-                    </div>
-                  </div>
-                )}
-                {supplier.address && (
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.basicInfo.address}
-                      </p>
-                      <p>{supplier.address}</p>
-                    </div>
-                  </div>
-                )}
-                {supplier.description && (
-                  <div className="flex items-start gap-3">
-                    <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.basicInfo.description}
-                      </p>
-                      <p>{supplier.description}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-start gap-3">
-                  <Calendar className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {he.admin.suppliers.detail.overview.basicInfo.created}
-                    </p>
-                    <p>
-                      {new Date(supplier.createdAt).toLocaleDateString("he-IL")}
-                    </p>
-                  </div>
+        <TabsContent value="overview" className="space-y-4">
+          {/* מידע כללי */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">מידע כללי</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1">
+              {supplier.companyId && (
+                <div className="flex justify-between py-2 border-b last:border-0">
+                  <span className="text-muted-foreground">מספר חברה</span>
+                  <span className="font-medium" dir="ltr">{supplier.companyId}</span>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+              {supplier.address && (
+                <div className="flex justify-between py-2 border-b last:border-0">
+                  <span className="text-muted-foreground">כתובת</span>
+                  <span className="font-medium text-end max-w-[60%]">{supplier.address}</span>
+                </div>
+              )}
+              {supplier.description && (
+                <div className="flex flex-col gap-1 py-2 border-b last:border-0">
+                  <span className="text-muted-foreground">הערות</span>
+                  <span className="text-sm">{supplier.description}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-2 border-b last:border-0">
+                <span className="text-muted-foreground">תאריך יצירה</span>
+                <span className="font-medium">{new Date(supplier.createdAt).toLocaleDateString("he-IL")}</span>
+              </div>
+            </CardContent>
+          </Card>
 
-            {/* Commission Settings */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Percent className="h-5 w-5" />
-                  {he.admin.suppliers.detail.overview.commission.title}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-start gap-3">
-                  <Percent className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {he.admin.suppliers.detail.overview.commission.defaultRate}
-                    </p>
-                    <p className="text-lg font-semibold">
-                      {supplier.defaultCommissionRate
-                        ? `${supplier.defaultCommissionRate}%`
-                        : he.admin.suppliers.detail.overview.commission.notSet}
-                    </p>
-                  </div>
+          {/* תנאים כספיים */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">תנאים כספיים</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-1">
+              <div className="flex justify-between py-2 border-b last:border-0">
+                <span className="text-muted-foreground">שיעור עמלה</span>
+                <span className="font-medium">
+                  {supplier.defaultCommissionRate ? `${supplier.defaultCommissionRate}%` : "לא הוגדר"}
+                  {supplier.commissionType && (
+                    <span className="text-muted-foreground text-sm me-1">
+                      ({supplier.commissionType === "percentage" ? "אחוזים" : "לפריט"})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between py-2 border-b last:border-0">
+                <span className="text-muted-foreground">תדירות התחשבנות</span>
+                <span className="font-medium">{formatSettlementFrequency(supplier.settlementFrequency)}</span>
+              </div>
+              <div className="flex justify-between py-2 border-b last:border-0">
+                <span className="text-muted-foreground">מע״מ</span>
+                <span className="font-medium">{supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</span>
+              </div>
+              {supplier.paymentTerms && (
+                <div className="flex justify-between py-2 border-b last:border-0">
+                  <span className="text-muted-foreground">תנאי תשלום</span>
+                  <span className="font-medium">{supplier.paymentTerms}</span>
                 </div>
-                <div className="flex items-start gap-3">
-                  <Hash className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {he.admin.suppliers.detail.overview.commission.commissionType}
-                    </p>
-                    <p>
-                      {supplier.commissionType === "percentage"
-                        ? he.admin.suppliers.detail.overview.commission.percentage
-                        : he.admin.suppliers.detail.overview.commission.perItem}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Clock className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {he.admin.suppliers.detail.overview.commission.settlementFrequency}
-                    </p>
-                    <p>
-                      {formatSettlementFrequency(supplier.settlementFrequency)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-3">
-                  <Hash className="h-5 w-5 text-muted-foreground mt-0.5" />
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {he.admin.suppliers.detail.overview.commission.vat}
-                    </p>
-                    <p>{supplier.vatIncluded ? he.admin.suppliers.detail.overview.commission.vatIncluded : he.admin.suppliers.detail.overview.commission.vatNotIncluded}</p>
-                  </div>
-                </div>
-                {supplier.paymentTerms && (
-                  <div className="flex items-start gap-3">
-                    <FileText className="h-5 w-5 text-muted-foreground mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.commission.paymentTerms}
-                      </p>
-                      <p>{supplier.paymentTerms}</p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+              )}
+            </CardContent>
+          </Card>
 
-            {/* Primary Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  {he.admin.suppliers.detail.overview.contact.primaryTitle}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {supplier.contactName ? (
-                  <>
+          {/* אנשי קשר */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">אנשי קשר</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!supplier.contactName && !supplier.secondaryContactName ? (
+                <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
+              ) : (
+                <div className="space-y-4">
+                  {supplier.contactName && (
                     <div className="flex items-start gap-3">
-                      <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          {he.admin.suppliers.detail.overview.contact.name}
-                        </p>
-                        <p>{supplier.contactName}</p>
+                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-primary" />
                       </div>
-                    </div>
-                    {supplier.contactEmail && (
-                      <div className="flex items-start gap-3">
-                        <Mail className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">
-                            {he.admin.suppliers.detail.overview.contact.email}
-                          </p>
-                          <a
-                            href={`mailto:${supplier.contactEmail}`}
-                            className="text-primary hover:underline"
-                            dir="ltr"
-                          >
-                            {supplier.contactEmail}
-                          </a>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{supplier.contactName}</p>
+                          <Badge variant="secondary" className="text-xs">ראשי</Badge>
                         </div>
-                      </div>
-                    )}
-                    {supplier.contactPhone && (
-                      <div className="flex items-start gap-3">
-                        <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">
-                            {he.admin.suppliers.detail.overview.contact.phone}
-                          </p>
-                          <a
-                            href={`tel:${supplier.contactPhone}`}
-                            className="text-primary hover:underline"
-                            dir="ltr"
-                          >
-                            {supplier.contactPhone}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">{he.admin.suppliers.detail.overview.contact.noContact}</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Secondary Contact */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  {he.admin.suppliers.detail.overview.contact.secondaryTitle}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {supplier.secondaryContactName ? (
-                  <>
-                    <div className="flex items-start gap-3">
-                      <User className="h-5 w-5 text-muted-foreground mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">
-                          {he.admin.suppliers.detail.overview.contact.name}
-                        </p>
-                        <p>{supplier.secondaryContactName}</p>
-                      </div>
-                    </div>
-                    {supplier.secondaryContactEmail && (
-                      <div className="flex items-start gap-3">
-                        <Mail className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">
-                            {he.admin.suppliers.detail.overview.contact.email}
-                          </p>
-                          <a
-                            href={`mailto:${supplier.secondaryContactEmail}`}
-                            className="text-primary hover:underline"
-                            dir="ltr"
-                          >
-                            {supplier.secondaryContactEmail}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-                    {supplier.secondaryContactPhone && (
-                      <div className="flex items-start gap-3">
-                        <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
-                        <div>
-                          <p className="text-sm font-medium text-muted-foreground">
-                            {he.admin.suppliers.detail.overview.contact.phone}
-                          </p>
-                          <a
-                            href={`tel:${supplier.secondaryContactPhone}`}
-                            className="text-primary hover:underline"
-                            dir="ltr"
-                          >
-                            {supplier.secondaryContactPhone}
-                          </a>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">{he.admin.suppliers.detail.overview.contact.noSecondaryContact}</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Associated Brands */}
-            {supplier.brands && supplier.brands.length > 0 && (
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Hash className="h-5 w-5" />
-                    {he.admin.suppliers.detail.overview.brands.title}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {supplier.brands.map((brand) => (
-                      <Badge
-                        key={brand.id}
-                        variant="outline"
-                        className="text-sm py-1 px-3"
-                      >
-                        {brand.nameHe}
-                        {brand.nameEn && (
-                          <span className="text-muted-foreground me-1">
-                            ({brand.nameEn})
-                          </span>
-                        )}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* File Mapping Configuration */}
-            {supplier.fileMapping && (
-              <Card className="md:col-span-2">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <FileSpreadsheet className="h-5 w-5" />
-                    {he.admin.suppliers.detail.overview.fileMapping.title}
-                  </CardTitle>
-                  <CardDescription>
-                    {he.admin.suppliers.detail.overview.fileMapping.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <p className="font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.fileMapping.fileType}
-                      </p>
-                      <p className="uppercase">
-                        {supplier.fileMapping.fileType}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.fileMapping.headerRow}
-                      </p>
-                      <p>{supplier.fileMapping.headerRow}</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.fileMapping.dataStartRow}
-                      </p>
-                      <p>{supplier.fileMapping.dataStartRow}</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-muted-foreground">
-                        {he.admin.suppliers.detail.overview.fileMapping.rowsToSkip}
-                      </p>
-                      <p>{supplier.fileMapping.rowsToSkip ?? 0}</p>
-                    </div>
-                  </div>
-                  {supplier.fileMapping.columnMappings && (
-                    <div className="mt-4 pt-4 border-t">
-                      <p className="font-medium text-muted-foreground mb-2">
-                        {he.admin.suppliers.detail.overview.fileMapping.columnMappings}
-                      </p>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">
-                            {he.admin.suppliers.detail.overview.fileMapping.franchiseeColumn}
-                          </span>{" "}
-                          {supplier.fileMapping.columnMappings.franchiseeColumn}
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{he.admin.suppliers.detail.overview.fileMapping.amountColumn}</span>{" "}
-                          {supplier.fileMapping.columnMappings.amountColumn}
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">{he.admin.suppliers.detail.overview.fileMapping.dateColumn}</span>{" "}
-                          {supplier.fileMapping.columnMappings.dateColumn}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
+                          {supplier.contactEmail && (
+                            <a href={`mailto:${supplier.contactEmail}`} className="hover:text-primary" dir="ltr">
+                              {supplier.contactEmail}
+                            </a>
+                          )}
+                          {supplier.contactPhone && (
+                            <a href={`tel:${supplier.contactPhone}`} className="hover:text-primary" dir="ltr">
+                              {supplier.contactPhone}
+                            </a>
+                          )}
                         </div>
                       </div>
                     </div>
                   )}
-                </CardContent>
+                  {supplier.secondaryContactName && (
+                    <div className="flex items-start gap-3">
+                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium">{supplier.secondaryContactName}</p>
+                          <Badge variant="outline" className="text-xs">משני</Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
+                          {supplier.secondaryContactEmail && (
+                            <a href={`mailto:${supplier.secondaryContactEmail}`} className="hover:text-primary" dir="ltr">
+                              {supplier.secondaryContactEmail}
+                            </a>
+                          )}
+                          {supplier.secondaryContactPhone && (
+                            <a href={`tel:${supplier.secondaryContactPhone}`} className="hover:text-primary" dir="ltr">
+                              {supplier.secondaryContactPhone}
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* מותגים משויכים */}
+          {supplier.brands && supplier.brands.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">מותגים משויכים</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {supplier.brands.map((brand) => (
+                    <Badge key={brand.id} variant="secondary" className="py-1.5 px-3">
+                      {brand.nameHe}
+                      {brand.nameEn && (
+                        <span className="text-muted-foreground me-1">({brand.nameEn})</span>
+                      )}
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* מיפוי קבצים - מתקפל */}
+          {supplier.fileMapping && (
+            <Collapsible>
+              <Card>
+                <CollapsibleTrigger className="w-full">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileSpreadsheet className="h-4 w-4" />
+                        מיפוי קבצי Excel
+                      </CardTitle>
+                      <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </div>
+                  </CardHeader>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground mb-1">סוג קובץ</p>
+                        <p className="font-medium uppercase">{supplier.fileMapping.fileType}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground mb-1">שורת כותרת</p>
+                        <p className="font-medium">{supplier.fileMapping.headerRow}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground mb-1">שורת נתונים ראשונה</p>
+                        <p className="font-medium">{supplier.fileMapping.dataStartRow}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-muted/50">
+                        <p className="text-xs text-muted-foreground mb-1">שורות לדילוג</p>
+                        <p className="font-medium">{supplier.fileMapping.rowsToSkip ?? 0}</p>
+                      </div>
+                    </div>
+                    {supplier.fileMapping.columnMappings && (
+                      <div className="mt-4 pt-4 border-t">
+                        <p className="text-sm font-medium mb-3">מיפוי עמודות</p>
+                        <div className="grid grid-cols-3 gap-2 text-sm">
+                          <div className="p-2 rounded border bg-background">
+                            <span className="text-xs text-muted-foreground">עמודת זכיין:</span>
+                            <span className="font-mono font-medium me-1">{supplier.fileMapping.columnMappings.franchiseeColumn}</span>
+                          </div>
+                          <div className="p-2 rounded border bg-background">
+                            <span className="text-xs text-muted-foreground">עמודת סכום:</span>
+                            <span className="font-mono font-medium me-1">{supplier.fileMapping.columnMappings.amountColumn}</span>
+                          </div>
+                          <div className="p-2 rounded border bg-background">
+                            <span className="text-xs text-muted-foreground">עמודת תאריך:</span>
+                            <span className="font-mono font-medium me-1">{supplier.fileMapping.columnMappings.dateColumn}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </CollapsibleContent>
               </Card>
-            )}
-          </div>
+            </Collapsible>
+          )}
         </TabsContent>
 
         {/* Commission History Tab */}
