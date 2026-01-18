@@ -355,7 +355,7 @@ export default function CommissionReportPage() {
             disabled={isLoading}
           >
             <RefreshCw
-              className={`h-4 w-4 ml-2 ${isLoading ? "animate-spin" : ""}`}
+              className={`h-4 w-4 me-2 ${isLoading ? "animate-spin" : ""}`}
             />
             רענון
           </Button>
@@ -365,9 +365,9 @@ export default function CommissionReportPage() {
             className="bg-green-600 hover:bg-green-700"
           >
             {isExporting ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
             ) : (
-              <FileSpreadsheet className="h-4 w-4 ml-2" />
+              <FileSpreadsheet className="h-4 w-4 me-2" />
             )}
             ייצוא לאקסל
           </Button>
@@ -377,9 +377,9 @@ export default function CommissionReportPage() {
             className="bg-red-600 hover:bg-red-700"
           >
             {isExportingPDF ? (
-              <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
             ) : (
-              <FileText className="h-4 w-4 ml-2" />
+              <FileText className="h-4 w-4 me-2" />
             )}
             ייצוא ל-PDF
           </Button>
@@ -463,7 +463,7 @@ export default function CommissionReportPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleApplyFilters} disabled={isLoading}>
-              {isLoading && <Loader2 className="h-4 w-4 ml-2 animate-spin" />}
+              {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
               החל סינון
             </Button>
             <Button variant="outline" onClick={handleResetFilters}>
@@ -559,29 +559,29 @@ export default function CommissionReportPage() {
 
           {/* Tabs for different views */}
           <Tabs defaultValue="byBrand" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-4" dir="rtl">
               <TabsTrigger value="byBrand" className="flex items-center gap-2">
-                <Building2 className="h-4 w-4" />
                 לפי מותג
+                <Building2 className="h-4 w-4" />
               </TabsTrigger>
               <TabsTrigger value="byPeriod" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
                 לפי תקופה
+                <Calendar className="h-4 w-4" />
               </TabsTrigger>
               <TabsTrigger value="bySupplier" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
                 לפי ספק
+                <Users className="h-4 w-4" />
               </TabsTrigger>
               <TabsTrigger value="details" className="flex items-center gap-2">
-                <Store className="h-4 w-4" />
                 פירוט מלא
+                <Store className="h-4 w-4" />
               </TabsTrigger>
             </TabsList>
 
             {/* By Brand Tab */}
             <TabsContent value="byBrand">
               <Card>
-                <CardHeader>
+                <CardHeader className="text-right">
                   <CardTitle>סיכום לפי מותג</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי מותג
@@ -635,7 +635,7 @@ export default function CommissionReportPage() {
             {/* By Period Tab */}
             <TabsContent value="byPeriod">
               <Card>
-                <CardHeader>
+                <CardHeader className="text-right">
                   <CardTitle>סיכום לפי תקופה</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי תקופת התחשבנות
@@ -689,7 +689,7 @@ export default function CommissionReportPage() {
             {/* By Supplier Tab */}
             <TabsContent value="bySupplier">
               <Card>
-                <CardHeader>
+                <CardHeader className="text-right">
                   <CardTitle>סיכום לפי ספק</CardTitle>
                   <CardDescription>
                     פירוט עמלות מקובץ לפי ספק
@@ -745,7 +745,7 @@ export default function CommissionReportPage() {
             {/* Details Tab */}
             <TabsContent value="details">
               <Card>
-                <CardHeader>
+                <CardHeader className="text-right">
                   <CardTitle>פירוט מלא</CardTitle>
                   <CardDescription>
                     כל רשומות העמלות בפירוט מלא
