@@ -24,6 +24,7 @@ export default function HomePage() {
             width={225}
             height={100}
             className="object-contain"
+            style={{ width: 'auto', height: 'auto' }}
             priority
           />
         </div>
@@ -65,6 +66,7 @@ export default function HomePage() {
               width={100}
               height={63}
               className="object-contain opacity-70 hover:opacity-100 transition-opacity"
+              style={{ width: 'auto', height: 'auto' }}
             />
           ))}
         </div>

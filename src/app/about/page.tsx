@@ -52,6 +52,7 @@ export default function AboutPage() {
               width={150}
               height={67}
               className="object-contain"
+              style={{ width: 'auto', height: 'auto' }}
             />
           </Link>
           <Button asChild>
@@ -115,6 +116,7 @@ export default function AboutPage() {
                 width={120}
                 height={75}
                 className="object-contain"
+                style={{ width: 'auto', height: 'auto' }}
               />
             ))}
           </div>
