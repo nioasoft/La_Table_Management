@@ -581,9 +581,9 @@ export default function CommissionReportPage() {
             {/* By Brand Tab */}
             <TabsContent value="byBrand">
               <Card>
-                <CardHeader className="text-end">
-                  <CardTitle>סיכום לפי מותג</CardTitle>
-                  <CardDescription>
+                <CardHeader className="flex flex-col items-end text-right" dir="rtl">
+                  <CardTitle className="text-right w-full">סיכום לפי מותג</CardTitle>
+                  <CardDescription className="text-right w-full">
                     פירוט עמלות מקובץ לפי מותג
                   </CardDescription>
                 </CardHeader>
@@ -635,9 +635,9 @@ export default function CommissionReportPage() {
             {/* By Period Tab */}
             <TabsContent value="byPeriod">
               <Card>
-                <CardHeader className="text-end">
-                  <CardTitle>סיכום לפי תקופה</CardTitle>
-                  <CardDescription>
+                <CardHeader className="flex flex-col items-end text-right" dir="rtl">
+                  <CardTitle className="text-right w-full">סיכום לפי תקופה</CardTitle>
+                  <CardDescription className="text-right w-full">
                     פירוט עמלות מקובץ לפי תקופת התחשבנות
                   </CardDescription>
                 </CardHeader>
@@ -689,9 +689,9 @@ export default function CommissionReportPage() {
             {/* By Supplier Tab */}
             <TabsContent value="bySupplier">
               <Card>
-                <CardHeader className="text-end">
-                  <CardTitle>סיכום לפי ספק</CardTitle>
-                  <CardDescription>
+                <CardHeader className="flex flex-col items-end text-right" dir="rtl">
+                  <CardTitle className="text-right w-full">סיכום לפי ספק</CardTitle>
+                  <CardDescription className="text-right w-full">
                     פירוט עמלות מקובץ לפי ספק
                   </CardDescription>
                 </CardHeader>
@@ -745,9 +745,9 @@ export default function CommissionReportPage() {
             {/* Details Tab */}
             <TabsContent value="details">
               <Card>
-                <CardHeader className="text-end">
-                  <CardTitle>פירוט מלא</CardTitle>
-                  <CardDescription>
+                <CardHeader className="flex flex-col items-end text-right" dir="rtl">
+                  <CardTitle className="text-right w-full">פירוט מלא</CardTitle>
+                  <CardDescription className="text-right w-full">
                     כל רשומות העמלות בפירוט מלא
                   </CardDescription>
                 </CardHeader>
