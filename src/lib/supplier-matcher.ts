@@ -90,10 +90,12 @@ export interface SupplierMatcherConfig {
 
 /**
  * Default configuration
+ * NOTE: reviewThreshold is set to 1.0 to require manual review for ALL fuzzy matches.
+ * Only 100% exact matches will be auto-accepted.
  */
 export const DEFAULT_SUPPLIER_MATCHER_CONFIG: SupplierMatcherConfig = {
   minConfidence: 0.7,
-  reviewThreshold: 0.85,
+  reviewThreshold: 1.0, // Only 100% matches are auto-accepted
   maxAlternatives: 3,
   includeInactive: false,
   includeHidden: false,

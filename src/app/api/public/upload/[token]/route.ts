@@ -262,7 +262,7 @@ export async function POST(
           const matchResults = matchBkmvSuppliers(
             parseResult.supplierSummary,
             allSuppliers,
-            { minConfidence: 0.6, reviewThreshold: 0.85 },
+            { minConfidence: 0.6, reviewThreshold: 1.0 },
             blacklistedNames
           );
 

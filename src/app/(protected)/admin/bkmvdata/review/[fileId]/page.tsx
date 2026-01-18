@@ -499,7 +499,18 @@ export default function FileDetailsPage() {
                   </TableRow>
                 ) : (
                   supplierMatches.map((match, index) => (
-                    <TableRow key={index} className={!match.matchedSupplierId ? "bg-red-50/50" : match.confidence < 1 && match.matchType !== "manual" ? "bg-amber-50/50" : ""}>
+                    <TableRow
+                                    key={index}
+                                    className={
+                                      match.matchType === "blacklisted"
+                                        ? "bg-gray-50/50"
+                                        : !match.matchedSupplierId
+                                        ? "bg-red-50/50"
+                                        : match.confidence < 1 && match.matchType !== "manual" && match.matchType !== "exact"
+                                        ? "bg-amber-50/50"
+                                        : ""
+                                    }
+                                  >
                       <TableCell className="font-medium">{match.bkmvName}</TableCell>
                       <TableCell className="font-mono">{formatAmount(match.amount)}</TableCell>
                       <TableCell>{match.transactionCount}</TableCell>

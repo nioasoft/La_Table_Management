@@ -57,10 +57,10 @@ const FILE_TO_SUPPLIER_MAP: Record<string, string> = {
   "ג_ומון קינג קונג.xlsx": "JUMON",
 };
 
-// Matcher config
+// Matcher config - only 100% matches are auto-accepted
 const MATCHER_CONFIG: Partial<MatcherConfig> = {
   minConfidence: 0.7,
-  reviewThreshold: 0.85,
+  reviewThreshold: 1.0, // Only 100% matches are auto-accepted
   includeInactive: false,
 };
 
