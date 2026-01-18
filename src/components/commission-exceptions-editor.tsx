@@ -75,13 +75,13 @@ export function CommissionExceptionsEditor({
 }: CommissionExceptionsEditorProps) {
   const handleAddException = () => {
     onChange([
-      ...exceptions,
       {
         id: crypto.randomUUID(),
         identifier: "",
         rate: "0",
         matchType: "keyword",
       },
+      ...exceptions,
     ]);
   };
 
