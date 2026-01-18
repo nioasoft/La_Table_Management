@@ -172,6 +172,8 @@ export default function AdminSuppliersPage() {
   const [supplierDocuments, setSupplierDocuments] = useState<
     Record<string, DocumentWithUploader[]>
   >({});
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [archiveConfirmText, setArchiveConfirmText] = useState("");
   const { data: session, isPending } = authClient.useSession();
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -388,20 +390,26 @@ export default function AdminSuppliersPage() {
     },
   });
 
-  // Delete supplier mutation
-  const deleteSupplier = useMutation({
+  // Archive supplier mutation (soft delete)
+  const archiveSupplier = useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(`/api/suppliers/${id}`, {
-        method: "DELETE",
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: true, isActive: false, isHidden: true }),
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to delete supplier");
+        throw new Error(errorData.error || "Failed to archive supplier");
       }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+      setShowForm(false);
+      setEditingSupplier(null);
+      setShowArchiveConfirm(false);
+      setArchiveConfirmText("");
     },
   });
 
@@ -499,11 +507,10 @@ export default function AdminSuppliersPage() {
     setFormError(null);
   };
 
-  const handleDelete = async (supplierId: string) => {
-    if (!confirm(he.admin.suppliers.confirmDelete)) {
-      return;
-    }
-    deleteSupplier.mutate(supplierId);
+  const handleArchive = () => {
+    if (!editingSupplier) return;
+    if (archiveConfirmText !== editingSupplier.code) return;
+    archiveSupplier.mutate(editingSupplier.id);
   };
 
   const handleToggleStatus = async (supplier: SupplierWithBrands) => {
@@ -519,6 +526,8 @@ export default function AdminSuppliersPage() {
     setEditingSupplier(null);
     setFormData(initialFormData);
     setFormError(null);
+    setShowArchiveConfirm(false);
+    setArchiveConfirmText("");
   };
 
   const handleBrandToggle = (brandId: string) => {
@@ -546,61 +555,42 @@ export default function AdminSuppliersPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">{he.admin.suppliers.title}</h1>
-      </div>
-
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.totalSuppliers}</CardTitle>
-              <Truck className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.activeSuppliers}</CardTitle>
-              <Check className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.active}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.inactiveSuppliers}</CardTitle>
-              <X className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.inactive}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{he.admin.suppliers.stats.hiddenSuppliers}</CardTitle>
-              <Eye className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.hidden}</div>
-            </CardContent>
-          </Card>
+    <div className="container mx-auto p-4">
+      {/* Header with stats */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold">{he.admin.suppliers.title}</h1>
+          {stats && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-xs">
+                <Truck className="h-3 w-3 me-1" />
+                {stats.total}
+              </Badge>
+              <Badge variant="outline" className="text-xs text-green-600 border-green-200">
+                <Check className="h-3 w-3 me-1" />
+                {stats.active}
+              </Badge>
+              {stats.inactive > 0 && (
+                <Badge variant="outline" className="text-xs text-red-600 border-red-200">
+                  <X className="h-3 w-3 me-1" />
+                  {stats.inactive}
+                </Badge>
+              )}
+              {stats.hidden > 0 && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  <Eye className="h-3 w-3 me-1" />
+                  {stats.hidden}
+                </Badge>
+              )}
+            </div>
+          )}
         </div>
-      )}
-
-      {/* Filter and Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
           <Select
             value={filter}
             onValueChange={(value) => setFilter(value as "all" | "active")}
           >
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-[140px] h-8 text-sm">
               <SelectValue placeholder={he.common.filter} />
             </SelectTrigger>
             <SelectContent>
@@ -608,15 +598,14 @@ export default function AdminSuppliersPage() {
               <SelectItem value="active">{he.admin.suppliers.filters.activeOnly}</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={() => fetchSuppliers()}>
-            <RefreshCw className="me-2 h-4 w-4" />
-            {he.common.refresh}
+          <Button variant="outline" size="sm" onClick={() => fetchSuppliers()} title={he.common.refresh}>
+            <RefreshCw className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }}>
+            <Plus className="h-3.5 w-3.5 me-1" />
+            {he.common.create}
           </Button>
         </div>
-        <Button onClick={() => { setShowForm(true); setEditingSupplier(null); setFormData(initialFormData); }} className="w-full sm:w-auto">
-          <Plus className="me-2 h-4 w-4" />
-          {he.common.create}
-        </Button>
       </div>
 
       {/* Supplier Form Modal */}
@@ -1065,7 +1054,7 @@ export default function AdminSuppliersPage() {
               </Collapsible>
 
               {/* Status */}
-              <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4 p-2 rounded-md bg-muted/30">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="isActive"
@@ -1075,12 +1064,12 @@ export default function AdminSuppliersPage() {
                     }
                     disabled={isSubmitting}
                   />
-                  <Label htmlFor="isActive" className="cursor-pointer">
+                  <Label htmlFor="isActive" className="cursor-pointer text-sm">
                     {he.admin.suppliers.form.fields.isActive}
                   </Label>
                 </div>
 
-                <div className="flex items-start gap-2">
+                <div className="flex items-center gap-2">
                   <Checkbox
                     id="isHidden"
                     checked={formData.isHidden}
@@ -1089,18 +1078,56 @@ export default function AdminSuppliersPage() {
                     }
                     disabled={isSubmitting}
                   />
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="isHidden" className="cursor-pointer">
-                      {he.admin.suppliers.form.fields.isHidden}
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      {he.admin.suppliers.form.fields.isHiddenDescription}
-                    </p>
-                  </div>
+                  <Label htmlFor="isHidden" className="cursor-pointer text-sm">
+                    {he.admin.suppliers.form.fields.isHidden}
+                  </Label>
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-4">
+              {/* Archive Section - Only when editing */}
+              {editingSupplier && userRole === "super_user" && (
+                <Collapsible open={showArchiveConfirm} onOpenChange={setShowArchiveConfirm}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-destructive">
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="text-sm font-medium">העבר לארכיון</span>
+                    <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">
+                    <div className="p-3 rounded-md border border-destructive/30 bg-destructive/5 space-y-3">
+                      <p className="text-sm text-destructive">
+                        פעולה זו תעביר את הספק לארכיון. הספק לא יימחק אך יהיה מוסתר ולא פעיל.
+                      </p>
+                      <p className="text-sm">
+                        להמשך, הקלד את קוד הספק: <strong className="font-mono">{editingSupplier.code}</strong>
+                      </p>
+                      <Input
+                        value={archiveConfirmText}
+                        onChange={(e) => setArchiveConfirmText(e.target.value.toUpperCase())}
+                        placeholder="הקלד קוד ספק לאישור"
+                        className="h-8 text-sm font-mono"
+                        disabled={archiveSupplier.isPending}
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleArchive}
+                        disabled={archiveConfirmText !== editingSupplier.code || archiveSupplier.isPending}
+                        className="w-full"
+                      >
+                        {archiveSupplier.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin me-2" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 me-2" />
+                        )}
+                        אשר העברה לארכיון
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
                 <Button type="button" variant="outline" onClick={cancelForm} disabled={isSubmitting}>
                   {he.common.cancel}
                 </Button>
@@ -1123,31 +1150,25 @@ export default function AdminSuppliersPage() {
       </Dialog>
 
       {/* Suppliers List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Truck className="h-5 w-5" />
-            {filter === "active" ? he.admin.suppliers.list.titleActive : he.admin.suppliers.list.title}
-          </CardTitle>
-          <CardDescription>
-            {he.admin.suppliers.list.description}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {/* Search Input */}
-          <div className="relative mb-4">
-            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="border rounded-lg">
+        {/* Search */}
+        <div className="p-3 border-b bg-muted/30">
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               type="text"
               placeholder="חיפוש לפי שם או קוד..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pr-10"
+              className="h-8 text-sm pr-9"
             />
           </div>
+        </div>
 
+        {/* List */}
+        <div className="divide-y">
           {filteredSuppliers.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
+            <div className="text-center py-6 text-sm text-muted-foreground">
               {searchTerm.trim()
                 ? "לא נמצאו ספקים התואמים לחיפוש"
                 : filter === "active"
@@ -1155,177 +1176,115 @@ export default function AdminSuppliersPage() {
                   : he.admin.suppliers.empty.noSuppliers}
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredSuppliers.map((supplier) => (
-                <div key={supplier.id} className="rounded-lg border bg-card">
-                  <div className="flex flex-col gap-4 p-4">
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-lg">{supplier.name}</p>
-                        <Badge variant={supplier.isActive ? "success" : "secondary"}>
-                          {supplier.isActive ? he.common.active : he.common.inactive}
-                        </Badge>
-                        {supplier.isHidden && (
-                          <Badge variant="destructive" className="flex items-center gap-1">
-                            {he.admin.suppliers.badge.hidden}
-                          </Badge>
-                        )}
-                        {supplier.defaultCommissionRate && (
-                          <Badge variant="outline" className="flex items-center gap-1">
-                            <Percent className="h-3 w-3" />
-                            {supplier.defaultCommissionRate}%
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 text-sm text-muted-foreground">
-                        <p>
-                          <span className="font-medium">{he.admin.suppliers.card.code}</span>{" "}
-                          <span className="font-mono">{supplier.code}</span>
-                        </p>
-                        {supplier.companyId && (
-                          <p>
-                            <span className="font-medium">{he.admin.suppliers.card.companyId}</span> {supplier.companyId}
-                          </p>
-                        )}
-                        {supplier.settlementFrequency && (
-                          <p>
-                            <span className="font-medium">{he.admin.suppliers.card.settlement}</span>{" "}
-                            {supplier.settlementFrequency === "weekly" ? he.admin.suppliers.form.fields.settlementWeekly :
-                             supplier.settlementFrequency === "bi_weekly" ? he.admin.suppliers.form.fields.settlementBiWeekly :
-                             supplier.settlementFrequency === "monthly" ? he.admin.suppliers.form.fields.settlementMonthly :
-                             supplier.settlementFrequency === "quarterly" ? he.admin.suppliers.form.fields.settlementQuarterly :
-                             String(supplier.settlementFrequency).replace("_", "-")}
-                          </p>
-                        )}
-                        {supplier.vatIncluded !== null && (
-                          <p>
-                            <span className="font-medium">{he.admin.suppliers.card.vat}</span>{" "}
-                            {supplier.vatIncluded ? he.admin.suppliers.card.vatIncluded : he.admin.suppliers.card.vatNotIncluded}
-                          </p>
-                        )}
-                        {supplier.contactName && (
-                          <p>
-                            <span className="font-medium">{he.admin.suppliers.card.contact}</span> {supplier.contactName}
-                          </p>
-                        )}
-                      </div>
-                      {supplier.brands && supplier.brands.length > 0 && (
-                        <div className="flex items-center gap-2 flex-wrap mt-2">
-                          <span className="text-sm font-medium">{he.admin.suppliers.card.brands}</span>
-                          {supplier.brands.map((brand) => (
-                            <Badge key={brand.id} variant="outline">
-                              {brand.nameHe}
-                            </Badge>
-                          ))}
-                        </div>
+            filteredSuppliers.map((supplier) => (
+              <div key={supplier.id} className="hover:bg-muted/30 transition-colors">
+                <div className="p-3">
+                  {/* Row 1: Name + badges + actions */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(supplier)}
+                        className="font-medium truncate hover:text-primary hover:underline transition-colors text-start"
+                      >
+                        {supplier.name}
+                      </button>
+                      <span className="text-xs text-muted-foreground font-mono">{supplier.code}</span>
+                      {!supplier.isActive && (
+                        <Badge variant="secondary" className="text-xs px-1.5 py-0">לא פעיל</Badge>
                       )}
-                      <p className="text-xs text-muted-foreground">
-                        {he.admin.suppliers.card.created} {new Date(supplier.createdAt).toLocaleDateString("he-IL")}
-                      </p>
+                      {supplier.isHidden && (
+                        <Badge variant="destructive" className="text-xs px-1.5 py-0">מוסתר</Badge>
+                      )}
+                      {supplier.defaultCommissionRate && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          {supplier.defaultCommissionRate}%
+                        </Badge>
+                      )}
+                      {supplier.settlementFrequency && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 text-muted-foreground">
+                          {supplier.settlementFrequency === "monthly" ? "חודשי" :
+                           supplier.settlementFrequency === "quarterly" ? "רבעוני" :
+                           supplier.settlementFrequency === "weekly" ? "שבועי" :
+                           supplier.settlementFrequency}
+                        </Badge>
+                      )}
+                      {supplier.brands && supplier.brands.length > 0 && (
+                        supplier.brands.map((brand) => (
+                          <Badge key={brand.id} variant="outline" className="text-xs px-1.5 py-0 bg-primary/5">
+                            {brand.nameHe}
+                          </Badge>
+                        ))
+                      )}
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/admin/suppliers/${supplier.id}`}>
-                        <Button size="sm" variant="default">
-                          <Eye className="h-4 w-4 me-1" />
-                          {he.admin.suppliers.actions.view}
+                    <div className="flex items-center gap-1">
+                      <Link href={`/admin/suppliers/${supplier.id}`} title={he.admin.suppliers.actions.view}>
+                        <Button size="sm" variant="ghost" className="h-7 px-2">
+                          <Eye className="h-3.5 w-3.5" />
                         </Button>
                       </Link>
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
+                        className="h-7 px-2"
                         onClick={() => toggleHistoryExpanded(supplier.id)}
                         disabled={loadingHistoryId === supplier.id}
+                        title={he.admin.suppliers.actions.history}
                       >
                         {loadingHistoryId === supplier.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <>
-                            <History className="h-4 w-4 me-1" />
-                            {he.admin.suppliers.actions.history}
-                            {expandedHistoryId === supplier.id ? (
-                              <ChevronUp className="h-4 w-4 ms-1" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 ms-1" />
-                            )}
-                          </>
+                          <History className="h-3.5 w-3.5" />
                         )}
                       </Button>
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
+                        className="h-7 px-2"
                         onClick={() => toggleFileMappingExpanded(supplier.id)}
+                        title={he.admin.suppliers.actions.fileMapping}
                       >
-                        <FileSpreadsheet className="h-4 w-4 me-1" />
-                        {he.admin.suppliers.actions.fileMapping}
-                        {supplier.fileMapping && (
-                          <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
-                            {he.admin.suppliers.actions.set}
-                          </Badge>
-                        )}
-                        {expandedFileMappingId === supplier.id ? (
-                          <ChevronUp className="h-4 w-4 ms-1" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 ms-1" />
-                        )}
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        {supplier.fileMapping && <span className="w-1.5 h-1.5 bg-green-500 rounded-full ms-1" />}
                       </Button>
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
+                        className="h-7 px-2"
                         onClick={() => toggleDocumentsExpanded(supplier.id)}
                         disabled={loadingDocumentsId === supplier.id}
+                        title={he.admin.suppliers.actions.documents}
                       >
                         {loadingDocumentsId === supplier.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
                           <>
-                            <FileText className="h-4 w-4 me-1" />
-                            {he.admin.suppliers.actions.documents}
+                            <FileText className="h-3.5 w-3.5" />
                             {supplierDocuments[supplier.id]?.length > 0 && (
-                              <Badge variant="secondary" className="ms-1 px-1 py-0 text-xs">
-                                {supplierDocuments[supplier.id].length}
-                              </Badge>
-                            )}
-                            {expandedDocumentsId === supplier.id ? (
-                              <ChevronUp className="h-4 w-4 ms-1" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 ms-1" />
+                              <span className="text-xs ms-0.5">{supplierDocuments[supplier.id].length}</span>
                             )}
                           </>
                         )}
                       </Button>
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => handleToggleStatus(supplier)}
-                      >
-                        {supplier.isActive ? he.admin.suppliers.actions.deactivate : he.admin.suppliers.actions.activate}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={supplier.isHidden ? "default" : "outline"}
-                        onClick={() => handleToggleHidden(supplier)}
-                      >
-                        {supplier.isHidden ? he.admin.suppliers.actions.show : he.admin.suppliers.actions.hide}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
+                        variant="ghost"
+                        className="h-7 px-2"
                         onClick={() => handleEdit(supplier)}
+                        title={he.admin.suppliers.form.editTitle}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-3.5 w-3.5" />
                       </Button>
-                      {userRole === "super_user" && (
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(supplier.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
                     </div>
                   </div>
+                  {/* Row 2: Meta info */}
+                  {(supplier.contactName || supplier.vatIncluded) && (
+                    <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      {supplier.contactName && <span>{supplier.contactName}</span>}
+                      {supplier.vatIncluded && <span>כולל מע״מ</span>}
+                    </div>
+                  )}
+                </div>
 
                   {/* Commission History Panel */}
                   {expandedHistoryId === supplier.id && (
@@ -1408,12 +1367,11 @@ export default function AdminSuppliersPage() {
                       />
                     </div>
                   )}
-                </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
