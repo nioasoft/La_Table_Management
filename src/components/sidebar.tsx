@@ -69,12 +69,12 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
 
   const isSuperUserOrAdmin = userRole === "super_user" || userRole === "admin";
 
-  // Fetch count of files needing review for badge
+  // Fetch count of supplier files needing review for badge
   const { data: reviewData } = useQuery({
-    queryKey: ["bkmvdata", "review", "count"],
+    queryKey: ["supplier-files", "review", "count"],
     queryFn: async () => {
-      const response = await fetch("/api/bkmvdata/review");
-      if (!response.ok) return { total: 0 };
+      const response = await fetch("/api/supplier-files/review/count");
+      if (!response.ok) return { count: 0 };
       return response.json();
     },
     enabled: isSuperUserOrAdmin,
@@ -82,7 +82,7 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
     staleTime: 30000, // Consider data stale after 30 seconds
   });
 
-  const filesNeedingReviewCount = reviewData?.total || 0;
+  const filesNeedingReviewCount = reviewData?.count || 0;
 
   const handleSignOut = async () => {
     await authClient.signOut();
@@ -159,6 +159,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
               {
                 label: he.sidebar.subNavigation.bkmvdata,
                 href: "/admin/bkmvdata",
+                icon: <FileUp className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.supplierFiles,
+                href: "/admin/supplier-files",
                 icon: <FileUp className="h-4 w-4" />,
                 badge: filesNeedingReviewCount > 0 ? filesNeedingReviewCount : null,
               },

@@ -2690,6 +2690,7 @@ export const he = {
       franchisees: "זכיינים",
       brands: "מותגים",
       bkmvdata: "מבנה אחיד",
+      supplierFiles: "קבצי ספקים",
 
       // Reports
       commissionsReport: "דוח עמלות",

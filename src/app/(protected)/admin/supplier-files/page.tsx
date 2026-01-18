@@ -63,9 +63,11 @@ import {
   Check,
   Plus,
   ClipboardList,
+  Save,
 } from "lucide-react";
 import Link from "next/link";
-import type { Supplier, SupplierFileMapping, Franchisee } from "@/db/schema";
+import { toast } from "sonner";
+import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingResult } from "@/db/schema";
 import { formatCurrency } from "@/lib/translations";
 
 // Types
@@ -144,6 +146,10 @@ export default function SupplierFilesPage() {
   const [blacklistingRow, setBlacklistingRow] = useState<ProcessedRow | null>(null);
   const [blacklistNotes, setBlacklistNotes] = useState("");
 
+  // Save to DB state
+  const [savedFileId, setSavedFileId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
@@ -219,6 +225,86 @@ export default function SupplierFilesPage() {
     },
   });
 
+  // Save processed file to review queue
+  const saveToReviewQueue = useCallback(async (result: ProcessingResult, supplierId: string): Promise<string | null> => {
+    if (!result.success || !result.data.length) return null;
+
+    setIsSaving(true);
+    try {
+      // Convert ProcessingResult to SupplierFileProcessingResult format
+      const processingResultForDB: SupplierFileProcessingResult = {
+        totalRows: result.summary.totalRows,
+        processedRows: result.summary.processedRows,
+        skippedRows: result.summary.skippedRows,
+        totalGrossAmount: result.summary.totalGrossAmount,
+        totalNetAmount: result.summary.totalNetAmount,
+        vatAdjusted: result.summary.vatIncluded,
+        matchStats: {
+          total: result.matchSummary?.total || 0,
+          exactMatches: result.matchSummary?.matched || 0,
+          fuzzyMatches: result.matchSummary?.needsReview || 0,
+          unmatched: result.matchSummary?.unmatched || 0,
+        },
+        franchiseeMatches: result.data.map(row => {
+          const match = row.matchResult;
+          let matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none" = "none";
+
+          if (row.isBlacklisted) {
+            matchType = "blacklisted";
+          } else if (row.manualMatch) {
+            matchType = "manual";
+          } else if (match?.matchedFranchisee) {
+            matchType = match.confidence === 1 ? "exact" : "fuzzy";
+          }
+
+          return {
+            originalName: row.franchisee,
+            rowNumber: row.rowNumber,
+            grossAmount: row.grossAmount,
+            netAmount: row.netAmount,
+            matchedFranchiseeId: row.manualMatch?.franchiseeId || match?.matchedFranchisee?.id || null,
+            matchedFranchiseeName: row.manualMatch?.franchiseeName || match?.matchedFranchisee?.name || null,
+            confidence: row.manualMatch ? 100 : (match?.confidence || 0) * 100,
+            matchType,
+            requiresReview: !row.isBlacklisted && !row.manualMatch && (match?.requiresReview || !match?.matchedFranchisee),
+          };
+        }),
+        processedAt: new Date().toISOString(),
+      };
+
+      const response = await fetch("/api/supplier-files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supplierId,
+          fileName: result.summary.fileName,
+          fileSize: result.summary.fileSize,
+          processingResult: processingResultForDB,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save file");
+      }
+
+      const data = await response.json();
+      setSavedFileId(data.file.id);
+
+      // Invalidate the review count query to update the badge
+      queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
+
+      toast.success(data.message);
+      return data.file.id;
+    } catch (error) {
+      console.error("Failed to save file to review queue:", error);
+      toast.error("שגיאה בשמירת הקובץ לתור הבדיקה");
+      return null;
+    } finally {
+      setIsSaving(false);
+    }
+  }, [queryClient]);
+
   // Handle file upload
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -227,6 +313,7 @@ export default function SupplierFilesPage() {
     setIsUploading(true);
     setUploadError(null);
     setProcessingResult(null);
+    setSavedFileId(null);
 
     try {
       const formData = new FormData();
@@ -579,6 +666,47 @@ export default function SupplierFilesPage() {
                   </div>
                 </>
               )}
+            </div>
+
+            {/* Save to Review Queue */}
+            <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-4">
+              <div>
+                <p className="font-medium">
+                  {savedFileId ? "הקובץ נשמר לתור הבדיקה" : "שמירה לתור הבדיקה"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {savedFileId
+                    ? "ניתן לצפות בקובץ ולאשר/לדחות אותו בתור האישורים"
+                    : "שמור את הקובץ כדי לאפשר בדיקה ואישור"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {savedFileId ? (
+                  <Link href={`/admin/supplier-files/review/${savedFileId}`}>
+                    <Button variant="outline">
+                      <Eye className="h-4 w-4 ml-2" />
+                      צפייה בקובץ
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button
+                    onClick={() => saveToReviewQueue(processingResult, selectedSupplierId)}
+                    disabled={isSaving || !processingResult.success}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 ml-2 animate-spin" />
+                        שומר...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 ml-2" />
+                        שמור לתור הבדיקה
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Errors and Warnings */}
