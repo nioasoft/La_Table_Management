@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Menu,
   FileUp,
+  Percent,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
@@ -198,6 +199,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.communications,
                 href: "/admin/communications",
                 icon: <Mail className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.vatRates,
+                href: "/admin/vat-rates",
+                icon: <Percent className="h-4 w-4" />,
               },
             ],
           },

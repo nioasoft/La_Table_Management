@@ -2699,6 +2699,7 @@ export const he = {
       // Settings
       users: "משתמשים",
       communications: "תקשורת",
+      vatRates: "שיעורי מע״מ",
     },
 
     // User section
