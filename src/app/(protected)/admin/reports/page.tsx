@@ -117,7 +117,8 @@ interface ReportData {
 }
 
 // Format percentage
-const formatPercent = (rate: number): string => {
+const formatPercent = (rate: number | undefined | null): string => {
+  if (rate == null) return "0.00%";
   return `${rate.toFixed(2)}%`;
 };
 
