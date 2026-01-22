@@ -79,9 +79,10 @@ const supplierConfigs: Record<
     fileMapping: {
       fileType: "xlsx",
       columnMappings: { franchiseeColumn: "B", amountColumn: "G" },
-      headerRow: 1,
-      dataStartRow: 2,
+      headerRow: 0,
+      dataStartRow: 1,
       sheetName: "DataSheet",
+      customParser: true,
     },
   },
   FRESCO: {

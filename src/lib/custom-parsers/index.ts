@@ -17,6 +17,7 @@ export { parsePastaLaCasaFile } from "./pasta-la-casa-parser";
 export { parseAleAleFile } from "./ale-ale-parser";
 export { parseMizrachUmaaravFile } from "./mizrach-umaarav-parser";
 export { parseFrescoFile } from "./fresco-parser";
+export { parseAspiritFile } from "./aspirit-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -73,6 +74,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   FRESCO: async (buffer, vatRate) => {
     const { parseFrescoFile } = await import("./fresco-parser");
     return parseFrescoFile(buffer);
+  },
+  ASPIRIT: async (buffer, vatRate) => {
+    const { parseAspiritFile } = await import("./aspirit-parser");
+    return parseAspiritFile(buffer);
   },
 };
 
