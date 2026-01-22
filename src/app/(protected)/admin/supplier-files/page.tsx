@@ -711,31 +711,47 @@ export default function SupplierFilesPage() {
 
             {/* Errors and Warnings */}
             {processingResult.errors.length > 0 && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-                <p className="font-medium text-destructive mb-2">שגיאות ({processingResult.errors.length})</p>
-                <ul className="list-disc list-inside text-sm text-destructive space-y-1">
-                  {processingResult.errors.slice(0, 5).map((err, i) => (
-                    <li key={i}>{err.message}</li>
-                  ))}
-                  {processingResult.errors.length > 5 && (
-                    <li>...ועוד {processingResult.errors.length - 5} שגיאות</li>
-                  )}
-                </ul>
-              </div>
+              <Collapsible defaultOpen>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center justify-between w-full rounded-lg border border-destructive/50 bg-destructive/10 p-3 hover:bg-destructive/20 transition-colors">
+                    <span className="font-medium text-destructive">
+                      שגיאות ({processingResult.errors.length})
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-destructive transition-transform [[data-state=open]_&]:rotate-180" />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="rounded-b-lg border border-t-0 border-destructive/50 bg-destructive/5 p-4">
+                    <ul className="list-disc list-inside text-sm text-destructive space-y-1">
+                      {processingResult.errors.map((err, i) => (
+                        <li key={i}>{err.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             )}
 
             {processingResult.warnings.length > 0 && (
-              <div className="rounded-lg border border-yellow-500/50 bg-yellow-50 p-4">
-                <p className="font-medium text-yellow-700 mb-2">אזהרות ({processingResult.warnings.length})</p>
-                <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
-                  {processingResult.warnings.slice(0, 5).map((warn, i) => (
-                    <li key={i}>{warn.message}</li>
-                  ))}
-                  {processingResult.warnings.length > 5 && (
-                    <li>...ועוד {processingResult.warnings.length - 5} אזהרות</li>
-                  )}
-                </ul>
-              </div>
+              <Collapsible>
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center justify-between w-full rounded-lg border border-yellow-500/50 bg-yellow-50 p-3 hover:bg-yellow-100 transition-colors">
+                    <span className="font-medium text-yellow-700">
+                      אזהרות ({processingResult.warnings.length})
+                    </span>
+                    <ChevronDown className="h-4 w-4 text-yellow-700 transition-transform [[data-state=open]_&]:rotate-180" />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="rounded-b-lg border border-t-0 border-yellow-500/50 bg-yellow-50/50 p-4">
+                    <ul className="list-disc list-inside text-sm text-yellow-700 space-y-1">
+                      {processingResult.warnings.map((warn, i) => (
+                        <li key={i}>{warn.message}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             )}
 
             {/* Unmatched Franchisees */}

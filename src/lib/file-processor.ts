@@ -357,10 +357,8 @@ export function parseSupplierFile(
       return createFailedResult(rawData.length);
     }
 
-    // Check if date column is configured
-    if (!dateColumn) {
-      addWarning(createFileProcessingError('MISSING_DATE_COLUMN'));
-    }
+    // Date column is intentionally optional - many suppliers don't include dates in their reports
+    // No warning needed when dateColumn is not configured
 
     // Validate column references exist in header (for named columns)
     if (!/^[A-Z]+$/i.test(franchiseeColumn)) {
