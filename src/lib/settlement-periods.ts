@@ -299,11 +299,135 @@ export function getPeriodsForFrequency(
 }
 
 /**
- * Format date range for display
+ * Get all periods for a specific year based on frequency.
+ * Returns periods in chronological order (oldest first).
  */
-export function formatPeriodRange(period: SettlementPeriodInfo): string {
-  const start = period.startDate.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
-  const end = period.endDate.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
+export function getPeriodsForYear(
+  frequency: SettlementPeriodType,
+  year: number
+): SettlementPeriodInfo[] {
+  const periods: SettlementPeriodInfo[] = [];
+
+  switch (frequency) {
+    case "monthly":
+      // 12 monthly periods
+      for (let month = 0; month < 12; month++) {
+        const startDate = new Date(year, month, 1);
+        const endDate = new Date(year, month + 1, 0);
+        const dueDate = new Date(year, month + 1, 15);
+
+        periods.push({
+          type: "monthly",
+          name: `${HEBREW_MONTHS[month]} ${year}`,
+          nameHe: `${HEBREW_MONTHS[month]} ${year}`,
+          startDate,
+          endDate,
+          dueDate,
+          key: `${year}-${String(month + 1).padStart(2, '0')}`,
+        });
+      }
+      break;
+
+    case "quarterly":
+      // 4 quarterly periods
+      for (let quarter = 0; quarter < 4; quarter++) {
+        const quarterStartMonth = quarter * 3;
+        const startDate = new Date(year, quarterStartMonth, 1);
+        const endDate = new Date(year, quarterStartMonth + 3, 0);
+        const dueDate = new Date(year, quarterStartMonth + 3, 15);
+        const quarterName = `Q${quarter + 1}`;
+        const quarterNameHe = `רבעון ${quarter + 1}`;
+
+        periods.push({
+          type: "quarterly",
+          name: `${quarterName} ${year}`,
+          nameHe: `${quarterNameHe} ${year}`,
+          startDate,
+          endDate,
+          dueDate,
+          key: `${year}-${quarterName}`,
+        });
+      }
+      break;
+
+    case "semi_annual":
+      // 2 semi-annual periods
+      for (let half = 0; half < 2; half++) {
+        const halfStartMonth = half * 6;
+        const startDate = new Date(year, halfStartMonth, 1);
+        const endDate = new Date(year, halfStartMonth + 6, 0);
+        const dueDate = new Date(year, halfStartMonth + 6, 15);
+        const halfName = `H${half + 1}`;
+        const halfNameHe = half === 0 ? "מחצית ראשונה" : "מחצית שנייה";
+
+        periods.push({
+          type: "semi_annual",
+          name: `${halfName} ${year}`,
+          nameHe: `${halfNameHe} ${year}`,
+          startDate,
+          endDate,
+          dueDate,
+          key: `${year}-${halfName}`,
+        });
+      }
+      break;
+
+    case "annual":
+      // 1 annual period
+      periods.push({
+        type: "annual",
+        name: `FY ${year}`,
+        nameHe: `שנת ${year}`,
+        startDate: new Date(year, 0, 1),
+        endDate: new Date(year, 11, 31),
+        dueDate: new Date(year + 1, 0, 31),
+        key: `${year}`,
+      });
+      break;
+  }
+
+  return periods;
+}
+
+/**
+ * Get available periods for a supplier (current year + last 8 periods).
+ * Returns periods in reverse chronological order (newest first).
+ */
+export function getAvailablePeriodsForSupplier(
+  frequency: SettlementPeriodType,
+  referenceDate: Date = new Date()
+): SettlementPeriodInfo[] {
+  const currentYear = referenceDate.getFullYear();
+  const periods: SettlementPeriodInfo[] = [];
+
+  // Get periods for current year and previous year
+  const currentYearPeriods = getPeriodsForYear(frequency, currentYear);
+  const prevYearPeriods = getPeriodsForYear(frequency, currentYear - 1);
+
+  // Combine and sort by end date descending
+  const allPeriods = [...currentYearPeriods, ...prevYearPeriods].sort(
+    (a, b) => b.endDate.getTime() - a.endDate.getTime()
+  );
+
+  // Filter to only include periods that have ended (we can't upload reports for future periods)
+  const endedPeriods = allPeriods.filter(
+    (p) => p.endDate.getTime() < referenceDate.getTime()
+  );
+
+  // Return up to 8 periods
+  return endedPeriods.slice(0, 8);
+}
+
+/**
+ * Format date range for display
+ * Handles both Date objects and ISO date strings
+ */
+export function formatPeriodRange(period: { startDate: Date | string; endDate: Date | string }): string {
+  const startDate = typeof period.startDate === 'string' ? new Date(period.startDate) : period.startDate;
+  const endDate = typeof period.endDate === 'string' ? new Date(period.endDate) : period.endDate;
+
+  const start = startDate.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
+  const end = endDate.toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" });
   return `${start} - ${end}`;
 }
 

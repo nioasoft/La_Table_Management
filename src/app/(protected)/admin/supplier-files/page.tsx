@@ -62,6 +62,7 @@ import {
   Plus,
   ClipboardList,
   Save,
+  BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -69,7 +70,10 @@ import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingR
 import { formatCurrency } from "@/lib/translations";
 import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox";
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
+import { PeriodSelector, type PeriodWithStatus } from "@/components/supplier-files/period-selector";
+import { OverwriteConfirmDialog } from "@/components/supplier-files/overwrite-confirm-dialog";
 import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 
 /**
  * Convert XLS file to XLSX format in the browser
@@ -157,6 +161,10 @@ export default function SupplierFilesPage() {
   const queryClient = useQueryClient();
 
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
+  const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>("");
+  const [periodWithExistingFile, setPeriodWithExistingFile] = useState<PeriodWithStatus | null>(null);
+  const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
+  const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -234,6 +242,46 @@ export default function SupplierFilesPage() {
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
+  // Handle supplier change - reset period and file state
+  const handleSupplierChange = useCallback((supplierId: string) => {
+    setSelectedSupplierId(supplierId);
+    setSelectedPeriodKey("");
+    setPeriodWithExistingFile(null);
+    setOverwriteConfirmed(false);
+    setProcessingResult(null);
+    setSavedFileId(null);
+    setUploadError(null);
+  }, []);
+
+  // Handle period selection with existing file
+  const handlePeriodWithExistingFile = useCallback((period: PeriodWithStatus) => {
+    setPeriodWithExistingFile(period);
+    setShowOverwriteDialog(true);
+    setOverwriteConfirmed(false);
+  }, []);
+
+  // Handle period change - reset overwrite state
+  const handlePeriodChange = useCallback((periodKey: string) => {
+    setSelectedPeriodKey(periodKey);
+    setOverwriteConfirmed(false);
+    setProcessingResult(null);
+    setSavedFileId(null);
+    setUploadError(null);
+  }, []);
+
+  // Handle overwrite confirmation
+  const handleOverwriteConfirm = useCallback(() => {
+    setOverwriteConfirmed(true);
+    setShowOverwriteDialog(false);
+  }, []);
+
+  // Handle overwrite cancel
+  const handleOverwriteCancel = useCallback(() => {
+    setSelectedPeriodKey("");
+    setPeriodWithExistingFile(null);
+    setShowOverwriteDialog(false);
+  }, []);
+
   // Add alias mutation
   const addAliasMutation = useMutation({
     mutationFn: async ({ franchiseeId, aliasName }: { franchiseeId: string; aliasName: string }) => {
@@ -251,8 +299,20 @@ export default function SupplierFilesPage() {
   });
 
   // Save processed file to review queue
-  const saveToReviewQueue = useCallback(async (result: ProcessingResult, supplierId: string): Promise<string | null> => {
-    if (!result.success || !result.data.length) return null;
+  const saveToReviewQueue = useCallback(async (
+    result: ProcessingResult,
+    supplierId: string,
+    periodKey: string,
+    overwrite: boolean = false
+  ): Promise<string | null> => {
+    if (!result.success || !result.data.length || !periodKey) return null;
+
+    // Get period dates from key
+    const period = getPeriodByKey(periodKey);
+    if (!period) {
+      toast.error("תקופה לא תקינה");
+      return null;
+    }
 
     setIsSaving(true);
     try {
@@ -305,16 +365,28 @@ export default function SupplierFilesPage() {
           fileName: result.summary.fileName,
           fileSize: result.summary.fileSize,
           processingResult: processingResultForDB,
+          periodStartDate: period.startDate.toISOString().split('T')[0],
+          periodEndDate: period.endDate.toISOString().split('T')[0],
+          overwrite,
         }),
       });
 
       if (!response.ok) {
         const error = await response.json();
+        // Handle conflict error (409) - file already exists
+        if (response.status === 409 && error.existingFile) {
+          toast.error(`קיים כבר קובץ לתקופה זו: ${error.existingFile.fileName}`);
+          return null;
+        }
         throw new Error(error.error || "Failed to save file");
       }
 
       const data = await response.json();
       setSavedFileId(data.file.id);
+
+      // Reset overwrite state
+      setOverwriteConfirmed(false);
+      setPeriodWithExistingFile(null);
 
       // Invalidate queries to update the review count and history
       queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
@@ -538,6 +610,12 @@ export default function SupplierFilesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/supplier-files/completeness">
+            <Button variant="outline">
+              <BarChart3 className="h-4 w-4 me-2" />
+              מצב דוחות
+            </Button>
+          </Link>
           <Link href="/admin/supplier-files/review">
             <Button variant="outline">
               <ClipboardList className="h-4 w-4 me-2" />
@@ -556,109 +634,147 @@ export default function SupplierFilesPage() {
         </div>
       </div>
 
-      {/* Main Content - 2 Column Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Left Column - Main Upload Area */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Supplier Selection */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">בחירת ספק</CardTitle>
-              <CardDescription>
-                בחר ספק מהרשימה כדי להעלות קובץ עמלות
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <SupplierCombobox
-                suppliers={suppliers}
-                selectedSupplierId={selectedSupplierId}
-                onSelect={setSelectedSupplierId}
-              />
-            </CardContent>
-          </Card>
+      {/* 2x2 Grid Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Row 1, Col 1: Supplier Selection */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">בחירת ספק</CardTitle>
+            <CardDescription>
+              בחר ספק מהרשימה כדי להעלות קובץ עמלות
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <SupplierCombobox
+              suppliers={suppliers}
+              selectedSupplierId={selectedSupplierId}
+              onSelect={handleSupplierChange}
+            />
+          </CardContent>
+        </Card>
 
-          {/* File Upload */}
-          {selectedSupplier && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <FileUp className="h-5 w-5" />
-                  העלאת קובץ
-                </CardTitle>
-                <CardDescription>
-                  העלה קובץ {selectedSupplier.fileMapping?.fileType.toUpperCase()} מהספק
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-4">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={selectedSupplier.fileMapping?.fileType === "csv" ? ".csv" : ".xlsx,.xls"}
-                    onChange={handleFileUpload}
-                    disabled={isUploading}
-                    className="hidden"
-                    id="file-upload"
-                  />
-                  <label htmlFor="file-upload">
-                    <Button asChild disabled={isUploading}>
-                      <span>
-                        {isUploading ? (
-                          <>
-                            <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                            מעבד...
-                          </>
-                        ) : (
-                          <>
-                            <Upload className="h-4 w-4 me-2" />
-                            בחר קובץ להעלאה
-                          </>
-                        )}
-                      </span>
-                    </Button>
-                  </label>
-                  <p className="text-sm text-muted-foreground">
-                    קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
+        {/* Row 1, Col 2: Period Selection */}
+        <Card className={!selectedSupplier ? "opacity-50" : ""}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">בחירת תקופה</CardTitle>
+            <CardDescription>
+              {selectedSupplier
+                ? "בחר את התקופה עבורה מועלה הקובץ"
+                : "בחר ספק תחילה"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {selectedSupplier ? (
+              <PeriodSelector
+                supplierId={selectedSupplierId}
+                supplierName={selectedSupplier.name}
+                selectedPeriodKey={selectedPeriodKey}
+                onSelect={handlePeriodChange}
+                onPeriodWithExistingFile={handlePeriodWithExistingFile}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                בחר ספק כדי לראות את התקופות הזמינות
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Row 2, Col 1: File Upload */}
+        <Card className={!selectedPeriodKey ? "opacity-50" : ""}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileUp className="h-5 w-5" />
+              העלאת קובץ
+            </CardTitle>
+            <CardDescription>
+              {selectedPeriodKey && selectedSupplier
+                ? `העלה קובץ ${selectedSupplier.fileMapping?.fileType.toUpperCase()} מהספק`
+                : "בחר ספק ותקופה תחילה"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Show warning if overwriting */}
+            {periodWithExistingFile && overwriteConfirmed && (
+              <div className="mb-4 rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-3">
+                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-500">
+                  <AlertTriangle className="h-4 w-4" />
+                  <p className="text-sm font-medium">
+                    העלאה זו תחליף את הקובץ הקיים: {periodWithExistingFile.existingFile?.fileName}
                   </p>
                 </div>
+              </div>
+            )}
 
-                {/* Upload Error */}
-                {uploadError && (
-                  <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
-                    <div className="flex items-center gap-2 text-destructive">
-                      <XCircle className="h-5 w-5" />
-                      <p className="font-medium">שגיאה בעיבוד הקובץ</p>
-                    </div>
-                    <p className="mt-1 text-sm text-destructive">{uploadError}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-
-        {/* Right Column - Upload History */}
-        <div className="lg:col-span-3">
-          {selectedSupplier ? (
-            <UploadHistoryPanel
-              supplierId={selectedSupplierId}
-              supplierName={selectedSupplier.name}
-            />
-          ) : (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base text-muted-foreground">
-                  היסטוריית העלאות
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground text-center py-6">
-                  בחר ספק כדי לראות את היסטוריית ההעלאות
+            <div className="flex items-center gap-4">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={selectedSupplier?.fileMapping?.fileType === "csv" ? ".csv" : ".xlsx,.xls"}
+                onChange={handleFileUpload}
+                disabled={isUploading || !selectedPeriodKey || (!!periodWithExistingFile && !overwriteConfirmed)}
+                className="hidden"
+                id="file-upload"
+              />
+              <label htmlFor="file-upload">
+                <Button
+                  asChild
+                  disabled={isUploading || !selectedPeriodKey || (!!periodWithExistingFile && !overwriteConfirmed)}
+                >
+                  <span>
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                        מעבד...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 me-2" />
+                        בחר קובץ להעלאה
+                      </>
+                    )}
+                  </span>
+                </Button>
+              </label>
+              {selectedSupplier && (
+                <p className="text-sm text-muted-foreground">
+                  קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
                 </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+              )}
+            </div>
+
+            {/* Upload Error */}
+            {uploadError && (
+              <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+                <div className="flex items-center gap-2 text-destructive">
+                  <XCircle className="h-5 w-5" />
+                  <p className="font-medium">שגיאה בעיבוד הקובץ</p>
+                </div>
+                <p className="mt-1 text-sm text-destructive">{uploadError}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Row 2, Col 2: Upload History */}
+        {selectedSupplier ? (
+          <UploadHistoryPanel
+            supplierId={selectedSupplierId}
+            supplierName={selectedSupplier.name}
+          />
+        ) : (
+          <Card className="opacity-50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">היסטוריית העלאות</CardTitle>
+              <CardDescription>בחר ספק תחילה</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground text-center py-4">
+                בחר ספק כדי לראות את היסטוריית ההעלאות
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Processing Results - Full Width */}
@@ -724,7 +840,7 @@ export default function SupplierFilesPage() {
                     ) : (
                       <Button
                         size="sm"
-                        onClick={() => saveToReviewQueue(processingResult, selectedSupplierId)}
+                        onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey, overwriteConfirmed)}
                         disabled={isSaving || !processingResult.success}
                       >
                         {isSaving ? (
@@ -1016,6 +1132,15 @@ export default function SupplierFilesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Overwrite Confirm Dialog */}
+      <OverwriteConfirmDialog
+        open={showOverwriteDialog}
+        onOpenChange={setShowOverwriteDialog}
+        period={periodWithExistingFile}
+        onConfirm={handleOverwriteConfirm}
+        onCancel={handleOverwriteCancel}
+      />
     </div>
   );
 }

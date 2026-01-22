@@ -9,7 +9,7 @@ import {
   type UpdateSupplierFileUploadData,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, desc, sql, count } from "drizzle-orm";
+import { eq, and, desc, sql, count, gte, lte, ne, or, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Extended type with supplier info
@@ -544,4 +544,141 @@ export async function addFranchiseeAlias(
     .where(eq(franchisee.id, franchiseeId));
 
   return true;
+}
+
+/**
+ * Check if a supplier file already exists for a given period.
+ * Returns the existing file if found (excluding rejected files).
+ */
+export async function getSupplierFileByPeriod(
+  supplierId: string,
+  periodStartDate: Date,
+  periodEndDate: Date
+): Promise<SupplierFileUploadWithSupplier | null> {
+  const results = await database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      originalFileName: supplierFileUpload.originalFileName,
+      fileUrl: supplierFileUpload.fileUrl,
+      fileSize: supplierFileUpload.fileSize,
+      filePath: supplierFileUpload.filePath,
+      processingStatus: supplierFileUpload.processingStatus,
+      processingResult: supplierFileUpload.processingResult,
+      reviewedBy: supplierFileUpload.reviewedBy,
+      reviewedAt: supplierFileUpload.reviewedAt,
+      reviewNotes: supplierFileUpload.reviewNotes,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
+      updatedAt: supplierFileUpload.updatedAt,
+      createdBy: supplierFileUpload.createdBy,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+    })
+    .from(supplierFileUpload)
+    .leftJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+    .where(
+      and(
+        eq(supplierFileUpload.supplierId, supplierId),
+        eq(supplierFileUpload.periodStartDate, periodStartDate.toISOString().split('T')[0]),
+        eq(supplierFileUpload.periodEndDate, periodEndDate.toISOString().split('T')[0]),
+        // Exclude rejected files - they shouldn't block new uploads
+        ne(supplierFileUpload.processingStatus, "rejected")
+      )
+    )
+    .orderBy(desc(supplierFileUpload.createdAt))
+    .limit(1);
+
+  return results.length > 0 ? results[0] : null;
+}
+
+/**
+ * Get all supplier file uploads for a specific supplier within a year.
+ * Returns files with their periods for completeness tracking.
+ */
+export async function getSupplierFileUploadsBySupplierAndYear(
+  supplierId: string,
+  year: number
+): Promise<SupplierFileUploadWithSupplier[]> {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+
+  const results = await database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      originalFileName: supplierFileUpload.originalFileName,
+      fileUrl: supplierFileUpload.fileUrl,
+      fileSize: supplierFileUpload.fileSize,
+      filePath: supplierFileUpload.filePath,
+      processingStatus: supplierFileUpload.processingStatus,
+      processingResult: supplierFileUpload.processingResult,
+      reviewedBy: supplierFileUpload.reviewedBy,
+      reviewedAt: supplierFileUpload.reviewedAt,
+      reviewNotes: supplierFileUpload.reviewNotes,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
+      updatedAt: supplierFileUpload.updatedAt,
+      createdBy: supplierFileUpload.createdBy,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+    })
+    .from(supplierFileUpload)
+    .leftJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+    .where(
+      and(
+        eq(supplierFileUpload.supplierId, supplierId),
+        gte(supplierFileUpload.periodStartDate, yearStart),
+        lte(supplierFileUpload.periodEndDate, yearEnd)
+      )
+    )
+    .orderBy(desc(supplierFileUpload.periodStartDate));
+
+  return results;
+}
+
+/**
+ * Get all supplier files for a specific year (all suppliers).
+ * Used for the completeness dashboard.
+ */
+export async function getAllSupplierFileUploadsForYear(
+  year: number
+): Promise<SupplierFileUploadWithSupplier[]> {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+
+  const results = await database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      originalFileName: supplierFileUpload.originalFileName,
+      fileUrl: supplierFileUpload.fileUrl,
+      fileSize: supplierFileUpload.fileSize,
+      filePath: supplierFileUpload.filePath,
+      processingStatus: supplierFileUpload.processingStatus,
+      processingResult: supplierFileUpload.processingResult,
+      reviewedBy: supplierFileUpload.reviewedBy,
+      reviewedAt: supplierFileUpload.reviewedAt,
+      reviewNotes: supplierFileUpload.reviewNotes,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
+      updatedAt: supplierFileUpload.updatedAt,
+      createdBy: supplierFileUpload.createdBy,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+    })
+    .from(supplierFileUpload)
+    .leftJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+    .where(
+      and(
+        gte(supplierFileUpload.periodStartDate, yearStart),
+        lte(supplierFileUpload.periodEndDate, yearEnd)
+      )
+    )
+    .orderBy(desc(supplierFileUpload.periodStartDate));
+
+  return results;
 }

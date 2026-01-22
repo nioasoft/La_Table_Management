@@ -6,6 +6,8 @@ import {
 import {
   createSupplierFileUpload,
   getSupplierFileUploads,
+  getSupplierFileByPeriod,
+  reviewSupplierFile,
 } from "@/data-access/supplier-file-uploads";
 import { getSupplierById } from "@/data-access/suppliers";
 import type { SupplierFileProcessingResult } from "@/db/schema";
@@ -53,8 +55,9 @@ export async function GET(request: NextRequest) {
  *   fileName: string,
  *   fileSize: number,
  *   processingResult: SupplierFileProcessingResult,
- *   periodStartDate?: string,
- *   periodEndDate?: string
+ *   periodStartDate: string (required),
+ *   periodEndDate: string (required),
+ *   overwrite?: boolean - if true, rejects existing file and creates new one
  * }
  */
 export async function POST(request: NextRequest) {
@@ -71,6 +74,7 @@ export async function POST(request: NextRequest) {
       processingResult,
       periodStartDate,
       periodEndDate,
+      overwrite,
     } = body;
 
     // Validate required fields
@@ -95,12 +99,53 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Period dates are now required
+    if (!periodStartDate || !periodEndDate) {
+      return NextResponse.json(
+        { error: "תאריכי תקופה הם שדה חובה" },
+        { status: 400 }
+      );
+    }
+
     // Verify supplier exists
     const supplier = await getSupplierById(supplierId);
     if (!supplier) {
       return NextResponse.json(
         { error: "הספק לא נמצא" },
         { status: 404 }
+      );
+    }
+
+    // Check for existing file for this period
+    const existingFile = await getSupplierFileByPeriod(
+      supplierId,
+      new Date(periodStartDate),
+      new Date(periodEndDate)
+    );
+
+    if (existingFile) {
+      // If not in overwrite mode, return conflict error
+      if (!overwrite) {
+        return NextResponse.json(
+          {
+            error: "קיים כבר קובץ לתקופה זו",
+            existingFile: {
+              id: existingFile.id,
+              fileName: existingFile.originalFileName,
+              status: existingFile.processingStatus,
+              uploadedAt: existingFile.createdAt,
+            },
+          },
+          { status: 409 }
+        );
+      }
+
+      // In overwrite mode, reject the existing file
+      await reviewSupplierFile(
+        existingFile.id,
+        "reject",
+        user.id,
+        "הוחלף על ידי קובץ חדש"
       );
     }
 
@@ -123,8 +168,8 @@ export async function POST(request: NextRequest) {
       fileSize: fileSize || 0,
       processingStatus,
       processingResult: processingResult as SupplierFileProcessingResult,
-      periodStartDate: periodStartDate || null,
-      periodEndDate: periodEndDate || null,
+      periodStartDate: periodStartDate,
+      periodEndDate: periodEndDate,
       createdBy: user.id,
     });
 
@@ -141,6 +186,7 @@ export async function POST(request: NextRequest) {
         processingStatus === "auto_approved"
           ? "הקובץ אושר אוטומטית - כל הזכיינים מותאמים"
           : "הקובץ נוסף לתור הבדיקה",
+      replacedFile: overwrite && existingFile ? existingFile.id : undefined,
     });
   } catch (error) {
     console.error("Error creating supplier file upload:", error);
