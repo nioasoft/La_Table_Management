@@ -88,11 +88,11 @@ const supplierConfigs: Record<
     commissionRate: "10",
     fileMapping: {
       fileType: "xlsx",
-      columnMappings: { franchiseeColumn: "B", amountColumn: "E", dateColumn: "C" },
-      headerRow: 1,
-      dataStartRow: 2,
-      skipKeywords: ['סה"כ', "סהכ"],
-      sheetName: "DataSheet",
+      columnMappings: { franchiseeColumn: "A", amountColumn: "B" },
+      headerRow: 0,
+      dataStartRow: 1,
+      sheetName: "גיליון2",
+      customParser: true,
     },
   },
   KILL_BILL: {
