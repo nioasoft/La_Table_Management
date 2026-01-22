@@ -4,14 +4,13 @@ import {
   isAuthError,
 } from "@/lib/api-middleware";
 import {
-  getSuppliers,
-  getActiveSuppliers,
   createSupplier,
   getSupplierStats,
   isSupplierCodeUnique,
   setSupplierBrands,
   getSupplierBrands,
   validateFileMapping,
+  getSuppliersWithBrands,
 } from "@/data-access/suppliers";
 import { randomUUID } from "crypto";
 import type { SupplierFileMapping, CommissionException } from "@/db/schema";
@@ -27,23 +26,9 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get("filter");
 
-    let suppliers;
-    if (filter === "active") {
-      suppliers = await getActiveSuppliers();
-    } else {
-      suppliers = await getSuppliers();
-    }
-
-    // Fetch brands for each supplier
-    const suppliersWithBrands = await Promise.all(
-      suppliers.map(async (supplier) => {
-        const brands = await getSupplierBrands(supplier.id);
-        return {
-          ...supplier,
-          brands,
-        };
-      })
-    );
+    // Use optimized single-query function instead of N+1 pattern
+    const activeOnly = filter === "active";
+    const suppliersWithBrands = await getSuppliersWithBrands(activeOnly);
 
     // Get stats if requested
     const includeStats = searchParams.get("stats") === "true";

@@ -15,7 +15,7 @@ import {
   type SupplierFileMapping,
   type CommissionException,
 } from "@/db/schema";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, asc } from "drizzle-orm";
 import { logCommissionChange, type AuditContext } from "./auditLog";
 
 // Extended supplier type with brands
@@ -42,6 +42,64 @@ export async function getActiveSuppliers(): Promise<Supplier[]> {
     .from(supplier)
     .where(eq(supplier.isActive, true))
     .orderBy(desc(supplier.createdAt)) as unknown as Promise<Supplier[]>;
+}
+
+/**
+ * Get all suppliers with their brands in a single query (optimized - avoids N+1)
+ * @param activeOnly - If true, only returns active suppliers
+ */
+export async function getSuppliersWithBrands(
+  activeOnly = false
+): Promise<SupplierWithBrands[]> {
+  const baseCondition = activeOnly ? eq(supplier.isActive, true) : undefined;
+
+  const result = await database
+    .select({
+      supplier: supplier,
+      brandId: supplierBrand.brandId,
+      brandNameHe: brand.nameHe,
+      brandNameEn: brand.nameEn,
+      brandCode: brand.code,
+      brandIsActive: brand.isActive,
+    })
+    .from(supplier)
+    .leftJoin(supplierBrand, eq(supplier.id, supplierBrand.supplierId))
+    .leftJoin(brand, eq(supplierBrand.brandId, brand.id))
+    .where(baseCondition)
+    .orderBy(desc(supplier.createdAt), asc(supplier.name));
+
+  // Group brands by supplier using a Map
+  const suppliersMap = new Map<string, SupplierWithBrands>();
+
+  for (const row of result) {
+    const supplierId = row.supplier.id;
+
+    if (!suppliersMap.has(supplierId)) {
+      suppliersMap.set(supplierId, {
+        ...(row.supplier as Supplier),
+        brands: [],
+      });
+    }
+
+    // Add brand if it exists and is not already added
+    if (row.brandId && row.brandNameHe) {
+      const supplierWithBrands = suppliersMap.get(supplierId)!;
+      const brandExists = supplierWithBrands.brands.some(
+        (b) => b.id === row.brandId
+      );
+      if (!brandExists) {
+        supplierWithBrands.brands.push({
+          id: row.brandId,
+          nameHe: row.brandNameHe,
+          nameEn: row.brandNameEn,
+          code: row.brandCode,
+          isActive: row.brandIsActive,
+        } as Brand);
+      }
+    }
+  }
+
+  return Array.from(suppliersMap.values());
 }
 
 /**

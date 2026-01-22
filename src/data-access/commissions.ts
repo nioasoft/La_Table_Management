@@ -112,6 +112,11 @@ export async function getCommissionsWithDetails(
     conditions.push(eq(commission.status, filters.status as Commission["status"]));
   }
 
+  // Filter by brandId in SQL (optimized - avoids in-memory filtering)
+  if (filters.brandId) {
+    conditions.push(eq(franchisee.brandId, filters.brandId));
+  }
+
   const results = await database
     .select({
       // Commission fields
@@ -154,13 +159,7 @@ export async function getCommissionsWithDetails(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(commission.periodStartDate), asc(supplier.name), asc(franchisee.name));
 
-  // Filter by brandId after join if provided
-  let filteredResults = results as CommissionWithDetails[];
-  if (filters.brandId) {
-    filteredResults = filteredResults.filter((r) => r.brandId === filters.brandId);
-  }
-
-  return filteredResults;
+  return results as CommissionWithDetails[];
 }
 
 /**
@@ -556,6 +555,11 @@ export async function getSupplierCommissionsWithDetails(
     conditions.push(eq(commission.status, filters.status as Commission["status"]));
   }
 
+  // Filter by brandId in SQL (optimized - avoids in-memory filtering)
+  if (filters.brandId) {
+    conditions.push(eq(franchisee.brandId, filters.brandId));
+  }
+
   const results = await database
     .select({
       // Commission fields
@@ -598,13 +602,7 @@ export async function getSupplierCommissionsWithDetails(
     .where(and(...conditions))
     .orderBy(desc(commission.periodStartDate), asc(franchisee.name));
 
-  // Filter by brandId after join if provided
-  let filteredResults = results as CommissionWithDetails[];
-  if (filters.brandId) {
-    filteredResults = filteredResults.filter((r) => r.brandId === filters.brandId);
-  }
-
-  return filteredResults;
+  return results as CommissionWithDetails[];
 }
 
 /**
