@@ -26,6 +26,9 @@ export interface ParsedRowData {
   netAmount: number; // Amount before VAT (for commission calculation)
   originalAmount: number; // Original amount from file (for reference)
   rowNumber: number;
+  // Pre-calculated commission from supplier (for suppliers like Avrahami that calculate commission per product)
+  // When provided, this should be used instead of calculating commission from netAmount * rate
+  preCalculatedCommission?: number;
 }
 
 // Result of file processing with enhanced error handling

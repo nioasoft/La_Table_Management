@@ -8,7 +8,9 @@
  *   - Row 1: Column types for each customer: כמות, סכום, סכום עמלה
  *   - Row 2+: Product data with amounts for each customer
  *
- * We need to extract the "סכום עמלה" column for each customer (3rd col in each group)
+ * Two important values per customer:
+ *   - "סכום" (sale amount) - used for cross-reference with franchisee
+ *   - "סכום עמלה" (commission amount) - pre-calculated commission (different rates per product)
  */
 
 import * as XLSX from "xlsx";
@@ -21,6 +23,11 @@ import { createFileProcessingError } from "../file-processing-errors";
 
 // VAT rate in Israel
 const VAT_RATE = 0.18;
+
+interface CustomerColumns {
+  saleColIdx: number;       // סכום - sale amount column
+  commissionColIdx: number; // סכום עמלה - commission amount column
+}
 
 /**
  * Parse אברהמי supplier file with pivot table format
@@ -40,7 +47,7 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
     });
 
     // Look for the "pivot" sheet
-    let sheetName = workbook.SheetNames.find(
+    let sheetName: string | undefined = workbook.SheetNames.find(
       (name) => name.toLowerCase().includes("pivot")
     );
     if (!sheetName) {
@@ -71,40 +78,41 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
     const headerRow = rawData[0] || [];
     const columnTypeRow = rawData[1] || [];
 
-    // Build a map of customer name to their "סכום עמלה" column index
-    const customerCommissionColumns: Map<string, number> = new Map();
+    // Build a map of customer name to their column indices
+    // Each customer has 3 columns: כמות (quantity), סכום (sale amount), סכום עמלה (commission)
+    const customerColumns: Map<string, CustomerColumns> = new Map();
 
     // Customer names start at column 3, every 3 columns
     for (let colIdx = 3; colIdx < headerRow.length; colIdx += 3) {
       const customerName = String(headerRow[colIdx] || "").trim();
-      if (!customerName) continue;
+      if (!customerName || customerName === "כמות") continue;
 
       // Clean up the customer name (remove duplicates like "שם * שם")
       const cleanName = customerName.includes("*")
         ? customerName.split("*")[0].trim()
         : customerName;
 
-      // The "סכום עמלה" column is the 3rd column in each customer group (offset +2)
-      const commissionColIdx = colIdx + 2;
+      // Column layout: colIdx=כמות, colIdx+1=סכום, colIdx+2=סכום עמלה
+      // But verify by checking column type row
+      let saleColIdx = colIdx + 1;
+      let commissionColIdx = colIdx + 2;
 
-      // Verify this is the commission column
-      const colType = String(columnTypeRow[commissionColIdx] || "").trim().toLowerCase();
-      if (colType.includes("עמלה") || colType.includes("commission")) {
-        customerCommissionColumns.set(cleanName, commissionColIdx);
-      } else {
-        // If not, try to find the commission column nearby
-        for (let offset = 0; offset <= 2; offset++) {
-          const checkColType = String(columnTypeRow[colIdx + offset] || "").trim().toLowerCase();
-          if (checkColType.includes("עמלה")) {
-            customerCommissionColumns.set(cleanName, colIdx + offset);
-            break;
-          }
+      // Verify columns by checking types
+      for (let offset = 0; offset <= 2; offset++) {
+        const colType = String(columnTypeRow[colIdx + offset] || "").trim().toLowerCase();
+        if (colType === "סכום" || colType.includes("סכום") && !colType.includes("עמלה")) {
+          saleColIdx = colIdx + offset;
+        }
+        if (colType.includes("עמלה")) {
+          commissionColIdx = colIdx + offset;
         }
       }
+
+      customerColumns.set(cleanName, { saleColIdx, commissionColIdx });
     }
 
-    // Sum commission amounts for each customer across all data rows
-    const customerTotals: Map<string, number> = new Map();
+    // Sum amounts for each customer across all data rows
+    const customerTotals: Map<string, { sale: number; commission: number }> = new Map();
 
     // Start from row 2 (skip header and column types)
     for (let rowIdx = 2; rowIdx < rawData.length; rowIdx++) {
@@ -113,37 +121,53 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
 
       // Skip summary rows
       const firstCell = String(row[0] || "").toLowerCase();
-      if (firstCell.includes("סה״כ") || firstCell.includes("סהכ") || firstCell.includes("total")) {
+      if (firstCell.includes("סה״כ") || firstCell.includes("סהכ") || firstCell.includes("total") || firstCell.includes("grand")) {
         continue;
       }
 
-      // Sum commission for each customer
-      for (const [customer, colIdx] of customerCommissionColumns.entries()) {
-        const cellValue = row[colIdx];
-        if (cellValue !== null && cellValue !== undefined && cellValue !== "") {
-          const amount = parseFloat(String(cellValue).replace(/[,₪\s]/g, ""));
-          if (!isNaN(amount) && amount !== 0) {
-            const existing = customerTotals.get(customer) || 0;
-            customerTotals.set(customer, existing + amount);
+      // Sum for each customer
+      for (const [customer, cols] of customerColumns.entries()) {
+        const saleValue = row[cols.saleColIdx];
+        const commissionValue = row[cols.commissionColIdx];
+
+        const existing = customerTotals.get(customer) || { sale: 0, commission: 0 };
+
+        if (saleValue !== null && saleValue !== undefined && saleValue !== "") {
+          const sale = parseFloat(String(saleValue).replace(/[,₪\s]/g, ""));
+          if (!isNaN(sale)) {
+            existing.sale += sale;
           }
         }
+
+        if (commissionValue !== null && commissionValue !== undefined && commissionValue !== "") {
+          const commission = parseFloat(String(commissionValue).replace(/[,₪\s]/g, ""));
+          if (!isNaN(commission)) {
+            existing.commission += commission;
+          }
+        }
+
+        customerTotals.set(customer, existing);
       }
     }
 
     // Convert to ParsedRowData
     let totalGrossAmount = 0;
     let totalNetAmount = 0;
+    let totalPreCalculatedCommission = 0;
     let processedRows = 0;
     let rowNumber = 1;
 
-    for (const [customer, amount] of customerTotals.entries()) {
+    for (const [customer, amounts] of customerTotals.entries()) {
       // Skip invalid entries
-      if (amount <= 0 || customer.includes("סה״כ") || customer.includes("סהכ")) {
+      if (amounts.sale <= 0 || customer.includes("סה״כ") || customer.includes("סהכ")) {
         continue;
       }
 
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
+      // Sale amount is the amount for cross-reference (what franchisee paid)
+      // This amount appears to be net (without VAT) based on file structure
+      const netAmount = roundToTwoDecimals(amounts.sale);
+      const grossAmount = roundToTwoDecimals(amounts.sale * (1 + VAT_RATE));
+      const preCalculatedCommission = roundToTwoDecimals(amounts.commission);
 
       data.push({
         franchisee: customer,
@@ -152,10 +176,12 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
         netAmount,
         originalAmount: netAmount,
         rowNumber: rowNumber++,
+        preCalculatedCommission, // Commission already calculated by supplier
       });
 
       totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
+      totalPreCalculatedCommission += preCalculatedCommission;
       processedRows++;
     }
 
@@ -180,7 +206,8 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
       processedRows,
       rawData.length - processedRows - 2,
       totalGrossAmount,
-      totalNetAmount
+      totalNetAmount,
+      totalPreCalculatedCommission
     );
   } catch (error) {
     errors.push(
@@ -204,7 +231,8 @@ function createResult(
   processedRows = 0,
   skippedRows = 0,
   totalGrossAmount = 0,
-  totalNetAmount = 0
+  totalNetAmount = 0,
+  _totalPreCalculatedCommission = 0
 ): FileProcessingResult {
   return {
     success,
