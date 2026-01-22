@@ -641,6 +641,7 @@ export const he = {
           documents: "מסמכים",
           uploadHistory: "היסטוריית העלאות",
           crossReferences: "הפניות צולבות",
+          processedFiles: "קבצים מעובדים",
         },
 
         overview: {
@@ -729,6 +730,43 @@ export const he = {
           by: "ע״י:",
           reviewedBy: "נבדק ע״י:",
           reviewNotes: "הערות בדיקה:",
+        },
+
+        processedFiles: {
+          title: "קבצים מעובדים",
+          description: "קבצי Excel שהועלו ועובדו עבור ספק זה",
+          noFiles: "לא נמצאו קבצים מעובדים לספק זה",
+          loadError: "שגיאה בטעינת קבצים",
+          viewAll: "צפה בכל הקבצים",
+          statuses: {
+            auto_approved: "אושר אוטומטית",
+            approved: "אושר",
+            needs_review: "ממתין לבדיקה",
+            rejected: "נדחה",
+            pending: "בעיבוד",
+          },
+          stats: {
+            totalFranchisees: "זכיינים",
+            exactMatches: "מדויקים",
+            fuzzyMatches: "חלקיים",
+            unmatched: "לא מותאמים",
+          },
+          summary: {
+            totalGross: "סה״כ כולל מע״מ:",
+            totalNet: "סה״כ לפני מע״מ:",
+            rowsProcessed: "שורות שעובדו:",
+          },
+          table: {
+            originalName: "שם בקובץ",
+            matchedFranchisee: "זכיין מותאם",
+            grossAmount: "כולל מע״מ",
+            netAmount: "לפני מע״מ",
+            matchStatus: "סטטוס",
+          },
+          actions: {
+            review: "בדיקה",
+            view: "צפה",
+          },
         },
 
         settlementFrequencies: {

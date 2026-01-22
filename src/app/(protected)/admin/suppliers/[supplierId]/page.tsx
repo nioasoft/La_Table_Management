@@ -51,6 +51,7 @@ import type {
   SupplierFileMapping,
 } from "@/db/schema";
 import { DocumentManager } from "@/components/document-manager";
+import { SupplierFilesTab } from "@/components/suppliers/supplier-files-tab";
 import Link from "next/link";
 import { he } from "@/lib/translations/he";
 
@@ -498,6 +499,13 @@ export default function SupplierCardPage() {
           >
             <LinkIcon className="h-4 w-4" />
             {he.admin.suppliers.detail.tabs.crossReferences}
+          </TabsTrigger>
+          <TabsTrigger
+            value="processed-files"
+            className="flex items-center gap-2"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {he.admin.suppliers.detail.tabs.processedFiles}
           </TabsTrigger>
         </TabsList>
 
@@ -1096,6 +1104,11 @@ export default function SupplierCardPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Processed Files Tab */}
+        <TabsContent value="processed-files" className="space-y-6">
+          <SupplierFilesTab supplierId={supplierId} supplierName={supplier.name} />
         </TabsContent>
       </Tabs>
     </div>
