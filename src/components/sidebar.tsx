@@ -18,7 +18,6 @@ import {
   ChevronUp,
   Store,
   Building2,
-  Tag,
   Users,
   Mail,
   LogOut,
@@ -151,11 +150,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.franchisees,
                 href: "/admin/franchisees",
                 icon: <Building2 className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.brands,
-                href: "/admin/brands",
-                icon: <Tag className="h-4 w-4" />,
               },
               {
                 label: he.sidebar.subNavigation.bkmvdata,

@@ -550,13 +550,20 @@
      -------------------------------------------------------------------------- */
   /* Fix select item padding and checkmark position for RTL */
   html[dir="rtl"] [data-radix-select-item] {
-    padding-right: 2rem !important;
-    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    padding-left: 2rem !important;
+    flex-direction: row-reverse;
   }
 
   html[dir="rtl"] [data-radix-select-item] > span[class*="absolute"] {
-    right: auto;
-    left: 0.5rem;
+    right: auto !important;
+    left: 0.5rem !important;
+  }
+
+  /* Fix select item text alignment for RTL */
+  html[dir="rtl"] [data-radix-select-item] [data-radix-select-item-text] {
+    text-align: right;
+    width: 100%;
   }
 
   /* Fix select trigger icon positioning for RTL */
@@ -567,6 +574,18 @@
   html[dir="rtl"] [data-radix-select-trigger] > [data-radix-select-icon] {
     margin-left: 0;
     margin-right: auto;
+  }
+
+  /* Fix select value text alignment for RTL */
+  html[dir="rtl"] [data-radix-select-trigger] [data-radix-select-value] {
+    text-align: right;
+    direction: rtl;
+  }
+
+  /* Fix select content text alignment for RTL */
+  html[dir="rtl"] [data-radix-select-content] {
+    text-align: right;
+    direction: rtl;
   }
 
   /* --------------------------------------------------------------------------
@@ -908,5 +927,13 @@
 
   html[dir="rtl"] .label-required::after {
     content: none;
+  }
+
+  /* --------------------------------------------------------------------------
+     Next.js Portal fixes
+     -------------------------------------------------------------------------- */
+  nextjs-portal {
+    left: unset !important;
+    top: unset !important;
   }
 }

@@ -14,6 +14,7 @@ export { parseTuviotHatzafonFile } from "./tuviot-hatzafon-parser";
 export { parseMachlavotGadFile } from "./machlavot-gad-parser";
 export { parseArelArizotFile } from "./arel-arizot-parser";
 export { parsePastaLaCasaFile } from "./pasta-la-casa-parser";
+export { parseAleAleFile } from "./ale-ale-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -58,6 +59,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   PASTA_LA_CASA: async (buffer, vatRate) => {
     const { parsePastaLaCasaFile } = await import("./pasta-la-casa-parser");
     return parsePastaLaCasaFile(buffer, vatRate);
+  },
+  ALE_ALE: async (buffer, vatRate) => {
+    const { parseAleAleFile } = await import("./ale-ale-parser");
+    return parseAleAleFile(buffer, vatRate);
   },
 };
 

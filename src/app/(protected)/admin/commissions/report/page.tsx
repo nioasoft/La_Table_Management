@@ -415,13 +415,13 @@ export default function CommissionReportPage() {
             <div className="space-y-2">
               <Label htmlFor="brand">מותג</Label>
               <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-                <SelectTrigger id="brand">
+                <SelectTrigger id="brand" dir="rtl" className="[&>span]:text-end">
                   <SelectValue placeholder="כל המותגים" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל המותגים</SelectItem>
+                <SelectContent dir="rtl">
+                  <SelectItem value="all" className="text-end">כל המותגים</SelectItem>
                   {brands.map((brand) => (
-                    <SelectItem key={brand.id} value={brand.id}>
+                    <SelectItem key={brand.id} value={brand.id} className="text-end">
                       {brand.nameHe}
                     </SelectItem>
                   ))}
@@ -434,10 +434,10 @@ export default function CommissionReportPage() {
                 <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end">
                   <SelectValue placeholder="כל הספקים" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל הספקים</SelectItem>
+                <SelectContent dir="rtl">
+                  <SelectItem value="all" className="text-end">כל הספקים</SelectItem>
                   {suppliers.map((supplier) => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
+                    <SelectItem key={supplier.id} value={supplier.id} className="text-end">
                       {supplier.name}
                     </SelectItem>
                   ))}
@@ -447,16 +447,16 @@ export default function CommissionReportPage() {
             <div className="space-y-2">
               <Label htmlFor="status">סטטוס</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger id="status">
+                <SelectTrigger id="status" dir="rtl" className="[&>span]:text-end">
                   <SelectValue placeholder="כל הסטטוסים" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל הסטטוסים</SelectItem>
-                  <SelectItem value="pending">ממתין</SelectItem>
-                  <SelectItem value="calculated">חושב</SelectItem>
-                  <SelectItem value="approved">מאושר</SelectItem>
-                  <SelectItem value="paid">שולם</SelectItem>
-                  <SelectItem value="cancelled">בוטל</SelectItem>
+                <SelectContent dir="rtl">
+                  <SelectItem value="all" className="text-end">כל הסטטוסים</SelectItem>
+                  <SelectItem value="pending" className="text-end">ממתין</SelectItem>
+                  <SelectItem value="calculated" className="text-end">חושב</SelectItem>
+                  <SelectItem value="approved" className="text-end">מאושר</SelectItem>
+                  <SelectItem value="paid" className="text-end">שולם</SelectItem>
+                  <SelectItem value="cancelled" className="text-end">בוטל</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -596,31 +596,31 @@ export default function CommissionReportPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>מותג</TableHead>
-                          <TableHead>מספר עמלות</TableHead>
-                          <TableHead>סכום ברוטו</TableHead>
-                          <TableHead>סכום נטו</TableHead>
-                          <TableHead>סכום עמלה</TableHead>
-                          <TableHead>עמלה ממוצעת</TableHead>
+                          <TableHead className="text-end">מותג</TableHead>
+                          <TableHead className="text-end">מספר עמלות</TableHead>
+                          <TableHead className="text-end">סכום ברוטו</TableHead>
+                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום עמלה</TableHead>
+                          <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.byBrand.map((brand) => (
                           <TableRow key={brand.brandId}>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-end">
                               {brand.brandNameHe}
                             </TableCell>
-                            <TableCell>{brand.commissionCount}</TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">{brand.commissionCount}</TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(brand.totalGrossAmount)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(brand.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-end">
                               {formatCurrency(brand.totalCommissionAmount)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatPercent(brand.avgCommissionRate)}
                             </TableCell>
                           </TableRow>
@@ -650,31 +650,31 @@ export default function CommissionReportPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>תאריך התחלה</TableHead>
-                          <TableHead>תאריך סיום</TableHead>
-                          <TableHead>מספר עמלות</TableHead>
-                          <TableHead>סכום ברוטו</TableHead>
-                          <TableHead>סכום נטו</TableHead>
-                          <TableHead>סכום עמלה</TableHead>
+                          <TableHead className="text-end">תאריך התחלה</TableHead>
+                          <TableHead className="text-end">תאריך סיום</TableHead>
+                          <TableHead className="text-end">מספר עמלות</TableHead>
+                          <TableHead className="text-end">סכום ברוטו</TableHead>
+                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום עמלה</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.byPeriod.map((period, index) => (
                           <TableRow key={index}>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatDate(period.periodStartDate)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatDate(period.periodEndDate)}
                             </TableCell>
-                            <TableCell>{period.commissionCount}</TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">{period.commissionCount}</TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(period.totalGrossAmount)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(period.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-end">
                               {formatCurrency(period.totalCommissionAmount)}
                             </TableCell>
                           </TableRow>
@@ -704,33 +704,33 @@ export default function CommissionReportPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>ספק</TableHead>
-                          <TableHead>קוד</TableHead>
-                          <TableHead>מספר עמלות</TableHead>
-                          <TableHead>סכום ברוטו</TableHead>
-                          <TableHead>סכום נטו</TableHead>
-                          <TableHead>סכום עמלה</TableHead>
-                          <TableHead>עמלה ממוצעת</TableHead>
+                          <TableHead className="text-end">ספק</TableHead>
+                          <TableHead className="text-end">קוד</TableHead>
+                          <TableHead className="text-end">מספר עמלות</TableHead>
+                          <TableHead className="text-end">סכום ברוטו</TableHead>
+                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום עמלה</TableHead>
+                          <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.bySupplier.map((supplier) => (
                           <TableRow key={supplier.supplierId}>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-end">
                               {supplier.supplierName}
                             </TableCell>
-                            <TableCell>{supplier.supplierCode}</TableCell>
-                            <TableCell>{supplier.commissionCount}</TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">{supplier.supplierCode}</TableCell>
+                            <TableCell className="text-end">{supplier.commissionCount}</TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(supplier.totalGrossAmount)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatCurrency(supplier.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-end">
                               {formatCurrency(supplier.totalCommissionAmount)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-end">
                               {formatPercent(supplier.avgCommissionRate)}
                             </TableCell>
                           </TableRow>
@@ -761,38 +761,38 @@ export default function CommissionReportPage() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>ספק</TableHead>
-                            <TableHead>זכיין</TableHead>
-                            <TableHead>מותג</TableHead>
-                            <TableHead>תקופה</TableHead>
-                            <TableHead>ברוטו</TableHead>
-                            <TableHead>עמלה</TableHead>
-                            <TableHead>שיעור</TableHead>
-                            <TableHead>סטטוס</TableHead>
+                            <TableHead className="text-end">ספק</TableHead>
+                            <TableHead className="text-end">זכיין</TableHead>
+                            <TableHead className="text-end">מותג</TableHead>
+                            <TableHead className="text-end">תקופה</TableHead>
+                            <TableHead className="text-end">ברוטו</TableHead>
+                            <TableHead className="text-end">עמלה</TableHead>
+                            <TableHead className="text-end">שיעור</TableHead>
+                            <TableHead className="text-end">סטטוס</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {report.details.slice(0, 100).map((commission) => (
                             <TableRow key={commission.id}>
-                              <TableCell className="font-medium">
+                              <TableCell className="font-medium text-end">
                                 {commission.supplierName}
                               </TableCell>
-                              <TableCell>{commission.franchiseeName}</TableCell>
-                              <TableCell>{commission.brandNameHe}</TableCell>
-                              <TableCell className="text-sm">
+                              <TableCell className="text-end">{commission.franchiseeName}</TableCell>
+                              <TableCell className="text-end">{commission.brandNameHe}</TableCell>
+                              <TableCell className="text-sm text-end">
                                 {formatDate(commission.periodStartDate)} -{" "}
                                 {formatDate(commission.periodEndDate)}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="text-end">
                                 {formatCurrency(Number(commission.grossAmount))}
                               </TableCell>
-                              <TableCell className="font-medium">
+                              <TableCell className="font-medium text-end">
                                 {formatCurrency(Number(commission.commissionAmount))}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="text-end">
                                 {formatPercent(Number(commission.commissionRate))}
                               </TableCell>
-                              <TableCell>
+                              <TableCell className="text-end">
                                 {getStatusBadge(commission.status)}
                               </TableCell>
                             </TableRow>

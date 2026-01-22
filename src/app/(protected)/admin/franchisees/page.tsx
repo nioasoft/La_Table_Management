@@ -47,6 +47,7 @@ import {
   ArrowRight,
   Eye,
   Search,
+  Bell,
 } from "lucide-react";
 import {
   Dialog,
@@ -62,6 +63,7 @@ import Link from "next/link";
 import { AliasManager } from "@/components/alias-manager";
 import { DocumentManager } from "@/components/document-manager";
 import { FranchiseeDetailCard } from "@/components/franchisee-detail-card";
+import { ImportantDatesManager } from "@/components/important-dates-manager";
 import { he } from "@/lib/translations/he";
 
 // Document type with uploader info
@@ -281,6 +283,21 @@ export default function AdminFranchiseesPage() {
   });
 
   const brands: Brand[] = brandsData?.brands || [];
+
+  // Fetch reminder counts for all franchisees
+  const { data: reminderCountsData } = useQuery({
+    queryKey: ["reminder-counts"],
+    queryFn: async () => {
+      const response = await fetch("/api/franchisees/important-dates/reminder-counts");
+      if (!response.ok) {
+        throw new Error("Failed to fetch reminder counts");
+      }
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  const reminderCounts: Record<string, number> = reminderCountsData?.counts || {};
 
   const fetchFranchiseeDocuments = async (franchiseeId: string) => {
     try {
@@ -665,17 +682,25 @@ export default function AdminFranchiseesPage() {
               );
             })}
           </div>
-          <Button
-            size="lg"
-            onClick={() => {
-              setShowForm(true);
-              setEditingFranchisee(null);
-              setFormData(initialFormData);
-            }}
-          >
-            <Plus className="me-2 h-5 w-5" />
-            הוספת זכיין
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/admin/brands">
+              <Button variant="outline" size="lg">
+                <Tag className="me-2 h-5 w-5" />
+                ניהול מותגים
+              </Button>
+            </Link>
+            <Button
+              size="lg"
+              onClick={() => {
+                setShowForm(true);
+                setEditingFranchisee(null);
+                setFormData(initialFormData);
+              }}
+            >
+              <Plus className="me-2 h-5 w-5" />
+              הוספת זכיין
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1066,73 +1091,26 @@ export default function AdminFranchiseesPage() {
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="leaseOption1End">{he.admin.franchisees.form.fields.leaseOption1End}</Label>
-                    <Input
-                      id="leaseOption1End"
-                      type="date"
-                      value={formData.leaseOption1End}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          leaseOption1End: e.target.value,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="leaseOption2End">{he.admin.franchisees.form.fields.leaseOption2End}</Label>
-                    <Input
-                      id="leaseOption2End"
-                      type="date"
-                      value={formData.leaseOption2End}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          leaseOption2End: e.target.value,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="leaseOption3End">{he.admin.franchisees.form.fields.leaseOption3End}</Label>
-                    <Input
-                      id="leaseOption3End"
-                      type="date"
-                      value={formData.leaseOption3End}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          leaseOption3End: e.target.value,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="franchiseAgreementEnd">
-                      {he.admin.franchisees.form.fields.franchiseAgreementEnd}
-                    </Label>
-                    <Input
-                      id="franchiseAgreementEnd"
-                      type="date"
-                      value={formData.franchiseAgreementEnd}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          franchiseAgreementEnd: e.target.value,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                  </div>
                 </div>
               </div>
+
+              {/* Important Dates Manager - Only shown when editing an existing franchisee */}
+              {editingFranchisee && (
+                <div className="border rounded-lg p-4 bg-muted/30">
+                  <ImportantDatesManager
+                    franchiseeId={editingFranchisee.id}
+                    disabled={isSubmitting}
+                  />
+                </div>
+              )}
+
+              {/* Message for new franchisees */}
+              {!editingFranchisee && (
+                <div className="border border-dashed rounded-lg p-4 text-sm text-muted-foreground text-center">
+                  <Calendar className="h-5 w-5 mx-auto mb-2 opacity-50" />
+                  תאריכים חשובים (חוזים, הסכמים וכו&apos;) ניתנים להוספה לאחר יצירת הזכיין
+                </div>
+              )}
 
               {/* Notes */}
               <div className="space-y-2">
@@ -1235,6 +1213,7 @@ export default function AdminFranchiseesPage() {
                 isLoadingHistory={loadingHistoryId === franchisee.id}
                 onToggleHistory={() => toggleHistoryExpanded(franchisee.id)}
                 onViewDetails={handleViewDetails}
+                reminderCount={reminderCounts[franchisee.id] || 0}
               />
             ))
           )}
@@ -1381,6 +1360,8 @@ interface FranchiseeCardProps {
   onToggleHistory: () => void;
   // Detail view props
   onViewDetails: (franchisee: FranchiseeWithBrandAndContacts) => void;
+  // Reminder count for badges
+  reminderCount: number;
 }
 
 function FranchiseeCard({
@@ -1398,6 +1379,7 @@ function FranchiseeCard({
   isLoadingHistory,
   onToggleHistory,
   onViewDetails,
+  reminderCount,
 }: FranchiseeCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -1407,11 +1389,23 @@ function FranchiseeCard({
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-1 flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium">{franchisee.name}</span>
+            <button
+              type="button"
+              onClick={() => onEdit(franchisee)}
+              className="font-medium truncate hover:text-primary hover:underline transition-colors text-start"
+            >
+              {franchisee.name}
+            </button>
             <span className="text-xs text-muted-foreground font-mono">{franchisee.code}</span>
             <Badge variant={statusVariants[franchisee.status]} className="text-xs px-1.5 py-0">
               {statusLabels[franchisee.status]}
             </Badge>
+            {reminderCount > 0 && (
+              <Badge variant="outline" className="text-xs px-1.5 py-0 border-amber-500 text-amber-600 bg-amber-50">
+                <Bell className="h-3 w-3 ml-1" />
+                {reminderCount} תזכורות
+              </Badge>
+            )}
             {franchisee.brand && (
               <Badge variant="outline" className="text-xs px-1.5 py-0">{franchisee.brand.nameHe}</Badge>
             )}

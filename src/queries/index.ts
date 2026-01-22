@@ -6,3 +6,4 @@ export * from "./dashboard";
 export * from "./reconciliation";
 export * from "./commissions";
 export * from "./franchisee-reminders";
+export * from "./supplier-file-uploads";

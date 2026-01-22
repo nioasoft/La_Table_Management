@@ -53,6 +53,17 @@ export const franchiseeReminderTypeEnum = pgEnum("franchisee_reminder_type", [
   "custom",
 ]);
 
+// Important date type enum for franchisee important dates
+export const importantDateTypeEnum = pgEnum("important_date_type", [
+  "franchise_agreement",
+  "rental_contract",
+  "lease_option",
+  "custom",
+]);
+
+// Duration unit enum for important dates
+export const durationUnitEnum = pgEnum("duration_unit", ["months", "years"]);
+
 export const uploadLinkStatusEnum = pgEnum("upload_link_status", [
   "active",
   "expired",
@@ -833,6 +844,55 @@ export const franchiseeReminder = pgTable(
     index("idx_franchisee_reminder_status").on(table.status),
     index("idx_franchisee_reminder_date").on(table.reminderDate),
     index("idx_franchisee_reminder_notification_date").on(table.notificationDate),
+  ]
+);
+
+// Franchisee Important Dates table - Track important dates like franchise agreements, rental contracts
+// Each entry has a start date + duration → auto-calculated end date, with reminder configuration
+export const franchiseeImportantDate = pgTable(
+  "franchisee_important_date",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+
+    // Date type
+    dateType: importantDateTypeEnum("date_type").notNull(),
+    customTypeName: text("custom_type_name"), // Only for 'custom' type
+
+    // Date configuration
+    startDate: date("start_date").notNull(),
+    durationMonths: integer("duration_months").notNull(),
+    displayUnit: durationUnitEnum("display_unit").default("months").notNull(),
+    endDate: date("end_date").notNull(), // Calculated: startDate + durationMonths
+
+    // Reminder configuration
+    reminderMonthsBefore: integer("reminder_months_before").default(3).notNull(),
+    reminderDate: date("reminder_date").notNull(), // Calculated: endDate - reminderMonthsBefore
+
+    // Optional
+    description: text("description"),
+    notes: text("notes"),
+    isActive: boolean("is_active").default(true).notNull(),
+
+    // Audit
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_franchisee_important_date_franchisee").on(table.franchiseeId),
+    index("idx_franchisee_important_date_type").on(table.dateType),
+    index("idx_franchisee_important_date_end_date").on(table.endDate),
+    index("idx_franchisee_important_date_reminder_date").on(table.reminderDate),
+    index("idx_franchisee_important_date_is_active").on(table.isActive),
   ]
 );
 
@@ -1678,6 +1738,7 @@ export const franchiseeRelations = relations(franchisee, ({ one, many }) => ({
   commissions: many(commission),
   statusHistory: many(franchiseeStatusHistory),
   reminders: many(franchiseeReminder),
+  importantDates: many(franchiseeImportantDate),
   createdByUser: one(user, {
     fields: [franchisee.createdBy],
     references: [user.id],
@@ -1699,6 +1760,18 @@ export const franchiseeReminderRelations = relations(franchiseeReminder, ({ one 
     fields: [franchiseeReminder.createdBy],
     references: [user.id],
     relationName: "createdFranchiseeReminders",
+  }),
+}));
+
+// Franchisee Important Date relations
+export const franchiseeImportantDateRelations = relations(franchiseeImportantDate, ({ one }) => ({
+  franchisee: one(franchisee, {
+    fields: [franchiseeImportantDate.franchiseeId],
+    references: [franchisee.id],
+  }),
+  createdByUser: one(user, {
+    fields: [franchiseeImportantDate.createdBy],
+    references: [user.id],
   }),
 }));
 
@@ -1956,6 +2029,15 @@ export type UpdateFranchiseeReminderData = Partial<
   Omit<CreateFranchiseeReminderData, "id" | "createdAt">
 >;
 export type FranchiseeReminderType = (typeof franchiseeReminderTypeEnum.enumValues)[number];
+
+// Franchisee Important Date types
+export type FranchiseeImportantDate = typeof franchiseeImportantDate.$inferSelect;
+export type CreateFranchiseeImportantDateData = typeof franchiseeImportantDate.$inferInsert;
+export type UpdateFranchiseeImportantDateData = Partial<
+  Omit<CreateFranchiseeImportantDateData, "id" | "createdAt">
+>;
+export type ImportantDateType = (typeof importantDateTypeEnum.enumValues)[number];
+export type DurationUnit = (typeof durationUnitEnum.enumValues)[number];
 
 // Upload Link types
 export type UploadLink = typeof uploadLink.$inferSelect;

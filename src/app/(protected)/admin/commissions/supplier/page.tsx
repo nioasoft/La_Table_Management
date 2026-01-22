@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -197,6 +197,11 @@ export default function SupplierCommissionReportPage() {
   const { data: suppliersData = [], isLoading: isLoadingSuppliers } = useSuppliers();
   const suppliers: Supplier[] = suppliersData;
 
+  // Sort suppliers alphabetically by Hebrew name (א-ב)
+  const sortedSuppliers = useMemo(() => {
+    return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, "he"));
+  }, [suppliers]);
+
   useEffect(() => {
     if (!isPending && !session) {
       router.push("/sign-in?redirect=/admin/commissions/supplier");
@@ -349,13 +354,14 @@ export default function SupplierCommissionReportPage() {
               <Select
                 value={selectedSupplierId}
                 onValueChange={setSelectedSupplierId}
+                dir="rtl"
               >
-                <SelectTrigger>
+                <SelectTrigger dir="rtl">
                   <SelectValue placeholder="בחר ספק" />
                 </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
+                <SelectContent dir="rtl">
+                  {sortedSuppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id} className="text-end">
                       {s.name} ({s.code})
                     </SelectItem>
                   ))}
