@@ -15,8 +15,14 @@ import {
   type SupplierFileMapping,
   type CommissionException,
 } from "@/db/schema";
-import { eq, desc, and, inArray, asc } from "drizzle-orm";
+import { eq, desc, and, inArray, asc, count } from "drizzle-orm";
 import { logCommissionChange, type AuditContext } from "./auditLog";
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  normalizePaginationParams,
+  createPaginatedResult,
+} from "@/lib/pagination";
 
 // Extended supplier type with brands
 export type SupplierWithBrands = Supplier & {
@@ -100,6 +106,97 @@ export async function getSuppliersWithBrands(
   }
 
   return Array.from(suppliersMap.values());
+}
+
+/**
+ * Get suppliers with brands - PAGINATED
+ * Optimized for large datasets with offset-based pagination
+ *
+ * @param params - Pagination parameters (page, limit)
+ * @param activeOnly - If true, only returns active suppliers
+ * @returns Paginated result with suppliers and pagination metadata
+ */
+export async function getSuppliersWithBrandsPaginated(
+  params: PaginationParams = {},
+  activeOnly = false
+): Promise<PaginatedResult<SupplierWithBrands>> {
+  const { page, limit, offset } = normalizePaginationParams(params);
+  const baseCondition = activeOnly ? eq(supplier.isActive, true) : undefined;
+
+  // Get total count first
+  const [countResult] = await database
+    .select({ total: count() })
+    .from(supplier)
+    .where(baseCondition);
+  const totalCount = countResult?.total ?? 0;
+
+  // Get paginated supplier IDs first
+  const supplierIds = await database
+    .select({ id: supplier.id })
+    .from(supplier)
+    .where(baseCondition)
+    .orderBy(desc(supplier.createdAt), asc(supplier.name))
+    .limit(limit)
+    .offset(offset);
+
+  if (supplierIds.length === 0) {
+    return createPaginatedResult([], totalCount, { page, limit });
+  }
+
+  const ids = supplierIds.map((s) => s.id);
+
+  // Get suppliers with brands for the paginated IDs
+  const result = await database
+    .select({
+      supplier: supplier,
+      brandId: supplierBrand.brandId,
+      brandNameHe: brand.nameHe,
+      brandNameEn: brand.nameEn,
+      brandCode: brand.code,
+      brandIsActive: brand.isActive,
+    })
+    .from(supplier)
+    .leftJoin(supplierBrand, eq(supplier.id, supplierBrand.supplierId))
+    .leftJoin(brand, eq(supplierBrand.brandId, brand.id))
+    .where(inArray(supplier.id, ids))
+    .orderBy(desc(supplier.createdAt), asc(supplier.name));
+
+  // Group brands by supplier using a Map
+  const suppliersMap = new Map<string, SupplierWithBrands>();
+
+  for (const row of result) {
+    const supplierId = row.supplier.id;
+
+    if (!suppliersMap.has(supplierId)) {
+      suppliersMap.set(supplierId, {
+        ...(row.supplier as Supplier),
+        brands: [],
+      });
+    }
+
+    if (row.brandId && row.brandNameHe) {
+      const supplierWithBrands = suppliersMap.get(supplierId)!;
+      const brandExists = supplierWithBrands.brands.some(
+        (b) => b.id === row.brandId
+      );
+      if (!brandExists) {
+        supplierWithBrands.brands.push({
+          id: row.brandId,
+          nameHe: row.brandNameHe,
+          nameEn: row.brandNameEn,
+          code: row.brandCode,
+          isActive: row.brandIsActive,
+        } as Brand);
+      }
+    }
+  }
+
+  // Maintain order from original query
+  const data = ids
+    .map((id) => suppliersMap.get(id))
+    .filter((s): s is SupplierWithBrands => s !== undefined);
+
+  return createPaginatedResult(data, totalCount, { page, limit });
 }
 
 /**
