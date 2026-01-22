@@ -143,16 +143,17 @@ export function parseYaakovAgenciesFile(buffer: Buffer): FileProcessingResult {
       // Skip invalid entries or summary rows
       if (amount === 0) continue;
 
-      // Handle negative amounts (credits) - still include them
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
+      // Amounts in file INCLUDE VAT (gross amounts)
+      // Calculate net by removing VAT
+      const grossAmount = roundToTwoDecimals(amount);
+      const netAmount = roundToTwoDecimals(amount / (1 + VAT_RATE));
 
       data.push({
         franchisee: customer,
         date: null,
         grossAmount,
         netAmount,
-        originalAmount: netAmount,
+        originalAmount: grossAmount, // Original amount from file includes VAT
         rowNumber: rowNumber++,
       });
 
