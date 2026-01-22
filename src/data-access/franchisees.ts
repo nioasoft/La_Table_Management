@@ -14,9 +14,15 @@ import {
   type Contact,
   type Brand,
 } from "@/db/schema";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, count } from "drizzle-orm";
 import { getAllFranchiseeReminderCounts } from "./franchiseeImportantDates";
 import { logFranchiseeStatusChange, type AuditContext } from "./auditLog";
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  normalizePaginationParams,
+  createPaginatedResult,
+} from "@/lib/pagination";
 import {
   matchFranchiseeName,
   matchFranchiseeNames,
@@ -111,6 +117,71 @@ export async function getFranchiseesWithContacts(): Promise<FranchiseeWithBrandA
     brand: r.brand,
     contacts: contactsByFranchisee[r.franchisee.id] || [],
   }));
+}
+
+/**
+ * Get franchisees with brand info and contacts - PAGINATED
+ * Optimized for large datasets with offset-based pagination
+ *
+ * @param params - Pagination parameters (page, limit)
+ * @returns Paginated result with franchisees and pagination metadata
+ */
+export async function getFranchiseesWithContactsPaginated(
+  params: PaginationParams = {}
+): Promise<PaginatedResult<FranchiseeWithBrandAndContacts>> {
+  const { page, limit, offset } = normalizePaginationParams(params);
+
+  // Get total count first
+  const [countResult] = await database
+    .select({ total: count() })
+    .from(franchisee);
+  const totalCount = countResult?.total ?? 0;
+
+  // Get paginated franchisees
+  const results = await database
+    .select({
+      franchisee: franchisee,
+      brand: {
+        id: brand.id,
+        code: brand.code,
+        nameHe: brand.nameHe,
+        nameEn: brand.nameEn,
+      },
+    })
+    .from(franchisee)
+    .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .orderBy(desc(franchisee.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+  // Get contacts for these franchisees
+  const franchiseeIds = results.map((r) => r.franchisee.id);
+  const allContacts =
+    franchiseeIds.length > 0
+      ? await database
+          .select()
+          .from(contact)
+          .where(inArray(contact.franchiseeId, franchiseeIds))
+      : [];
+
+  // Group contacts by franchisee ID
+  const contactsByFranchisee = allContacts.reduce((acc, c) => {
+    if (c.franchiseeId) {
+      if (!acc[c.franchiseeId]) {
+        acc[c.franchiseeId] = [];
+      }
+      acc[c.franchiseeId].push(c);
+    }
+    return acc;
+  }, {} as Record<string, Contact[]>);
+
+  const data = results.map((r) => ({
+    ...r.franchisee,
+    brand: r.brand,
+    contacts: contactsByFranchisee[r.franchisee.id] || [],
+  }));
+
+  return createPaginatedResult(data, totalCount, { page, limit });
 }
 
 /**

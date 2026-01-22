@@ -10,13 +10,19 @@ import {
   type UpdateCommissionData,
   type CommissionStatus,
 } from "@/db/schema";
-import { eq, and, gte, lte, desc, sql, asc, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, desc, sql, asc, inArray, count } from "drizzle-orm";
 import { calculateCommission, roundToTwoDecimals } from "@/lib/file-processor";
 import {
   logCommissionStatusChange,
   logAuditEvent,
   type AuditContext,
 } from "./auditLog";
+import {
+  type PaginationParams,
+  type PaginatedResult,
+  normalizePaginationParams,
+  createPaginatedResult,
+} from "@/lib/pagination";
 
 // Types for commission report data
 export interface CommissionWithDetails extends Commission {
@@ -160,6 +166,97 @@ export async function getCommissionsWithDetails(
     .orderBy(desc(commission.periodStartDate), asc(supplier.name), asc(franchisee.name));
 
   return results as CommissionWithDetails[];
+}
+
+/**
+ * Get commissions with details - PAGINATED
+ * Optimized for large datasets with offset-based pagination
+ *
+ * @param filters - Filter parameters
+ * @param pagination - Pagination parameters (page, limit)
+ * @returns Paginated result with commissions and pagination metadata
+ */
+export async function getCommissionsWithDetailsPaginated(
+  filters: CommissionReportFilters,
+  pagination: PaginationParams = {}
+): Promise<PaginatedResult<CommissionWithDetails>> {
+  const { page, limit, offset } = normalizePaginationParams(pagination);
+  const conditions = [];
+
+  if (filters.startDate) {
+    conditions.push(gte(commission.periodStartDate, filters.startDate));
+  }
+
+  if (filters.endDate) {
+    conditions.push(lte(commission.periodEndDate, filters.endDate));
+  }
+
+  if (filters.supplierId) {
+    conditions.push(eq(commission.supplierId, filters.supplierId));
+  }
+
+  if (filters.status) {
+    conditions.push(eq(commission.status, filters.status as Commission["status"]));
+  }
+
+  if (filters.brandId) {
+    conditions.push(eq(franchisee.brandId, filters.brandId));
+  }
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Get total count with filters
+  const [countResult] = await database
+    .select({ total: count() })
+    .from(commission)
+    .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id))
+    .where(whereClause);
+  const totalCount = countResult?.total ?? 0;
+
+  // Get paginated data
+  const results = await database
+    .select({
+      id: commission.id,
+      supplierId: commission.supplierId,
+      franchiseeId: commission.franchiseeId,
+      settlementPeriodId: commission.settlementPeriodId,
+      periodStartDate: commission.periodStartDate,
+      periodEndDate: commission.periodEndDate,
+      status: commission.status,
+      grossAmount: commission.grossAmount,
+      netAmount: commission.netAmount,
+      vatAdjusted: commission.vatAdjusted,
+      commissionRate: commission.commissionRate,
+      commissionAmount: commission.commissionAmount,
+      invoiceNumber: commission.invoiceNumber,
+      invoiceDate: commission.invoiceDate,
+      notes: commission.notes,
+      metadata: commission.metadata,
+      calculatedAt: commission.calculatedAt,
+      approvedAt: commission.approvedAt,
+      approvedBy: commission.approvedBy,
+      paidAt: commission.paidAt,
+      createdAt: commission.createdAt,
+      updatedAt: commission.updatedAt,
+      createdBy: commission.createdBy,
+      supplierName: supplier.name,
+      supplierCode: supplier.code,
+      franchiseeName: franchisee.name,
+      franchiseeCode: franchisee.code,
+      brandId: franchisee.brandId,
+      brandNameHe: brand.nameHe,
+      brandNameEn: brand.nameEn,
+    })
+    .from(commission)
+    .innerJoin(supplier, eq(commission.supplierId, supplier.id))
+    .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id))
+    .innerJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(whereClause)
+    .orderBy(desc(commission.periodStartDate), asc(supplier.name), asc(franchisee.name))
+    .limit(limit)
+    .offset(offset);
+
+  return createPaginatedResult(results as CommissionWithDetails[], totalCount, { page, limit });
 }
 
 /**
