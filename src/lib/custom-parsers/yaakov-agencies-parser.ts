@@ -110,6 +110,18 @@ export function parseYaakovAgenciesFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
+      // Check if ANY cell in the row contains "סה"כ" (total) - skip total rows
+      const rowString = row.map(cell => String(cell || "")).join(" ");
+      if (
+        rowString.includes('סה"כ') ||
+        rowString.includes("סה״כ") ||
+        rowString.includes("סהכ") ||
+        rowString.includes("זכוי בגובה")
+      ) {
+        skippedRows++;
+        continue;
+      }
+
       // Get amount from column E (index 4)
       const amountValue = row[AMOUNT_COL];
       if (amountValue !== null && amountValue !== undefined && amountValue !== "") {

@@ -152,7 +152,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "application/vnd.ms-excel",
       ],
-      xls: ["application/vnd.ms-excel"],
+      // Also accept xlsx mime type for xls (client-side conversion for Vercel WAF)
+      xls: [
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ],
       csv: ["text/csv", "application/csv"],
       zip: [
         "application/zip",

@@ -71,6 +71,32 @@ import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox"
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
 import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
 
+/**
+ * Convert XLS file to XLSX format in the browser
+ * This is needed because Vercel WAF blocks XLS files
+ */
+async function convertXlsToXlsx(file: File): Promise<File> {
+  // Dynamic import to avoid loading xlsx until needed
+  const XLSX = await import("xlsx");
+
+  // Read the XLS file
+  const arrayBuffer = await file.arrayBuffer();
+  const workbook = XLSX.read(arrayBuffer, { type: "array" });
+
+  // Write as XLSX
+  const xlsxData = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
+
+  // Create new file with xlsx extension
+  const newFileName = file.name.replace(/\.xls$/i, ".xlsx");
+  const blob = new Blob([xlsxData], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  return new File([blob], newFileName, {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+}
+
 // Types
 interface SupplierWithMapping extends Supplier {
   fileMapping: SupplierFileMapping | null;
@@ -307,7 +333,7 @@ export default function SupplierFilesPage() {
 
   // Handle file upload
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    let file = event.target.files?.[0];
     if (!file || !selectedSupplierId) return;
 
     setIsUploading(true);
@@ -318,6 +344,18 @@ export default function SupplierFilesPage() {
     setWarningsOpen(false);
 
     try {
+      // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
+      if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
+        try {
+          file = await convertXlsToXlsx(file);
+          toast.info("הקובץ הומר מ-XLS ל-XLSX");
+        } catch (conversionError) {
+          console.error("Failed to convert XLS to XLSX:", conversionError);
+          setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
+          return;
+        }
+      }
+
       const formData = new FormData();
       formData.append("file", file);
       formData.append("enableMatching", "true");
