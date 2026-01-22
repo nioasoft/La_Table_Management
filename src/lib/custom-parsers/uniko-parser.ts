@@ -1,15 +1,17 @@
 /**
  * Custom parser for יוניקו (UNIKO) supplier files
  *
- * Problem: 3 parallel columns for 3 brands, each with their own franchisee sections
- * Structure:
+ * File structure:
  *   - Row 0: Brand names at cols 0, 6, 12 (מינה טומאיי, פאט ויני, קינג קונג)
  *   - Row 1: First franchisee names at cols 0, 6, 12
  *   - Row 2: Headers (מק"ט, שם פריט, כמות, מחיר ליחידה, סה"כ) repeating
- *   - Row 3+: Product data with סה"כ at columns 4, 10, 16
- *   - New franchisee sections appear when column 0/6/12 has a non-product name
+ *   - Row 3+: Product data with amounts at columns 4, 10, 16
+ *   - Total rows: Empty name column but with total amount - this is the franchisee total
+ *   - New franchisee sections start when a new name appears in columns 0, 6, or 12
  *
- * Solution: Track each column independently, identify franchisee headers by non-product patterns
+ * Solution: Track each column group independently. Only take the TOTAL rows
+ * (where name column is empty but amount column has a value) - these contain
+ * the franchisee totals. Skip individual product rows to avoid double-counting.
  */
 
 import * as XLSX from "xlsx";
@@ -29,6 +31,36 @@ const COLUMN_GROUPS = [
   { nameCol: 6, amountCol: 10, brand: "פאט ויני" },
   { nameCol: 12, amountCol: 16, brand: "קינג קונג" },
 ];
+
+// Brand names to skip
+const BRAND_NAMES = ["מינה טומאיי", "פאט ויני", "קינג קונג"];
+
+// Header keywords to skip
+const HEADER_KEYWORDS = ['מק"ט', 'שם פריט', 'כמות', 'מחיר ליחידה', 'סה"כ'];
+
+/**
+ * Parse currency string to number
+ */
+function parseCurrency(value: unknown): number {
+  if (value === null || value === undefined || value === "") return 0;
+  const str = String(value).replace(/[₪,\s]/g, "");
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
+ * Check if a string is a product code (starts with letters followed by numbers/dashes)
+ */
+function isProductCode(str: string): boolean {
+  return /^[A-Z]{1,4}[-_]?\d/i.test(str);
+}
+
+/**
+ * Check if a string is a header keyword
+ */
+function isHeaderKeyword(str: string): boolean {
+  return HEADER_KEYWORDS.some(keyword => str === keyword);
+}
 
 /**
  * Parse יוניקו supplier file with 3 parallel brand columns
@@ -67,10 +99,8 @@ export function parseUnikoFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Track franchisee amounts per brand
-    const franchiseeAmounts: Map<string, number> = new Map();
-
     // Process each column group independently
+    // For each group, track the current franchisee and look for total rows
     for (const group of COLUMN_GROUPS) {
       let currentFranchisee = "";
 
@@ -80,60 +110,49 @@ export function parseUnikoFile(buffer: Buffer): FileProcessingResult {
 
         const nameCell = String(row[group.nameCol] || "").trim();
         const amountCell = row[group.amountCol];
+        const amount = parseCurrency(amountCell);
 
-        // Check if this is a franchisee name (not empty, not a product code, not a header)
-        const isProductCode = /^[A-Z]{1,4}[-_]?\d/.test(nameCell);
-        const isHeader = nameCell === 'מק"ט' || nameCell === 'סה"כ';
-        const isBrand =
-          nameCell === "מינה טומאיי" ||
-          nameCell === "פאט ויני" ||
-          nameCell === "קינג קונג";
-
-        if (nameCell && !isProductCode && !isHeader && !isBrand) {
+        // Check if this is a new franchisee name
+        if (nameCell && !isProductCode(nameCell) && !isHeaderKeyword(nameCell) && !BRAND_NAMES.includes(nameCell)) {
           currentFranchisee = nameCell;
+          continue;
         }
 
-        // Process amount if we have a current franchisee
-        if (currentFranchisee && amountCell) {
-          const amountStr = String(amountCell).replace(/[₪,\s]/g, "");
-          const amount = parseFloat(amountStr);
-          if (!isNaN(amount) && amount !== 0) {
-            const key = `${currentFranchisee} (${group.brand})`;
-            const existing = franchiseeAmounts.get(key) || 0;
-            franchiseeAmounts.set(key, existing + amount);
-          }
+        // Check if this is a TOTAL row: name column is empty, but amount has a value
+        // This is the key fix - we only take the total row, not individual product amounts
+        if (!nameCell && amount !== 0 && currentFranchisee) {
+          // This is the total for the current franchisee
+          const netAmount = roundToTwoDecimals(Math.abs(amount));
+          const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
+
+          // Include brand in franchisee name for disambiguation
+          const fullName = `${currentFranchisee} (${group.brand})`;
+
+          data.push({
+            franchisee: fullName,
+            date: null,
+            grossAmount,
+            netAmount,
+            originalAmount: netAmount,
+            rowNumber: i + 1,
+          });
+
+          // Reset current franchisee after capturing the total
+          currentFranchisee = "";
         }
       }
     }
 
-    // Convert to ParsedRowData
+    // Calculate totals
     let totalGrossAmount = 0;
     let totalNetAmount = 0;
-    let processedRows = 0;
-    let rowNumber = 1;
 
-    for (const [fullName, amount] of franchiseeAmounts.entries()) {
-      // Extract franchisee name without brand suffix for the output
-      const franchiseeName = fullName.replace(/\s*\([^)]+\)$/, "");
-
-      if (amount <= 0) continue;
-
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
-
-      data.push({
-        franchisee: fullName, // Keep full name with brand for disambiguation
-        date: null,
-        grossAmount,
-        netAmount,
-        originalAmount: netAmount,
-        rowNumber: rowNumber++,
-      });
-
-      totalNetAmount += netAmount;
-      totalGrossAmount += grossAmount;
-      processedRows++;
+    for (const row of data) {
+      totalGrossAmount += row.grossAmount;
+      totalNetAmount += row.netAmount;
     }
+
+    const processedRows = data.length;
 
     if (processedRows === 0) {
       errors.push(
@@ -144,6 +163,11 @@ export function parseUnikoFile(buffer: Buffer): FileProcessingResult {
       legacyErrors.push("Could not extract any franchisee data from the file");
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
+
+    // Renumber rows sequentially
+    data.forEach((row, index) => {
+      row.rowNumber = index + 1;
+    });
 
     return createResult(
       true,
