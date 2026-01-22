@@ -479,11 +479,11 @@ export default function SupplierFileDetailPage() {
             {processingResult && (
               <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">סה״כ ברוטו</p>
+                  <p className="text-muted-foreground">סה״כ כולל מע״מ</p>
                   <p className="font-medium">{formatAmount(processingResult.totalGrossAmount)}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">סה״כ נטו</p>
+                  <p className="text-muted-foreground">סה״כ לפני מע״מ</p>
                   <p className="font-medium">{formatAmount(processingResult.totalNetAmount)}</p>
                 </div>
                 <div>
@@ -549,8 +549,8 @@ export default function SupplierFileDetailPage() {
                 <TableRow>
                   <TableHead className="text-end">#</TableHead>
                   <TableHead className="text-end">שם בקובץ ספק</TableHead>
-                  <TableHead className="text-end">סכום ברוטו</TableHead>
-                  <TableHead className="text-end">סכום נטו</TableHead>
+                  <TableHead className="text-end">כולל מע״מ</TableHead>
+                  <TableHead className="text-end">לפני מע״מ</TableHead>
                   <TableHead className="text-end">זכיין מותאם</TableHead>
                   <TableHead className="text-end">סטטוס</TableHead>
                   {!isReviewed && <TableHead className="text-end">פעולות</TableHead>}
