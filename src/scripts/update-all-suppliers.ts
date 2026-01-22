@@ -204,7 +204,7 @@ const supplierConfigs: Record<
       customParser: true,
     },
   },
-  EREL_PACKAGING: {
+  AREL_PACKAGING: {
     commissionRate: "15",
     fileMapping: {
       fileType: "xlsx",

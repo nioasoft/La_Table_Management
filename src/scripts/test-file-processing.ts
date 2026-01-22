@@ -120,7 +120,7 @@ async function main() {
     { code: "UNICO", file: `${TEST_FILES_DIR}/יוניקו.xlsx` },
     { code: "TUVIOT_HATZAFON", file: `${TEST_FILES_DIR}/תויות הצפון.xlsx` },
     { code: "MACHALVOT_GAD", file: `${TEST_FILES_DIR}/מחלבות גד.xlsx` },
-    { code: "EREL_PACKAGING", file: `${TEST_FILES_DIR}/אראל אריזות.xlsx` },
+    { code: "AREL_PACKAGING", file: `${TEST_FILES_DIR}/אראל אריזות.xlsx` },
   ];
 
   // Test Pasta La Casa with ZIP

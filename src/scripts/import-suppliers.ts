@@ -132,7 +132,7 @@ const suppliersData: SupplierData[] = [
   },
   {
     name: "אראל אריזות",
-    code: "EREL_PACKAGING",
+    code: "AREL_PACKAGING",
     commissionRate: 15,
     commissionType: "percentage",
     settlementFrequency: "quarterly",

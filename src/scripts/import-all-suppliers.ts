@@ -35,7 +35,7 @@ const SETTLEMENT_PERIOD = {
 const FILE_TO_SUPPLIER_MAP: Record<string, string> = {
   "אברהמי.xlsx": "AVRAHAMI",
   "אספיריט.xlsx": "ASPIRIT",
-  "אראל אריזות.xlsx": "EREL_PACKAGING",
+  "אראל אריזות.xlsx": "AREL_PACKAGING",
   "ארגל.XLSX": "ARGEL",
   "דיפלומט.xlsx": "DIPLOMAT",
   "היכל הייו.xlsx": "HEICHAL_HAYIU",

@@ -36,7 +36,7 @@
 | מדג | MADAG | 15% | percentage | |
 | מקאטי | MAKATI | 17% | percentage | |
 | יעקב סוכנויות | YAAKOV_AGENCIES | 10% | percentage | + הנחת פתיחה לסניף |
-| אראל אריזות | EREL_PACKAGING | 15% | percentage | |
+| אראל אריזות | AREL_PACKAGING | 15% | percentage | |
 | אספיריט | ASPIRIT | 14% | percentage | |
 | פרסקו | FRESCO | 10% | percentage | |
 | קיל ביל | KILL_BILL | 10% | percentage | |

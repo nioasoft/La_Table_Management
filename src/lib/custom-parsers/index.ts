@@ -53,7 +53,7 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
     const { parseMachlavotGadFile } = await import("./machlavot-gad-parser");
     return parseMachlavotGadFile(buffer);
   },
-  EREL_PACKAGING: async (buffer, vatRate) => {
+  AREL_PACKAGING: async (buffer, vatRate) => {
     const { parseArelArizotFile } = await import("./arel-arizot-parser");
     return parseArelArizotFile(buffer);
   },
