@@ -12,12 +12,20 @@ import {
   createFranchisee,
   getFranchiseeStats,
   isFranchiseeCodeUnique,
+  getFranchiseesPageData,
 } from "@/data-access/franchisees";
 import { randomUUID } from "crypto";
 import type { FranchiseeStatus, FranchiseeOwner } from "@/db/schema";
 
 /**
  * GET /api/franchisees - Get all franchisees (Admin/Super User only)
+ *
+ * Query params:
+ * - combined=true: Returns all page data in one call (optimized)
+ * - filter: "all", "active", or a specific status
+ * - brandId: Filter by brand
+ * - companyId: Search by company ID (for BKMVDATA matching)
+ * - stats=true: Include stats in response
  */
 export async function GET(request: NextRequest) {
   try {
@@ -25,6 +33,14 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult;
 
     const searchParams = request.nextUrl.searchParams;
+
+    // Optimized: Return all page data in one call
+    const combined = searchParams.get("combined") === "true";
+    if (combined) {
+      const pageData = await getFranchiseesPageData();
+      return NextResponse.json(pageData);
+    }
+
     const filter = searchParams.get("filter"); // "all", "active", or a specific status
     const brandId = searchParams.get("brandId");
     const companyId = searchParams.get("companyId"); // ח.פ - for BKMVDATA matching

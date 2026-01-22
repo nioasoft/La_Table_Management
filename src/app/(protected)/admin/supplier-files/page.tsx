@@ -789,8 +789,8 @@ export default function SupplierFilesPage() {
                             <TableHead>זכיין (מקובץ)</TableHead>
                             <TableHead>התאמה</TableHead>
                             <TableHead>סטטוס</TableHead>
-                            <TableHead>סכום ברוטו</TableHead>
-                            <TableHead>סכום נטו</TableHead>
+                            <TableHead>כולל מע"מ</TableHead>
+                            <TableHead>לפני מע"מ</TableHead>
                             <TableHead className="w-[100px]">פעולות</TableHead>
                           </TableRow>
                         </TableHeader>

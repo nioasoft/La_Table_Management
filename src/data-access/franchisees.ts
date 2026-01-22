@@ -12,8 +12,10 @@ import {
   type FranchiseeStatusHistory,
   type CreateFranchiseeStatusHistoryData,
   type Contact,
+  type Brand,
 } from "@/db/schema";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { getAllFranchiseeReminderCounts } from "./franchiseeImportantDates";
 import { logFranchiseeStatusChange, type AuditContext } from "./auditLog";
 import {
   matchFranchiseeName,
@@ -505,6 +507,61 @@ export async function getFranchiseeStats(): Promise<{
   }));
 
   return stats;
+}
+
+// ============================================================================
+// COMBINED PAGE DATA FUNCTION (OPTIMIZED - reduces multiple API calls to one)
+// ============================================================================
+
+/**
+ * Combined page data for franchisees list
+ * Fetches all necessary data in parallel to reduce API calls from 3 to 1
+ */
+export interface FranchiseesPageData {
+  franchisees: FranchiseeWithBrandAndContacts[];
+  stats: {
+    total: number;
+    active: number;
+    inactive: number;
+    pending: number;
+    suspended: number;
+    terminated: number;
+    byBrand: { brandId: string; brandName: string; count: number; activeCount: number }[];
+  };
+  brands: Brand[];
+  reminderCounts: Record<string, number>;
+}
+
+/**
+ * Get all data needed for the franchisees page in a single call
+ * Combines: franchisees with contacts, stats, active brands, and reminder counts
+ *
+ * @returns Combined page data
+ */
+export async function getFranchiseesPageData(): Promise<FranchiseesPageData> {
+  // Import getActiveBrands here to avoid circular dependency
+  const { getActiveBrands } = await import("./brands");
+
+  // Execute all queries in parallel
+  const [franchisees, stats, brands, reminderCountsMap] = await Promise.all([
+    getFranchiseesWithContacts(),
+    getFranchiseeStats(),
+    getActiveBrands(),
+    getAllFranchiseeReminderCounts(),
+  ]);
+
+  // Convert Map to plain object for JSON serialization
+  const reminderCounts: Record<string, number> = {};
+  for (const [franchiseeId, count] of reminderCountsMap) {
+    reminderCounts[franchiseeId] = count;
+  }
+
+  return {
+    franchisees,
+    stats,
+    brands,
+    reminderCounts,
+  };
 }
 
 // ============================================================================
