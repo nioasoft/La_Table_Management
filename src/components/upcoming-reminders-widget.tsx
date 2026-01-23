@@ -216,7 +216,7 @@ export function UpcomingRemindersWidget() {
                   data-testid={`reminder-item-${reminder.id}`}
                 >
                   <div
-                    className={`h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${
                       reminder.reminderType === "lease_option"
                         ? "bg-blue-100 dark:bg-blue-900"
                         : reminder.reminderType === "franchise_agreement"

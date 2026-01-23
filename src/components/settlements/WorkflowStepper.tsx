@@ -145,7 +145,7 @@ export function WorkflowStepper({
                 disabled={isFuture}
                 className={cn(
                   "flex flex-col items-center gap-2 p-2 rounded-lg transition-colors",
-                  "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                  "focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2",
                   isActive && "bg-primary/10",
                   !isFuture && "hover:bg-muted cursor-pointer",
                   isFuture && "cursor-not-allowed opacity-50"
@@ -212,7 +212,7 @@ export function WorkflowStepper({
               disabled={isFuture}
               className={cn(
                 "w-full flex items-center gap-3 p-3 rounded-lg transition-colors",
-                "focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
+                "focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2",
                 isActive && "bg-primary/10 border-2 border-primary",
                 isComplete && "bg-green-50 dark:bg-green-950/20",
                 !isFuture && "hover:bg-muted cursor-pointer",
@@ -222,7 +222,7 @@ export function WorkflowStepper({
               {/* Icon */}
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center border-2 flex-shrink-0",
+                  "w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0",
                   isComplete && "bg-green-500 border-green-500 text-white",
                   isActive && "bg-primary border-primary text-white",
                   isFuture && "bg-muted border-muted-foreground/30 text-muted-foreground"
@@ -253,10 +253,10 @@ export function WorkflowStepper({
 
               {/* Status indicator */}
               {isComplete && (
-                <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+                <Check className="h-5 w-5 text-green-500 shrink-0" />
               )}
               {isActive && (
-                <Clock className="h-5 w-5 text-primary flex-shrink-0" />
+                <Clock className="h-5 w-5 text-primary shrink-0" />
               )}
             </button>
           );

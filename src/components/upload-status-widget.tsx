@@ -225,7 +225,7 @@ export function UploadStatusWidget() {
                       data-testid={`pending-link-${link.id}`}
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
+                        <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
                           {link.entityType === "supplier" ? (
                             <Users className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                           ) : (

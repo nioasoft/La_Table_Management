@@ -379,7 +379,7 @@ export function MobileSidebarToggle({
       variant="ghost"
       size="icon"
       onClick={onClick}
-      className="lg:hidden fixed top-4 start-4 z-40 bg-background/80 backdrop-blur-sm border"
+      className="lg:hidden fixed top-4 start-4 z-40 bg-background/80 backdrop-blur-xs border"
     >
       <Menu className="h-5 w-5" />
     </Button>
