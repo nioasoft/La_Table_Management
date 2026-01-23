@@ -27,7 +27,7 @@ const rateLimitedRoutes: Array<{
   { pattern: /^\/api\/cron/, config: RateLimitConfigs.cron },
 ];
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Check rate limiting for API routes
@@ -81,7 +81,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Note: Role-based access control is handled in the individual pages/API routes
-  // because middleware cannot easily access the session data
+  // because proxy cannot easily access the session data
   // The individual pages check the user's role and redirect accordingly
 
   return NextResponse.next();
@@ -97,7 +97,7 @@ export const config = {
      * - public folder
      *
      * Note: api/auth, api/public, api/cron are now included for rate limiting,
-     * but they still skip session-based auth checks (handled in middleware logic)
+     * but they still skip session-based auth checks (handled in proxy logic)
      */
     "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
