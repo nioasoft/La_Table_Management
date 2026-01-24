@@ -31,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="he" dir="rtl" suppressHydrationWarning>
-      <body className={`${assistant.variable} font-sans antialiased`}>
+    <html lang="he" dir="rtl" suppressHydrationWarning className={assistant.variable}>
+      <body className="font-sans antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

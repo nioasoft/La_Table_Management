@@ -106,7 +106,7 @@ export function OverwriteConfirmDialog({
 
               {isApproved && (
                 <p className="text-amber-600 dark:text-amber-500 text-sm flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>שים לב: הקובץ הקיים כבר אושר. החלפתו תבטל את האישור.</span>
                 </p>
               )}
