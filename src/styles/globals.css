@@ -851,7 +851,7 @@
 
   /* Hebrew font optimization */
   html[lang="he"] {
-    font-family: var(--font-rubik), system-ui, sans-serif;
+    font-family: var(--font-assistant), system-ui, sans-serif;
   }
 }
 
