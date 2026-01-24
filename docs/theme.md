@@ -73,7 +73,7 @@ The theme system uses CSS custom properties that map to Tailwind's color tokens.
 1. **Background Colors**: `background`, `card`, `popover`
 2. **Text Colors**: `foreground`, `muted-foreground`, `card-foreground`
 3. **Interactive Colors**: `primary`, `secondary`, `accent`, `destructive`
-4. **Semantic Colors**: `border`, `input`, `ring`, `destructive`
+4. **Semantic Colors**: `border`, `input`, `ring-3`, `destructive`
 5. **Sidebar Colors**: `sidebar-*` variants for navigation
 6. **Chart Colors**: `chart-1` through `chart-5` for data visualization
 
@@ -216,10 +216,10 @@ Components include proper hover states for both themes:
 
 ### 5. Focus States with Ring Colors
 
-Consistent focus indicators using the `ring` color variable:
+Consistent focus indicators using the `ring-3` color variable:
 
 ```tsx
-<button className="focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2" />
+<button className="focus:outline-hidden focus:ring-2 focus:ring-primary focus:ring-offset-2" />
 ```
 
 ## Best Practices
@@ -307,7 +307,7 @@ ring-ring          /* Focus ring color */
 
 #### Card Component
 ```tsx
-<div className="bg-card text-card-foreground rounded-lg border border-border shadow-sm">
+<div className="bg-card text-card-foreground rounded-lg border border-border shadow-xs">
   <div className="p-6">
     <h3 className="font-semibold">Card Title</h3>
     <p className="text-muted-foreground">Card description</p>
