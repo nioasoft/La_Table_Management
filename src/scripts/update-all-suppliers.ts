@@ -48,11 +48,12 @@ const supplierConfigs: Record<
     commissionRate: "12",
     fileMapping: {
       fileType: "xlsx",
-      columnMappings: { franchiseeColumn: "B", amountColumn: "G" },
+      columnMappings: { franchiseeColumn: "B", amountColumn: "F" }, // F = sale amount, G = pre-calculated commission
       headerRow: 1,
       dataStartRow: 2,
       skipKeywords: ['סה"כ', "סהכ"],
       sheetName: "AlmogERP&CRM",
+      customParser: true, // Uses fandango-parser.ts for pre-calculated commission
     },
   },
   HEICHAL_HAYIU: {

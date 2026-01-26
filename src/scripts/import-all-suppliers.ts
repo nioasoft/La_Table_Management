@@ -200,9 +200,11 @@ async function processFile(
         continue;
       }
 
-      // Calculate commission
+      // Calculate commission - use preCalculatedCommission if available
       const commissionRate = parseFloat(supplierData.rate);
-      const commissionAmount = (row.netAmount * commissionRate) / 100;
+      const commissionAmount = row.preCalculatedCommission !== undefined
+        ? row.preCalculatedCommission
+        : (row.netAmount * commissionRate) / 100;
 
       commissionsToInsert.push({
         id: randomUUID(),
