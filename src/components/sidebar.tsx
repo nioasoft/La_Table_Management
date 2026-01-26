@@ -169,14 +169,34 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
             icon: <FileText className="h-5 w-5" />,
             children: [
               {
+                label: he.sidebar.subNavigation.reportsHub,
+                href: "/admin/reports",
+                icon: <FileText className="h-4 w-4" />,
+              },
+              {
                 label: he.sidebar.subNavigation.commissionsReport,
-                href: "/admin/commissions/report",
+                href: "/admin/reports/commissions",
                 icon: <FileBarChart className="h-4 w-4" />,
               },
               {
-                label: he.sidebar.subNavigation.generalReports,
-                href: "/admin/reports",
-                icon: <FileText className="h-4 w-4" />,
+                label: he.sidebar.subNavigation.varianceReport,
+                href: "/admin/reports/variance",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.unauthorizedReport,
+                href: "/admin/reports/unauthorized",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.depositsReport,
+                href: "/admin/reports/deposits",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.invoiceReport,
+                href: "/admin/reports/invoice",
+                icon: <Receipt className="h-4 w-4" />,
               },
             ],
           },
