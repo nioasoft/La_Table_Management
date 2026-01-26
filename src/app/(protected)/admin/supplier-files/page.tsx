@@ -249,7 +249,6 @@ export default function SupplierFilesPage() {
     setSelectedSupplierId(supplierId);
     setSelectedPeriodKey("");
     setPeriodWithExistingFile(null);
-    setOverwriteConfirmed(false);
     setProcessingResult(null);
     setSavedFileId(null);
     setUploadError(null);

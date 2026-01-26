@@ -22,6 +22,7 @@ export { parseFandangoFile } from "./fandango-parser";
 export { parseMaadaneiHatevaFile } from "./maadanei-hateva-parser";
 export { parseKillBillFile } from "./kill-bill-parser";
 export { parseJumonFile } from "./jumon-parser";
+export { parseYamaVekadmaFile } from "./yama-vekadma-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -98,6 +99,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   JUMON: async (buffer, vatRate) => {
     const { parseJumonFile } = await import("./jumon-parser");
     return parseJumonFile(buffer);
+  },
+  YAMA_VEKADMA: async (buffer, vatRate) => {
+    const { parseYamaVekadmaFile } = await import("./yama-vekadma-parser");
+    return parseYamaVekadmaFile(buffer);
   },
 };
 
