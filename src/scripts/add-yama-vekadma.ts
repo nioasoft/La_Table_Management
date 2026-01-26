@@ -36,6 +36,7 @@ async function main() {
             columnMappings: {
               franchiseeColumn: "A", // Franchisee names appear in first column
               amountColumn: "H",     // Debit column (חובה)
+              dateColumn: "",        // No date column
             },
             headerRow: 0,
             dataStartRow: 1,
@@ -66,6 +67,7 @@ async function main() {
             columnMappings: {
               franchiseeColumn: "A",
               amountColumn: "H",
+              dateColumn: "",
             },
             headerRow: 0,
             dataStartRow: 1,

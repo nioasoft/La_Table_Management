@@ -50,6 +50,7 @@
 | יוניקו | UNICO | 15% | percentage | |
 | מזרח ומערב | MIZRACH_UMAARAV | 17% | percentage | תוקף עד 31/12/2025 |
 | מור בריאות | MOR_BRIUT | 12% | percentage | |
+| ימה וקדמה | YAMA_VEKADMA | 12% | percentage | כרטסת חשבון |
 | פסטה לה קאזה | PASTA_LA_CASA | 15% | percentage | קובץ נפרד לכל זכיין |
 | נספרסו | NESPRESSO | 0.21 | per_item | ש"ח לקפסולה |
 | סובר לרנר | SOBER_LERNER | 15% | percentage | או לפי פריט |
@@ -337,6 +338,26 @@
 | מחלבות גד | 4 טבלאות בגיליון | זיהוי גבולות טבלאות |
 | מור בריאות | רשומות פרט | aggregation |
 | אראל אריזות | Pivot מורכב | בדיקה ידנית |
+| ימה וקדמה | כרטסת חשבון | custom parser |
+
+#### ימה וקדמה
+```json
+{
+  "fileType": "xlsx",
+  "customParser": true,
+  "columnMappings": {
+    "franchiseeColumn": "A",
+    "amountColumn": "H",
+    "dateColumn": ""
+  },
+  "headerRow": 0,
+  "dataStartRow": 1
+}
+```
+- **מבנה מיוחד:** כרטסת חשבון (account ledger) עם תנועות מקובצות לפי זכיין
+- **פרסר מותאם:** `yama-vekadma-parser.ts`
+- **סכומים:** כוללים מע"מ
+- **עמודת חובה (H):** סכום התנועה
 
 ---
 

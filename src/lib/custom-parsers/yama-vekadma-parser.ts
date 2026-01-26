@@ -280,17 +280,21 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
     let rowNumber = 1;
 
     for (const franchisee of franchisees) {
-      // Skip franchisees with zero or negative total
-      if (franchisee.totalDebit <= 0) {
+      // Skip franchisees with zero total (no activity)
+      if (franchisee.totalDebit === 0) {
+        skippedRows++;
+        continue;
+      }
+
+      // Warn about negative amounts but still include them
+      if (franchisee.totalDebit < 0) {
         warnings.push(
           createFileProcessingError("NEGATIVE_AMOUNT", {
             rowNumber: franchisee.firstRow,
-            details: `Franchisee "${franchisee.name}" has non-positive amount: ${franchisee.totalDebit}`,
+            details: `זכיין "${franchisee.name}" עם סכום שלילי: ${franchisee.totalDebit}`,
             value: String(franchisee.totalDebit),
           })
         );
-        skippedRows++;
-        continue;
       }
 
       // Amounts appear to include VAT based on the file structure

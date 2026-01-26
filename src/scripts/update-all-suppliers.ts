@@ -228,6 +228,16 @@ const supplierConfigs: Record<
       sheetName: "עמלה",
     },
   },
+  YAMA_VEKADMA: {
+    commissionRate: "12",
+    fileMapping: {
+      fileType: "xlsx",
+      columnMappings: { franchiseeColumn: "A", amountColumn: "H", dateColumn: "" },
+      headerRow: 0,
+      dataStartRow: 1,
+      customParser: true,
+    },
+  },
   RISTRETTO: {
     commissionRate: "17",
     fileMapping: {
