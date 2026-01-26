@@ -123,6 +123,7 @@ const supplierConfigs: Record<
       headerRow: 1,
       dataStartRow: 2,
       sheetName: "DataSheet",
+      customParser: true, // Aggregates multiple product rows per franchisee
     },
   },
   ARGEL: {
