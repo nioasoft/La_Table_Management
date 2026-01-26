@@ -55,7 +55,17 @@ export function OverwriteConfirmDialog({
   onConfirm,
   onCancel,
 }: OverwriteConfirmDialogProps) {
-  if (!period?.existingFile) return null;
+  console.log('OverwriteConfirmDialog render:', {
+    open,
+    period,
+    hasExistingFile: !!period?.existingFile,
+    existingFile: period?.existingFile
+  });
+
+  if (!period?.existingFile) {
+    console.log('OverwriteConfirmDialog: returning null because existingFile is missing');
+    return null;
+  }
 
   const existingFile = period.existingFile;
   const isApproved = existingFile.status === "approved" || existingFile.status === "auto_approved";

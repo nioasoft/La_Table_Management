@@ -19,9 +19,9 @@
  *
  * Solution:
  *   - Detect section boundaries by looking for "17%" and "10%" in titles
- *   - Parse each section separately
- *   - Include commission rate in franchisee name for clarity: "זכיין (17%)" or "זכיין (10%)"
- *   - This allows the UI to display and group by commission rate
+ *   - Parse each section and collect amounts per franchisee
+ *   - Aggregate same franchisee from different sections into one row
+ *   - Calculate preCalculatedCommission = (amount17 * 0.17) + (amount10 * 0.10)
  */
 
 import * as XLSX from "xlsx";
@@ -35,12 +35,22 @@ import { createFileProcessingError } from "../file-processing-errors";
 // VAT rate in Israel
 const VAT_RATE = 0.18;
 
+// Commission rates
+const COMMISSION_RATE_17 = 0.17;
+const COMMISSION_RATE_10 = 0.10;
+
 interface Section {
   commissionRate: number;
   startRow: number;
   headerRow: number;
   dataStartRow: number;
   dataEndRow: number;
+}
+
+interface FranchiseeAmounts {
+  amount17: number; // Sum of amounts from 17% section
+  amount10: number; // Sum of amounts from 10% section
+  firstRowNumber: number; // First row where this franchisee appeared
 }
 
 /**
@@ -125,6 +135,7 @@ function detectSections(data: unknown[][]): Section[] {
 
 /**
  * Parse מזרח ומערב supplier file with multiple commission rate sections
+ * Aggregates same franchisee from different sections and calculates commission
  */
 export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
@@ -173,7 +184,10 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
-    // Process each section
+    // Map to aggregate amounts by franchisee name
+    const franchiseeMap = new Map<string, FranchiseeAmounts>();
+
+    // Process each section and aggregate by franchisee
     for (const section of sections) {
       // Column indices based on the header structure:
       // A: מס' לקוח, B: שם לקוח, C-E: months, F: סכום כולל
@@ -190,34 +204,63 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
         // Skip empty rows or rows with zero/negative total
         if (!franchiseeName || totalAmount <= 0) continue;
 
-        // Include commission rate in franchisee name for display clarity
-        const fullName = `${franchiseeName} (${section.commissionRate}%)`;
+        // Get or create entry for this franchisee
+        let entry = franchiseeMap.get(franchiseeName);
+        if (!entry) {
+          entry = {
+            amount17: 0,
+            amount10: 0,
+            firstRowNumber: i + 1,
+          };
+          franchiseeMap.set(franchiseeName, entry);
+        }
 
-        // Amounts in file are before VAT (net)
-        const netAmount = roundToTwoDecimals(totalAmount);
-        const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
-
-        data.push({
-          franchisee: fullName,
-          date: null,
-          grossAmount,
-          netAmount,
-          originalAmount: netAmount,
-          rowNumber: i + 1,
-        });
+        // Add amount to the appropriate commission rate bucket
+        if (section.commissionRate === 17) {
+          entry.amount17 += totalAmount;
+        } else {
+          entry.amount10 += totalAmount;
+        }
       }
     }
 
-    // Calculate totals
-    let totalGrossAmount = 0;
+    // Convert aggregated data to ParsedRowData
     let totalNetAmount = 0;
+    let totalGrossAmount = 0;
+    let totalPreCalculatedCommission = 0;
+    let processedRows = 0;
+    let rowNumber = 1;
 
-    for (const row of data) {
-      totalGrossAmount += row.grossAmount;
-      totalNetAmount += row.netAmount;
+    // Sort franchisees alphabetically
+    const sortedFranchisees = Array.from(franchiseeMap.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], "he")
+    );
+
+    for (const [franchiseeName, amounts] of sortedFranchisees) {
+      // Calculate total net amount (sum of both sections)
+      const netAmount = roundToTwoDecimals(amounts.amount17 + amounts.amount10);
+      const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
+
+      // Calculate pre-calculated commission based on rates
+      const preCalculatedCommission = roundToTwoDecimals(
+        (amounts.amount17 * COMMISSION_RATE_17) + (amounts.amount10 * COMMISSION_RATE_10)
+      );
+
+      data.push({
+        franchisee: franchiseeName,
+        date: null,
+        grossAmount,
+        netAmount,
+        originalAmount: netAmount,
+        rowNumber: rowNumber++,
+        preCalculatedCommission,
+      });
+
+      totalNetAmount += netAmount;
+      totalGrossAmount += grossAmount;
+      totalPreCalculatedCommission += preCalculatedCommission;
+      processedRows++;
     }
-
-    const processedRows = data.length;
 
     if (processedRows === 0) {
       errors.push(
@@ -228,19 +271,6 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
       legacyErrors.push("Could not extract any franchisee data from the file");
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
-
-    // Sort by commission rate (17% first, then 10%) and then by name
-    data.sort((a, b) => {
-      const rateA = a.franchisee.includes("(17%)") ? 17 : 10;
-      const rateB = b.franchisee.includes("(17%)") ? 17 : 10;
-      if (rateB !== rateA) return rateB - rateA; // 17% first
-      return a.franchisee.localeCompare(b.franchisee, "he");
-    });
-
-    // Renumber rows sequentially after sorting
-    data.forEach((row, index) => {
-      row.rowNumber = index + 1;
-    });
 
     // Add info about sections found
     const sectionsSummary = sections.map(s => `${s.commissionRate}%`).join(", ");
