@@ -116,8 +116,23 @@ export async function getDepositsReport(
     conditions.push(sql`${adjustment.effectiveDate} <= ${filters.endDate}`);
   }
 
-  // Query all deposit adjustments with related data
-  const deposits = await database
+  // Add brandId filter to SQL when specified
+  if (filters.brandId) {
+    conditions.push(eq(brand.id, filters.brandId));
+  }
+
+  // Add franchiseeId filter to SQL when specified
+  if (filters.franchiseeId) {
+    conditions.push(eq(franchisee.id, filters.franchiseeId));
+  }
+
+  // Add minimum amount filter to SQL when specified
+  if (filters.minAmount) {
+    conditions.push(sql`ABS(${adjustment.amount}::numeric) >= ${filters.minAmount}`);
+  }
+
+  // Query all deposit adjustments with related data (all filters in SQL)
+  const filteredDeposits = await database
     .select({
       id: adjustment.id,
       amount: adjustment.amount,
@@ -154,25 +169,6 @@ export async function getDepositsReport(
     )
     .where(and(...conditions))
     .orderBy(desc(adjustment.createdAt));
-
-  // Filter by brandId if specified
-  let filteredDeposits = filters.brandId
-    ? deposits.filter((d) => d.brandId === filters.brandId)
-    : deposits;
-
-  // Filter by franchiseeId if specified
-  if (filters.franchiseeId) {
-    filteredDeposits = filteredDeposits.filter(
-      (d) => d.franchiseeId === filters.franchiseeId
-    );
-  }
-
-  // Filter by minimum amount if specified
-  if (filters.minAmount) {
-    filteredDeposits = filteredDeposits.filter(
-      (d) => Math.abs(Number(d.amount)) >= filters.minAmount!
-    );
-  }
 
   // Calculate summary statistics
   let totalDepositAmount = 0;

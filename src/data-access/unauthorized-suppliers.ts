@@ -94,7 +94,12 @@ export async function getUnauthorizedSuppliersReport(
     conditions.push(sql`${uploadedFile.periodEndDate} <= ${filters.endDate}`);
   }
 
-  const files = await database
+  // Add brandId filter to SQL when specified
+  if (filters.brandId) {
+    conditions.push(eq(franchisee.brandId, filters.brandId));
+  }
+
+  const filteredFiles = await database
     .select({
       id: uploadedFile.id,
       franchiseeId: uploadedFile.franchiseeId,
@@ -107,15 +112,10 @@ export async function getUnauthorizedSuppliersReport(
       createdAt: uploadedFile.createdAt,
     })
     .from(uploadedFile)
-    .leftJoin(franchisee, eq(uploadedFile.franchiseeId, franchisee.id))
-    .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .innerJoin(franchisee, eq(uploadedFile.franchiseeId, franchisee.id))
+    .innerJoin(brand, eq(franchisee.brandId, brand.id))
     .where(and(...conditions))
     .orderBy(desc(uploadedFile.createdAt));
-
-  // Filter by brandId if specified (after join)
-  const filteredFiles = filters.brandId
-    ? files.filter((f) => f.brandId === filters.brandId)
-    : files;
 
   // Aggregate unmatched suppliers across all files
   const supplierMap = new Map<
