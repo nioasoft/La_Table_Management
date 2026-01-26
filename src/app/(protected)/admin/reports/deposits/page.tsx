@@ -28,6 +28,7 @@ import {
   ReportLayout,
   ReportSummaryCards,
   ReportDataTable,
+  ReportExportButton,
   type ColumnDef,
   type SummaryCardData,
 } from "@/components/reports";
@@ -404,6 +405,16 @@ export default function DepositsReportPage() {
       ]}
       isLoading={isLoading}
       onRefresh={fetchReport}
+      actions={
+        <ReportExportButton
+          endpoints={{
+            excel: "/api/reports/deposits/export",
+          }}
+          queryString={buildQueryString()}
+          reportType="deposits"
+          disabled={!report || report.details.length === 0}
+        />
+      }
     >
       {/* Filters Card */}
       <Card>
