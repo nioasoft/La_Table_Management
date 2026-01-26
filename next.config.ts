@@ -25,6 +25,42 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  // Redirects from old report paths to new paths
+  async redirects() {
+    return [
+      {
+        source: "/admin/commissions/report",
+        destination: "/admin/reports/commissions",
+        permanent: true,
+      },
+      {
+        source: "/admin/commissions/variance",
+        destination: "/admin/reports/variance",
+        permanent: true,
+      },
+      {
+        source: "/admin/commissions/invoice",
+        destination: "/admin/reports/invoice",
+        permanent: true,
+      },
+      {
+        source: "/admin/commissions/brand",
+        destination: "/admin/reports/commissions",
+        permanent: true,
+      },
+      {
+        source: "/admin/commissions/supplier",
+        destination: "/admin/reports/commissions",
+        permanent: true,
+      },
+      {
+        source: "/admin/commissions/franchisee",
+        destination: "/admin/reports/commissions",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
