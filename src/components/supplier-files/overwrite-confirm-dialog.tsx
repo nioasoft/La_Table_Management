@@ -55,15 +55,11 @@ export function OverwriteConfirmDialog({
   onConfirm,
   onCancel,
 }: OverwriteConfirmDialogProps) {
-  console.log('OverwriteConfirmDialog render:', {
-    open,
-    period,
-    hasExistingFile: !!period?.existingFile,
-    existingFile: period?.existingFile
-  });
+  // Don't render anything if not open
+  if (!open) return null;
 
+  // If open but no data, close the dialog
   if (!period?.existingFile) {
-    console.log('OverwriteConfirmDialog: returning null because existingFile is missing');
     return null;
   }
 

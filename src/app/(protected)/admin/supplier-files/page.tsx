@@ -258,11 +258,6 @@ export default function SupplierFilesPage() {
 
   // Handle period selection with existing file
   const handlePeriodWithExistingFile = useCallback((period: PeriodWithStatus) => {
-    console.log('handlePeriodWithExistingFile called:', {
-      period,
-      hasExistingFile: !!period.existingFile,
-      existingFile: period.existingFile
-    });
     setPeriodWithExistingFile(period);
     setShowOverwriteDialog(true);
     setOverwriteConfirmed(false);

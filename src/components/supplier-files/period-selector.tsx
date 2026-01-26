@@ -92,17 +92,8 @@ export function PeriodSelector({
   const handleSelect = (periodKey: string) => {
     const selectedPeriod = periods.find((p) => p.key === periodKey);
 
-    console.log('PeriodSelector handleSelect:', {
-      periodKey,
-      selectedPeriod,
-      hasFile: selectedPeriod?.hasFile,
-      existingFile: selectedPeriod?.existingFile,
-      hasCallback: !!onPeriodWithExistingFile
-    });
-
     // If the period has an existing file, notify the parent
     if (selectedPeriod?.hasFile && selectedPeriod?.existingFile && onPeriodWithExistingFile) {
-      console.log('PeriodSelector: Calling onPeriodWithExistingFile');
       onPeriodWithExistingFile(selectedPeriod);
     }
 
