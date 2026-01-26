@@ -64,6 +64,7 @@ const supplierConfigs: Record<
       headerRow: 1,
       dataStartRow: 2,
       sheetName: "Export",
+      skipKeywords: ['סה"כ', "סהכ", "שם לקוח"], // Skip total rows and repeated headers
     },
   },
   MAKATI: {
