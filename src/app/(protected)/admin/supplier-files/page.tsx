@@ -363,10 +363,13 @@ export default function SupplierFilesPage() {
         if (response.status === 409 && error.existingFile) {
           // Show overwrite dialog with existing file info
           setPeriodWithExistingFile({
-            key: periodKey,
+            type: period.type,
+            name: period.name,
             nameHe: period.nameHe,
             startDate: period.startDate,
             endDate: period.endDate,
+            dueDate: period.dueDate,
+            key: periodKey,
             hasFile: true,
             existingFile: {
               id: error.existingFile.id,
