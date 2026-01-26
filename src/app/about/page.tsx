@@ -20,12 +20,12 @@ const features = [
   {
     icon: Users,
     title: "ניהול ספקים וזכיינים",
-    description: "מעקב אחר כל הספקים והזכיינים, כולל כינויים והיסטוריית עמלות",
+    description: "מעקב אחר כל הספקים והזכיינים, כולל כינויים והיסטוריית פעילות",
   },
   {
     icon: Calculator,
-    title: "חישוב עמלות",
-    description: "חישוב אוטומטי של עמלות לפי אחוז או סכום קבוע לפריט",
+    title: "חישוב התחשבנויות",
+    description: "חישוב אוטומטי של התחשבנויות לפי אחוז או סכום קבוע",
   },
   {
     icon: Mail,
@@ -65,10 +65,10 @@ export default function AboutPage() {
       <section className="py-16 px-6">
         <div className="container mx-auto text-center">
           <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-            מערכת ניהול עמלות La Table
+            La Table - מערכת לניהול זכיינויות
           </h1>
           <p className="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto">
-            פלטפורמה מתקדמת לניהול עמלות, התאמות ותקשורת עם ספקים וזכיינים
+            פלטפורמה מתקדמת לניהול זכיינויות, התאמות ותקשורת עם ספקים וזכיינים
             עבור קבוצת המסעדות La Table
           </p>
         </div>
@@ -128,7 +128,7 @@ export default function AboutPage() {
         <div className="container mx-auto text-center">
           <h2 className="text-3xl font-bold mb-4">מוכנים להתחיל?</h2>
           <p className="text-lg opacity-90 mb-8">
-            היכנסו למערכת והתחילו לנהל את העמלות בצורה חכמה ויעילה
+            היכנסו למערכת והתחילו לנהל את הזכיינויות בצורה חכמה ויעילה
           </p>
           <Button size="lg" variant="secondary" asChild>
             <Link href="/sign-in" className="gap-2">
