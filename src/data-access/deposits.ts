@@ -14,6 +14,7 @@ import {
   user,
 } from "@/db/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 
 // ============================================================================
 // TYPES
@@ -371,22 +372,27 @@ export async function getDepositsReport(
 
 /**
  * Get filter options for deposits report
+ * Cached for 5 minutes to reduce database queries
  */
-export async function getDepositsFilterOptions() {
-  const [brands, franchisees] = await Promise.all([
-    database
-      .select({ id: brand.id, nameHe: brand.nameHe, nameEn: brand.nameEn })
-      .from(brand)
-      .where(eq(brand.isActive, true)),
-    database
-      .select({
-        id: franchisee.id,
-        name: franchisee.name,
-        brandId: franchisee.brandId,
-      })
-      .from(franchisee)
-      .where(eq(franchisee.isActive, true)),
-  ]);
+export const getDepositsFilterOptions = unstable_cache(
+  async () => {
+    const [brands, franchisees] = await Promise.all([
+      database
+        .select({ id: brand.id, nameHe: brand.nameHe, nameEn: brand.nameEn })
+        .from(brand)
+        .where(eq(brand.isActive, true)),
+      database
+        .select({
+          id: franchisee.id,
+          name: franchisee.name,
+          brandId: franchisee.brandId,
+        })
+        .from(franchisee)
+        .where(eq(franchisee.isActive, true)),
+    ]);
 
-  return { brands, franchisees };
-}
+    return { brands, franchisees };
+  },
+  ["deposits-filter-options"],
+  { revalidate: 300 } // 5 minutes
+);

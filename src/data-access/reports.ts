@@ -11,6 +11,7 @@ import {
   type Franchisee,
 } from "@/db/schema";
 import { eq, and, gte, lte, desc, sql, asc, count, sum, avg } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 
 // ============================================================================
 // REPORT TYPES
@@ -176,39 +177,54 @@ export type SupplierReportData = ReportData<SupplierReportRow, SupplierReportSum
 
 /**
  * Get all active brands for filter dropdown
+ * Cached for 5 minutes to reduce database queries
  */
-export async function getAllBrands(): Promise<Brand[]> {
-  const results = await database
-    .select()
-    .from(brand)
-    .where(eq(brand.isActive, true))
-    .orderBy(asc(brand.nameHe));
-  return results;
-}
+export const getAllBrands = unstable_cache(
+  async (): Promise<Brand[]> => {
+    const results = await database
+      .select()
+      .from(brand)
+      .where(eq(brand.isActive, true))
+      .orderBy(asc(brand.nameHe));
+    return results;
+  },
+  ["all-brands"],
+  { revalidate: 300 } // 5 minutes
+);
 
 /**
  * Get all active and visible suppliers for filter dropdown
  * Hidden suppliers are excluded from commission reports
+ * Cached for 5 minutes to reduce database queries
  */
-export async function getActiveSuppliers(): Promise<Supplier[]> {
-  const results = await database
-    .select()
-    .from(supplier)
-    .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)))
-    .orderBy(asc(supplier.name));
-  return results;
-}
+export const getActiveSuppliers = unstable_cache(
+  async (): Promise<Supplier[]> => {
+    const results = await database
+      .select()
+      .from(supplier)
+      .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)))
+      .orderBy(asc(supplier.name));
+    return results;
+  },
+  ["active-suppliers"],
+  { revalidate: 300 } // 5 minutes
+);
 
 /**
  * Get all franchisees for filter dropdown
+ * Cached for 5 minutes to reduce database queries
  */
-export async function getAllFranchisees(): Promise<Franchisee[]> {
-  const results = await database
-    .select()
-    .from(franchisee)
-    .orderBy(asc(franchisee.name));
-  return results;
-}
+export const getAllFranchisees = unstable_cache(
+  async (): Promise<Franchisee[]> => {
+    const results = await database
+      .select()
+      .from(franchisee)
+      .orderBy(asc(franchisee.name));
+    return results;
+  },
+  ["all-franchisees"],
+  { revalidate: 300 } // 5 minutes
+);
 
 /**
  * Get commission report data
