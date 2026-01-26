@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -185,6 +185,9 @@ export default function SupplierFilesPage() {
   // Save to DB state
   const [savedFileId, setSavedFileId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -457,6 +460,89 @@ export default function SupplierFilesPage() {
     }
   }, [selectedSupplierId]);
 
+  // Handle drag events
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed)) return;
+    setIsDragging(true);
+  }, [selectedPeriodKey, periodWithExistingFile, overwriteConfirmed]);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback(async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!selectedSupplierId || !selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed)) return;
+
+    let file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const expectedType = selectedSupplier?.fileMapping?.fileType;
+    const isExcel = file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
+    const isCsv = file.name.toLowerCase().endsWith(".csv");
+
+    if (expectedType === "csv" && !isCsv) {
+      setUploadError("יש להעלות קובץ CSV בלבד");
+      return;
+    }
+    if (expectedType === "xlsx" && !isExcel) {
+      setUploadError("יש להעלות קובץ Excel בלבד");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+    setProcessingResult(null);
+    setSavedFileId(null);
+    setErrorsOpen(false);
+    setWarningsOpen(false);
+
+    try {
+      // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
+      if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
+        try {
+          file = await convertXlsToXlsx(file);
+          toast.info("הקובץ הומר מ-XLS ל-XLSX");
+        } catch (conversionError) {
+          console.error("Failed to convert XLS to XLSX:", conversionError);
+          setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
+          return;
+        }
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("enableMatching", "true");
+
+      const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        setUploadError(result.message || result.error || "Failed to process file");
+        return;
+      }
+
+      setProcessingResult(result);
+      setExpandedResults(true);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setIsUploading(false);
+    }
+  }, [selectedSupplierId, selectedPeriodKey, periodWithExistingFile, overwriteConfirmed, selectedSupplier]);
+
   // Handle manual match save
   const handleSaveMatch = useCallback(async () => {
     if (!editingRow || !selectedFranchiseeId || !processingResult) return;
@@ -706,7 +792,23 @@ export default function SupplierFilesPage() {
               </div>
             )}
 
-            <div className="flex items-center gap-4">
+            {/* Drag and Drop Zone */}
+            <div
+              className={`
+                relative rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer
+                ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}
+                ${!selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed) ? "opacity-50 cursor-not-allowed" : ""}
+                ${isUploading ? "pointer-events-none" : ""}
+              `}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => {
+                if (selectedPeriodKey && (!periodWithExistingFile || overwriteConfirmed) && !isUploading) {
+                  fileInputRef.current?.click();
+                }
+              }}
+            >
               <input
                 ref={fileInputRef}
                 type="file"
@@ -714,33 +816,32 @@ export default function SupplierFilesPage() {
                 onChange={handleFileUpload}
                 disabled={isUploading || !selectedPeriodKey || (!!periodWithExistingFile && !overwriteConfirmed)}
                 className="hidden"
-                id="file-upload"
               />
-              <label htmlFor="file-upload">
-                <Button
-                  asChild
-                  disabled={isUploading || !selectedPeriodKey || (!!periodWithExistingFile && !overwriteConfirmed)}
-                >
-                  <span>
-                    {isUploading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                        מעבד...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 me-2" />
-                        בחר קובץ להעלאה
-                      </>
+              <div className="flex flex-col items-center gap-2 text-center">
+                {isUploading ? (
+                  <>
+                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                    <p className="text-sm font-medium">מעבד את הקובץ...</p>
+                  </>
+                ) : (
+                  <>
+                    <Upload className={`h-10 w-10 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {isDragging ? "שחרר כדי להעלות" : "גרור קובץ לכאן"}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        או לחץ לבחירת קובץ
+                      </p>
+                    </div>
+                    {selectedSupplier && (
+                      <p className="text-xs text-muted-foreground">
+                        קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
+                      </p>
                     )}
-                  </span>
-                </Button>
-              </label>
-              {selectedSupplier && (
-                <p className="text-sm text-muted-foreground">
-                  קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
-                </p>
-              )}
+                  </>
+                )}
+              </div>
             </div>
 
             {/* Upload Error */}
