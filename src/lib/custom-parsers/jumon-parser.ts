@@ -8,12 +8,13 @@
  *   - Column A: Customer ID (only filled on first row of each customer block)
  *   - Column B: Franchisee name (only filled on first row of each customer block)
  *   - Column C: Product ID (מק'ט)
- *   - Column F: Product amount (סכום של סכום ש'ח)
+ *   - Column F: Product amount (סכום של סכום ש'ח) - PURCHASE amount for cross-reference
  *   - Column G: Commission rate (אחוז עמלת ניהול)
- *   - Column H: Commission amount (סה"כ ניהול לפני מע"מ)
+ *   - Column H: Commission amount (סה"כ ניהול לפני מע"מ) - pre-calculated commission
  *
  * The parser identifies customer blocks by rows where column A (customer ID) is filled,
- * then sums column H (commission amount) for all product rows in each customer block.
+ * then sums column F (purchase amount) for cross-reference with franchisees,
+ * and column H (commission amount) as pre-calculated commission.
  */
 
 import * as XLSX from "xlsx";
@@ -28,7 +29,8 @@ import { createFileProcessingError } from "../file-processing-errors";
 const CUSTOMER_ID_COL = 0; // Column A - מס' לקוח
 const FRANCHISEE_COL = 1; // Column B - שם לקוח
 const PRODUCT_COL = 2; // Column C - מק'ט
-const COMMISSION_AMOUNT_COL = 7; // Column H - סה"כ ניהול לפני מע"מ
+const PRODUCT_AMOUNT_COL = 5; // Column F - סכום של סכום ש'ח (purchase amount for cross-reference)
+const COMMISSION_AMOUNT_COL = 7; // Column H - סה"כ ניהול לפני מע"מ (pre-calculated commission)
 
 // Row configuration
 const HEADER_ROW = 0; // Row 1 (0-indexed)
@@ -82,7 +84,8 @@ function hasProductData(row: unknown[]): boolean {
 
 interface CustomerBlock {
   franchisee: string;
-  totalCommission: number;
+  totalPurchase: number; // Sum of product amounts (Column F) - for cross-reference
+  totalCommission: number; // Sum of commission amounts (Column H) - pre-calculated
   rowCount: number;
   firstRow: number;
 }
@@ -211,7 +214,8 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      // Sum commission amounts for all product rows in this customer block
+      // Sum purchase and commission amounts for all product rows in this customer block
+      let totalPurchase = 0;
       let totalCommission = 0;
       let rowCount = 0;
 
@@ -221,8 +225,10 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
           continue;
         }
 
+        const purchase = parseNumericValue(row[PRODUCT_AMOUNT_COL]);
         const commission = parseNumericValue(row[COMMISSION_AMOUNT_COL]);
-        // Include all commission values (positive and negative for returns)
+        // Include all values (positive and negative for returns)
+        totalPurchase += purchase;
         totalCommission += commission;
         rowCount++;
       }
@@ -240,6 +246,7 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
 
       customerBlocks.push({
         franchisee,
+        totalPurchase,
         totalCommission,
         rowCount,
         firstRow: startRow + 1,
@@ -248,25 +255,28 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
 
     // Convert customer blocks to ParsedRowData
     let totalNetAmount = 0;
+    let totalPreCalculatedCommission = 0;
     let processedCustomers = 0;
     let rowNumber = 1;
 
     for (const block of customerBlocks) {
-      // Skip customers with zero or negative total commission
-      if (block.totalCommission <= 0) {
+      // Skip customers with zero or negative total purchase
+      if (block.totalPurchase <= 0) {
         warnings.push(
           createFileProcessingError("NEGATIVE_AMOUNT", {
             rowNumber: block.firstRow,
-            details: `Customer "${block.franchisee}" has non-positive commission: ${block.totalCommission} (${block.rowCount} rows)`,
-            value: String(block.totalCommission),
+            details: `Customer "${block.franchisee}" has non-positive purchase amount: ${block.totalPurchase} (${block.rowCount} rows)`,
+            value: String(block.totalPurchase),
           })
         );
         continue;
       }
 
-      // Commission amount is already calculated without VAT
-      const netAmount = roundToTwoDecimals(block.totalCommission);
-      const grossAmount = roundToTwoDecimals(block.totalCommission * 1.18);
+      // Purchase amount is used for cross-reference with franchisees (assumed net without VAT)
+      const netAmount = roundToTwoDecimals(block.totalPurchase);
+      const grossAmount = roundToTwoDecimals(block.totalPurchase * 1.18);
+      // Commission is pre-calculated by the supplier
+      const preCalculatedCommission = roundToTwoDecimals(block.totalCommission);
 
       data.push({
         franchisee: block.franchisee,
@@ -275,9 +285,11 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
         netAmount,
         originalAmount: netAmount,
         rowNumber: rowNumber++,
+        preCalculatedCommission,
       });
 
       totalNetAmount += netAmount;
+      totalPreCalculatedCommission += preCalculatedCommission;
       processedCustomers++;
     }
 
