@@ -20,6 +20,7 @@ export { parseFrescoFile } from "./fresco-parser";
 export { parseAspiritFile } from "./aspirit-parser";
 export { parseFandangoFile } from "./fandango-parser";
 export { parseMaadaneiHatevaFile } from "./maadanei-hateva-parser";
+export { parseKillBillFile } from "./kill-bill-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -88,6 +89,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   MAADANEI_HATEVA: async (buffer, vatRate) => {
     const { parseMaadaneiHatevaFile } = await import("./maadanei-hateva-parser");
     return parseMaadaneiHatevaFile(buffer);
+  },
+  KILL_BILL: async (buffer, vatRate) => {
+    const { parseKillBillFile } = await import("./kill-bill-parser");
+    return parseKillBillFile(buffer);
   },
 };
 
