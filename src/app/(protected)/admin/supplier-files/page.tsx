@@ -164,7 +164,6 @@ export default function SupplierFilesPage() {
   const [selectedPeriodKey, setSelectedPeriodKey] = useState<string>("");
   const [periodWithExistingFile, setPeriodWithExistingFile] = useState<PeriodWithStatus | null>(null);
   const [showOverwriteDialog, setShowOverwriteDialog] = useState(false);
-  const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -256,31 +255,16 @@ export default function SupplierFilesPage() {
     setUploadError(null);
   }, []);
 
-  // Handle period selection with existing file
-  const handlePeriodWithExistingFile = useCallback((period: PeriodWithStatus) => {
-    setPeriodWithExistingFile(period);
-    setShowOverwriteDialog(true);
-    setOverwriteConfirmed(false);
-  }, []);
-
-  // Handle period change - reset overwrite state
+  // Handle period change - reset state
   const handlePeriodChange = useCallback((periodKey: string) => {
     setSelectedPeriodKey(periodKey);
-    setOverwriteConfirmed(false);
     setProcessingResult(null);
     setSavedFileId(null);
     setUploadError(null);
   }, []);
 
-  // Handle overwrite confirmation
-  const handleOverwriteConfirm = useCallback(() => {
-    setOverwriteConfirmed(true);
-    setShowOverwriteDialog(false);
-  }, []);
-
   // Handle overwrite cancel
   const handleOverwriteCancel = useCallback(() => {
-    setSelectedPeriodKey("");
     setPeriodWithExistingFile(null);
     setShowOverwriteDialog(false);
   }, []);
@@ -301,8 +285,8 @@ export default function SupplierFilesPage() {
     },
   });
 
-  // Save processed file to review queue
-  const saveToReviewQueue = useCallback(async (
+  // Internal save function - handles the actual API call
+  const saveToReviewQueueInternal = useCallback(async (
     result: ProcessingResult,
     supplierId: string,
     periodKey: string,
@@ -378,7 +362,21 @@ export default function SupplierFilesPage() {
         const error = await response.json();
         // Handle conflict error (409) - file already exists
         if (response.status === 409 && error.existingFile) {
-          toast.error(`קיים כבר קובץ לתקופה זו: ${error.existingFile.fileName}`);
+          // Show overwrite dialog with existing file info
+          setPeriodWithExistingFile({
+            key: periodKey,
+            nameHe: period.nameHe,
+            startDate: period.startDate,
+            endDate: period.endDate,
+            hasFile: true,
+            existingFile: {
+              id: error.existingFile.id,
+              fileName: error.existingFile.fileName,
+              status: error.existingFile.status,
+              uploadedAt: new Date(error.existingFile.uploadedAt),
+            },
+          });
+          setShowOverwriteDialog(true);
           return null;
         }
         throw new Error(error.error || "Failed to save file");
@@ -388,7 +386,6 @@ export default function SupplierFilesPage() {
       setSavedFileId(data.file.id);
 
       // Reset overwrite state
-      setOverwriteConfirmed(false);
       setPeriodWithExistingFile(null);
 
       // Invalidate queries to update the review count and history
@@ -405,6 +402,24 @@ export default function SupplierFilesPage() {
       setIsSaving(false);
     }
   }, [queryClient]);
+
+  // Public save function - always tries without overwrite first
+  const saveToReviewQueue = useCallback(async (
+    result: ProcessingResult,
+    supplierId: string,
+    periodKey: string
+  ): Promise<string | null> => {
+    return saveToReviewQueueInternal(result, supplierId, periodKey, false);
+  }, [saveToReviewQueueInternal]);
+
+  // Handle overwrite confirmation - retry save with overwrite flag
+  const handleOverwriteConfirm = useCallback(async () => {
+    setShowOverwriteDialog(false);
+    if (processingResult && selectedSupplierId && selectedPeriodKey) {
+      // Retry save with overwrite=true
+      await saveToReviewQueueInternal(processingResult, selectedSupplierId, selectedPeriodKey, true);
+    }
+  }, [processingResult, selectedSupplierId, selectedPeriodKey, saveToReviewQueueInternal]);
 
   // Handle file upload
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -464,9 +479,9 @@ export default function SupplierFilesPage() {
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed)) return;
+    if (!selectedPeriodKey) return;
     setIsDragging(true);
-  }, [selectedPeriodKey, periodWithExistingFile, overwriteConfirmed]);
+  }, [selectedPeriodKey]);
 
   const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -479,7 +494,7 @@ export default function SupplierFilesPage() {
     e.stopPropagation();
     setIsDragging(false);
 
-    if (!selectedSupplierId || !selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed)) return;
+    if (!selectedSupplierId || !selectedPeriodKey) return;
 
     let file = e.dataTransfer.files?.[0];
     if (!file) return;
@@ -541,7 +556,7 @@ export default function SupplierFilesPage() {
     } finally {
       setIsUploading(false);
     }
-  }, [selectedSupplierId, selectedPeriodKey, periodWithExistingFile, overwriteConfirmed, selectedSupplier]);
+  }, [selectedSupplierId, selectedPeriodKey, selectedSupplier]);
 
   // Handle manual match save
   const handleSaveMatch = useCallback(async () => {
@@ -756,7 +771,6 @@ export default function SupplierFilesPage() {
                 supplierName={selectedSupplier.name}
                 selectedPeriodKey={selectedPeriodKey}
                 onSelect={handlePeriodChange}
-                onPeriodWithExistingFile={handlePeriodWithExistingFile}
               />
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">
@@ -780,31 +794,19 @@ export default function SupplierFilesPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {/* Show warning if overwriting */}
-            {periodWithExistingFile && overwriteConfirmed && (
-              <div className="mb-4 rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/20 p-3">
-                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-500">
-                  <AlertTriangle className="h-4 w-4" />
-                  <p className="text-sm font-medium">
-                    העלאה זו תחליף את הקובץ הקיים: {periodWithExistingFile.existingFile?.fileName}
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Drag and Drop Zone */}
             <div
               className={`
                 relative rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer
                 ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}
-                ${!selectedPeriodKey || (periodWithExistingFile && !overwriteConfirmed) ? "opacity-50 cursor-not-allowed" : ""}
+                ${!selectedPeriodKey ? "opacity-50 cursor-not-allowed" : ""}
                 ${isUploading ? "pointer-events-none" : ""}
               `}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               onClick={() => {
-                if (selectedPeriodKey && (!periodWithExistingFile || overwriteConfirmed) && !isUploading) {
+                if (selectedPeriodKey && !isUploading) {
                   fileInputRef.current?.click();
                 }
               }}
@@ -814,7 +816,7 @@ export default function SupplierFilesPage() {
                 type="file"
                 accept={selectedSupplier?.fileMapping?.fileType === "csv" ? ".csv" : ".xlsx,.xls"}
                 onChange={handleFileUpload}
-                disabled={isUploading || !selectedPeriodKey || (!!periodWithExistingFile && !overwriteConfirmed)}
+                disabled={isUploading || !selectedPeriodKey}
                 className="hidden"
               />
               <div className="flex flex-col items-center gap-2 text-center">
@@ -941,7 +943,7 @@ export default function SupplierFilesPage() {
                     ) : (
                       <Button
                         size="sm"
-                        onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey, overwriteConfirmed)}
+                        onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey)}
                         disabled={isSaving || !processingResult.success}
                       >
                         {isSaving ? (
