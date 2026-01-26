@@ -21,6 +21,7 @@ export { parseAspiritFile } from "./aspirit-parser";
 export { parseFandangoFile } from "./fandango-parser";
 export { parseMaadaneiHatevaFile } from "./maadanei-hateva-parser";
 export { parseKillBillFile } from "./kill-bill-parser";
+export { parseJumonFile } from "./jumon-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -93,6 +94,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   KILL_BILL: async (buffer, vatRate) => {
     const { parseKillBillFile } = await import("./kill-bill-parser");
     return parseKillBillFile(buffer);
+  },
+  JUMON: async (buffer, vatRate) => {
+    const { parseJumonFile } = await import("./jumon-parser");
+    return parseJumonFile(buffer);
   },
 };
 
