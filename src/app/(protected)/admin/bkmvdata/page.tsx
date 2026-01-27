@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -153,9 +153,11 @@ function formatDateHebrew(date: Date | null): string {
 export default function BkmvDataPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [parseResult, setParseResult] = useState<BkmvParseResult | null>(null);
   const [matchingResults, setMatchingResults] = useState<BkmvSupplierMatchingResult[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -279,6 +281,43 @@ export default function BkmvDataPage() {
       setDateRange({ minDate: null, maxDate: null });
       setUploadSuccess(null);
     }
+  }, []);
+
+  // Handle drag events
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    // Validate file type - only .txt files
+    if (!file.name.toLowerCase().endsWith(".txt")) {
+      setError("יש להעלות קובץ BKMVDATA בפורמט TXT בלבד");
+      return;
+    }
+
+    setSelectedFile(file);
+    setParseResult(null);
+    setMatchingResults([]);
+    setError(null);
+    setMatchedFranchisee(null);
+    setFranchiseeError(null);
+    setDateRange({ minDate: null, maxDate: null });
+    setUploadSuccess(null);
   }, []);
 
   // Upload file to server
@@ -590,44 +629,83 @@ export default function BkmvDataPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex-1">
-              <Label htmlFor="bkmvFile" className="sr-only">קובץ BKMVDATA</Label>
-              <Input
-                id="bkmvFile"
-                type="file"
-                accept=".txt"
-                onChange={handleFileSelect}
-                className="cursor-pointer"
-              />
-            </div>
-            <Button
-              onClick={handleProcessFile}
-              disabled={!selectedFile || isProcessing || isLoadingSuppliers || suppliers.length === 0}
-            >
+          {/* Drag and Drop Zone */}
+          <div
+            className={`
+              relative rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer
+              ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}
+              ${isProcessing ? "pointer-events-none opacity-50" : ""}
+            `}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => {
+              if (!isProcessing) {
+                fileInputRef.current?.click();
+              }
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".txt"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <div className="flex flex-col items-center gap-2 text-center">
               {isProcessing ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
-                  מעבד...
-                </>
-              ) : isLoadingSuppliers ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
-                  טוען ספקים...
+                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                  <p className="text-sm font-medium">מעבד את הקובץ...</p>
                 </>
               ) : (
                 <>
-                  <FileSpreadsheet className="h-4 w-4 ms-2" />
-                  עבד קובץ
+                  <Upload className={`h-10 w-10 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                  <div>
+                    <p className="text-sm font-medium">
+                      {isDragging ? "שחרר כדי להעלות" : "גרור קובץ לכאן"}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      או לחץ לבחירת קובץ
+                    </p>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    קבצים נתמכים: BKMVDATA.txt
+                  </p>
                 </>
               )}
-            </Button>
+            </div>
           </div>
 
-          {selectedFile && (
-            <p className="text-sm text-muted-foreground">
-              קובץ נבחר: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-            </p>
+          {/* Selected file info and process button */}
+          {selectedFile && !isProcessing && (
+            <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-3">
+              <div className="flex items-center gap-2">
+                <FileSpreadsheet className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">{selectedFile.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(selectedFile.size / 1024).toFixed(1)} KB
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={handleProcessFile}
+                disabled={isLoadingSuppliers || suppliers.length === 0}
+              >
+                {isLoadingSuppliers ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                    טוען ספקים...
+                  </>
+                ) : (
+                  <>
+                    <FileSpreadsheet className="h-4 w-4 ms-2" />
+                    עבד קובץ
+                  </>
+                )}
+              </Button>
+            </div>
           )}
 
           {error && (
@@ -656,7 +734,7 @@ export default function BkmvDataPage() {
             </div>
           )}
 
-          {!isLoadingSuppliers && suppliers.length > 0 && (
+          {!isLoadingSuppliers && suppliers.length > 0 && !selectedFile && (
             <div className="flex items-center gap-2 text-sm text-green-600">
               <CheckCircle2 className="h-4 w-4" />
               {suppliers.length} ספקים נטענו
