@@ -489,7 +489,8 @@ export default function BkmvDataPage() {
       const matches = matchBkmvSuppliers(
         result.supplierSummary,
         suppliers,
-        { minConfidence: 0.6, reviewThreshold: 0.85 }
+        { minConfidence: 0.6, reviewThreshold: 0.85 },
+        blacklistedNames
       );
       setMatchingResults(matches);
     } catch (err) {
@@ -498,7 +499,7 @@ export default function BkmvDataPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, suppliers]);
+  }, [selectedFile, suppliers, blacklistedNames]);
 
   // Add alias to supplier
   const handleAddAlias = useCallback(async (supplierId: string, alias: string) => {
@@ -523,11 +524,12 @@ export default function BkmvDataPage() {
       const matches = matchBkmvSuppliers(
         parseResult.supplierSummary,
         updatedSuppliers,
-        { minConfidence: 0.6, reviewThreshold: 0.85 }
+        { minConfidence: 0.6, reviewThreshold: 0.85 },
+        blacklistedNames
       );
       setMatchingResults(matches);
     }
-  }, [suppliers, updateSupplierMutation, parseResult]);
+  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames]);
 
   // Handle date filter
   const handleDateFilter = useCallback(() => {
@@ -547,11 +549,12 @@ export default function BkmvDataPage() {
     const matches = matchBkmvSuppliers(
       filteredSummary,
       suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 }
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      blacklistedNames
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, suppliers]);
+  }, [parseResult, filterStartDate, filterEndDate, suppliers, blacklistedNames]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
@@ -561,13 +564,14 @@ export default function BkmvDataPage() {
     const matches = matchBkmvSuppliers(
       parseResult.supplierSummary,
       suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 }
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      blacklistedNames
     );
     setMatchingResults(matches);
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers]);
+  }, [parseResult, suppliers, blacklistedNames]);
 
   // Filter and search results
   const filteredResults = useMemo(() => {
@@ -1236,6 +1240,16 @@ export default function BkmvDataPage() {
                                       ))}
                                   </SelectContent>
                                 </Select>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                  disabled={addToBlacklistMutation.isPending}
+                                >
+                                  <Ban className="h-4 w-4 ms-1" />
+                                  לא רלוונטי
+                                </Button>
                               </div>
                             )}
                             {result.matchResult.matchType.startsWith("exact") && (
