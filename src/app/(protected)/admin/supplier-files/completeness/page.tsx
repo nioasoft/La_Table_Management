@@ -68,7 +68,7 @@ export default function SupplierCompletenessPage() {
 
   const [year, setYear] = useState(defaultYear);
   const [brandId, setBrandId] = useState<string>("all");
-  const [frequency, setFrequency] = useState<string>("all");
+  const [frequency, setFrequency] = useState<string>("quarterly"); // Default to quarterly (most common)
 
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -111,18 +111,46 @@ export default function SupplierCompletenessPage() {
   const suppliers = completenessData?.suppliers || [];
   const summary = completenessData?.summary;
 
-  const allPeriodKeys = new Set<string>();
-  suppliers.forEach(s => s.periods.forEach(p => allPeriodKeys.add(p.key)));
-  const periodKeys = Array.from(allPeriodKeys).sort();
-
-  const periodInfoMap = new Map<string, { nameHe: string }>();
+  // Build period info map for display
+  const periodInfoMap = new Map<string, { nameHe: string; type: string }>();
   suppliers.forEach(s => {
     s.periods.forEach(p => {
       if (!periodInfoMap.has(p.key)) {
-        periodInfoMap.set(p.key, { nameHe: p.nameHe });
+        periodInfoMap.set(p.key, { nameHe: p.nameHe, type: s.frequency });
       }
     });
   });
+
+  // When a specific frequency is selected, only show periods for that frequency
+  // When "all" is selected, only show quarterly periods (most common)
+  const getRelevantPeriodKeys = () => {
+    if (frequency !== "all") {
+      // Show only periods for the selected frequency
+      const keys = new Set<string>();
+      suppliers.forEach(s => {
+        if (s.frequency === frequency) {
+          s.periods.forEach(p => keys.add(p.key));
+        }
+      });
+      return Array.from(keys).sort();
+    }
+
+    // When showing all, default to quarterly view (most suppliers are quarterly)
+    const quarterlyKeys = new Set<string>();
+    suppliers.forEach(s => {
+      if (s.frequency === "quarterly") {
+        s.periods.forEach(p => quarterlyKeys.add(p.key));
+      }
+    });
+    return Array.from(quarterlyKeys).sort();
+  };
+
+  const periodKeys = getRelevantPeriodKeys();
+
+  // Filter suppliers to show based on frequency selection
+  const displayedSuppliers = frequency === "all"
+    ? suppliers // Show all but with quarterly columns
+    : suppliers.filter(s => s.frequency === frequency);
 
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
@@ -198,27 +226,45 @@ export default function SupplierCompletenessPage() {
 
         <div className="h-6 w-px bg-border mx-2" />
 
-        {/* Summary Stats */}
-        {summary && (
+        {/* Summary Stats - calculated from displayed suppliers */}
+        {displayedSuppliers.length > 0 && (
           <div className="flex items-center gap-4 text-sm">
             <span className="text-muted-foreground">
-              {summary.totalSuppliers} ספקים
+              {displayedSuppliers.length} ספקים
             </span>
-            <span className="flex items-center gap-1">
-              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-              <span className="text-green-600 font-medium">{summary.approved}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-amber-600 font-medium">{summary.pending}</span>
-            </span>
-            <span className="flex items-center gap-1">
-              <XCircle className="h-3.5 w-3.5 text-red-500" />
-              <span className="text-red-600 font-medium">{summary.missing}</span>
-            </span>
-            <Badge variant={summary.completionPercentage >= 80 ? "success" : summary.completionPercentage >= 50 ? "warning" : "destructive"}>
-              {summary.completionPercentage}% השלמה
-            </Badge>
+            {(() => {
+              const stats = displayedSuppliers.reduce(
+                (acc, s) => ({
+                  approved: acc.approved + s.stats.approved,
+                  pending: acc.pending + s.stats.pending,
+                  missing: acc.missing + s.stats.missing,
+                  total: acc.total + s.stats.total,
+                }),
+                { approved: 0, pending: 0, missing: 0, total: 0 }
+              );
+              const completionPct = stats.total > 0
+                ? Math.round(((stats.approved + stats.pending) / stats.total) * 100)
+                : 0;
+              return (
+                <>
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                    <span className="text-green-600 font-medium">{stats.approved}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5 text-amber-500" />
+                    <span className="text-amber-600 font-medium">{stats.pending}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <XCircle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="text-red-600 font-medium">{stats.missing}</span>
+                  </span>
+                  <Badge variant={completionPct >= 80 ? "success" : completionPct >= 50 ? "warning" : "destructive"}>
+                    {completionPct}% השלמה
+                  </Badge>
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -230,26 +276,29 @@ export default function SupplierCompletenessPage() {
             <span>מצב דוחות לפי ספק</span>
             <span className="text-sm font-normal text-muted-foreground">
               {periodKeys.length} תקופות
+              {frequency === "all" && " (תצוגה רבעונית)"}
             </span>
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {suppliers.length === 0 ? (
+          {displayedSuppliers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              לא נמצאו ספקים עם הגדרות קובץ
+              לא נמצאו ספקים {frequency !== "all" && `בתדירות ${frequency === "quarterly" ? "רבעונית" : frequency === "monthly" ? "חודשית" : frequency === "semi_annual" ? "חצי שנתית" : "שנתית"}`}
             </div>
           ) : (
             <div className="overflow-x-auto">
               <Table className="text-sm">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    <TableHead className="sticky right-0 bg-background z-10 w-44 py-2">
+                    <TableHead className="sticky right-0 bg-background z-10 w-48 py-2">
                       ספק
                     </TableHead>
-                    <TableHead className="w-16 py-2 text-center">תדירות</TableHead>
+                    {frequency === "all" && (
+                      <TableHead className="w-16 py-2 text-center">תדירות</TableHead>
+                    )}
                     {periodKeys.map((key) => {
                       const nameHe = periodInfoMap.get(key)?.nameHe || key;
-                      // Shorten period names: "רבעון 4 2025" -> "Q4"
+                      // Shorten period names based on type
                       const shortName = nameHe
                         .replace(/רבעון (\d).*/, "Q$1")
                         .replace(/מחצית ראשונה.*/, "H1")
@@ -257,7 +306,7 @@ export default function SupplierCompletenessPage() {
                         .replace(/שנת.*/, "שנתי")
                         .replace(/(\S+) \d{4}/, "$1"); // Remove year from monthly
                       return (
-                        <TableHead key={key} className="text-center w-12 py-2 px-1">
+                        <TableHead key={key} className="text-center w-14 py-2 px-1">
                           <span className="text-xs">{shortName}</span>
                         </TableHead>
                       );
@@ -266,12 +315,13 @@ export default function SupplierCompletenessPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suppliers.map((supplier) => (
+                  {displayedSuppliers.map((supplier) => (
                     <SupplierRow
                       key={supplier.supplier.id}
                       supplier={supplier}
                       periodKeys={periodKeys}
                       periodInfoMap={periodInfoMap}
+                      showFrequency={frequency === "all"}
                     />
                   ))}
                 </TableBody>
@@ -304,10 +354,12 @@ function SupplierRow({
   supplier,
   periodKeys,
   periodInfoMap,
+  showFrequency,
 }: {
   supplier: SupplierCompleteness;
   periodKeys: string[];
-  periodInfoMap: Map<string, { nameHe: string }>;
+  periodInfoMap: Map<string, { nameHe: string; type: string }>;
+  showFrequency: boolean;
 }) {
   const periodStatusMap = new Map(
     supplier.periods.map((p) => [p.key, p])
@@ -324,7 +376,7 @@ function SupplierRow({
     <TableRow className="hover:bg-muted/50">
       <TableCell className="sticky right-0 bg-background z-10 py-1.5">
         <div className="flex items-center gap-2">
-          <span className="font-medium truncate max-w-[140px]" title={supplier.supplier.name}>
+          <span className="font-medium truncate max-w-[160px]" title={supplier.supplier.name}>
             {supplier.supplier.name}
           </span>
           {supplier.brands.length > 0 && (
@@ -334,11 +386,13 @@ function SupplierRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="text-center py-1.5">
-        <span className="text-xs text-muted-foreground">
-          {frequencyShort[supplier.frequency] || supplier.frequency}
-        </span>
-      </TableCell>
+      {showFrequency && (
+        <TableCell className="text-center py-1.5">
+          <span className="text-xs text-muted-foreground">
+            {frequencyShort[supplier.frequency] || supplier.frequency}
+          </span>
+        </TableCell>
+      )}
       {periodKeys.map((key) => {
         const period = periodStatusMap.get(key);
         if (!period) {
