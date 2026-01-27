@@ -17,18 +17,14 @@ import {
 } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { normalizeName } from "@/lib/franchisee-matcher";
 
 /**
  * Normalize a supplier name for consistent matching
- * - Trim whitespace
- * - Convert to lowercase
- * - Remove extra spaces
+ * Uses the same normalization as supplier-matcher to ensure blacklist works
  */
 export function normalizeSupplierName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  return normalizeName(name);
 }
 
 /**
