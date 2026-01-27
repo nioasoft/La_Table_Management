@@ -222,9 +222,9 @@ export default function BkmvDataPage() {
   });
 
   // Convert blacklist to Set for matching
-  const blacklistedNames = useMemo(() => {
+  const blacklistedNames = useMemo((): Set<string> => {
     if (!blacklistData?.items) return new Set<string>();
-    return new Set(blacklistData.items.map((item: { normalizedName: string }) => item.normalizedName));
+    return new Set<string>(blacklistData.items.map((item: { normalizedName: string }) => item.normalizedName));
   }, [blacklistData]);
 
   // Fetch franchisees for filter dropdown
