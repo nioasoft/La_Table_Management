@@ -285,7 +285,7 @@ export function ReportDataTable<T extends object>({
                 <TableHead
                   key={column.id}
                   className={cn(
-                    "text-end",
+                    "text-start",
                     column.sortable !== false && enableSorting && "cursor-pointer select-none",
                     column.headerClassName
                   )}
@@ -293,7 +293,7 @@ export function ReportDataTable<T extends object>({
                     column.sortable !== false && handleSort(column.accessorKey as string || column.id)
                   }
                 >
-                  <div className="flex items-center justify-end gap-2">
+                  <div className="flex items-center justify-start gap-2">
                     <span>{column.header}</span>
                     {column.sortable !== false && enableSorting && (
                       renderSortIcon(column.accessorKey as string || column.id)
@@ -341,7 +341,7 @@ export function ReportDataTable<T extends object>({
                   {columns.map((column) => (
                     <TableCell
                       key={column.id}
-                      className={cn("text-end", column.className)}
+                      className={cn("text-start", column.className)}
                     >
                       {getCellValue(row, column)}
                     </TableCell>
