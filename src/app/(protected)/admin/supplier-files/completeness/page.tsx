@@ -44,20 +44,37 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus } from "@/app/api/dashboard/supplier-completeness/route";
-import { getPeriodTypeLabel } from "@/lib/settlement-periods";
 
-// Compact status icon
-const StatusIcon = ({ status }: { status: PeriodStatus["status"] }) => {
+// Compact status icons in different sizes
+const StatusIcon = ({ status, size = "normal" }: { status: PeriodStatus["status"]; size?: "small" | "normal" }) => {
+  const sizeClass = size === "small" ? "h-2.5 w-2.5" : "h-3.5 w-3.5";
   switch (status) {
     case "approved":
-      return <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />;
+      return <CheckCircle2 className={`${sizeClass} text-green-600`} />;
     case "pending":
-      return <Clock className="h-3.5 w-3.5 text-amber-500" />;
+      return <Clock className={`${sizeClass} text-amber-500`} />;
     case "missing":
-      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
+      return <XCircle className={`${sizeClass} text-red-500`} />;
     default:
       return null;
   }
+};
+
+// Define the 4 quarters for the year
+const QUARTERS = ["Q1", "Q2", "Q3", "Q4"];
+
+// Map months to quarters
+const monthToQuarter: Record<string, string> = {
+  "01": "Q1", "02": "Q1", "03": "Q1",
+  "04": "Q2", "05": "Q2", "06": "Q2",
+  "07": "Q3", "08": "Q3", "09": "Q3",
+  "10": "Q4", "11": "Q4", "12": "Q4",
+};
+
+// Map H1/H2 to quarters
+const halfToQuarters: Record<string, string[]> = {
+  "H1": ["Q1", "Q2"],
+  "H2": ["Q3", "Q4"],
 };
 
 export default function SupplierCompletenessPage() {
@@ -68,7 +85,6 @@ export default function SupplierCompletenessPage() {
 
   const [year, setYear] = useState(defaultYear);
   const [brandId, setBrandId] = useState<string>("all");
-  const [frequency, setFrequency] = useState<string>("quarterly"); // Default to quarterly (most common)
 
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -85,11 +101,10 @@ export default function SupplierCompletenessPage() {
     isLoading,
     refetch,
   } = useQuery<SupplierCompletenessResponse>({
-    queryKey: ["supplier-completeness", year, brandId, frequency],
+    queryKey: ["supplier-completeness", year, brandId],
     queryFn: async () => {
       const params = new URLSearchParams({ year: year.toString() });
       if (brandId && brandId !== "all") params.append("brandId", brandId);
-      if (frequency && frequency !== "all") params.append("frequency", frequency);
       const response = await fetch(`/api/dashboard/supplier-completeness?${params}`);
       if (!response.ok) throw new Error("Failed to fetch completeness data");
       return response.json();
@@ -109,48 +124,20 @@ export default function SupplierCompletenessPage() {
 
   const brands = brandsData?.brands || [];
   const suppliers = completenessData?.suppliers || [];
-  const summary = completenessData?.summary;
 
-  // Build period info map for display
-  const periodInfoMap = new Map<string, { nameHe: string; type: string }>();
-  suppliers.forEach(s => {
-    s.periods.forEach(p => {
-      if (!periodInfoMap.has(p.key)) {
-        periodInfoMap.set(p.key, { nameHe: p.nameHe, type: s.frequency });
-      }
-    });
-  });
-
-  // When a specific frequency is selected, only show periods for that frequency
-  // When "all" is selected, only show quarterly periods (most common)
-  const getRelevantPeriodKeys = () => {
-    if (frequency !== "all") {
-      // Show only periods for the selected frequency
-      const keys = new Set<string>();
-      suppliers.forEach(s => {
-        if (s.frequency === frequency) {
-          s.periods.forEach(p => keys.add(p.key));
-        }
-      });
-      return Array.from(keys).sort();
-    }
-
-    // When showing all, default to quarterly view (most suppliers are quarterly)
-    const quarterlyKeys = new Set<string>();
-    suppliers.forEach(s => {
-      if (s.frequency === "quarterly") {
-        s.periods.forEach(p => quarterlyKeys.add(p.key));
-      }
-    });
-    return Array.from(quarterlyKeys).sort();
-  };
-
-  const periodKeys = getRelevantPeriodKeys();
-
-  // Filter suppliers to show based on frequency selection
-  const displayedSuppliers = frequency === "all"
-    ? suppliers // Show all but with quarterly columns
-    : suppliers.filter(s => s.frequency === frequency);
+  // Calculate stats
+  const stats = suppliers.reduce(
+    (acc, s) => ({
+      approved: acc.approved + s.stats.approved,
+      pending: acc.pending + s.stats.pending,
+      missing: acc.missing + s.stats.missing,
+      total: acc.total + s.stats.total,
+    }),
+    { approved: 0, pending: 0, missing: 0, total: 0 }
+  );
+  const completionPct = stats.total > 0
+    ? Math.round(((stats.approved + stats.pending) / stats.total) * 100)
+    : 0;
 
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
@@ -163,13 +150,13 @@ export default function SupplierCompletenessPage() {
   }
 
   return (
-    <div className="container mx-auto py-4 space-y-4 max-w-7xl" dir="rtl">
+    <div className="container mx-auto py-4 space-y-4 max-w-5xl" dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">שלמות דוחות ספקים</h1>
           <p className="text-sm text-muted-foreground">
-            מעקב אחר קבצים שהתקבלו לפי ספק ותקופה
+            מעקב קבצים לפי ספק ורבעון - {year}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -185,9 +172,8 @@ export default function SupplierCompletenessPage() {
         </div>
       </div>
 
-      {/* Summary + Filters Row */}
+      {/* Filters + Summary Row */}
       <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
-        {/* Filters */}
         <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
           <SelectTrigger className="w-24 h-8">
             <SelectValue />
@@ -211,79 +197,37 @@ export default function SupplierCompletenessPage() {
           </SelectContent>
         </Select>
 
-        <Select value={frequency} onValueChange={setFrequency}>
-          <SelectTrigger className="w-28 h-8">
-            <SelectValue placeholder="תדירות" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">הכל</SelectItem>
-            <SelectItem value="monthly">חודשי</SelectItem>
-            <SelectItem value="quarterly">רבעוני</SelectItem>
-            <SelectItem value="semi_annual">חצי שנתי</SelectItem>
-            <SelectItem value="annual">שנתי</SelectItem>
-          </SelectContent>
-        </Select>
-
         <div className="h-6 w-px bg-border mx-2" />
 
-        {/* Summary Stats - calculated from displayed suppliers */}
-        {displayedSuppliers.length > 0 && (
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-muted-foreground">
-              {displayedSuppliers.length} ספקים
-            </span>
-            {(() => {
-              const stats = displayedSuppliers.reduce(
-                (acc, s) => ({
-                  approved: acc.approved + s.stats.approved,
-                  pending: acc.pending + s.stats.pending,
-                  missing: acc.missing + s.stats.missing,
-                  total: acc.total + s.stats.total,
-                }),
-                { approved: 0, pending: 0, missing: 0, total: 0 }
-              );
-              const completionPct = stats.total > 0
-                ? Math.round(((stats.approved + stats.pending) / stats.total) * 100)
-                : 0;
-              return (
-                <>
-                  <span className="flex items-center gap-1">
-                    <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                    <span className="text-green-600 font-medium">{stats.approved}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="text-amber-600 font-medium">{stats.pending}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <XCircle className="h-3.5 w-3.5 text-red-500" />
-                    <span className="text-red-600 font-medium">{stats.missing}</span>
-                  </span>
-                  <Badge variant={completionPct >= 80 ? "success" : completionPct >= 50 ? "warning" : "destructive"}>
-                    {completionPct}% השלמה
-                  </Badge>
-                </>
-              );
-            })()}
-          </div>
-        )}
+        <div className="flex items-center gap-4 text-sm">
+          <span className="text-muted-foreground">{suppliers.length} ספקים</span>
+          <span className="flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+            <span className="text-green-600 font-medium">{stats.approved}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <Clock className="h-3.5 w-3.5 text-amber-500" />
+            <span className="text-amber-600 font-medium">{stats.pending}</span>
+          </span>
+          <span className="flex items-center gap-1">
+            <XCircle className="h-3.5 w-3.5 text-red-500" />
+            <span className="text-red-600 font-medium">{stats.missing}</span>
+          </span>
+          <Badge variant={completionPct >= 80 ? "success" : completionPct >= 50 ? "warning" : "destructive"}>
+            {completionPct}%
+          </Badge>
+        </div>
       </div>
 
       {/* Table */}
       <Card>
         <CardHeader className="py-3 px-4">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>מצב דוחות לפי ספק</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              {periodKeys.length} תקופות
-              {frequency === "all" && " (תצוגה רבעונית)"}
-            </span>
-          </CardTitle>
+          <CardTitle className="text-base">מצב דוחות לפי ספק ורבעון</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {displayedSuppliers.length === 0 ? (
+          {suppliers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              לא נמצאו ספקים {frequency !== "all" && `בתדירות ${frequency === "quarterly" ? "רבעונית" : frequency === "monthly" ? "חודשית" : frequency === "semi_annual" ? "חצי שנתית" : "שנתית"}`}
+              לא נמצאו ספקים עם הגדרות קובץ
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -293,35 +237,21 @@ export default function SupplierCompletenessPage() {
                     <TableHead className="sticky right-0 bg-background z-10 w-48 py-2">
                       ספק
                     </TableHead>
-                    {frequency === "all" && (
-                      <TableHead className="w-16 py-2 text-center">תדירות</TableHead>
-                    )}
-                    {periodKeys.map((key) => {
-                      const nameHe = periodInfoMap.get(key)?.nameHe || key;
-                      // Shorten period names based on type
-                      const shortName = nameHe
-                        .replace(/רבעון (\d).*/, "Q$1")
-                        .replace(/מחצית ראשונה.*/, "H1")
-                        .replace(/מחצית שנייה.*/, "H2")
-                        .replace(/שנת.*/, "שנתי")
-                        .replace(/(\S+) \d{4}/, "$1"); // Remove year from monthly
-                      return (
-                        <TableHead key={key} className="text-center w-14 py-2 px-1">
-                          <span className="text-xs">{shortName}</span>
-                        </TableHead>
-                      );
-                    })}
-                    <TableHead className="w-10 py-2"></TableHead>
+                    <TableHead className="w-16 py-2 text-center text-xs">תדירות</TableHead>
+                    {QUARTERS.map((q) => (
+                      <TableHead key={q} className="text-center w-20 py-2">
+                        <span className="text-xs font-medium">{q}</span>
+                      </TableHead>
+                    ))}
+                    <TableHead className="w-8 py-2"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {displayedSuppliers.map((supplier) => (
+                  {suppliers.map((supplier) => (
                     <SupplierRow
                       key={supplier.supplier.id}
                       supplier={supplier}
-                      periodKeys={periodKeys}
-                      periodInfoMap={periodInfoMap}
-                      showFrequency={frequency === "all"}
+                      year={year}
                     />
                   ))}
                 </TableBody>
@@ -332,18 +262,18 @@ export default function SupplierCompletenessPage() {
       </Card>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 text-xs text-muted-foreground justify-center">
+      <div className="flex items-center gap-6 text-xs text-muted-foreground justify-center">
         <span className="flex items-center gap-1">
           <CheckCircle2 className="h-3 w-3 text-green-600" /> אושר
         </span>
         <span className="flex items-center gap-1">
-          <Clock className="h-3 w-3 text-amber-500" /> ממתין לבדיקה
+          <Clock className="h-3 w-3 text-amber-500" /> ממתין
         </span>
         <span className="flex items-center gap-1">
           <XCircle className="h-3 w-3 text-red-500" /> חסר
         </span>
-        <span className="flex items-center gap-1">
-          <span className="text-muted-foreground">-</span> לא רלוונטי
+        <span className="text-muted-foreground/70">
+          חודשי = 3 אייקונים לרבעון | חצי שנתי = 2 רבעונים
         </span>
       </div>
     </div>
@@ -352,24 +282,189 @@ export default function SupplierCompletenessPage() {
 
 function SupplierRow({
   supplier,
-  periodKeys,
-  periodInfoMap,
-  showFrequency,
+  year,
 }: {
   supplier: SupplierCompleteness;
-  periodKeys: string[];
-  periodInfoMap: Map<string, { nameHe: string; type: string }>;
-  showFrequency: boolean;
+  year: number;
 }) {
+  const frequencyLabels: Record<string, string> = {
+    monthly: "חודשי",
+    quarterly: "רבעוני",
+    semi_annual: "חצי שנתי",
+    annual: "שנתי",
+  };
+
+  // Build a map of period key -> status
   const periodStatusMap = new Map(
     supplier.periods.map((p) => [p.key, p])
   );
 
-  const frequencyShort: Record<string, string> = {
-    monthly: "חודשי",
-    quarterly: "רבעוני",
-    semi_annual: "חצי",
-    annual: "שנתי",
+  // Render quarter cell based on supplier frequency
+  const renderQuarterCell = (quarter: string) => {
+    const quarterNum = parseInt(quarter.replace("Q", ""));
+
+    if (supplier.frequency === "quarterly") {
+      // Quarterly: single icon for the quarter
+      const periodKey = `${year}-${quarter}`;
+      const period = periodStatusMap.get(periodKey);
+
+      if (!period) {
+        return <span className="text-muted-foreground/30">-</span>;
+      }
+
+      return (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-center">
+                {period.fileId ? (
+                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                    <StatusIcon status={period.status} />
+                  </Link>
+                ) : (
+                  <StatusIcon status={period.status} />
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              <p className="font-medium">רבעון {quarterNum} {year}</p>
+              <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
+              {period.fileName && (
+                <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    if (supplier.frequency === "monthly") {
+      // Monthly: 3 small icons for each month in the quarter
+      const months = getMonthsInQuarter(quarterNum);
+
+      return (
+        <div className="flex justify-center gap-0.5">
+          {months.map((month) => {
+            const periodKey = `${year}-${month}`;
+            const period = periodStatusMap.get(periodKey);
+
+            if (!period) {
+              return (
+                <span key={month} className="text-muted-foreground/30 text-[10px]">·</span>
+              );
+            }
+
+            return (
+              <TooltipProvider key={month} delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div>
+                      {period.fileId ? (
+                        <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                          <StatusIcon status={period.status} size="small" />
+                        </Link>
+                      ) : (
+                        <StatusIcon status={period.status} size="small" />
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="text-xs">
+                    <p className="font-medium">{period.nameHe}</p>
+                    <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
+                    {period.fileName && (
+                      <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (supplier.frequency === "semi_annual") {
+      // Semi-annual: show icon only in Q2 (H1) or Q4 (H2)
+      const half = quarterNum <= 2 ? "H1" : "H2";
+      const isDisplayQuarter = quarterNum === 2 || quarterNum === 4;
+
+      if (!isDisplayQuarter) {
+        return <span className="text-muted-foreground/30">↓</span>; // Arrow indicating it's part of the half
+      }
+
+      const periodKey = `${year}-${half}`;
+      const period = periodStatusMap.get(periodKey);
+
+      if (!period) {
+        return <span className="text-muted-foreground/30">-</span>;
+      }
+
+      return (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-center">
+                {period.fileId ? (
+                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                    <StatusIcon status={period.status} />
+                  </Link>
+                ) : (
+                  <StatusIcon status={period.status} />
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              <p className="font-medium">{period.nameHe} {year}</p>
+              <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
+              {period.fileName && (
+                <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    if (supplier.frequency === "annual") {
+      // Annual: show icon only in Q4
+      if (quarter !== "Q4") {
+        return <span className="text-muted-foreground/30">↓</span>;
+      }
+
+      const periodKey = `${year}`;
+      const period = periodStatusMap.get(periodKey);
+
+      if (!period) {
+        return <span className="text-muted-foreground/30">-</span>;
+      }
+
+      return (
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex justify-center">
+                {period.fileId ? (
+                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                    <StatusIcon status={period.status} />
+                  </Link>
+                ) : (
+                  <StatusIcon status={period.status} />
+                )}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              <p className="font-medium">שנת {year}</p>
+              <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
+              {period.fileName && (
+                <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
+              )}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    }
+
+    return <span className="text-muted-foreground/30">-</span>;
   };
 
   return (
@@ -386,50 +481,16 @@ function SupplierRow({
           )}
         </div>
       </TableCell>
-      {showFrequency && (
-        <TableCell className="text-center py-1.5">
-          <span className="text-xs text-muted-foreground">
-            {frequencyShort[supplier.frequency] || supplier.frequency}
-          </span>
+      <TableCell className="text-center py-1.5">
+        <span className="text-xs text-muted-foreground">
+          {frequencyLabels[supplier.frequency] || supplier.frequency}
+        </span>
+      </TableCell>
+      {QUARTERS.map((q) => (
+        <TableCell key={q} className="text-center py-1.5 px-2">
+          {renderQuarterCell(q)}
         </TableCell>
-      )}
-      {periodKeys.map((key) => {
-        const period = periodStatusMap.get(key);
-        if (!period) {
-          return (
-            <TableCell key={key} className="text-center py-1.5 px-1">
-              <span className="text-muted-foreground/50">-</span>
-            </TableCell>
-          );
-        }
-
-        return (
-          <TableCell key={key} className="text-center py-1.5 px-1">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex justify-center">
-                    {period.fileId ? (
-                      <Link href={`/admin/supplier-files/review/${period.fileId}`}>
-                        <StatusIcon status={period.status} />
-                      </Link>
-                    ) : (
-                      <StatusIcon status={period.status} />
-                    )}
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  <p className="font-medium">{periodInfoMap.get(key)?.nameHe}</p>
-                  <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
-                  {period.fileName && (
-                    <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
-                  )}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </TableCell>
-        );
-      })}
+      ))}
       <TableCell className="py-1.5">
         <Link href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}>
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
@@ -439,4 +500,14 @@ function SupplierRow({
       </TableCell>
     </TableRow>
   );
+}
+
+// Helper: get months (01-12) for a quarter
+function getMonthsInQuarter(quarter: number): string[] {
+  const startMonth = (quarter - 1) * 3 + 1;
+  return [
+    String(startMonth).padStart(2, "0"),
+    String(startMonth + 1).padStart(2, "0"),
+    String(startMonth + 2).padStart(2, "0"),
+  ];
 }
