@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     const {
       supplierId,
       fileName,
+      fileUrl,
       fileSize,
       processingResult,
       periodStartDate,
@@ -105,6 +106,28 @@ export async function POST(request: NextRequest) {
         { error: "תאריכי תקופה הם שדה חובה" },
         { status: 400 }
       );
+    }
+
+    // Validate fileUrl if provided (must be from Vercel Blob Storage)
+    if (fileUrl) {
+      try {
+        const url = new URL(fileUrl);
+        // Only allow HTTPS URLs from Vercel Blob domain
+        const isVercelBlob = url.protocol === 'https:' &&
+          (url.hostname.endsWith('.public.blob.vercel-storage.com') ||
+           url.hostname.endsWith('.blob.vercel-storage.com'));
+        if (!isVercelBlob) {
+          return NextResponse.json(
+            { error: "כתובת קובץ לא חוקית - חייבת להיות מ-Vercel Blob Storage" },
+            { status: 400 }
+          );
+        }
+      } catch {
+        return NextResponse.json(
+          { error: "פורמט כתובת קובץ לא חוקי" },
+          { status: 400 }
+        );
+      }
     }
 
     // Verify supplier exists
@@ -165,6 +188,7 @@ export async function POST(request: NextRequest) {
     const newFile = await createSupplierFileUpload({
       supplierId,
       originalFileName: fileName,
+      fileUrl: fileUrl || null, // URL from Blob Storage
       fileSize: fileSize || 0,
       processingStatus,
       processingResult: processingResult as SupplierFileProcessingResult,

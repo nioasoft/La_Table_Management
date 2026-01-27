@@ -3,7 +3,8 @@ import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
 import { parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
-import { getFranchiseeByCompanyId } from "@/data-access/franchisees";
+import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
+import { generateEntityFileName } from "@/lib/storage";
 import {
   createAdminUploadedFile,
   checkDuplicateBkmvUpload,
@@ -117,11 +118,35 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
+    // Get franchisee name for descriptive file naming
+    let franchiseeName = "unknown";
+    if (detectedFranchisee) {
+      franchiseeName = detectedFranchisee.name;
+    } else if (franchiseeIdParam) {
+      const franchiseeData = await getFranchiseeById(franchiseeIdParam);
+      if (franchiseeData) {
+        franchiseeName = franchiseeData.name;
+      }
+    }
+
+    // Generate descriptive file name (for database record, file is already in Blob)
+    let descriptiveFileName = fileName || "BKMVDATA.txt";
+    try {
+      descriptiveFileName = generateEntityFileName(
+        franchiseeName,
+        periodStartDate,
+        fileName || "BKMVDATA.txt"
+      );
+    } catch (nameError) {
+      console.warn("Failed to generate descriptive filename:", nameError);
+      // Fall back to original filename
+    }
+
     // Create database record (file is already in Vercel Blob)
     const fileId = randomUUID();
     const uploadedFileRecord = await createAdminUploadedFile({
       id: fileId,
-      fileName: fileName || "BKMVDATA.txt",
+      fileName: descriptiveFileName,
       originalFileName: fileName || "BKMVDATA.txt",
       fileUrl: blobUrl,
       fileSize: fileSize || buffer.length,

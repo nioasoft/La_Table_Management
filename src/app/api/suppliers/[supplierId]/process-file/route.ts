@@ -22,6 +22,8 @@ import {
   createLogInputFromResults,
 } from "@/data-access/fileProcessingLog";
 import { createAuditContext } from "@/data-access/auditLog";
+import { uploadDocument, generateEntityFileName } from "@/lib/storage";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 interface RouteContext {
   params: Promise<{ supplierId: string }>;
@@ -377,6 +379,53 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Don't fail the request if logging fails
     }
 
+    // Upload the supplier file to Blob Storage for permanent storage
+    // Extract earliest date from processed data for file naming
+    let periodStartDate = formatDateAsLocal(new Date()); // Default to today
+    const datesInFile = result.data
+      .map(row => row.date)
+      .filter((d): d is Date => d !== null);
+    if (datesInFile.length > 0) {
+      const earliest = datesInFile.reduce((min, d) => d < min ? d : min, datesInFile[0]);
+      periodStartDate = formatDateAsLocal(earliest);
+    }
+
+    // Generate custom file name with supplier name and period
+    let customFileName: string | undefined;
+    try {
+      customFileName = generateEntityFileName(
+        supplier.name,
+        periodStartDate,
+        file.name
+      );
+    } catch (nameError) {
+      console.warn("Failed to generate entity filename, using default:", nameError);
+      // Will use default filename from uploadDocument
+    }
+
+    let fileUrl: string | undefined;
+    let storedFileName: string | undefined;
+    let storageUploadFailed = false;
+    try {
+      const uploadResult = await uploadDocument(
+        buffer,
+        file.name,
+        file.type || "application/octet-stream",
+        "supplier",
+        supplierId,
+        customFileName ? { customFileName } : undefined
+      );
+      fileUrl = uploadResult.url;
+      storedFileName = uploadResult.fileName;
+    } catch (uploadError) {
+      console.error("Failed to upload supplier file to Blob Storage:", uploadError);
+      storageUploadFailed = true;
+      // Add warning about storage failure
+      result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+        details: 'הקובץ עובד בהצלחה אך השמירה לאחסון נכשלה. ניתן לנסות שוב.',
+      }));
+    }
+
     // Return processing results
     return NextResponse.json({
       success: result.success,
@@ -389,6 +438,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         vatRate: vatRate * 100, // Return as percentage
         fileName: file.name,
         fileSize: file.size,
+        periodStartDate, // Include extracted period start date
       },
       matchSummary,
       // Enhanced error information
@@ -403,6 +453,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       // Unmatched franchisee summary
       unmatchedFranchiseeSummary,
       processingDurationMs,
+      // File URL from Blob Storage (if upload succeeded)
+      fileUrl,
+      storedFileName,
+      // Flag to indicate if storage upload failed (processing succeeded but file not saved)
+      storageUploadFailed,
     });
   } catch (error) {
     console.error("Error processing supplier file:", error);

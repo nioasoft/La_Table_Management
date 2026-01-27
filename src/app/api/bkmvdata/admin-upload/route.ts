@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
-import { uploadDocument } from "@/lib/storage";
+import { uploadDocument, generateEntityFileName } from "@/lib/storage";
 import { parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
-import { getFranchiseeByCompanyId } from "@/data-access/franchisees";
+import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
 import {
   createAdminUploadedFile,
   checkDuplicateBkmvUpload,
@@ -115,13 +115,38 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
+    // Get franchisee name for the file name
+    let franchiseeName = "unknown";
+    if (detectedFranchisee) {
+      franchiseeName = detectedFranchisee.name;
+    } else if (franchiseeIdParam) {
+      const franchiseeData = await getFranchiseeById(franchiseeIdParam);
+      if (franchiseeData) {
+        franchiseeName = franchiseeData.name;
+      }
+    }
+
+    // Generate descriptive file name with franchisee name and period
+    let customFileName: string | undefined;
+    try {
+      customFileName = generateEntityFileName(
+        franchiseeName,
+        periodStartDate,
+        file.name
+      );
+    } catch (nameError) {
+      console.warn("Failed to generate entity filename, using default:", nameError);
+      // Will use default filename from uploadDocument
+    }
+
     // Upload file to storage
     const uploadResult = await uploadDocument(
       buffer,
       file.name,
       file.type || "application/octet-stream",
       "bkmvdata",
-      franchiseeId
+      franchiseeId,
+      customFileName ? { customFileName } : undefined
     );
 
     // Create database record

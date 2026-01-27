@@ -13,6 +13,7 @@ import { getFranchiseeByCompanyId } from "@/data-access/franchisees";
 import type { BkmvProcessingResult } from "@/db/schema";
 import {
   uploadDocument,
+  generateEntityFileName,
   isAllowedFileType,
   isFileSizeValid,
   getMaxFileSize,
@@ -197,13 +198,35 @@ export async function POST(
       );
     }
 
+    // Check if this is a BKMVDATA file and generate custom file name
+    let customFileName: string | undefined;
+    if (link.entityType === "franchisee" && isBkmvDataFile(buffer)) {
+      // Try to extract date range early for file naming
+      try {
+        const earlyParse = parseBkmvData(buffer);
+        const earlyDateRange = extractDateRange(earlyParse);
+        if (earlyDateRange && link.entityName) {
+          const periodStartDate = formatDateAsLocal(earlyDateRange.startDate);
+          customFileName = generateEntityFileName(
+            link.entityName,
+            periodStartDate,
+            file.name
+          );
+        }
+      } catch {
+        // If parsing fails, we'll use the default file name
+        // The full BKMVDATA processing will handle the error later
+      }
+    }
+
     // Upload the file to storage using validated buffer
     const uploadResult = await uploadDocument(
       buffer,
       file.name,
       fileValidation.detectedMimeType || file.type,
       link.entityType,
-      link.entityId
+      link.entityId,
+      customFileName ? { customFileName } : undefined
     );
 
     // Get client IP

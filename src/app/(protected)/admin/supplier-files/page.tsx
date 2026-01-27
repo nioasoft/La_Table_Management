@@ -142,6 +142,7 @@ interface ProcessingResult {
     vatRate: number;
     fileName: string;
     fileSize: number;
+    periodStartDate?: string;
   };
   matchSummary?: {
     total: number;
@@ -154,6 +155,9 @@ interface ProcessingResult {
   processingStatus: string;
   errors: Array<{ code: string; message: string; rowNumber?: number }>;
   warnings: Array<{ code: string; message: string; rowNumber?: number }>;
+  // File URL from Blob Storage (if upload succeeded)
+  fileUrl?: string;
+  storedFileName?: string;
 }
 
 export default function SupplierFilesPage() {
@@ -350,6 +354,7 @@ export default function SupplierFilesPage() {
         body: JSON.stringify({
           supplierId,
           fileName: result.summary.fileName,
+          fileUrl: result.fileUrl, // URL from Blob Storage
           fileSize: result.summary.fileSize,
           processingResult: processingResultForDB,
           periodStartDate: formatDateAsLocal(period.startDate),
