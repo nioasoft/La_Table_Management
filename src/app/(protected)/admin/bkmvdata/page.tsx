@@ -350,6 +350,13 @@ export default function BkmvDataPage() {
   const handleUploadToServer = useCallback(async (forceReplace = false) => {
     if (!selectedFile || !parseResult || !matchedFranchisee) return;
 
+    // Client-side file size validation (25MB limit)
+    const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+    if (selectedFile.size > MAX_FILE_SIZE) {
+      setError("הקובץ גדול מדי. הגודל המקסימלי הוא 25MB");
+      return;
+    }
+
     setIsUploading(true);
     setError(null);
 
@@ -366,19 +373,33 @@ export default function BkmvDataPage() {
         body: formData,
       });
 
-      const data = await response.json();
-
+      // Check response.ok FIRST before parsing JSON
+      // This handles non-JSON error responses (like 413 from server/proxy)
       if (!response.ok) {
-        if (data.error === "duplicate") {
-          // Show duplicate dialog
-          setDuplicateDialog({
-            open: true,
-            existingFile: data.existingFile,
-          });
-          return;
+        let errorMessage = "שגיאה בהעלאת הקובץ";
+        try {
+          const data = await response.json();
+          if (data.error === "duplicate") {
+            // Show duplicate dialog
+            setDuplicateDialog({
+              open: true,
+              existingFile: data.existingFile,
+            });
+            return;
+          }
+          errorMessage = data.error || errorMessage;
+        } catch {
+          // Response wasn't JSON (e.g., 413 from server/proxy returns plain text)
+          if (response.status === 413) {
+            errorMessage = "הקובץ גדול מדי. הגודל המקסימלי הוא 25MB";
+          } else {
+            errorMessage = `שגיאת שרת: ${response.status}`;
+          }
         }
-        throw new Error(data.error || "Failed to upload file");
+        throw new Error(errorMessage);
       }
+
+      const data = await response.json();
 
       // Success
       setUploadSuccess({

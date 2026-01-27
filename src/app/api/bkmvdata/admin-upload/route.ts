@@ -46,6 +46,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Server-side file size validation (25MB limit for BKMVDATA files)
+    const MAX_BKMV_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+    if (file.size > MAX_BKMV_FILE_SIZE) {
+      return NextResponse.json(
+        { error: "הקובץ גדול מדי. הגודל המקסימלי הוא 25MB" },
+        { status: 413 }
+      );
+    }
+
     // Read file buffer
     const buffer = Buffer.from(await file.arrayBuffer());
 
