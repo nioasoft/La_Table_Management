@@ -74,6 +74,7 @@ import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
 } from "@/lib/supplier-matcher";
+import { upload } from "@vercel/blob/client";
 
 // Type for franchisee with brand
 interface FranchiseeWithBrand extends Franchisee {
@@ -209,6 +210,23 @@ export default function BkmvDataPage() {
 
   const suppliers: Supplier[] = suppliersData?.suppliers || [];
 
+  // Fetch blacklist for filtering
+  const { data: blacklistData, refetch: refetchBlacklist } = useQuery({
+    queryKey: ["bkmvdata", "blacklist"],
+    queryFn: async () => {
+      const response = await fetch("/api/bkmvdata/blacklist");
+      if (!response.ok) throw new Error("Failed to fetch blacklist");
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  // Convert blacklist to Set for matching
+  const blacklistedNames = useMemo(() => {
+    if (!blacklistData?.items) return new Set<string>();
+    return new Set(blacklistData.items.map((item: { normalizedName: string }) => item.normalizedName));
+  }, [blacklistData]);
+
   // Fetch franchisees for filter dropdown
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
@@ -287,10 +305,12 @@ export default function BkmvDataPage() {
       return response.json();
     },
     onSuccess: () => {
-      // Re-run matching after adding to blacklist
-      if (parseResult) {
-        handleProcessFile();
-      }
+      // Refresh blacklist and re-run matching
+      refetchBlacklist().then(() => {
+        if (parseResult) {
+          handleProcessFile();
+        }
+      });
     },
   });
 
@@ -346,14 +366,14 @@ export default function BkmvDataPage() {
     setUploadSuccess(null);
   }, []);
 
-  // Upload file to server
+  // Upload file to server using client-side Vercel Blob upload
   const handleUploadToServer = useCallback(async (forceReplace = false) => {
     if (!selectedFile || !parseResult || !matchedFranchisee) return;
 
-    // Client-side file size validation (25MB limit)
-    const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+    // Client-side file size validation (50MB limit - larger now that we use direct blob upload)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
     if (selectedFile.size > MAX_FILE_SIZE) {
-      setError("הקובץ גדול מדי. הגודל המקסימלי הוא 25MB");
+      setError("הקובץ גדול מדי. הגודל המקסימלי הוא 50MB");
       return;
     }
 
@@ -361,22 +381,30 @@ export default function BkmvDataPage() {
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      formData.append("franchiseeId", matchedFranchisee.id);
-      if (filterStartDate) formData.append("periodStartDate", filterStartDate);
-      if (filterEndDate) formData.append("periodEndDate", filterEndDate);
-      if (forceReplace) formData.append("forceReplace", "true");
+      // Step 1: Upload directly to Vercel Blob (bypasses serverless function body limit)
+      const blob = await upload(selectedFile.name, selectedFile, {
+        access: "public",
+        handleUploadUrl: "/api/bkmvdata/admin-upload-url",
+      });
 
-      const response = await fetch("/api/bkmvdata/admin-upload", {
+      // Step 2: Process the uploaded file
+      const response = await fetch("/api/bkmvdata/admin-process", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          franchiseeId: matchedFranchisee.id,
+          periodStartDate: filterStartDate || undefined,
+          periodEndDate: filterEndDate || undefined,
+          forceReplace,
+        }),
       });
 
       // Check response.ok FIRST before parsing JSON
-      // This handles non-JSON error responses (like 413 from server/proxy)
       if (!response.ok) {
-        let errorMessage = "שגיאה בהעלאת הקובץ";
+        let errorMessage = "שגיאה בעיבוד הקובץ";
         try {
           const data = await response.json();
           if (data.error === "duplicate") {
@@ -389,12 +417,7 @@ export default function BkmvDataPage() {
           }
           errorMessage = data.error || errorMessage;
         } catch {
-          // Response wasn't JSON (e.g., 413 from server/proxy returns plain text)
-          if (response.status === 413) {
-            errorMessage = "הקובץ גדול מדי. הגודל המקסימלי הוא 25MB";
-          } else {
-            errorMessage = `שגיאת שרת: ${response.status}`;
-          }
+          errorMessage = `שגיאת שרת: ${response.status}`;
         }
         throw new Error(errorMessage);
       }
@@ -411,7 +434,7 @@ export default function BkmvDataPage() {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "history"] });
     } catch (err) {
       console.error("Error uploading file:", err);
-      setError(err instanceof Error ? err.message : "Failed to upload file");
+      setError(err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ");
     } finally {
       setIsUploading(false);
       setDuplicateDialog({ open: false });
