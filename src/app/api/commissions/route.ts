@@ -9,9 +9,11 @@ import {
   getCommissionsWithDetails,
   type CommissionCalculationInput,
   type BatchCommissionInput,
-  type CommissionReportFilters,
 } from "@/data-access/commissions";
 import { createAuditContext } from "@/data-access/auditLog";
+import { commissionFiltersSchema } from "@/lib/validations/report-schemas";
+
+const MAX_BATCH_SIZE = 100;
 
 /**
  * GET /api/commissions - Get commissions with optional filters
@@ -29,12 +31,36 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult;
 
     const { searchParams } = new URL(request.url);
-    const filters: CommissionReportFilters = {
+    const rawFilters = {
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,
       supplierId: searchParams.get("supplierId") || undefined,
+      franchiseeId: searchParams.get("franchiseeId") || undefined,
       brandId: searchParams.get("brandId") || undefined,
       status: searchParams.get("status") || undefined,
+      periodKey: searchParams.get("periodKey") || undefined,
+      minAmount: searchParams.get("minAmount") || undefined,
+      maxAmount: searchParams.get("maxAmount") || undefined,
+    };
+
+    // Validate filters using Zod schema
+    const result = commissionFiltersSchema.safeParse(rawFilters);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: "פרמטרים לא תקינים", details: result.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const validatedData = result.data;
+
+    // Convert Date objects to strings for the data access layer
+    const filters = {
+      startDate: validatedData.startDate?.toISOString().split("T")[0],
+      endDate: validatedData.endDate?.toISOString().split("T")[0],
+      supplierId: validatedData.supplierId,
+      brandId: validatedData.brandId,
+      status: validatedData.status,
     };
 
     const commissions = await getCommissionsWithDetails(filters);
@@ -112,6 +138,13 @@ export async function POST(request: NextRequest) {
       if (!body.transactions || !Array.isArray(body.transactions) || body.transactions.length === 0) {
         return NextResponse.json(
           { error: "Transactions array is required for batch processing" },
+          { status: 400 }
+        );
+      }
+
+      if (body.transactions.length > MAX_BATCH_SIZE) {
+        return NextResponse.json(
+          { error: `מקסימום ${MAX_BATCH_SIZE} פריטים בכל פעולה` },
           { status: 400 }
         );
       }

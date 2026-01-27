@@ -158,3 +158,8 @@ The application is configured for Hebrew language by default:
 - **ux** - see `docs/ux.md` for user experience guidelines
 - **file-uploads** - see `docs/file-uploads.md` for file upload implementation
 - **suppliers** - see `docs/suppliers-reference.md` for supplier configuration, file mapping rules, commission rates, and franchisee aliases
+
+## Test User Notes
+
+- We keep a dedicated test user for QA. During active testing, this user can be temporarily promoted to `admin`.
+- After testing, the user must be demoted back to a regular, non-privileged state (role unset and status not active).

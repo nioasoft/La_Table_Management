@@ -35,10 +35,14 @@ import {
   ReportSummaryCards,
   ReportDataTable,
   ReportExportButton,
+  ReportPeriodSelector,
   type ColumnDef,
   type SummaryCardData,
 } from "@/components/reports";
+import type { SettlementPeriodType } from "@/db/schema";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatCurrency, formatDateHe } from "@/lib/report-utils";
+import { toast } from "sonner";
 
 // ============================================================================
 // TYPES
@@ -153,7 +157,10 @@ export default function InvoiceReportPage() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>("");
   const [periodStartDate, setPeriodStartDate] = useState<string>("");
   const [periodEndDate, setPeriodEndDate] = useState<string>("");
-  const [status, setStatus] = useState<string>("approved");
+  const [status, setStatus] = useState<string>("all");
+  const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [useCustomDateRange, setUseCustomDateRange] = useState(true);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session
@@ -184,12 +191,13 @@ export default function InvoiceReportPage() {
   // Fetch suppliers for dropdown
   const fetchSuppliers = useCallback(async () => {
     try {
-      const response = await fetch("/api/suppliers?active=true");
+      const response = await fetch("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
-      setSuppliers(data);
+      setSuppliers(data.suppliers || []);
     } catch (err) {
       console.error("Error fetching suppliers:", err);
+      toast.error("שגיאה בטעינת רשימת הספקים. נסה שוב.");
     }
   }, []);
 
@@ -199,6 +207,21 @@ export default function InvoiceReportPage() {
       fetchSuppliers();
     }
   }, [session, userRole, fetchSuppliers]);
+
+  // Handle period change
+  const handlePeriodChange = (newPeriodType: SettlementPeriodType | "", newPeriodKey: string) => {
+    setPeriodType(newPeriodType);
+    setPeriodKey(newPeriodKey);
+    setUseCustomDateRange(!newPeriodType);
+
+    if (newPeriodKey) {
+      const period = getPeriodByKey(newPeriodKey);
+      if (period) {
+        setPeriodStartDate(period.startDate.toISOString().split("T")[0]);
+        setPeriodEndDate(period.endDate.toISOString().split("T")[0]);
+      }
+    }
+  };
 
   // Fetch invoice data
   const fetchInvoiceData = useCallback(async () => {
@@ -212,7 +235,7 @@ export default function InvoiceReportPage() {
         periodStartDate,
         periodEndDate,
       });
-      if (status) params.append("status", status);
+      if (status && status !== "all") params.append("status", status);
 
       const response = await fetch(`/api/reports/invoice?${params.toString()}`);
       if (!response.ok) {
@@ -223,10 +246,10 @@ export default function InvoiceReportPage() {
       setInvoiceData(data.invoiceData);
     } catch (err) {
       console.error("Error fetching invoice data:", err);
-      setError(
-        err instanceof Error ? err.message : "שגיאה בטעינת נתוני החשבונית"
-      );
+      const errorMessage = err instanceof Error ? err.message : "שגיאה בטעינת נתוני החשבונית";
+      setError(errorMessage);
       setInvoiceData(null);
+      toast.error("שגיאה בטעינת הנתונים. נסה שוב.");
     } finally {
       setIsLoading(false);
     }
@@ -238,7 +261,7 @@ export default function InvoiceReportPage() {
     if (selectedSupplierId) params.set("supplierId", selectedSupplierId);
     if (periodStartDate) params.set("periodStartDate", periodStartDate);
     if (periodEndDate) params.set("periodEndDate", periodEndDate);
-    if (status) params.set("status", status);
+    if (status && status !== "all") params.set("status", status);
     return params.toString();
   }, [selectedSupplierId, periodStartDate, periodEndDate, status]);
 
@@ -306,6 +329,7 @@ export default function InvoiceReportPage() {
           <ReportExportButton
             endpoints={{
               excel: "/api/commissions/invoice/export",
+              pdf: "/api/reports/invoice/pdf",
             }}
             queryString={buildQueryString()}
             reportType="invoice"
@@ -325,47 +349,65 @@ export default function InvoiceReportPage() {
             בחר ספק ותקופת התחשבנות להצגת נתוני החשבונית
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Supplier Selection */}
-            <div className="space-y-2">
-              <Label>ספק *</Label>
-              <Select
-                value={selectedSupplierId}
-                onValueChange={setSelectedSupplierId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="בחר ספק" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        <CardContent className="space-y-4">
+          {/* Supplier Selection */}
+          <div className="space-y-2">
+            <Label>ספק *</Label>
+            <Select
+              value={selectedSupplierId}
+              onValueChange={setSelectedSupplierId}
+            >
+              <SelectTrigger className="max-w-md">
+                <SelectValue placeholder="בחר ספק" />
+              </SelectTrigger>
+              <SelectContent>
+                {suppliers.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name} ({s.code})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            {/* Period Start Date */}
-            <div className="space-y-2">
-              <Label>מתאריך *</Label>
-              <Input
-                type="date"
-                value={periodStartDate}
-                onChange={(e) => setPeriodStartDate(e.target.value)}
-              />
-            </div>
+          {/* Period Selector */}
+          <div className="p-3 border rounded-lg bg-muted/30">
+            <ReportPeriodSelector
+              periodType={periodType}
+              periodKey={periodKey}
+              onChange={handlePeriodChange}
+              onCustomRangeSelect={() => setUseCustomDateRange(true)}
+              showCustomRange={true}
+              layout="horizontal"
+              showLabels={true}
+            />
+          </div>
 
-            {/* Period End Date */}
-            <div className="space-y-2">
-              <Label>עד תאריך *</Label>
-              <Input
-                type="date"
-                value={periodEndDate}
-                onChange={(e) => setPeriodEndDate(e.target.value)}
-              />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Date inputs - only show when using custom range */}
+            {useCustomDateRange && (
+              <>
+                {/* Period Start Date */}
+                <div className="space-y-2">
+                  <Label>מתאריך *</Label>
+                  <Input
+                    type="date"
+                    value={periodStartDate}
+                    onChange={(e) => setPeriodStartDate(e.target.value)}
+                  />
+                </div>
+
+                {/* Period End Date */}
+                <div className="space-y-2">
+                  <Label>עד תאריך *</Label>
+                  <Input
+                    type="date"
+                    value={periodEndDate}
+                    onChange={(e) => setPeriodEndDate(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
 
             {/* Status Filter */}
             <div className="space-y-2">
@@ -375,7 +417,7 @@ export default function InvoiceReportPage() {
                   <SelectValue placeholder="כל הסטטוסים" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">כל הסטטוסים</SelectItem>
+                  <SelectItem value="all">כל הסטטוסים</SelectItem>
                   <SelectItem value="approved">מאושר</SelectItem>
                   <SelectItem value="calculated">מחושב</SelectItem>
                   <SelectItem value="paid">שולם</SelectItem>

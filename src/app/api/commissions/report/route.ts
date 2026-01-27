@@ -6,9 +6,9 @@ import {
 import {
   getCommissionReportData,
   getAllBrands,
-  type CommissionReportFilters,
 } from "@/data-access/commissions";
-import { getActiveSuppliers } from "@/data-access/suppliers";
+import { getActiveVisibleSuppliers } from "@/data-access/suppliers";
+import { commissionFiltersSchema } from "@/lib/validations/report-schemas";
 
 /**
  * GET /api/commissions/report - Get commission report data
@@ -27,19 +27,41 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
-    const filters: CommissionReportFilters = {
+    const rawFilters = {
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,
       supplierId: searchParams.get("supplierId") || undefined,
+      franchiseeId: searchParams.get("franchiseeId") || undefined,
       brandId: searchParams.get("brandId") || undefined,
       status: searchParams.get("status") || undefined,
+      periodKey: searchParams.get("periodKey") || undefined,
+      minAmount: searchParams.get("minAmount") || undefined,
+      maxAmount: searchParams.get("maxAmount") || undefined,
+    };
+
+    // Validate filters using Zod schema
+    const result = commissionFiltersSchema.safeParse(rawFilters);
+    if (!result.success) {
+      return NextResponse.json(
+        { error: "פרמטרים לא תקינים", details: result.error.flatten() },
+        { status: 400 }
+      );
+    }
+
+    const filters = result.data;
+
+    // Convert Date objects to ISO strings for the data access layer
+    const dataAccessFilters = {
+      ...filters,
+      startDate: filters.startDate ? filters.startDate.toISOString().split('T')[0] : undefined,
+      endDate: filters.endDate ? filters.endDate.toISOString().split('T')[0] : undefined,
     };
 
     // Fetch report data and filter options in parallel
     const [reportData, brands, suppliers] = await Promise.all([
-      getCommissionReportData(filters),
+      getCommissionReportData(dataAccessFilters),
       getAllBrands(),
-      getActiveSuppliers(),
+      getActiveVisibleSuppliers(),
     ]);
 
     return NextResponse.json({

@@ -24,10 +24,14 @@ import {
   ReportSummaryCards,
   ReportDataTable,
   ReportExportButton,
+  ReportPeriodSelector,
   type ColumnDef,
   type SummaryCardData,
 } from "@/components/reports";
+import type { SettlementPeriodType } from "@/db/schema";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatCurrency, formatDateHe, formatNumber } from "@/lib/report-utils";
+import { toast } from "sonner";
 
 // ============================================================================
 // TYPES
@@ -136,6 +140,9 @@ export default function UnauthorizedSuppliersReportPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [minAmount, setMinAmount] = useState("");
+  const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [useCustomDateRange, setUseCustomDateRange] = useState(true);
 
   // Selected supplier for detail view
   const [selectedSupplier, setSelectedSupplier] = useState<UnauthorizedSupplierEntry | null>(null);
@@ -181,7 +188,9 @@ export default function UnauthorizedSuppliersReportPage() {
       setBrands(data.filters.brands || []);
       setFranchisees(data.filters.franchisees || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch report");
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch report";
+      setError(errorMessage);
+      toast.error("שגיאה בטעינת הנתונים. נסה שוב.");
     } finally {
       setIsLoading(false);
     }
@@ -194,6 +203,21 @@ export default function UnauthorizedSuppliersReportPage() {
     }
   }, [session, userRole, fetchReport]);
 
+  // Handle period change
+  const handlePeriodChange = (newPeriodType: SettlementPeriodType | "", newPeriodKey: string) => {
+    setPeriodType(newPeriodType);
+    setPeriodKey(newPeriodKey);
+    setUseCustomDateRange(!newPeriodType);
+
+    if (newPeriodKey) {
+      const period = getPeriodByKey(newPeriodKey);
+      if (period) {
+        setStartDate(period.startDate.toISOString().split("T")[0]);
+        setEndDate(period.endDate.toISOString().split("T")[0]);
+      }
+    }
+  };
+
   // Handle filter reset
   const handleResetFilters = () => {
     setSelectedBrand("");
@@ -201,6 +225,9 @@ export default function UnauthorizedSuppliersReportPage() {
     setStartDate("");
     setEndDate("");
     setMinAmount("");
+    setPeriodType("");
+    setPeriodKey("");
+    setUseCustomDateRange(true);
   };
 
   // Filter franchisees by selected brand
@@ -280,7 +307,20 @@ export default function UnauthorizedSuppliersReportPage() {
           <CardTitle className="text-lg">סינון</CardTitle>
           <CardDescription>סנן לפי מותג, זכיין, תקופה או סכום מינימלי</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Period Selector */}
+          <div className="p-3 border rounded-lg bg-muted/30">
+            <ReportPeriodSelector
+              periodType={periodType}
+              periodKey={periodKey}
+              onChange={handlePeriodChange}
+              onCustomRangeSelect={() => setUseCustomDateRange(true)}
+              showCustomRange={true}
+              layout="horizontal"
+              showLabels={true}
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label htmlFor="brand">מותג</Label>
@@ -316,25 +356,30 @@ export default function UnauthorizedSuppliersReportPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="startDate">מתאריך</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
+            {/* Date inputs - only show when using custom range */}
+            {useCustomDateRange && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">מתאריך</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="endDate">עד תאריך</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endDate">עד תאריך</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="minAmount">סכום מינימלי</Label>
@@ -405,7 +450,7 @@ export default function UnauthorizedSuppliersReportPage() {
             <CardContent>
               {report.suppliers.length === 0 ? (
                 <div className="text-center py-8">
-                  <AlertTriangle className="h-12 w-12 mx-auto text-green-500 mb-4" />
+                  <AlertTriangle className="h-12 w-12 mx-auto text-emerald-500 dark:text-emerald-400 mb-4" />
                   <h3 className="text-lg font-medium mb-2">לא נמצאו ספקים לא מורשים</h3>
                   <p className="text-muted-foreground">
                     כל הספקים בקבצי ה-BKMV מותאמים לספקים במערכת

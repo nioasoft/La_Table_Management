@@ -29,10 +29,14 @@ import {
   ReportSummaryCards,
   ReportDataTable,
   ReportExportButton,
+  ReportPeriodSelector,
   type ColumnDef,
   type SummaryCardData,
 } from "@/components/reports";
+import type { SettlementPeriodType } from "@/db/schema";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatCurrency, formatDateHe, formatDateRange, formatNumber } from "@/lib/report-utils";
+import { toast } from "sonner";
 
 // ============================================================================
 // TYPES
@@ -129,7 +133,7 @@ const detailColumns: ColumnDef<DepositEntry>[] = [
     accessorKey: "amount",
     className: "font-medium",
     cell: (row) => (
-      <span className={row.amount >= 0 ? "text-green-600" : "text-red-600"}>
+      <span className={row.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
         {formatCurrency(row.amount)}
       </span>
     ),
@@ -202,7 +206,7 @@ const franchiseeColumns: ColumnDef<DepositSummaryByFranchisee>[] = [
     accessorKey: "totalDeposits",
     className: "font-medium",
     cell: (row) => (
-      <span className={row.totalDeposits >= 0 ? "text-green-600" : "text-red-600"}>
+      <span className={row.totalDeposits >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
         {formatCurrency(row.totalDeposits)}
       </span>
     ),
@@ -253,7 +257,7 @@ const brandColumns: ColumnDef<DepositSummaryByBrand>[] = [
     accessorKey: "totalDeposits",
     className: "font-medium",
     cell: (row) => (
-      <span className={row.totalDeposits >= 0 ? "text-green-600" : "text-red-600"}>
+      <span className={row.totalDeposits >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>
         {formatCurrency(row.totalDeposits)}
       </span>
     ),
@@ -278,6 +282,9 @@ export default function DepositsReportPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [minAmount, setMinAmount] = useState("");
+  const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [useCustomDateRange, setUseCustomDateRange] = useState(true);
 
   // Selected deposit for detail view
   const [selectedDeposit, setSelectedDeposit] = useState<DepositEntry | null>(null);
@@ -323,7 +330,9 @@ export default function DepositsReportPage() {
       setBrands(data.filters.brands || []);
       setFranchisees(data.filters.franchisees || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch report");
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch report";
+      setError(errorMessage);
+      toast.error("שגיאה בטעינת הנתונים. נסה שוב.");
     } finally {
       setIsLoading(false);
     }
@@ -336,6 +345,21 @@ export default function DepositsReportPage() {
     }
   }, [session, userRole, fetchReport]);
 
+  // Handle period change
+  const handlePeriodChange = (newPeriodType: SettlementPeriodType | "", newPeriodKey: string) => {
+    setPeriodType(newPeriodType);
+    setPeriodKey(newPeriodKey);
+    setUseCustomDateRange(!newPeriodType);
+
+    if (newPeriodKey) {
+      const period = getPeriodByKey(newPeriodKey);
+      if (period) {
+        setStartDate(period.startDate.toISOString().split("T")[0]);
+        setEndDate(period.endDate.toISOString().split("T")[0]);
+      }
+    }
+  };
+
   // Handle filter reset
   const handleResetFilters = () => {
     setSelectedBrand("");
@@ -343,6 +367,9 @@ export default function DepositsReportPage() {
     setStartDate("");
     setEndDate("");
     setMinAmount("");
+    setPeriodType("");
+    setPeriodKey("");
+    setUseCustomDateRange(true);
   };
 
   // Filter franchisees by selected brand
@@ -422,7 +449,20 @@ export default function DepositsReportPage() {
           <CardTitle className="text-lg">סינון</CardTitle>
           <CardDescription>סנן לפי מותג, זכיין, תקופה או סכום מינימלי</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Period Selector */}
+          <div className="p-3 border rounded-lg bg-muted/30">
+            <ReportPeriodSelector
+              periodType={periodType}
+              periodKey={periodKey}
+              onChange={handlePeriodChange}
+              onCustomRangeSelect={() => setUseCustomDateRange(true)}
+              showCustomRange={true}
+              layout="horizontal"
+              showLabels={true}
+            />
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             <div className="space-y-2">
               <Label htmlFor="brand">מותג</Label>
@@ -458,25 +498,30 @@ export default function DepositsReportPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="startDate">מתאריך</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
+            {/* Date inputs - only show when using custom range */}
+            {useCustomDateRange && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="startDate">מתאריך</Label>
+                  <Input
+                    id="startDate"
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="endDate">עד תאריך</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
+                <div className="space-y-2">
+                  <Label htmlFor="endDate">עד תאריך</Label>
+                  <Input
+                    id="endDate"
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="minAmount">סכום מינימלי</Label>
@@ -701,7 +746,7 @@ export default function DepositsReportPage() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">סכום</p>
-                    <p className={`font-medium ${selectedDeposit.amount >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <p className={`font-medium ${selectedDeposit.amount >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
                       {formatCurrency(selectedDeposit.amount)}
                     </p>
                   </div>

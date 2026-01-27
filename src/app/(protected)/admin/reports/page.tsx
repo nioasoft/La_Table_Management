@@ -22,6 +22,10 @@ import {
   ChevronLeft,
   ArrowLeft,
   Receipt,
+  Building2,
+  Store,
+  Tag,
+  FileSpreadsheet,
 } from "lucide-react";
 
 // Report card data
@@ -41,7 +45,7 @@ const reportCards: ReportCardData[] = [
     href: "/admin/reports/commissions",
     icon: <DollarSign className="h-6 w-6" />,
     status: "active",
-    color: "text-green-600",
+    color: "text-emerald-600 dark:text-emerald-400",
   },
   {
     title: "דוח סטיות",
@@ -49,7 +53,7 @@ const reportCards: ReportCardData[] = [
     href: "/admin/reports/variance",
     icon: <TrendingUp className="h-6 w-6" />,
     status: "active",
-    color: "text-blue-600",
+    color: "text-blue-600 dark:text-blue-400",
   },
   {
     title: "ספקים לא מורשים",
@@ -74,6 +78,38 @@ const reportCards: ReportCardData[] = [
     icon: <Receipt className="h-6 w-6" />,
     status: "active",
     color: "text-indigo-600",
+  },
+  {
+    title: "דוח עמלות לפי ספק",
+    description: "פירוט עמלות לכל ספק עם השוואה לתקופות קודמות והצגת מגמות.",
+    href: "/admin/commissions/supplier",
+    icon: <Building2 className="h-6 w-6" />,
+    status: "active",
+    color: "text-cyan-600 dark:text-cyan-400",
+  },
+  {
+    title: "דוח רכישות לפי זכיין",
+    description: "סיכום רכישות וחיובים לכל זכיין לפי תקופות עם ניתוח פילוחים.",
+    href: "/admin/commissions/franchisee",
+    icon: <Store className="h-6 w-6" />,
+    status: "active",
+    color: "text-pink-600 dark:text-pink-400",
+  },
+  {
+    title: "דוח עמלות לפי מותג",
+    description: "ניתוח עמלות לפי מותג - פת ויני, מינה טומאי, קינג קונג עם סיכום כולל.",
+    href: "/admin/commissions/brand",
+    icon: <Tag className="h-6 w-6" />,
+    status: "active",
+    color: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    title: "דוח קבצי ספקים",
+    description: "צפייה בקבצים שהועלו מספקים - סכומים, עמלות מחושבות ואפשרות הורדה.",
+    href: "/admin/reports/supplier-files",
+    icon: <FileSpreadsheet className="h-6 w-6" />,
+    status: "active",
+    color: "text-teal-600 dark:text-teal-400",
   },
 ];
 
@@ -143,7 +179,7 @@ export default function ReportsHubPage() {
                   {report.icon}
                 </div>
                 {report.status === "coming_soon" && (
-                  <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                  <span className="text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300 px-2 py-1 rounded-full">
                     בקרוב
                   </span>
                 )}
@@ -203,6 +239,12 @@ export default function ReportsHubPage() {
               <Link href="/admin/reports/invoice">
                 <Receipt className="h-4 w-4 me-2" />
                 הפקת חשבוניות
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/admin/reports/supplier-files">
+                <FileSpreadsheet className="h-4 w-4 me-2" />
+                קבצי ספקים
               </Link>
             </Button>
           </div>

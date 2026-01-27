@@ -8,6 +8,7 @@ import {
   getAllBrands,
   type VarianceReportFilters,
 } from "@/data-access/commissions";
+import { varianceReportApiFiltersSchema } from "@/lib/validations/report-schemas";
 
 /**
  * GET /api/commissions/variance - Get variance detection report data
@@ -27,34 +28,33 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
-    const currentStartDate = searchParams.get("currentStartDate");
-    const currentEndDate = searchParams.get("currentEndDate");
-    const previousStartDate = searchParams.get("previousStartDate");
-    const previousEndDate = searchParams.get("previousEndDate");
-    const brandId = searchParams.get("brandId") || undefined;
-    const varianceThresholdParam = searchParams.get("varianceThreshold");
-    const varianceThreshold = varianceThresholdParam
-      ? parseFloat(varianceThresholdParam)
-      : 10;
+    const rawFilters = {
+      currentStartDate: searchParams.get("currentStartDate") || undefined,
+      currentEndDate: searchParams.get("currentEndDate") || undefined,
+      previousStartDate: searchParams.get("previousStartDate") || undefined,
+      previousEndDate: searchParams.get("previousEndDate") || undefined,
+      brandId: searchParams.get("brandId") || undefined,
+      varianceThreshold: searchParams.get("varianceThreshold") || undefined,
+    };
 
-    // Validate required parameters
-    if (!currentStartDate || !currentEndDate || !previousStartDate || !previousEndDate) {
+    // Validate filters using Zod schema
+    const result = varianceReportApiFiltersSchema.safeParse(rawFilters);
+    if (!result.success) {
       return NextResponse.json(
-        {
-          error: "Missing required parameters. Please provide currentStartDate, currentEndDate, previousStartDate, and previousEndDate.",
-        },
+        { error: "פרמטרים לא תקינים", details: result.error.flatten() },
         { status: 400 }
       );
     }
 
-    // Build filters
+    // Build filters - convert Date objects to ISO strings for the data access layer
+    const validatedData = result.data;
     const filters: VarianceReportFilters = {
-      currentStartDate,
-      currentEndDate,
-      previousStartDate,
-      previousEndDate,
-      brandId,
-      varianceThreshold,
+      currentStartDate: validatedData.currentStartDate.toISOString().split("T")[0],
+      currentEndDate: validatedData.currentEndDate.toISOString().split("T")[0],
+      previousStartDate: validatedData.previousStartDate.toISOString().split("T")[0],
+      previousEndDate: validatedData.previousEndDate.toISOString().split("T")[0],
+      brandId: validatedData.brandId,
+      varianceThreshold: validatedData.varianceThreshold,
     };
 
     // Fetch report data and filter options in parallel

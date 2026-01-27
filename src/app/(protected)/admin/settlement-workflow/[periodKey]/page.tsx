@@ -34,7 +34,7 @@ import {
   Send,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { UserRole, SettlementPeriodType } from "@/db/schema";
+import type { UserRole, SettlementPeriodType, FileRequestStatus } from "@/db/schema";
 import {
   WorkflowStepper,
   type WorkflowStep,
@@ -47,6 +47,16 @@ interface SupplierInfo {
   id: string;
   name: string;
   code: string;
+  email: string | null;
+  contactName: string | null;
+  fileRequest: {
+    id: string;
+    status: FileRequestStatus;
+    uploadUrl: string | null;
+    sentAt: string | null;
+    submittedAt: string | null;
+    filesUploaded: number;
+  } | null;
 }
 
 // Quick action cards
@@ -67,6 +77,7 @@ export default function PeriodWorkflowPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [suppliers, setSuppliers] = useState<SupplierInfo[]>([]);
+  const [isSendingRequests, setIsSendingRequests] = useState(false);
   const [currentStep, setCurrentStep] = useState<WorkflowStep>("collecting");
 
   const { data: session, isPending } = authClient.useSession();
@@ -104,14 +115,26 @@ export default function PeriodWorkflowPage() {
     try {
       setIsLoading(true);
       // Fetch suppliers for this period frequency
-      const response = await fetch(`/api/settlements/periods?frequency=${periodType}`);
+      const response = await fetch(`/api/settlements/periods?frequency=${periodType}&includeFileRequests=true&periodKey=${encodeURIComponent(periodKey)}`);
       if (!response.ok) {
         throw new Error("Failed to fetch suppliers");
       }
       const data = await response.json();
       // Get suppliers for this frequency
       const frequencySuppliers = data.suppliersByFrequency?.[periodType] || [];
-      setSuppliers(frequencySuppliers);
+      const suppliersWithStatus = frequencySuppliers.map((supplier: {
+        id: string;
+        name: string;
+        code: string;
+        email?: string | null;
+        contactName?: string | null;
+      }) => ({
+        ...supplier,
+        email: supplier.email || null,
+        contactName: supplier.contactName || null,
+        fileRequest: data.fileRequests?.find((fr: { entityId: string }) => fr.entityId === supplier.id) || null,
+      }));
+      setSuppliers(suppliersWithStatus);
     } catch (error) {
       console.error("Error fetching suppliers:", error);
       toast.error("שגיאה בטעינת הספקים");
@@ -130,9 +153,64 @@ export default function PeriodWorkflowPage() {
     router.push("/sign-in");
   };
 
+  const sendFileRequest = async (supplier: SupplierInfo) => {
+    if (!supplier.email) {
+      throw new Error("לספק זה לא מוגדר אימייל");
+    }
+
+    const response = await fetch("/api/file-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        entityType: "supplier",
+        entityId: supplier.id,
+        documentType: `דוח ${getPeriodTypeLabel(periodInfo?.type || "quarterly")} - ${periodInfo?.nameHe}`,
+        recipientEmail: supplier.email,
+        recipientName: supplier.contactName || supplier.name,
+        sendImmediately: true,
+        dueDate: periodInfo?.dueDate?.toISOString().split("T")[0],
+        metadata: {
+          periodKey,
+          periodType: periodInfo?.type,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || "Failed to send request");
+    }
+  };
+
   const handleSendRequests = async () => {
-    // TODO: Implement sending file requests to suppliers
-    toast.success("בקשות לקבצים נשלחו לספקים (MOCK)");
+    if (!periodInfo || isSendingRequests) return;
+
+    const suppliersToSend = suppliers.filter((supplier) => supplier.email && !supplier.fileRequest);
+    if (suppliersToSend.length === 0) {
+      toast.info("כל הבקשות כבר נשלחו");
+      return;
+    }
+
+    setIsSendingRequests(true);
+    const failedSuppliers: string[] = [];
+
+    for (const supplier of suppliersToSend) {
+      try {
+        await sendFileRequest(supplier);
+      } catch (error) {
+        console.error(`Error sending request to ${supplier.name}:`, error);
+        failedSuppliers.push(supplier.name);
+      }
+    }
+
+    if (failedSuppliers.length > 0) {
+      toast.error(`שגיאה בשליחת בקשות ל-${failedSuppliers.length} ספקים`);
+    } else {
+      toast.success(`נשלחו ${suppliersToSend.length} בקשות`);
+    }
+
+    await fetchSuppliers(periodInfo.type);
+    setIsSendingRequests(false);
   };
 
   const formatDate = (date: Date | null | undefined) => {
@@ -165,6 +243,9 @@ export default function PeriodWorkflowPage() {
       </div>
     );
   }
+
+  const suppliersToSend = suppliers.filter((supplier) => supplier.email && !supplier.fileRequest);
+  const canSendRequests = suppliersToSend.length > 0 && !isSendingRequests;
 
   // Quick actions
   const quickActions: QuickAction[] = [
@@ -316,8 +397,12 @@ export default function PeriodWorkflowPage() {
                 action.id === "send-requests" ? (
                   <Card
                     key={action.id}
-                    className="h-full hover:bg-muted/50 transition-colors cursor-pointer border-2 hover:border-primary/50"
-                    onClick={handleSendRequests}
+                    className={`h-full border-2 transition-colors ${
+                      canSendRequests
+                        ? "cursor-pointer hover:bg-muted/50 hover:border-primary/50"
+                        : "cursor-not-allowed opacity-60"
+                    }`}
+                    onClick={canSendRequests ? handleSendRequests : undefined}
                   >
                     <CardContent className="p-4 flex items-start gap-4">
                       <div className={`p-3 rounded-lg text-white ${action.color}`}>
@@ -326,7 +411,7 @@ export default function PeriodWorkflowPage() {
                       <div className="flex-1">
                         <h3 className="font-semibold">{action.label}</h3>
                         <p className="text-sm text-muted-foreground">
-                          {action.description}
+                          {isSendingRequests ? "שולח בקשות..." : action.description}
                         </p>
                       </div>
                     </CardContent>

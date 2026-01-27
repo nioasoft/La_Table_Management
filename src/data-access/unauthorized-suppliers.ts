@@ -12,7 +12,7 @@ import {
   brand,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
+import { eq, and, inArray, isNotNull, desc, sql } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 // ============================================================================
@@ -79,7 +79,7 @@ export async function getUnauthorizedSuppliersReport(
   // Query all uploaded files with BKMV processing results
   const conditions = [
     isNotNull(uploadedFile.bkmvProcessingResult),
-    eq(uploadedFile.processingStatus, "approved"),
+    inArray(uploadedFile.processingStatus, ["approved", "auto_approved"]),
   ];
 
   if (filters.franchiseeId) {

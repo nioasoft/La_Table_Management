@@ -125,9 +125,9 @@ export async function GET(request: NextRequest) {
       const supplierFiles = fileMap.get(supplierId)!;
 
       // Keep the best file for each period (approved > pending > other)
-      const existing = supplierFiles.get(periodKey);
-      const isApproved = file.processingStatus === "approved" || file.processingStatus === "auto_approved";
-      const isPending = file.processingStatus === "needs_review";
+        const existing = supplierFiles.get(periodKey);
+        const isApproved = file.processingStatus === "approved" || file.processingStatus === "auto_approved";
+        const isPending = ["needs_review", "pending", "processing"].includes(file.processingStatus);
 
       if (!existing) {
         supplierFiles.set(periodKey, {
@@ -137,7 +137,7 @@ export async function GET(request: NextRequest) {
         });
       } else {
         const existingIsApproved = existing.status === "approved" || existing.status === "auto_approved";
-        const existingIsPending = existing.status === "needs_review";
+        const existingIsPending = ["needs_review", "pending", "processing"].includes(existing.status);
 
         // Prefer approved over pending over other
         if (isApproved && !existingIsApproved) {

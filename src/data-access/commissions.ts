@@ -102,6 +102,8 @@ export async function getCommissionsWithDetails(
 ): Promise<CommissionWithDetails[]> {
   const conditions = [];
 
+  conditions.push(eq(supplier.isHidden, false));
+
   if (filters.startDate) {
     conditions.push(gte(commission.periodStartDate, filters.startDate));
   }
@@ -183,6 +185,8 @@ export async function getCommissionsWithDetailsPaginated(
   const { page, limit, offset } = normalizePaginationParams(pagination);
   const conditions = [];
 
+  conditions.push(eq(supplier.isHidden, false));
+
   if (filters.startDate) {
     conditions.push(gte(commission.periodStartDate, filters.startDate));
   }
@@ -209,6 +213,7 @@ export async function getCommissionsWithDetailsPaginated(
   const [countResult] = await database
     .select({ total: count() })
     .from(commission)
+    .innerJoin(supplier, eq(commission.supplierId, supplier.id))
     .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id))
     .where(whereClause);
   const totalCount = countResult?.total ?? 0;
@@ -267,6 +272,8 @@ export async function getCommissionSummaryByBrand(
 ): Promise<CommissionSummaryByBrand[]> {
   const conditions = [];
 
+  conditions.push(eq(supplier.isHidden, false));
+
   if (filters.startDate) {
     conditions.push(gte(commission.periodStartDate, filters.startDate));
   }
@@ -299,6 +306,7 @@ export async function getCommissionSummaryByBrand(
       avgCommissionRate: sql<number>`coalesce(avg(${commission.commissionRate}::numeric), 0)::numeric`,
     })
     .from(commission)
+    .innerJoin(supplier, eq(commission.supplierId, supplier.id))
     .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id))
     .innerJoin(brand, eq(franchisee.brandId, brand.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -321,6 +329,8 @@ export async function getCommissionSummaryByPeriod(
   filters: CommissionReportFilters
 ): Promise<CommissionSummaryByPeriod[]> {
   const conditions = [];
+
+  conditions.push(eq(supplier.isHidden, false));
 
   if (filters.startDate) {
     conditions.push(gte(commission.periodStartDate, filters.startDate));
@@ -350,6 +360,7 @@ export async function getCommissionSummaryByPeriod(
           totalCommissionAmount: sql<number>`coalesce(sum(${commission.commissionAmount}::numeric), 0)::numeric`,
         })
         .from(commission)
+        .innerJoin(supplier, eq(commission.supplierId, supplier.id))
         .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id))
         .where(
           conditions.length > 0
@@ -368,6 +379,7 @@ export async function getCommissionSummaryByPeriod(
           totalCommissionAmount: sql<number>`coalesce(sum(${commission.commissionAmount}::numeric), 0)::numeric`,
         })
         .from(commission)
+        .innerJoin(supplier, eq(commission.supplierId, supplier.id))
         .where(conditions.length > 0 ? and(...conditions) : undefined)
         .groupBy(commission.periodStartDate, commission.periodEndDate)
         .orderBy(desc(commission.periodStartDate));
@@ -391,6 +403,8 @@ export async function getCommissionSummaryBySupplier(
   filters: CommissionReportFilters
 ): Promise<CommissionSummaryBySupplier[]> {
   const conditions = [];
+
+  conditions.push(eq(supplier.isHidden, false));
 
   if (filters.startDate) {
     conditions.push(gte(commission.periodStartDate, filters.startDate));

@@ -2300,7 +2300,175 @@ export const he = {
     // Reports
     reports: {
       title: "דוחות",
-      // Add more report strings as needed
+
+      // Deposits report
+      deposits: {
+        title: "דוח מעקב פיקדונות",
+        description: "מעקב אחר יתרות פיקדון לפי זכיין וספק",
+        pageTitle: "דוח מעקב פיקדונות",
+        backToDashboard: "לוח בקרה",
+        breadcrumb: {
+          admin: "ניהול",
+          reports: "דוחות",
+          deposits: "מעקב פיקדונות",
+        },
+
+        tabs: {
+          byFranchisee: "לפי זכיין",
+          byBrand: "לפי מותג",
+          details: "פירוט",
+        },
+
+        columns: {
+          franchisee: "זכיין",
+          brand: "מותג",
+          supplier: "ספק",
+          deposits: "פיקדונות",
+          runningBalance: "יתרה מצטברת",
+          lastDate: "תאריך אחרון",
+          status: "סטטוס",
+          date: "תאריך",
+          amount: "סכום",
+          balance: "יתרה",
+          description: "תיאור",
+        },
+
+        summary: {
+          totalDeposits: "סה״כ פיקדונות",
+          activeAccounts: "חשבונות פעילים",
+          totalBalance: "יתרה כוללת",
+        },
+
+        filters: {
+          title: "סינון",
+          franchisee: "זכיין",
+          allFranchisees: "כל הזכיינים",
+          brand: "מותג",
+          allBrands: "כל המותגים",
+          supplier: "ספק",
+          allSuppliers: "כל הספקים",
+          fromDate: "מתאריך",
+          toDate: "עד תאריך",
+          clearFilters: "נקה סינון",
+          applyFilters: "החל סינון",
+        },
+
+        actions: {
+          refresh: "רענון",
+          export: "ייצוא",
+          exportToExcel: "ייצוא לאקסל",
+          exportToPdf: "ייצוא ל-PDF",
+        },
+
+        emptyState: {
+          title: "אין נתונים להצגה",
+          description: "לא נמצאו פיקדונות לפי הקריטריונים שנבחרו",
+        },
+
+        errors: {
+          loadFailed: "שגיאה בטעינת נתוני פיקדונות",
+          exportFailed: "שגיאה בייצוא הדוח",
+          title: "שגיאה",
+          retry: "נסה שוב",
+        },
+      },
+
+      // Unauthorized suppliers report
+      unauthorized: {
+        title: "דוח ספקים לא מורשים",
+        description: "זיהוי ספקים שמופיעים ב-BKMV ללא הגדרה במערכת",
+        pageTitle: "דוח ספקים לא מורשים",
+        backToDashboard: "לוח בקרה",
+        breadcrumb: {
+          admin: "ניהול",
+          reports: "דוחות",
+          unauthorized: "ספקים לא מורשים",
+        },
+
+        columns: {
+          bkmvName: "שם ספק (BKMV)",
+          totalAmount: "סכום כולל",
+          transactionCount: "מספר עסקאות",
+          franchiseeCount: "מספר זכיינים",
+          firstSeen: "נצפה לראשונה",
+          lastSeen: "נצפה לאחרונה",
+          fileCount: "מספר קבצים",
+          actions: "פעולות",
+        },
+
+        summary: {
+          totalSuppliers: "ספקים לא מורשים",
+          totalAmount: "סכום כולל",
+          affectedFranchisees: "זכיינים מושפעים",
+          recentActivity: "פעילות אחרונה",
+        },
+
+        details: {
+          title: "פרטי ספק לא מורשה",
+          franchisees: "זכיינים",
+          franchiseeName: "שם זכיין",
+          amount: "סכום",
+          transactions: "עסקאות",
+          close: "סגור",
+          viewDetails: "צפה בפרטים",
+        },
+
+        filters: {
+          title: "סינון",
+          search: "חיפוש לפי שם ספק",
+          fromDate: "מתאריך",
+          toDate: "עד תאריך",
+          minAmount: "סכום מינימלי",
+          franchisee: "זכיין",
+          allFranchisees: "כל הזכיינים",
+          clearFilters: "נקה סינון",
+          applyFilters: "החל סינון",
+        },
+
+        actions: {
+          refresh: "רענון",
+          export: "ייצוא",
+          exportToExcel: "ייצוא לאקסל",
+          viewDetails: "צפה בפרטים",
+        },
+
+        emptyState: {
+          title: "לא נמצאו ספקים לא מורשים",
+          description: "כל הספקים ב-BKMV מוגדרים במערכת",
+        },
+
+        errors: {
+          loadFailed: "שגיאה בטעינת נתונים",
+          exportFailed: "שגיאה בייצוא הדוח",
+          title: "שגיאה",
+          retry: "נסה שוב",
+        },
+      },
+
+      // Common report translations
+      common: {
+        export: "ייצוא",
+        exportExcel: "ייצוא לאקסל",
+        exportPdf: "ייצוא ל-PDF",
+        loading: "טוען...",
+        noData: "אין נתונים להצגה",
+        error: "שגיאה בטעינת הנתונים",
+        retry: "נסה שוב",
+        filters: "סינון",
+        clearFilters: "נקה סינון",
+        search: "חיפוש",
+        total: "סה״כ",
+        period: "תקופה",
+        date: "תאריך",
+        amount: "סכום",
+        refresh: "רענון",
+        actions: "פעולות",
+        cancel: "ביטול",
+        confirm: "אישור",
+        save: "שמור",
+        close: "סגור",
+        back: "חזור",
+      },
     },
   },
 
@@ -2731,7 +2899,12 @@ export const he = {
       supplierFiles: "קבצי ספקים",
 
       // Reports
+      reportsHub: "מרכז דוחות",
       commissionsReport: "דוח עמלות",
+      varianceReport: "דוח סטיות",
+      invoiceReport: "דוח חשבוניות",
+      unauthorizedReport: "ספקים לא מורשים",
+      depositsReport: "מעקב פיקדונות",
       generalReports: "דוחות כלליים",
 
       // Settings

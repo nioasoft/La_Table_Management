@@ -10,6 +10,8 @@ import {
 } from "@/data-access/commissions";
 import { createAuditContext } from "@/data-access/auditLog";
 
+const MAX_BATCH_SIZE = 100;
+
 /**
  * POST /api/commissions/bulk - Perform bulk operations on commissions
  *
@@ -45,6 +47,13 @@ export async function POST(request: NextRequest) {
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
       return NextResponse.json(
         { error: "IDs array is required and must not be empty" },
+        { status: 400 }
+      );
+    }
+
+    if (ids.length > MAX_BATCH_SIZE) {
+      return NextResponse.json(
+        { error: `מקסימום ${MAX_BATCH_SIZE} פריטים בכל פעולה` },
         { status: 400 }
       );
     }

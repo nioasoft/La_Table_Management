@@ -705,6 +705,8 @@ export const franchisee = pgTable(
     index("idx_franchisee_code").on(table.code),
     index("idx_franchisee_status").on(table.status),
     index("idx_franchisee_is_active").on(table.isActive),
+    // Composite index for brand-based report queries with active filter
+    index("idx_franchisee_brand_active").on(table.brandId, table.isActive),
   ]
 );
 
@@ -1395,6 +1397,10 @@ export const commission = pgTable(
     index("idx_commission_settlement").on(table.settlementPeriodId),
     index("idx_commission_status").on(table.status),
     index("idx_commission_period").on(table.periodStartDate, table.periodEndDate),
+    // Composite indexes for report query optimization
+    index("idx_commission_supplier_period").on(table.supplierId, table.periodStartDate),
+    index("idx_commission_franchisee_status").on(table.franchiseeId, table.status),
+    index("idx_commission_status_period").on(table.status, table.periodStartDate),
   ]
 );
 
