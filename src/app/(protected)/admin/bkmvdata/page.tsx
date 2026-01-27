@@ -493,9 +493,15 @@ export default function BkmvDataPage() {
         setFranchiseeError("מספר חברה (ח.פ) לא נמצא בקובץ");
       }
 
+      // Apply account sort filter before matching (default is "200" for suppliers)
+      let summaryToUse = result.supplierSummary;
+      if (filterAccountSort !== 'all') {
+        summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
+      }
+
       // Match against suppliers
       const matches = matchBkmvSuppliers(
-        result.supplierSummary,
+        summaryToUse,
         suppliers,
         { minConfidence: 0.6, reviewThreshold: 0.85 },
         blacklistedNames
@@ -507,7 +513,7 @@ export default function BkmvDataPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, suppliers, blacklistedNames]);
+  }, [selectedFile, suppliers, blacklistedNames, filterAccountSort]);
 
   // Add alias to supplier
   const handleAddAlias = useCallback(async (supplierId: string, alias: string) => {
