@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -41,53 +40,21 @@ import {
   Clock,
   FileText,
   RefreshCw,
-  ArrowRight,
-  Calendar,
-  Building2,
-  TrendingUp,
+  ArrowLeft,
 } from "lucide-react";
 import Link from "next/link";
 import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus } from "@/app/api/dashboard/supplier-completeness/route";
 import { getPeriodTypeLabel } from "@/lib/settlement-periods";
 
-// Status icons
+// Compact status icon
 const StatusIcon = ({ status }: { status: PeriodStatus["status"] }) => {
   switch (status) {
     case "approved":
-      return <CheckCircle2 className="h-4 w-4 text-green-600" />;
+      return <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />;
     case "pending":
-      return <Clock className="h-4 w-4 text-amber-500" />;
+      return <Clock className="h-3.5 w-3.5 text-amber-500" />;
     case "missing":
-      return <XCircle className="h-4 w-4 text-red-500" />;
-    default:
-      return null;
-  }
-};
-
-// Status badge
-const StatusBadge = ({ status }: { status: PeriodStatus["status"] }) => {
-  switch (status) {
-    case "approved":
-      return (
-        <Badge variant="success" className="gap-1">
-          <CheckCircle2 className="h-3 w-3" />
-          אושר
-        </Badge>
-      );
-    case "pending":
-      return (
-        <Badge variant="warning" className="gap-1">
-          <Clock className="h-3 w-3" />
-          ממתין
-        </Badge>
-      );
-    case "missing":
-      return (
-        <Badge variant="destructive" className="gap-1">
-          <XCircle className="h-3 w-3" />
-          חסר
-        </Badge>
-      );
+      return <XCircle className="h-3.5 w-3.5 text-red-500" />;
     default:
       return null;
   }
@@ -95,17 +62,17 @@ const StatusBadge = ({ status }: { status: PeriodStatus["status"] }) => {
 
 export default function SupplierCompletenessPage() {
   const router = useRouter();
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const defaultYear = now.getMonth() < 3 ? currentYear - 1 : currentYear;
 
-  // Filters
-  const [year, setYear] = useState(currentYear);
+  const [year, setYear] = useState(defaultYear);
   const [brandId, setBrandId] = useState<string>("all");
   const [frequency, setFrequency] = useState<string>("all");
 
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
   if (!isSessionPending && !session) {
     router.push("/sign-in?redirect=/admin/supplier-files/completeness");
   }
@@ -113,7 +80,6 @@ export default function SupplierCompletenessPage() {
     router.push("/dashboard");
   }
 
-  // Fetch completeness data
   const {
     data: completenessData,
     isLoading,
@@ -124,7 +90,6 @@ export default function SupplierCompletenessPage() {
       const params = new URLSearchParams({ year: year.toString() });
       if (brandId && brandId !== "all") params.append("brandId", brandId);
       if (frequency && frequency !== "all") params.append("frequency", frequency);
-
       const response = await fetch(`/api/dashboard/supplier-completeness?${params}`);
       if (!response.ok) throw new Error("Failed to fetch completeness data");
       return response.json();
@@ -132,7 +97,6 @@ export default function SupplierCompletenessPage() {
     enabled: !isSessionPending && !!session,
   });
 
-  // Fetch brands for filter
   const { data: brandsData } = useQuery({
     queryKey: ["brands"],
     queryFn: async () => {
@@ -147,12 +111,10 @@ export default function SupplierCompletenessPage() {
   const suppliers = completenessData?.suppliers || [];
   const summary = completenessData?.summary;
 
-  // Get unique period names from all suppliers for table headers
   const allPeriodKeys = new Set<string>();
   suppliers.forEach(s => s.periods.forEach(p => allPeriodKeys.add(p.key)));
   const periodKeys = Array.from(allPeriodKeys).sort();
 
-  // Build period info map for display
   const periodInfoMap = new Map<string, { nameHe: string }>();
   suppliers.forEach(s => {
     s.periods.forEach(p => {
@@ -162,7 +124,6 @@ export default function SupplierCompletenessPage() {
     });
   });
 
-  // Generate years for dropdown
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
   if (isSessionPending || isLoading) {
@@ -174,194 +135,134 @@ export default function SupplierCompletenessPage() {
   }
 
   return (
-    <div className="container mx-auto py-6 space-y-6" dir="rtl">
+    <div className="container mx-auto py-4 space-y-4 max-w-7xl" dir="rtl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">מצב דוחות ספקים</h1>
-          <p className="text-muted-foreground mt-1">
-            מעקב אחר דוחות שהתקבלו וחסרים לפי תקופה
+          <h1 className="text-2xl font-bold">שלמות דוחות ספקים</h1>
+          <p className="text-sm text-muted-foreground">
+            מעקב אחר קבצים שהתקבלו לפי ספק ותקופה
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/admin/supplier-files">
-            <Button variant="outline">
-              <FileText className="h-4 w-4 me-2" />
+            <Button variant="outline" size="sm">
+              <FileText className="h-4 w-4 me-1" />
               העלאת קבצים
             </Button>
           </Link>
-          <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 me-2" />
-            רענון
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-2xl font-bold">{summary.totalSuppliers}</p>
-                  <p className="text-xs text-muted-foreground">ספקים</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {/* Summary + Filters Row */}
+      <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
+        {/* Filters */}
+        <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
+          <SelectTrigger className="w-24 h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {years.map((y) => (
+              <SelectItem key={y} value={y.toString()}>{y}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-2xl font-bold">{summary.totalExpectedFiles}</p>
-                  <p className="text-xs text-muted-foreground">קבצים צפויים</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <Select value={brandId} onValueChange={setBrandId}>
+          <SelectTrigger className="w-32 h-8">
+            <SelectValue placeholder="מותג" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">כל המותגים</SelectItem>
+            {brands.map((b: { id: string; nameHe: string }) => (
+              <SelectItem key={b.id} value={b.id}>{b.nameHe}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <div>
-                  <p className="text-2xl font-bold text-green-600">{summary.approved}</p>
-                  <p className="text-xs text-muted-foreground">אושרו</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <Select value={frequency} onValueChange={setFrequency}>
+          <SelectTrigger className="w-28 h-8">
+            <SelectValue placeholder="תדירות" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">הכל</SelectItem>
+            <SelectItem value="monthly">חודשי</SelectItem>
+            <SelectItem value="quarterly">רבעוני</SelectItem>
+            <SelectItem value="semi_annual">חצי שנתי</SelectItem>
+            <SelectItem value="annual">שנתי</SelectItem>
+          </SelectContent>
+        </Select>
 
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-amber-500" />
-                <div>
-                  <p className="text-2xl font-bold text-amber-600">{summary.pending}</p>
-                  <p className="text-xs text-muted-foreground">ממתינים</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        <div className="h-6 w-px bg-border mx-2" />
 
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <XCircle className="h-5 w-5 text-red-500" />
-                <div>
-                  <p className="text-2xl font-bold text-red-600">{summary.missing}</p>
-                  <p className="text-xs text-muted-foreground">חסרים</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-4">
-              <div className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-blue-500" />
-                <div>
-                  <p className="text-2xl font-bold text-blue-600">{summary.completionPercentage}%</p>
-                  <p className="text-xs text-muted-foreground">השלמה</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Filters */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">סינון</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4">
-            <div className="w-40">
-              <label className="text-sm font-medium mb-1.5 block">שנה</label>
-              <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y} value={y.toString()}>
-                      {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-48">
-              <label className="text-sm font-medium mb-1.5 block">מותג</label>
-              <Select value={brandId} onValueChange={setBrandId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="כל המותגים" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל המותגים</SelectItem>
-                  {brands.map((b: { id: string; nameHe: string }) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.nameHe}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="w-48">
-              <label className="text-sm font-medium mb-1.5 block">תדירות דיווח</label>
-              <Select value={frequency} onValueChange={setFrequency}>
-                <SelectTrigger>
-                  <SelectValue placeholder="כל התדירויות" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל התדירויות</SelectItem>
-                  <SelectItem value="monthly">חודשי</SelectItem>
-                  <SelectItem value="quarterly">רבעוני</SelectItem>
-                  <SelectItem value="semi_annual">חצי שנתי</SelectItem>
-                  <SelectItem value="annual">שנתי</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Summary Stats */}
+        {summary && (
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-muted-foreground">
+              {summary.totalSuppliers} ספקים
+            </span>
+            <span className="flex items-center gap-1">
+              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+              <span className="text-green-600 font-medium">{summary.approved}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-amber-600 font-medium">{summary.pending}</span>
+            </span>
+            <span className="flex items-center gap-1">
+              <XCircle className="h-3.5 w-3.5 text-red-500" />
+              <span className="text-red-600 font-medium">{summary.missing}</span>
+            </span>
+            <Badge variant={summary.completionPercentage >= 80 ? "success" : summary.completionPercentage >= 50 ? "warning" : "destructive"}>
+              {summary.completionPercentage}% השלמה
+            </Badge>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
-      {/* Completeness Table */}
+      {/* Table */}
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg">מצב דוחות לפי ספק</CardTitle>
-          <CardDescription>
-            {suppliers.length} ספקים | {periodKeys.length} תקופות
-          </CardDescription>
+        <CardHeader className="py-3 px-4">
+          <CardTitle className="text-base flex items-center justify-between">
+            <span>מצב דוחות לפי ספק</span>
+            <span className="text-sm font-normal text-muted-foreground">
+              {periodKeys.length} תקופות
+            </span>
+          </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {suppliers.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               לא נמצאו ספקים עם הגדרות קובץ
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="text-sm">
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="sticky right-0 bg-background z-10 min-w-[200px]">
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="sticky right-0 bg-background z-10 w-44 py-2">
                       ספק
                     </TableHead>
-                    <TableHead className="w-24">תדירות</TableHead>
-                    <TableHead className="w-24 text-center">סה&quot;כ</TableHead>
-                    {periodKeys.map((key) => (
-                      <TableHead key={key} className="text-center min-w-[100px]">
-                        {periodInfoMap.get(key)?.nameHe || key}
-                      </TableHead>
-                    ))}
-                    <TableHead className="w-16"></TableHead>
+                    <TableHead className="w-16 py-2 text-center">תדירות</TableHead>
+                    {periodKeys.map((key) => {
+                      const nameHe = periodInfoMap.get(key)?.nameHe || key;
+                      // Shorten period names: "רבעון 4 2025" -> "Q4"
+                      const shortName = nameHe
+                        .replace(/רבעון (\d).*/, "Q$1")
+                        .replace(/מחצית ראשונה.*/, "H1")
+                        .replace(/מחצית שנייה.*/, "H2")
+                        .replace(/שנת.*/, "שנתי")
+                        .replace(/(\S+) \d{4}/, "$1"); // Remove year from monthly
+                      return (
+                        <TableHead key={key} className="text-center w-12 py-2 px-1">
+                          <span className="text-xs">{shortName}</span>
+                        </TableHead>
+                      );
+                    })}
+                    <TableHead className="w-10 py-2"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -370,6 +271,7 @@ export default function SupplierCompletenessPage() {
                       key={supplier.supplier.id}
                       supplier={supplier}
                       periodKeys={periodKeys}
+                      periodInfoMap={periodInfoMap}
                     />
                   ))}
                 </TableBody>
@@ -378,79 +280,81 @@ export default function SupplierCompletenessPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Legend */}
+      <div className="flex items-center gap-4 text-xs text-muted-foreground justify-center">
+        <span className="flex items-center gap-1">
+          <CheckCircle2 className="h-3 w-3 text-green-600" /> אושר
+        </span>
+        <span className="flex items-center gap-1">
+          <Clock className="h-3 w-3 text-amber-500" /> ממתין לבדיקה
+        </span>
+        <span className="flex items-center gap-1">
+          <XCircle className="h-3 w-3 text-red-500" /> חסר
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="text-muted-foreground">-</span> לא רלוונטי
+        </span>
+      </div>
     </div>
   );
 }
 
-// Supplier row component
 function SupplierRow({
   supplier,
   periodKeys,
+  periodInfoMap,
 }: {
   supplier: SupplierCompleteness;
   periodKeys: string[];
+  periodInfoMap: Map<string, { nameHe: string }>;
 }) {
-  // Create a map of period key to status for quick lookup
   const periodStatusMap = new Map(
     supplier.periods.map((p) => [p.key, p])
   );
 
-  // Calculate completion percentage
-  const completionPct = supplier.stats.total > 0
-    ? Math.round(((supplier.stats.approved + supplier.stats.pending) / supplier.stats.total) * 100)
-    : 0;
+  const frequencyShort: Record<string, string> = {
+    monthly: "חודשי",
+    quarterly: "רבעוני",
+    semi_annual: "חצי",
+    annual: "שנתי",
+  };
 
   return (
-    <TableRow>
-      <TableCell className="sticky right-0 bg-background z-10">
-        <div className="flex flex-col">
-          <span className="font-medium">{supplier.supplier.name}</span>
-          <span className="text-xs text-muted-foreground">{supplier.supplier.code}</span>
+    <TableRow className="hover:bg-muted/50">
+      <TableCell className="sticky right-0 bg-background z-10 py-1.5">
+        <div className="flex items-center gap-2">
+          <span className="font-medium truncate max-w-[140px]" title={supplier.supplier.name}>
+            {supplier.supplier.name}
+          </span>
           {supplier.brands.length > 0 && (
-            <div className="flex gap-1 mt-1">
-              {supplier.brands.map((b) => (
-                <Badge key={b.id} variant="outline" className="text-xs">
-                  {b.nameHe}
-                </Badge>
-              ))}
-            </div>
+            <span className="text-xs text-muted-foreground">
+              ({supplier.brands.map(b => b.nameHe.charAt(0)).join("")})
+            </span>
           )}
         </div>
       </TableCell>
-      <TableCell>
-        <Badge variant="secondary" className="text-xs">
-          {getPeriodTypeLabel(supplier.frequency as "monthly" | "quarterly" | "semi_annual" | "annual")}
-        </Badge>
-      </TableCell>
-      <TableCell className="text-center">
-        <div className="flex flex-col items-center gap-1">
-          <span className="font-medium">{completionPct}%</span>
-          <div className="flex gap-1 text-xs">
-            <span className="text-green-600">{supplier.stats.approved}</span>
-            <span>/</span>
-            <span className="text-amber-600">{supplier.stats.pending}</span>
-            <span>/</span>
-            <span className="text-red-600">{supplier.stats.missing}</span>
-          </div>
-        </div>
+      <TableCell className="text-center py-1.5">
+        <span className="text-xs text-muted-foreground">
+          {frequencyShort[supplier.frequency] || supplier.frequency}
+        </span>
       </TableCell>
       {periodKeys.map((key) => {
         const period = periodStatusMap.get(key);
-        // If this supplier doesn't have this period (different frequency), show empty
         if (!period) {
           return (
-            <TableCell key={key} className="text-center">
-              <span className="text-muted-foreground">-</span>
+            <TableCell key={key} className="text-center py-1.5 px-1">
+              <span className="text-muted-foreground/50">-</span>
             </TableCell>
           );
         }
 
         return (
-          <TableCell key={key} className="text-center">
-            <TooltipProvider>
+          <TableCell key={key} className="text-center py-1.5 px-1">
+            <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="flex justify-center cursor-pointer">
+                  <div className="flex justify-center">
                     {period.fileId ? (
                       <Link href={`/admin/supplier-files/review/${period.fileId}`}>
                         <StatusIcon status={period.status} />
@@ -460,29 +364,22 @@ function SupplierRow({
                     )}
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <div className="text-sm">
-                    <p className="font-medium">{period.nameHe}</p>
-                    <p>{period.startDate} - {period.endDate}</p>
-                    <div className="mt-1">
-                      <StatusBadge status={period.status} />
-                    </div>
-                    {period.fileName && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {period.fileName}
-                      </p>
-                    )}
-                  </div>
+                <TooltipContent side="top" className="text-xs">
+                  <p className="font-medium">{periodInfoMap.get(key)?.nameHe}</p>
+                  <p className="text-muted-foreground">{period.startDate} - {period.endDate}</p>
+                  {period.fileName && (
+                    <p className="text-muted-foreground truncate max-w-[200px]">{period.fileName}</p>
+                  )}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           </TableCell>
         );
       })}
-      <TableCell>
+      <TableCell className="py-1.5">
         <Link href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}>
-          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-            <ArrowRight className="h-4 w-4" />
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+            <ArrowLeft className="h-3 w-3" />
           </Button>
         </Link>
       </TableCell>

@@ -6,6 +6,7 @@ import {
 import { getAllSupplierFileUploadsForYear } from "@/data-access/supplier-file-uploads";
 import { getSuppliersWithBrands, type SupplierWithBrands } from "@/data-access/suppliers";
 import { getPeriodsForYear, type SettlementPeriodInfo } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import type { SettlementPeriodType } from "@/db/schema";
 
 // File upload processing status type
@@ -190,8 +191,8 @@ export async function GET(request: NextRequest) {
           key: period.key,
           name: period.name,
           nameHe: period.nameHe,
-          startDate: period.startDate.toISOString().split('T')[0],
-          endDate: period.endDate.toISOString().split('T')[0],
+          startDate: formatDateAsLocal(period.startDate),
+          endDate: formatDateAsLocal(period.endDate),
           status,
           fileId: file?.id,
           fileName: file?.fileName,
@@ -271,5 +272,5 @@ function createPeriodKey(startDate: string, endDate: string): string {
  * Create a period key from SettlementPeriodInfo
  */
 function createPeriodKeyFromInfo(period: SettlementPeriodInfo): string {
-  return `${period.startDate.toISOString().split('T')[0]}|${period.endDate.toISOString().split('T')[0]}`;
+  return `${formatDateAsLocal(period.startDate)}|${formatDateAsLocal(period.endDate)}`;
 }

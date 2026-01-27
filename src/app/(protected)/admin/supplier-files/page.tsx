@@ -68,6 +68,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingResult } from "@/db/schema";
 import { formatCurrency } from "@/lib/translations";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox";
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
 import { PeriodSelector, type PeriodWithStatus } from "@/components/supplier-files/period-selector";
@@ -351,8 +352,8 @@ export default function SupplierFilesPage() {
           fileName: result.summary.fileName,
           fileSize: result.summary.fileSize,
           processingResult: processingResultForDB,
-          periodStartDate: period.startDate.toISOString().split('T')[0],
-          periodEndDate: period.endDate.toISOString().split('T')[0],
+          periodStartDate: formatDateAsLocal(period.startDate),
+          periodEndDate: formatDateAsLocal(period.endDate),
           overwrite,
         }),
       });

@@ -41,6 +41,7 @@ import {
 } from "@/components/reports";
 import type { SettlementPeriodType } from "@/db/schema";
 import { getPeriodByKey } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatDateHe } from "@/lib/report-utils";
 import { toast } from "sonner";
 
@@ -183,8 +184,8 @@ export default function InvoiceReportPage() {
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setPeriodStartDate(firstDay.toISOString().split("T")[0]);
-      setPeriodEndDate(lastDay.toISOString().split("T")[0]);
+      setPeriodStartDate(formatDateAsLocal(firstDay));
+      setPeriodEndDate(formatDateAsLocal(lastDay));
     }
   }, [isPending, session, userRole, router]);
 
@@ -217,8 +218,8 @@ export default function InvoiceReportPage() {
     if (newPeriodKey) {
       const period = getPeriodByKey(newPeriodKey);
       if (period) {
-        setPeriodStartDate(period.startDate.toISOString().split("T")[0]);
-        setPeriodEndDate(period.endDate.toISOString().split("T")[0]);
+        setPeriodStartDate(formatDateAsLocal(period.startDate));
+        setPeriodEndDate(formatDateAsLocal(period.endDate));
       }
     }
   };

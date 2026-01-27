@@ -30,6 +30,7 @@ import {
 } from "@/components/reports";
 import type { SettlementPeriodType } from "@/db/schema";
 import { getPeriodByKey } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatDateHe, formatNumber } from "@/lib/report-utils";
 import { toast } from "sonner";
 
@@ -212,8 +213,8 @@ export default function UnauthorizedSuppliersReportPage() {
     if (newPeriodKey) {
       const period = getPeriodByKey(newPeriodKey);
       if (period) {
-        setStartDate(period.startDate.toISOString().split("T")[0]);
-        setEndDate(period.endDate.toISOString().split("T")[0]);
+        setStartDate(formatDateAsLocal(period.startDate));
+        setEndDate(formatDateAsLocal(period.endDate));
       }
     }
   };

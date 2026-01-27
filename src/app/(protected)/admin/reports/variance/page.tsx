@@ -34,6 +34,7 @@ import {
   getPeriodByKey,
   getPeriodsForFrequency,
 } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatPercent, formatDateHe } from "@/lib/report-utils";
 import { toast } from "sonner";
 
@@ -89,10 +90,10 @@ const getDefaultDates = () => {
   const currentMonth = now.getMonth();
 
   return {
-    currentStartDate: new Date(currentYear, currentMonth, 1).toISOString().split("T")[0],
-    currentEndDate: new Date(currentYear, currentMonth + 1, 0).toISOString().split("T")[0],
-    previousStartDate: new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0],
-    previousEndDate: new Date(currentYear, currentMonth, 0).toISOString().split("T")[0],
+    currentStartDate: formatDateAsLocal(new Date(currentYear, currentMonth, 1)),
+    currentEndDate: formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0)),
+    previousStartDate: formatDateAsLocal(new Date(currentYear, currentMonth - 1, 1)),
+    previousEndDate: formatDateAsLocal(new Date(currentYear, currentMonth, 0)),
   };
 };
 
@@ -295,8 +296,8 @@ export default function VarianceReportPage() {
     if (newPeriodKey && newPeriodType) {
       const period = getPeriodByKey(newPeriodKey);
       if (period) {
-        setCurrentStartDate(period.startDate.toISOString().split("T")[0]);
-        setCurrentEndDate(period.endDate.toISOString().split("T")[0]);
+        setCurrentStartDate(formatDateAsLocal(period.startDate));
+        setCurrentEndDate(formatDateAsLocal(period.endDate));
 
         // Auto-select previous period of the same type
         const previousPeriods = getPeriodsForFrequency(newPeriodType, period.startDate, 2);
@@ -304,8 +305,8 @@ export default function VarianceReportPage() {
           const prevPeriod = previousPeriods[0]; // Get the previous period
           setPreviousPeriodType(newPeriodType);
           setPreviousPeriodKey(prevPeriod.key);
-          setPreviousStartDate(prevPeriod.startDate.toISOString().split("T")[0]);
-          setPreviousEndDate(prevPeriod.endDate.toISOString().split("T")[0]);
+          setPreviousStartDate(formatDateAsLocal(prevPeriod.startDate));
+          setPreviousEndDate(formatDateAsLocal(prevPeriod.endDate));
           setUseCustomPreviousRange(false);
         }
       }
@@ -321,8 +322,8 @@ export default function VarianceReportPage() {
     if (newPeriodKey) {
       const period = getPeriodByKey(newPeriodKey);
       if (period) {
-        setPreviousStartDate(period.startDate.toISOString().split("T")[0]);
-        setPreviousEndDate(period.endDate.toISOString().split("T")[0]);
+        setPreviousStartDate(formatDateAsLocal(period.startDate));
+        setPreviousEndDate(formatDateAsLocal(period.endDate));
       }
     }
   };
@@ -335,23 +336,23 @@ export default function VarianceReportPage() {
 
     switch (preset) {
       case "month":
-        setCurrentStartDate(new Date(currentYear, currentMonth, 1).toISOString().split("T")[0]);
-        setCurrentEndDate(new Date(currentYear, currentMonth + 1, 0).toISOString().split("T")[0]);
-        setPreviousStartDate(new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0]);
-        setPreviousEndDate(new Date(currentYear, currentMonth, 0).toISOString().split("T")[0]);
+        setCurrentStartDate(formatDateAsLocal(new Date(currentYear, currentMonth, 1)));
+        setCurrentEndDate(formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0)));
+        setPreviousStartDate(formatDateAsLocal(new Date(currentYear, currentMonth - 1, 1)));
+        setPreviousEndDate(formatDateAsLocal(new Date(currentYear, currentMonth, 0)));
         break;
       case "quarter":
         const currentQuarter = Math.floor(currentMonth / 3);
-        setCurrentStartDate(new Date(currentYear, currentQuarter * 3, 1).toISOString().split("T")[0]);
-        setCurrentEndDate(new Date(currentYear, currentQuarter * 3 + 3, 0).toISOString().split("T")[0]);
-        setPreviousStartDate(new Date(currentYear, (currentQuarter - 1) * 3, 1).toISOString().split("T")[0]);
-        setPreviousEndDate(new Date(currentYear, currentQuarter * 3, 0).toISOString().split("T")[0]);
+        setCurrentStartDate(formatDateAsLocal(new Date(currentYear, currentQuarter * 3, 1)));
+        setCurrentEndDate(formatDateAsLocal(new Date(currentYear, currentQuarter * 3 + 3, 0)));
+        setPreviousStartDate(formatDateAsLocal(new Date(currentYear, (currentQuarter - 1) * 3, 1)));
+        setPreviousEndDate(formatDateAsLocal(new Date(currentYear, currentQuarter * 3, 0)));
         break;
       case "year":
-        setCurrentStartDate(new Date(currentYear, 0, 1).toISOString().split("T")[0]);
-        setCurrentEndDate(new Date(currentYear, currentMonth + 1, 0).toISOString().split("T")[0]);
-        setPreviousStartDate(new Date(currentYear - 1, 0, 1).toISOString().split("T")[0]);
-        setPreviousEndDate(new Date(currentYear - 1, currentMonth + 1, 0).toISOString().split("T")[0]);
+        setCurrentStartDate(formatDateAsLocal(new Date(currentYear, 0, 1)));
+        setCurrentEndDate(formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0)));
+        setPreviousStartDate(formatDateAsLocal(new Date(currentYear - 1, 0, 1)));
+        setPreviousEndDate(formatDateAsLocal(new Date(currentYear - 1, currentMonth + 1, 0)));
         break;
     }
   };

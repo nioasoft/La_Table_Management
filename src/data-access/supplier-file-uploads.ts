@@ -11,6 +11,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, sql, count, gte, lte, ne, or, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Extended type with supplier info
 export type SupplierFileUploadWithSupplier = SupplierFileUpload & {
@@ -581,8 +582,8 @@ export async function getSupplierFileByPeriod(
     .where(
       and(
         eq(supplierFileUpload.supplierId, supplierId),
-        eq(supplierFileUpload.periodStartDate, periodStartDate.toISOString().split('T')[0]),
-        eq(supplierFileUpload.periodEndDate, periodEndDate.toISOString().split('T')[0]),
+        eq(supplierFileUpload.periodStartDate, formatDateAsLocal(periodStartDate)),
+        eq(supplierFileUpload.periodEndDate, formatDateAsLocal(periodEndDate)),
         // Exclude rejected files - they shouldn't block new uploads
         ne(supplierFileUpload.processingStatus, "rejected")
       )
