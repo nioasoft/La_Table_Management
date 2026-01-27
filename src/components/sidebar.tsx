@@ -30,6 +30,7 @@ import {
   Menu,
   FileUp,
   Percent,
+  Files,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
@@ -197,6 +198,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.invoiceReport,
                 href: "/admin/reports/invoice",
                 icon: <Receipt className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.filesReport,
+                href: "/admin/reports/files",
+                icon: <Files className="h-4 w-4" />,
               },
             ],
           },

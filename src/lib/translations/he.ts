@@ -2905,6 +2905,7 @@ export const he = {
       invoiceReport: "דוח חשבוניות",
       unauthorizedReport: "ספקים לא מורשים",
       depositsReport: "מעקב פיקדונות",
+      filesReport: "ניהול קבצים",
       generalReports: "דוחות כלליים",
 
       // Settings

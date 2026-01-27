@@ -371,6 +371,31 @@ export type VarianceReportApiFilters = z.infer<typeof varianceReportApiFiltersSc
 export type InvoiceFilters = z.infer<typeof invoiceFiltersSchema>;
 export type SupplierFilesFilters = z.infer<typeof supplierFilesFiltersSchema>;
 
+/**
+ * Unified files report filters schema
+ */
+export const unifiedFilesFiltersSchema = z
+  .object({
+    source: z
+      .enum(["supplier", "uploaded"], {
+        message: "מקור קובץ לא תקין. יש לבחור: supplier או uploaded",
+      })
+      .optional(),
+    entityType: z
+      .enum(["supplier", "franchisee"], {
+        message: "סוג ישות לא תקין. יש לבחור: supplier או franchisee",
+      })
+      .optional(),
+    status: z
+      .enum(["pending", "processing", "auto_approved", "needs_review", "approved", "rejected"], {
+        message: "סטטוס לא תקין",
+      })
+      .optional(),
+  })
+  .merge(dateRangeSchema);
+
+export type UnifiedFilesFilters = z.infer<typeof unifiedFilesFiltersSchema>;
+
 export type BatchDelete = z.infer<typeof batchDeleteSchema>;
 export type ExportRequest = z.infer<typeof exportRequestSchema>;
 export type SortDirection = z.infer<typeof sortDirectionSchema>;
