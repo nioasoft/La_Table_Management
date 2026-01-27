@@ -66,6 +66,7 @@ import {
   Clock,
   FileCheck,
   ExternalLink,
+  Ban,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
 import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
@@ -265,6 +266,31 @@ export default function BkmvDataPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["suppliers"] });
+    },
+  });
+
+  // Add to blacklist mutation (for marking as not relevant)
+  const addToBlacklistMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const response = await fetch("/api/bkmvdata/blacklist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          notes: "נוסף מדף BKMVDATA - לא רלוונטי להתאמות ספקים",
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "שגיאה בהוספה לרשימה");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      // Re-run matching after adding to blacklist
+      if (parseResult) {
+        handleProcessFile();
+      }
     },
   });
 
@@ -1175,39 +1201,63 @@ export default function BkmvDataPage() {
                               </Badge>
                             )}
                             {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length > 0 && (
-                              <Select
-                                onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
-                              >
-                                <SelectTrigger className="w-[180px]">
-                                  <SelectValue placeholder="בחר ספק ידנית" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {result.matchResult.alternatives.map((alt) => (
-                                    <SelectItem key={alt.supplier.id} value={alt.supplier.id}>
-                                      {alt.supplier.name} ({Math.round(alt.confidence * 100)}%)
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <div className="flex flex-wrap items-center gap-2 justify-end">
+                                <Select
+                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
+                                >
+                                  <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="בחר ספק ידנית" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {result.matchResult.alternatives.map((alt) => (
+                                      <SelectItem key={alt.supplier.id} value={alt.supplier.id}>
+                                        {alt.supplier.name} ({Math.round(alt.confidence * 100)}%)
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                  disabled={addToBlacklistMutation.isPending}
+                                >
+                                  <Ban className="h-4 w-4 ms-1" />
+                                  לא רלוונטי
+                                </Button>
+                              </div>
                             )}
                             {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length === 0 && (
-                              <Select
-                                onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
-                              >
-                                <SelectTrigger className="w-[220px]">
-                                  <SelectValue placeholder="בחר ספק מהרשימה" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-[300px]">
-                                  {sortedSuppliers.map((s) => (
-                                    <SelectItem key={s.id} value={s.id}>
-                                      <span className="flex items-center gap-2">
-                                        <span>{s.name}</span>
-                                        <span className="text-xs text-muted-foreground">({s.code})</span>
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                              <div className="flex flex-wrap items-center gap-2 justify-end">
+                                <Select
+                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
+                                >
+                                  <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="בחר ספק מהרשימה" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-[300px]">
+                                    {sortedSuppliers.map((s) => (
+                                      <SelectItem key={s.id} value={s.id}>
+                                        <span className="flex items-center gap-2">
+                                          <span>{s.name}</span>
+                                          <span className="text-xs text-muted-foreground">({s.code})</span>
+                                        </span>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-muted-foreground hover:text-destructive"
+                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                  disabled={addToBlacklistMutation.isPending}
+                                >
+                                  <Ban className="h-4 w-4 ms-1" />
+                                  לא רלוונטי
+                                </Button>
+                              </div>
                             )}
                           </TableCell>
                         </TableRow>

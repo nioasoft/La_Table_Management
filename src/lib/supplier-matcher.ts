@@ -497,8 +497,28 @@ export function matchBkmvSuppliers(
     }
   }
 
-  // Sort by amount descending (largest suppliers first)
-  results.sort((a, b) => b.amount - a.amount);
+  /**
+   * מיון תוצאות לפי איכות ההתאמה:
+   * 1. התאמות 100% ראשונות (exact matches)
+   * 2. התאמות חלקיות שניות (fuzzy matches)
+   * 3. לא מותאם אחרון
+   * 4. Blacklisted בסוף (מוסתר בד"כ)
+   *
+   * בתוך כל קבוצה - מיון לפי סכום יורד
+   */
+  results.sort((a, b) => {
+    const getPriority = (r: BkmvSupplierMatchingResult): number => {
+      if (r.matchResult.matchType === "blacklisted") return 4;
+      if (r.matchResult.confidence === 1 && r.matchResult.matchedSupplier) return 1;
+      if (r.matchResult.matchedSupplier) return 2;
+      return 3;
+    };
+
+    const priorityDiff = getPriority(a) - getPriority(b);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    return b.amount - a.amount;
+  });
 
   return results;
 }
