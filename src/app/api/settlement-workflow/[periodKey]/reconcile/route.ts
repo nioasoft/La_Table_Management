@@ -10,6 +10,7 @@ import {
   type CrossReferenceMatchStatus,
 } from "@/data-access/crossReferences";
 import { getPeriodByKey } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/settlement-workflow/[periodKey]/reconcile - Get reconciliation data for a period
@@ -34,8 +35,8 @@ export async function GET(
       );
     }
 
-    const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-    const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+    const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+    const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
     // Get existing cross-references
     const crossReferences = await getComparisonsByPeriod(
@@ -121,8 +122,8 @@ export async function POST(
       );
     }
 
-    const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-    const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+    const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+    const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
     // Run bulk comparison
     const results = await performBulkComparison(

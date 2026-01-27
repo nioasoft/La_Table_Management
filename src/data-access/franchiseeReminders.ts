@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   franchiseeReminder,
   franchisee,
@@ -155,7 +156,7 @@ export async function getFranchiseeRemindersByFranchisee(
  * Get pending reminders that are due for notification
  */
 export async function getPendingRemindersForNotification(): Promise<FranchiseeReminderWithFranchisee[]> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateAsLocal(new Date());
 
   const results = await database
     .select({
@@ -381,7 +382,7 @@ export function calculateNotificationDate(
 ): string {
   const date = new Date(reminderDate);
   date.setDate(date.getDate() - daysBeforeNotification);
-  return date.toISOString().split("T")[0];
+  return formatDateAsLocal(date);
 }
 
 /**
@@ -394,9 +395,9 @@ export async function getUpcomingRemindersForDashboard(
   limit: number = 10
 ): Promise<FranchiseeReminderWithFranchisee[]> {
   const today = new Date();
-  const todayStr = today.toISOString().split("T")[0];
+  const todayStr = formatDateAsLocal(today);
   const futureDate = new Date(today.getTime() + daysAhead * 24 * 60 * 60 * 1000);
-  const futureDateStr = futureDate.toISOString().split("T")[0];
+  const futureDateStr = formatDateAsLocal(futureDate);
 
   const results = await database
     .select({

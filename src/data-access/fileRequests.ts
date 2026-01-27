@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   fileRequest,
   uploadLink,
@@ -507,7 +508,7 @@ export async function sendDueDateReminders(
   // Calculate the reminder date
   const reminderDate = new Date();
   reminderDate.setDate(reminderDate.getDate() + daysBeforeDue);
-  const reminderDateStr = reminderDate.toISOString().split("T")[0];
+  const reminderDateStr = formatDateAsLocal(reminderDate);
 
   // Find file requests that are due soon and haven't had a recent reminder
   const requests = await database

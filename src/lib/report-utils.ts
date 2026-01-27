@@ -3,6 +3,7 @@
  */
 
 import { formatCurrency } from "@/lib/translations";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // ============================================================================
 // FORMATTERS
@@ -308,7 +309,7 @@ export function generateReportFilename(
   reportType: string,
   extension: "xlsx" | "pdf" = "xlsx"
 ): string {
-  const date = new Date().toISOString().split("T")[0];
+  const date = formatDateAsLocal(new Date());
   return `${reportType}_report_${date}.${extension}`;
 }
 

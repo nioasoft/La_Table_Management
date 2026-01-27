@@ -24,6 +24,7 @@ import { notifySuperUsersAboutUpload } from "@/lib/notifications";
 import { isBkmvDataFile, parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -251,8 +252,8 @@ export async function POST(
 
         if (dateRange) {
           // Format dates as YYYY-MM-DD
-          const periodStartDate = dateRange.startDate.toISOString().split("T")[0];
-          const periodEndDate = dateRange.endDate.toISOString().split("T")[0];
+          const periodStartDate = formatDateAsLocal(dateRange.startDate);
+          const periodEndDate = formatDateAsLocal(dateRange.endDate);
 
           // Get all suppliers and blacklist for matching
           const allSuppliers = await getSuppliers();

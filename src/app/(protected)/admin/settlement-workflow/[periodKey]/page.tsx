@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
@@ -168,7 +169,7 @@ export default function PeriodWorkflowPage() {
         recipientEmail: supplier.email,
         recipientName: supplier.contactName || supplier.name,
         sendImmediately: true,
-        dueDate: periodInfo?.dueDate?.toISOString().split("T")[0],
+        dueDate: periodInfo?.dueDate ? formatDateAsLocal(periodInfo.dueDate) : undefined,
         metadata: {
           periodKey,
           periodType: periodInfo?.type,

@@ -12,6 +12,7 @@ import {
   type UnifiedFilesFilters,
   type UnifiedFileSource,
 } from "@/data-access/unified-files";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Format date for display in Hebrew locale
 const formatDateHe = (dateStr: string | null | Date): string => {
@@ -252,7 +253,7 @@ export async function GET(request: NextRequest) {
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
     // Generate filename with current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const filename = `files-report_${today}.xlsx`;
 
     // Return Excel file

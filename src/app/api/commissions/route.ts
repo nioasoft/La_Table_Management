@@ -12,6 +12,7 @@ import {
 } from "@/data-access/commissions";
 import { createAuditContext } from "@/data-access/auditLog";
 import { commissionFiltersSchema } from "@/lib/validations/report-schemas";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 const MAX_BATCH_SIZE = 100;
 
@@ -56,8 +57,8 @@ export async function GET(request: NextRequest) {
 
     // Convert Date objects to strings for the data access layer
     const filters = {
-      startDate: validatedData.startDate?.toISOString().split("T")[0],
-      endDate: validatedData.endDate?.toISOString().split("T")[0],
+      startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
+      endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
       supplierId: validatedData.supplierId,
       brandId: validatedData.brandId,
       status: validatedData.status,

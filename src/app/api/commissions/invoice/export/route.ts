@@ -11,6 +11,7 @@ import {
   type CommissionWithDetails,
 } from "@/data-access/commissions";
 import { type CommissionStatus } from "@/db/schema";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Format currency for Excel (number format)
 const formatCurrency = (amount: number): number => {
@@ -439,7 +440,7 @@ export async function GET(request: NextRequest) {
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
     // Generate filename
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const supplierCode = invoiceData.supplierCode.replace(/[^a-zA-Z0-9]/g, "_");
     const periodStr = `${periodStartDate}_to_${periodEndDate}`.replace(/-/g, "");
     const filename = `invoice_report_${supplierCode}_${periodStr}_${today}.xlsx`;

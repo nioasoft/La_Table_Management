@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, lte, sql, desc, or, inArray } from "drizzle-orm";
 import type { CrossReferenceComparisonMetadata } from "@/data-access/crossReferences";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Response type for period status dashboard widget
@@ -78,8 +79,8 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const currentMonthStartStr = currentMonthStart.toISOString().split("T")[0];
-    const currentMonthEndStr = currentMonthEnd.toISOString().split("T")[0];
+    const currentMonthStartStr = formatDateAsLocal(currentMonthStart);
+    const currentMonthEndStr = formatDateAsLocal(currentMonthEnd);
 
     // Fetch all data in parallel
     const [

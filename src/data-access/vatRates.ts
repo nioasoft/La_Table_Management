@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   vatRate,
   type VatRate,
@@ -51,7 +52,7 @@ export async function getVatRateForDate(date: Date = new Date()): Promise<number
     const rates = await getAllVatRates();
 
     // Format date to YYYY-MM-DD for comparison with date field
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = formatDateAsLocal(date);
 
     // Find the most recent rate effective on or before the given date
     const effectiveRate = rates.find((r) => r.effectiveFrom <= dateStr);

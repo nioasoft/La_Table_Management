@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -127,8 +128,8 @@ export default function InvoiceReportPage() {
       const now = new Date();
       const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
       const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      setPeriodStartDate(firstDay.toISOString().split("T")[0]);
-      setPeriodEndDate(lastDay.toISOString().split("T")[0]);
+      setPeriodStartDate(formatDateAsLocal(firstDay));
+      setPeriodEndDate(formatDateAsLocal(lastDay));
     }
   }, [session, isPending, router, userRole]);
 

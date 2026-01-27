@@ -1,4 +1,5 @@
 import type { ImportantDateType, DurationUnit } from "@/db/schema";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Calculate end date from start date and duration in months
@@ -6,7 +7,7 @@ import type { ImportantDateType, DurationUnit } from "@/db/schema";
 export function calculateEndDate(startDate: string, durationMonths: number): string {
   const date = new Date(startDate);
   date.setMonth(date.getMonth() + durationMonths);
-  return date.toISOString().split("T")[0];
+  return formatDateAsLocal(date);
 }
 
 /**
@@ -15,7 +16,7 @@ export function calculateEndDate(startDate: string, durationMonths: number): str
 export function calculateReminderDate(endDate: string, monthsBefore: number): string {
   const date = new Date(endDate);
   date.setMonth(date.getMonth() - monthsBefore);
-  return date.toISOString().split("T")[0];
+  return formatDateAsLocal(date);
 }
 
 /**

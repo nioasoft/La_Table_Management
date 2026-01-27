@@ -9,6 +9,7 @@ import {
   type VarianceReportFilters,
 } from "@/data-access/commissions";
 import { varianceReportApiFiltersSchema } from "@/lib/validations/report-schemas";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/commissions/variance - Get variance detection report data
@@ -49,10 +50,10 @@ export async function GET(request: NextRequest) {
     // Build filters - convert Date objects to ISO strings for the data access layer
     const validatedData = result.data;
     const filters: VarianceReportFilters = {
-      currentStartDate: validatedData.currentStartDate.toISOString().split("T")[0],
-      currentEndDate: validatedData.currentEndDate.toISOString().split("T")[0],
-      previousStartDate: validatedData.previousStartDate.toISOString().split("T")[0],
-      previousEndDate: validatedData.previousEndDate.toISOString().split("T")[0],
+      currentStartDate: formatDateAsLocal(validatedData.currentStartDate),
+      currentEndDate: formatDateAsLocal(validatedData.currentEndDate),
+      previousStartDate: formatDateAsLocal(validatedData.previousStartDate),
+      previousEndDate: formatDateAsLocal(validatedData.previousEndDate),
       brandId: validatedData.brandId,
       varianceThreshold: validatedData.varianceThreshold,
     };

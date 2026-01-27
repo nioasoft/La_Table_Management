@@ -8,6 +8,7 @@ import {
   getSupplierFilesFilterOptions,
 } from "@/data-access/supplier-file-reports";
 import { supplierFilesFiltersSchema } from "@/lib/validations/report-schemas";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/reports/supplier-files
@@ -44,8 +45,8 @@ export async function GET(request: NextRequest) {
       supplierId: validatedData.supplierId,
       brandId: validatedData.brandId,
       status: validatedData.status,
-      startDate: validatedData.startDate?.toISOString().split("T")[0],
-      endDate: validatedData.endDate?.toISOString().split("T")[0],
+      startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
+      endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
     };
 
     // Get report data and filter options in parallel

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -243,7 +244,7 @@ export default function AdminVatRatesPage() {
   };
 
   const isCurrentRate = (rate: VatRate) => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     // Find the most recent rate effective on or before today
     const currentRate = vatRates.find((r) => r.effectiveFrom <= today);
     return currentRate?.id === rate.id;

@@ -13,6 +13,7 @@ import {
   type BrandCommissionPeriod,
   type CommissionWithDetails,
 } from "@/data-access/commissions";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Format currency for Excel
 const formatCurrency = (amount: number): number => {
@@ -387,7 +388,7 @@ export async function GET(
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
     // Generate filename with brand code and current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const brandCode = reportData.brand.code.replace(/[^a-zA-Z0-9]/g, "_");
     const filename = `brand_commission_report_${brandCode}_${today}.xlsx`;
 

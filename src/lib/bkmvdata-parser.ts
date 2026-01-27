@@ -34,6 +34,8 @@ export interface BkmvTransaction {
   side: 'debit' | 'credit';  // 1=debit, 2=credit
   currency: string;
   amount: number;            // Amount in shekels (converted from agorot)
+  reference: string;         // Reference code (positions 100-106)
+  accountSort: string;       // Account sort/classification from B110
   rawLine: string;           // Original line for debugging
 }
 
@@ -43,9 +45,11 @@ export interface BkmvTransaction {
 export interface BkmvAccount {
   companyId: string;
   accountKey: string;
+  accountCode: string;       // 5-digit account code (matches B100 accountCode)
   accountName: string;
   accountDescription: string;
   accountType: string;       // e.g., "ספקים" for suppliers
+  accountSort: string;       // Account sort/classification (e.g., "200" for suppliers)
 }
 
 /**
@@ -155,6 +159,7 @@ function parseB100Record(line: string, lineNum: number): BkmvTransaction | null 
       lineNumber: parseInt(extractField(line, B100_FIELDS.LINE_NUMBER), 10) || lineNum,
       companyId: extractField(line, B100_FIELDS.COMPANY_ID),
       accountCode: extractField(line, B100_FIELDS.ACCOUNT_CODE),
+      accountSort: '', // Will be populated later from B110 account master
       documentNumber: extractField(line, B100_FIELDS.DOC_NUMBER),
       description: extractField(line, B100_FIELDS.DESCRIPTION),
       documentDate: parseDate(extractField(line, B100_FIELDS.DOC_DATE)),
@@ -166,6 +171,7 @@ function parseB100Record(line: string, lineNum: number): BkmvTransaction | null 
         extractField(line, B100_FIELDS.AMOUNT),
         extractField(line, B100_FIELDS.AMOUNT_SIGN)
       ),
+      reference: extractField(line, B100_FIELDS.REFERENCE),
       rawLine: line,
     };
   } catch (error) {
@@ -184,12 +190,31 @@ function parseB110Record(line: string): BkmvAccount | null {
       return null;
     }
 
+    const accountKey = extractField(line, B110_FIELDS.ACCOUNT_KEY);
+    const accountDescription = extractField(line, B110_FIELDS.ACCOUNT_DESC);
+
+    // Extract account sort from description (format: 000000000000XXX[optional Hebrew text])
+    // The sort code is the last 3 digits from the leading 15-digit number
+    let accountSort = '';
+    const match = accountDescription.match(/0{12}(\d{3})/);
+    if (match && match[1]) {
+      accountSort = match[1]; // The 3-digit sort code
+    }
+
+    // Extract the 5-digit account code from accountKey
+    // B100 accountCode is at positions 27-31, which is within B110 accountKey at offset 5
+    // accountKey is 15 chars (positions 22-36), accountCode is 5 chars (positions 27-31)
+    // So accountCode = accountKey.substring(5, 10)
+    const accountCode = accountKey.substring(5, 10).trim();
+
     return {
       companyId: extractField(line, B110_FIELDS.COMPANY_ID),
-      accountKey: extractField(line, B110_FIELDS.ACCOUNT_KEY),
+      accountKey,
+      accountCode,
       accountName: extractField(line, B110_FIELDS.ACCOUNT_NAME),
-      accountDescription: extractField(line, B110_FIELDS.ACCOUNT_DESC),
+      accountDescription: accountDescription,
       accountType: extractField(line, B110_FIELDS.ACCOUNT_TYPE),
+      accountSort,
     };
   } catch (error) {
     console.error('Error parsing B110 record:', error);
@@ -300,6 +325,21 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
         }
       }
     }
+  }
+
+  // Build account key to account sort mapping from B110 records
+  // B110 accountKey contains the supplier name that matches B100 counterparty
+  const accountKeyToSort = new Map<string, string>();
+  for (const account of result.accounts) {
+    if (account.accountSort && account.accountKey) {
+      accountKeyToSort.set(account.accountKey.trim(), account.accountSort);
+    }
+  }
+
+  // Populate account sort in transactions by matching counterparty name to account key
+  for (const tx of result.transactions) {
+    const counterparty = tx.counterpartyName.trim();
+    tx.accountSort = accountKeyToSort.get(counterparty) || '';
   }
 
   // Build supplier summary from credit transactions
@@ -496,4 +536,92 @@ export function extractDateRange(parseResult: BkmvParseResult): { startDate: Dat
   }
 
   return { startDate: minDate, endDate: maxDate };
+}
+
+/**
+ * Get unique reference codes from supplier summary
+ * Returns sorted array of reference codes
+ */
+export function getUniqueReferences(supplierSummary: Map<string, SupplierPurchaseSummary>): string[] {
+  const references = new Set<string>();
+
+  for (const summary of supplierSummary.values()) {
+    for (const tx of summary.transactions) {
+      if (tx.reference) {
+        references.add(tx.reference);
+        break; // Only need one transaction per supplier to get its reference
+      }
+    }
+  }
+
+  return Array.from(references).sort();
+}
+
+/**
+ * Filter supplier summaries by reference code
+ * If reference is "all", returns all summaries
+ * Otherwise returns only summaries with matching reference
+ */
+export function filterSuppliersByReference(
+  supplierSummary: Map<string, SupplierPurchaseSummary>,
+  reference: string
+): Map<string, SupplierPurchaseSummary> {
+  if (reference === 'all') {
+    return supplierSummary;
+  }
+
+  const filtered = new Map<string, SupplierPurchaseSummary>();
+
+  for (const [key, summary] of supplierSummary.entries()) {
+    const summaryReference = summary.transactions[0]?.reference;
+    if (summaryReference === reference) {
+      filtered.set(key, summary);
+    }
+  }
+
+  return filtered;
+}
+
+/**
+ * Filter supplier summaries by account sort (מיון חשבון)
+ * If accountSort is "all", returns all summaries
+ * Otherwise returns only summaries with matching account sort
+ */
+export function filterSuppliersByAccountSort(
+  supplierSummary: Map<string, SupplierPurchaseSummary>,
+  accountSort: string
+): Map<string, SupplierPurchaseSummary> {
+  if (accountSort === 'all') {
+    return supplierSummary;
+  }
+
+  const filtered = new Map<string, SupplierPurchaseSummary>();
+
+  for (const [key, summary] of supplierSummary.entries()) {
+    // Check if any transaction has this account sort
+    const hasMatchingSort = summary.transactions.some(tx => tx.accountSort === accountSort);
+    if (hasMatchingSort) {
+      filtered.set(key, summary);
+    }
+  }
+
+  return filtered;
+}
+
+/**
+ * Get unique account sorts from supplier summary
+ * Returns sorted array of account sort codes
+ */
+export function getUniqueAccountSorts(supplierSummary: Map<string, SupplierPurchaseSummary>): string[] {
+  const sorts = new Set<string>();
+
+  for (const summary of supplierSummary.values()) {
+    for (const tx of summary.transactions) {
+      if (tx.accountSort) {
+        sorts.add(tx.accountSort);
+      }
+    }
+  }
+
+  return Array.from(sorts).sort();
 }

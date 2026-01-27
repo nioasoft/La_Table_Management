@@ -9,6 +9,7 @@ import {
 import { getComparisonsByPeriod, generateReconciliationReport } from "@/data-access/crossReferences";
 import { getSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { getAdjustmentsBySettlementPeriod } from "@/data-access/adjustments";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/settlement-workflow/[periodKey]/reports - Get report data for a period
@@ -41,8 +42,8 @@ export async function GET(
       );
     }
 
-    const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-    const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+    const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+    const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
     // Get settlement period
     const settlementPeriod = await getSettlementPeriodByPeriodKey(decodedKey);

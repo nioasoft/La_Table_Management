@@ -12,6 +12,7 @@ import {
   type FranchiseePurchasePeriod,
   type PerFranchiseeReportData,
 } from "@/data-access/commissions";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Format currency for Excel
 const formatCurrency = (amount: number): number => {
@@ -287,7 +288,7 @@ export async function GET(
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
     // Generate filename with franchisee code and current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const filename = `franchisee_purchase_report_${reportData.franchisee.code}_${today}.xlsx`;
 
     // Return Excel file

@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   franchiseeImportantDate,
   franchisee,
@@ -255,7 +256,7 @@ export async function copyImportantDate(
  * Returns dates where reminder date has passed but end date hasn't
  */
 export async function getActiveReminders(): Promise<FranchiseeImportantDateWithFranchisee[]> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateAsLocal(new Date());
 
   const results = await database
     .select({
@@ -295,7 +296,7 @@ export async function getActiveReminders(): Promise<FranchiseeImportantDateWithF
 export async function getActiveReminderCountForFranchisee(
   franchiseeId: string
 ): Promise<number> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateAsLocal(new Date());
 
   const result = await database
     .select({ count: sql<number>`count(*)::int` })
@@ -317,7 +318,7 @@ export async function getActiveReminderCountForFranchisee(
  * Returns a map of franchiseeId -> reminder count
  */
 export async function getAllFranchiseeReminderCounts(): Promise<Map<string, number>> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateAsLocal(new Date());
 
   const results = await database
     .select({

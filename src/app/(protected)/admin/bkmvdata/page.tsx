@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -69,7 +70,7 @@ import {
   Ban,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
-import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
@@ -175,6 +176,9 @@ export default function BkmvDataPage() {
   const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [isDateFiltered, setIsDateFiltered] = useState(false);
 
+  // Account sort filter state
+  const [filterAccountSort, setFilterAccountSort] = useState<string>("200"); // Default to 200 (suppliers)
+
   // History and upload state
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
@@ -270,6 +274,12 @@ export default function BkmvDataPage() {
   const sortedFranchisees = useMemo(() => {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [franchisees]);
+
+  // Get unique account sorts for dropdown
+  const uniqueAccountSorts = useMemo(() => {
+    if (!parseResult) return [];
+    return getUniqueAccountSorts(parseResult.supplierSummary);
+  }, [parseResult]);
 
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
@@ -458,8 +468,8 @@ export default function BkmvDataPage() {
 
       // Auto-initialize date filter with file's date range
       if (range.minDate && range.maxDate) {
-        setFilterStartDate(range.minDate.toISOString().split("T")[0]);
-        setFilterEndDate(range.maxDate.toISOString().split("T")[0]);
+        setFilterStartDate(formatDateAsLocal(range.minDate));
+        setFilterEndDate(formatDateAsLocal(range.maxDate));
       }
       setIsDateFiltered(false); // Reset filter state for new file
 
@@ -541,7 +551,12 @@ export default function BkmvDataPage() {
     const endDate = new Date(endYear, endMonth - 1, endDay);
 
     // Get filtered supplier summary for the date range
-    const filteredSummary = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+    let filteredSummary = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+
+    // Apply account sort filter if not "all"
+    if (filterAccountSort !== 'all') {
+      filteredSummary = filterSuppliersByAccountSort(filteredSummary, filterAccountSort);
+    }
 
     // Re-run matching with filtered summary
     const matches = matchBkmvSuppliers(
@@ -552,15 +567,21 @@ export default function BkmvDataPage() {
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, suppliers, blacklistedNames]);
+  }, [parseResult, filterStartDate, filterEndDate, filterAccountSort, suppliers, blacklistedNames]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
     if (!parseResult) return;
 
+    // Get the summary to use (apply account sort filter if needed)
+    let summaryToUse = parseResult.supplierSummary;
+    if (filterAccountSort !== 'all') {
+      summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
+    }
+
     // Re-run matching with original full summary
     const matches = matchBkmvSuppliers(
-      parseResult.supplierSummary,
+      summaryToUse,
       suppliers,
       { minConfidence: 0.6, reviewThreshold: 0.85 },
       blacklistedNames
@@ -569,7 +590,7 @@ export default function BkmvDataPage() {
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames]);
+  }, [parseResult, suppliers, blacklistedNames, filterAccountSort]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
@@ -585,6 +606,11 @@ export default function BkmvDataPage() {
       summaryToUse = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
     }
 
+    // Apply account sort filter if not "all"
+    if (filterAccountSort !== 'all') {
+      summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
+    }
+
     const matches = matchBkmvSuppliers(
       summaryToUse,
       suppliers,
@@ -594,6 +620,37 @@ export default function BkmvDataPage() {
     setMatchingResults(matches);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blacklistedNames]); // Only re-run when blacklist changes
+
+  // Handle account sort filter change
+  const handleAccountSortFilterChange = useCallback((accountSort: string) => {
+    if (!parseResult) return;
+
+    setFilterAccountSort(accountSort);
+
+    // Get the summary to use
+    let summaryToUse = parseResult.supplierSummary;
+    if (isDateFiltered && filterStartDate && filterEndDate) {
+      const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
+      const startDate = new Date(startYear, startMonth - 1, startDay);
+      const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
+      const endDate = new Date(endYear, endMonth - 1, endDay);
+      summaryToUse = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+    }
+
+    // Apply account sort filter
+    if (accountSort !== 'all') {
+      summaryToUse = filterSuppliersByAccountSort(summaryToUse, accountSort);
+    }
+
+    // Re-run matching
+    const matches = matchBkmvSuppliers(
+      summaryToUse,
+      suppliers,
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      blacklistedNames
+    );
+    setMatchingResults(matches);
+  }, [parseResult, isDateFiltered, filterStartDate, filterEndDate, suppliers, blacklistedNames]);
 
   // Filter and search results
   const filteredResults = useMemo(() => {
@@ -626,6 +683,17 @@ export default function BkmvDataPage() {
     unmatched: matchingResults.filter(r => !r.matchResult.matchedSupplier).length,
     totalAmount: matchingResults.reduce((sum, r) => sum + r.amount, 0),
   }), [matchingResults]);
+
+  // Get account sort for a result
+  const getResultAccountSort = useCallback((result: typeof matchingResults[0]): string => {
+    if (!parseResult) return 'unknown';
+    for (const summary of parseResult.supplierSummary.values()) {
+      if (summary.supplierName === result.bkmvName) {
+        return summary.transactions[0]?.accountSort || 'unknown';
+      }
+    }
+    return 'unknown';
+  }, [parseResult]);
 
   if (isPending) {
     return (
@@ -1009,19 +1077,19 @@ export default function BkmvDataPage() {
           )}
 
           {/* Date Filter */}
-          <Card className={`mb-6 ${isDateFiltered ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
+          <Card className={`mb-6 ${isDateFiltered || filterAccountSort !== 'all' ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="h-5 w-5" />
-                סינון לפי טווח תאריכים
-                {isDateFiltered && (
+                סינון
+                {(isDateFiltered || filterAccountSort !== 'all') && (
                   <Badge variant="secondary" className="bg-blue-100 text-blue-700">
                     מסונן
                   </Badge>
                 )}
               </CardTitle>
               <CardDescription>
-                סנן את הסכומים לפי תקופה מסוימת (חודש, רבעון וכו&apos;)
+                סנן את הסכומים לפי תקופה או מיון חשבון
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -1052,7 +1120,7 @@ export default function BkmvDataPage() {
                   variant="default"
                 >
                   <Filter className="h-4 w-4 ms-2" />
-                  סנן
+                  סנן תאריכים
                 </Button>
                 {isDateFiltered && (
                   <Button
@@ -1060,13 +1128,44 @@ export default function BkmvDataPage() {
                     variant="outline"
                   >
                     <X className="h-4 w-4 ms-2" />
-                    נקה סינון
+                    נקה תאריכים
                   </Button>
                 )}
-                {isDateFiltered && (
+                <div className="w-px h-8 bg-border mx-2" />
+                <div className="space-y-2">
+                  <Label htmlFor="filterAccountSort">מיון חשבון</Label>
+                  <Select
+                    value={filterAccountSort}
+                    onValueChange={handleAccountSortFilterChange}
+                  >
+                    <SelectTrigger className="w-[140px]" id="filterAccountSort">
+                      <SelectValue placeholder="בחר מיון" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[300px]">
+                      <SelectItem value="all">הכל</SelectItem>
+                      {uniqueAccountSorts.map((sort) => (
+                        <SelectItem key={sort} value={sort}>
+                          {sort}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(isDateFiltered || filterAccountSort !== 'all') && (
                   <div className="text-sm text-blue-700 flex items-center gap-2 me-auto">
                     <Calendar className="h-4 w-4" />
-                    מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
+                    {isDateFiltered && filterAccountSort !== 'all' && (
+                      <>
+                        מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
+                        {' '}עבור מיון חשבון: {filterAccountSort}
+                      </>
+                    )}
+                    {isDateFiltered && filterAccountSort === 'all' && (
+                      <>מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}</>
+                    )}
+                    {!isDateFiltered && filterAccountSort !== 'all' && (
+                      <>מציג נתונים עבור מיון חשבון: {filterAccountSort}</>
+                    )}
                   </div>
                 )}
               </div>
@@ -1181,6 +1280,7 @@ export default function BkmvDataPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-right">שם במבנה אחיד</TableHead>
+                      <TableHead className="text-right">מיון חשבון</TableHead>
                       <TableHead className="text-right">סכום</TableHead>
                       <TableHead className="text-right">לפני מע״מ</TableHead>
                       <TableHead className="text-right">עסקאות</TableHead>
@@ -1192,7 +1292,7 @@ export default function BkmvDataPage() {
                   <TableBody>
                     {filteredResults.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                           {matchingResults.length === 0 ? "לא נמצאו ספקים בקובץ" : "לא נמצאו תוצאות מתאימות לסינון"}
                         </TableCell>
                       </TableRow>
@@ -1200,6 +1300,7 @@ export default function BkmvDataPage() {
                       filteredResults.map((result, index) => (
                         <TableRow key={index}>
                           <TableCell className="font-medium">{result.bkmvName}</TableCell>
+                          <TableCell className="font-mono text-sm text-muted-foreground">{getResultAccountSort(result)}</TableCell>
                           <TableCell className="font-mono">{formatAmount(result.amount)}</TableCell>
                           <TableCell className="font-mono text-muted-foreground">{formatAmount(result.amount / 1.18)}</TableCell>
                           <TableCell>{result.transactionCount}</TableCell>

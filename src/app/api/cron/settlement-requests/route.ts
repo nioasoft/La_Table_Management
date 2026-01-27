@@ -3,6 +3,7 @@ import { database } from "@/db";
 import { supplier, type Supplier, type SettlementFrequency } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Settlement File Requests Cron Job
@@ -106,7 +107,7 @@ function calculateDueDate(frequency: SettlementFrequency): string {
       dueDate.setDate(dueDate.getDate() + 14); // Default 2 weeks
   }
 
-  return dueDate.toISOString().split("T")[0];
+  return formatDateAsLocal(dueDate);
 }
 
 // Get period description based on frequency

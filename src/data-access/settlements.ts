@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   settlementPeriod,
   franchisee,
@@ -506,8 +507,8 @@ export async function createSettlementPeriodWithType(
     name,
     franchiseeId,
     periodType,
-    periodStartDate: startDate.toISOString().split("T")[0],
-    periodEndDate: endDate.toISOString().split("T")[0],
+    periodStartDate: formatDateAsLocal(startDate),
+    periodEndDate: formatDateAsLocal(endDate),
     status: "open",
     createdBy: createdBy || null,
     ...additionalData,
@@ -674,8 +675,8 @@ export async function getSettlementPeriodByPeriodKey(
   const periodInfo = getPeriodByKey(periodKey);
   if (!periodInfo) return null;
 
-  const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-  const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+  const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+  const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
   const results = await database
     .select()
@@ -711,8 +712,8 @@ export async function getOrCreateSettlementPeriodByPeriodKey(
   }
 
   // Create new period-based settlement
-  const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-  const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+  const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+  const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
   const newSettlement = await createSettlementPeriod({
     id: crypto.randomUUID(),

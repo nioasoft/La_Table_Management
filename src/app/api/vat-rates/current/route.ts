@@ -7,6 +7,7 @@ import {
   getCurrentVatRate,
   getVatRateForDate,
 } from "@/data-access/vatRates";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/vat-rates/current - Get the current VAT rate (Admin/Super User only)
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       rate,
       ratePercent: Math.round(rate * 10000) / 100, // Convert to percentage with 2 decimal places
-      asOf: dateParam || new Date().toISOString().split("T")[0],
+      asOf: dateParam || formatDateAsLocal(new Date()),
     });
   } catch (error) {
     console.error("Error fetching current VAT rate:", error);

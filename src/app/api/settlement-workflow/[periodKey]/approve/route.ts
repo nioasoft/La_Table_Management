@@ -9,6 +9,7 @@ import {
   updateSettlementPeriod,
 } from "@/data-access/settlements";
 import { createAuditContext } from "@/data-access/auditLog";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/settlement-workflow/[periodKey]/approve - Get approval summary for a period
@@ -33,8 +34,8 @@ export async function GET(
       );
     }
 
-    const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-    const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+    const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+    const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
     // Get settlement period (if exists)
     const settlementPeriod = await getSettlementPeriodByPeriodKey(decodedKey);
@@ -151,8 +152,8 @@ export async function POST(
       );
     }
 
-    const periodStartDate = periodInfo.startDate.toISOString().split("T")[0];
-    const periodEndDate = periodInfo.endDate.toISOString().split("T")[0];
+    const periodStartDate = formatDateAsLocal(periodInfo.startDate);
+    const periodEndDate = formatDateAsLocal(periodInfo.endDate);
 
     // Get or create settlement period
     const result = await getOrCreateSettlementPeriodByPeriodKey(decodedKey, user.id);

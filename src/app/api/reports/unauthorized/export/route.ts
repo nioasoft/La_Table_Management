@@ -9,6 +9,7 @@ import {
   type UnauthorizedSuppliersReport,
   type UnauthorizedSuppliersFilters,
 } from "@/data-access/unauthorized-suppliers";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Format currency for Excel
 const formatCurrency = (amount: number): number => {
@@ -160,7 +161,7 @@ export async function GET(request: NextRequest) {
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
     // Generate filename with current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const filename = `unauthorized-suppliers_${today}.xlsx`;
 
     // Return Excel file

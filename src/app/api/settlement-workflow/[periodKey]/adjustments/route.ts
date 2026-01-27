@@ -15,6 +15,7 @@ import {
 } from "@/data-access/settlements";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 import type { AdjustmentType } from "@/db/schema";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // Valid adjustment types from schema
 const VALID_ADJUSTMENT_TYPES: AdjustmentType[] = [
@@ -63,8 +64,8 @@ export async function GET(
           nameHe: periodInfo.nameHe,
           name: periodInfo.name,
           type: periodInfo.type,
-          startDate: periodInfo.startDate.toISOString().split("T")[0],
-          endDate: periodInfo.endDate.toISOString().split("T")[0],
+          startDate: formatDateAsLocal(periodInfo.startDate),
+          endDate: formatDateAsLocal(periodInfo.endDate),
         },
         settlementPeriodId: null,
         adjustments: [],
@@ -100,8 +101,8 @@ export async function GET(
         nameHe: periodInfo.nameHe,
         name: periodInfo.name,
         type: periodInfo.type,
-        startDate: periodInfo.startDate.toISOString().split("T")[0],
-        endDate: periodInfo.endDate.toISOString().split("T")[0],
+        startDate: formatDateAsLocal(periodInfo.startDate),
+        endDate: formatDateAsLocal(periodInfo.endDate),
       },
       settlementPeriodId: settlementPeriod.id,
       adjustments: adjustments.map((adj) => ({

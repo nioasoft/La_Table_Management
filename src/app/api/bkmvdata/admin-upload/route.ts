@@ -14,6 +14,7 @@ import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { randomUUID } from "crypto";
 import type { BkmvProcessingResult } from "@/db/schema";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * POST /api/bkmvdata/admin-upload
@@ -71,8 +72,8 @@ export async function POST(request: NextRequest) {
 
     // Extract date range from file or use provided dates
     const dateRange = extractDateRange(parseResult);
-    const periodStartDate = periodStartDateParam || (dateRange?.startDate.toISOString().split("T")[0]);
-    const periodEndDate = periodEndDateParam || (dateRange?.endDate.toISOString().split("T")[0]);
+    const periodStartDate = periodStartDateParam || (dateRange?.startDate ? formatDateAsLocal(dateRange.startDate) : undefined);
+    const periodEndDate = periodEndDateParam || (dateRange?.endDate ? formatDateAsLocal(dateRange.endDate) : undefined);
 
     if (!periodStartDate || !periodEndDate) {
       return NextResponse.json(

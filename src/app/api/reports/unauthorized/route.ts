@@ -8,6 +8,7 @@ import {
   getUnauthorizedSuppliersFilterOptions,
 } from "@/data-access/unauthorized-suppliers";
 import { unauthorizedSuppliersFiltersSchema } from "@/lib/validations/report-schemas";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/reports/unauthorized
@@ -46,8 +47,8 @@ export async function GET(request: NextRequest) {
     const filters = {
       brandId: validatedData.brandId,
       franchiseeId: validatedData.franchiseeId,
-      startDate: validatedData.startDate?.toISOString().split("T")[0],
-      endDate: validatedData.endDate?.toISOString().split("T")[0],
+      startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
+      endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
       minAmount: validatedData.minAmount,
     };
 

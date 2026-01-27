@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -148,7 +149,7 @@ const initialFormData: SupplierFormData = {
   bkmvAliases: [],
   commissionChangeReason: "",
   commissionChangeNotes: "",
-  commissionEffectiveDate: new Date().toISOString().split("T")[0],
+  commissionEffectiveDate: formatDateAsLocal(new Date()),
 };
 
 export default function AdminSuppliersPage() {
@@ -501,7 +502,7 @@ export default function AdminSuppliersPage() {
       bkmvAliases: supplier.bkmvAliases || [],
       commissionChangeReason: "",
       commissionChangeNotes: "",
-      commissionEffectiveDate: new Date().toISOString().split("T")[0],
+      commissionEffectiveDate: formatDateAsLocal(new Date()),
     });
     setShowForm(true);
     setFormError(null);

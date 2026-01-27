@@ -9,6 +9,7 @@ import {
   type UnifiedFilesFilters,
 } from "@/data-access/unified-files";
 import { unifiedFilesFiltersSchema } from "@/lib/validations/report-schemas";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/reports/files
@@ -45,8 +46,8 @@ export async function GET(request: NextRequest) {
       source: validatedData.source,
       entityType: validatedData.entityType,
       status: validatedData.status,
-      startDate: validatedData.startDate?.toISOString().split("T")[0],
-      endDate: validatedData.endDate?.toISOString().split("T")[0],
+      startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
+      endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
     };
 
     // Get report data and filter options in parallel

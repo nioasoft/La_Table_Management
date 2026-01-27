@@ -10,6 +10,7 @@ import {
   CommissionReportPDF,
   type CommissionReportData,
 } from "@/components/reports/CommissionReportPDF";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * GET /api/commissions/report/export-pdf - Export commission report to PDF
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     const uint8Array = new Uint8Array(pdfBuffer);
 
     // Generate filename with current date
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const filename = `commission_report_${today}.pdf`;
 
     // Return PDF file

@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import type { SettlementPeriodType } from "@/db/schema";
 import { getPeriodByKey } from "@/lib/settlement-periods";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 // ============================================================================
 // TYPES
@@ -86,8 +87,8 @@ export function useReportFilters(hookOptions: UseReportFiltersOptions = {}) {
       if (periodKey && (!startDate || !endDate)) {
         const period = getPeriodByKey(periodKey);
         if (period) {
-          startDate = period.startDate.toISOString().split("T")[0];
-          endDate = period.endDate.toISOString().split("T")[0];
+          startDate = formatDateAsLocal(period.startDate);
+          endDate = formatDateAsLocal(period.endDate);
         }
       }
 
@@ -165,8 +166,8 @@ export function useReportFilters(hookOptions: UseReportFiltersOptions = {}) {
           ...prev,
           periodType,
           periodKey,
-          startDate: period.startDate.toISOString().split("T")[0],
-          endDate: period.endDate.toISOString().split("T")[0],
+          startDate: formatDateAsLocal(period.startDate),
+          endDate: formatDateAsLocal(period.endDate),
         }));
       }
     },
@@ -250,8 +251,8 @@ export function getCurrentMonthRange(): DatePreset {
   const year = now.getFullYear();
   const month = now.getMonth();
 
-  const startDate = new Date(year, month, 1).toISOString().split("T")[0];
-  const endDate = new Date(year, month + 1, 0).toISOString().split("T")[0];
+  const startDate = formatDateAsLocal(new Date(year, month, 1));
+  const endDate = formatDateAsLocal(new Date(year, month + 1, 0));
 
   return { label: "החודש הנוכחי", startDate, endDate };
 }
@@ -264,8 +265,8 @@ export function getPreviousMonthRange(): DatePreset {
   const year = now.getFullYear();
   const month = now.getMonth();
 
-  const startDate = new Date(year, month - 1, 1).toISOString().split("T")[0];
-  const endDate = new Date(year, month, 0).toISOString().split("T")[0];
+  const startDate = formatDateAsLocal(new Date(year, month - 1, 1));
+  const endDate = formatDateAsLocal(new Date(year, month, 0));
 
   return { label: "החודש הקודם", startDate, endDate };
 }
@@ -278,8 +279,8 @@ export function getCurrentQuarterRange(): DatePreset {
   const year = now.getFullYear();
   const quarter = Math.floor(now.getMonth() / 3);
 
-  const startDate = new Date(year, quarter * 3, 1).toISOString().split("T")[0];
-  const endDate = new Date(year, quarter * 3 + 3, 0).toISOString().split("T")[0];
+  const startDate = formatDateAsLocal(new Date(year, quarter * 3, 1));
+  const endDate = formatDateAsLocal(new Date(year, quarter * 3 + 3, 0));
 
   return { label: "הרבעון הנוכחי", startDate, endDate };
 }
@@ -295,8 +296,8 @@ export function getPreviousQuarterRange(): DatePreset {
   const prevYear = prevQuarter < 0 ? year - 1 : year;
   const adjustedQuarter = prevQuarter < 0 ? 3 : prevQuarter;
 
-  const startDate = new Date(prevYear, adjustedQuarter * 3, 1).toISOString().split("T")[0];
-  const endDate = new Date(prevYear, adjustedQuarter * 3 + 3, 0).toISOString().split("T")[0];
+  const startDate = formatDateAsLocal(new Date(prevYear, adjustedQuarter * 3, 1));
+  const endDate = formatDateAsLocal(new Date(prevYear, adjustedQuarter * 3 + 3, 0));
 
   return { label: "הרבעון הקודם", startDate, endDate };
 }
@@ -308,8 +309,8 @@ export function getCurrentYearRange(): DatePreset {
   const now = new Date();
   const year = now.getFullYear();
 
-  const startDate = new Date(year, 0, 1).toISOString().split("T")[0];
-  const endDate = now.toISOString().split("T")[0];
+  const startDate = formatDateAsLocal(new Date(year, 0, 1));
+  const endDate = formatDateAsLocal(now);
 
   return { label: "מתחילת השנה", startDate, endDate };
 }

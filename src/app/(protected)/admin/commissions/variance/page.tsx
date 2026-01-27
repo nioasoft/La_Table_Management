@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -284,7 +285,7 @@ export default function VarianceReportPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `variance_report_${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.download = `variance_report_${formatDateAsLocal(new Date())}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -311,55 +312,45 @@ export default function VarianceReportPage() {
       case "month":
         // Current vs previous month
         setCurrentStartDate(
-          new Date(currentYear, currentMonth, 1).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentMonth, 1))
         );
         setCurrentEndDate(
-          new Date(currentYear, currentMonth + 1, 0).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0))
         );
         setPreviousStartDate(
-          new Date(currentYear, currentMonth - 1, 1).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentMonth - 1, 1))
         );
         setPreviousEndDate(
-          new Date(currentYear, currentMonth, 0).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentMonth, 0))
         );
         break;
       case "quarter":
         // Current vs previous quarter
         const currentQuarter = Math.floor(currentMonth / 3);
         setCurrentStartDate(
-          new Date(currentYear, currentQuarter * 3, 1)
-            .toISOString()
-            .split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentQuarter * 3, 1))
         );
         setCurrentEndDate(
-          new Date(currentYear, currentQuarter * 3 + 3, 0)
-            .toISOString()
-            .split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentQuarter * 3 + 3, 0))
         );
         setPreviousStartDate(
-          new Date(currentYear, (currentQuarter - 1) * 3, 1)
-            .toISOString()
-            .split("T")[0]
+          formatDateAsLocal(new Date(currentYear, (currentQuarter - 1) * 3, 1))
         );
         setPreviousEndDate(
-          new Date(currentYear, currentQuarter * 3, 0)
-            .toISOString()
-            .split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentQuarter * 3, 0))
         );
         break;
       case "year":
         // Current vs previous year (same period last year)
-        setCurrentStartDate(new Date(currentYear, 0, 1).toISOString().split("T")[0]);
+        setCurrentStartDate(formatDateAsLocal(new Date(currentYear, 0, 1)));
         setCurrentEndDate(
-          new Date(currentYear, currentMonth + 1, 0).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0))
         );
         setPreviousStartDate(
-          new Date(currentYear - 1, 0, 1).toISOString().split("T")[0]
+          formatDateAsLocal(new Date(currentYear - 1, 0, 1))
         );
         setPreviousEndDate(
-          new Date(currentYear - 1, currentMonth + 1, 0)
-            .toISOString()
-            .split("T")[0]
+          formatDateAsLocal(new Date(currentYear - 1, currentMonth + 1, 0))
         );
         break;
     }

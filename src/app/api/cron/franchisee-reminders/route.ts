@@ -15,6 +15,7 @@ import {
 } from "@/data-access/franchiseeReminders";
 import { getFranchiseeById } from "@/data-access/franchisees";
 import { sendEmailWithTemplateCode } from "@/lib/email/service";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Franchisee Reminders Cron Job
@@ -41,7 +42,7 @@ import { sendEmailWithTemplateCode } from "@/lib/email/service";
 async function getRemindersDueByType(
   type: FranchiseeReminderType
 ): Promise<FranchiseeReminderWithFranchisee[]> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = formatDateAsLocal(new Date());
 
   const results = await database
     .select({
@@ -289,7 +290,7 @@ async function autoCreateRemindersFromFranchisees(
                 reminderType: "lease_option",
                 reminderDate: option.date,
                 daysBeforeNotification: defaultDaysBefore,
-                notificationDate: notificationDate.toISOString().split("T")[0],
+                notificationDate: formatDateAsLocal(notificationDate),
                 recipients: [
                   f.primaryContactEmail ||
                     f.contactEmail ||
@@ -340,7 +341,7 @@ async function autoCreateRemindersFromFranchisees(
               reminderType: "franchise_agreement",
               reminderDate: f.franchiseAgreementEnd,
               daysBeforeNotification: defaultDaysBefore,
-              notificationDate: notificationDate.toISOString().split("T")[0],
+              notificationDate: formatDateAsLocal(notificationDate),
               recipients: [
                 f.primaryContactEmail ||
                   f.contactEmail ||

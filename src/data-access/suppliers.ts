@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   supplier,
   supplierBrand,
@@ -281,7 +282,7 @@ export async function createSupplier(data: CreateSupplierData): Promise<Supplier
       supplierId: newSupplier.id,
       previousRate: null,
       newRate: data.defaultCommissionRate,
-      effectiveDate: new Date().toISOString().split("T")[0],
+      effectiveDate: formatDateAsLocal(new Date()),
       reason: "Initial commission rate set",
       notes: "Commission rate set during supplier creation",
       createdBy: data.createdBy || null,
@@ -353,7 +354,7 @@ export async function updateSupplier(
       previousRate: oldRate,
       newRate: newRate,
       effectiveDate:
-        commissionEffectiveDate || new Date().toISOString().split("T")[0],
+        commissionEffectiveDate || formatDateAsLocal(new Date()),
       reason: commissionChangeReason || "Commission rate updated",
       notes: commissionChangeNotes || null,
       createdBy: updatedBy || null,

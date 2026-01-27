@@ -1,4 +1,5 @@
 import { database } from "@/db";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   franchisee,
   franchiseeStatusHistory,
@@ -357,7 +358,7 @@ export async function createFranchisee(
       franchiseeId: newFranchisee.id,
       previousStatus: null,
       newStatus: newFranchisee.status,
-      effectiveDate: new Date().toISOString().split("T")[0],
+      effectiveDate: formatDateAsLocal(new Date()),
       reason: "Initial status set",
       notes: "Status set during franchisee creation",
       createdBy: data.createdBy || null,
@@ -424,7 +425,7 @@ export async function updateFranchisee(
       previousStatus: oldStatus,
       newStatus: newStatus,
       effectiveDate:
-        statusEffectiveDate || new Date().toISOString().split("T")[0],
+        statusEffectiveDate || formatDateAsLocal(new Date()),
       reason: statusChangeReason || "Status updated",
       notes: statusChangeNotes || null,
       createdBy: updatedBy || null,

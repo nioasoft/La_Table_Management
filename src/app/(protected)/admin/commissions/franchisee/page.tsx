@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -271,7 +272,7 @@ export default function FranchiseePurchaseReportPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `franchisee_purchase_report_${report?.franchisee.code || "unknown"}_${new Date().toISOString().split("T")[0]}.xlsx`;
+      a.download = `franchisee_purchase_report_${report?.franchisee.code || "unknown"}_${formatDateAsLocal(new Date())}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
