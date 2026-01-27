@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, type DragEvent } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -298,19 +298,17 @@ export default function BkmvDataPage() {
           notes: "נוסף מדף BKMVDATA - לא רלוונטי להתאמות ספקים",
         }),
       });
-      if (!response.ok) {
+      // 409 = already blacklisted, treat as success
+      if (!response.ok && response.status !== 409) {
         const data = await response.json();
         throw new Error(data.error || "שגיאה בהוספה לרשימה");
       }
       return response.json();
     },
+    retry: false, // Don't retry on error
     onSuccess: () => {
-      // Refresh blacklist and re-run matching
-      refetchBlacklist().then(() => {
-        if (parseResult) {
-          handleProcessFile();
-        }
-      });
+      // Just refresh blacklist - the useEffect will re-run matching automatically
+      refetchBlacklist();
     },
   });
 
@@ -573,9 +571,36 @@ export default function BkmvDataPage() {
     setIsDateFiltered(false);
   }, [parseResult, suppliers, blacklistedNames]);
 
+  // Re-run matching when blacklist changes
+  useEffect(() => {
+    if (!parseResult || suppliers.length === 0) return;
+
+    // Re-run matching with current blacklist
+    let summaryToUse = parseResult.supplierSummary;
+    if (isDateFiltered && filterStartDate && filterEndDate) {
+      const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
+      const startDate = new Date(startYear, startMonth - 1, startDay);
+      const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
+      const endDate = new Date(endYear, endMonth - 1, endDay);
+      summaryToUse = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+    }
+
+    const matches = matchBkmvSuppliers(
+      summaryToUse,
+      suppliers,
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      blacklistedNames
+    );
+    setMatchingResults(matches);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blacklistedNames]); // Only re-run when blacklist changes
+
   // Filter and search results
   const filteredResults = useMemo(() => {
     return matchingResults.filter(result => {
+      // Hide blacklisted items
+      if (result.matchResult.matchType === "blacklisted") return false;
+
       // Status filter
       if (filterStatus === "matched" && (!result.matchResult.matchedSupplier || result.matchResult.requiresReview)) return false;
       if (filterStatus === "unmatched" && result.matchResult.matchedSupplier) return false;
