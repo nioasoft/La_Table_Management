@@ -374,6 +374,33 @@ export default function BkmvDataPage() {
     setUploadSuccess(null);
   }, []);
 
+  // Generate unique filename with franchisee name, date, and random suffix
+  function generateUniqueFileName(
+    franchiseeName: string,
+    periodDate: string | null,
+    originalFileName: string
+  ): string {
+    // Sanitize franchisee name (keep Hebrew, remove special chars)
+    const sanitizedName = franchiseeName
+      .replace(/[^a-zA-Z0-9\u0590-\u05FF-_\s]/g, "")
+      .replace(/\s+/g, "_")
+      .substring(0, 30);
+
+    // Format date or use 'unknown'
+    const dateStr = periodDate || "unknown";
+
+    // Random suffix
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 6);
+
+    // Get extension
+    const ext = originalFileName.includes(".")
+      ? originalFileName.substring(originalFileName.lastIndexOf("."))
+      : ".txt";
+
+    return `${sanitizedName}_${dateStr}_${timestamp}_${random}${ext}`;
+  }
+
   // Upload file to server using client-side Vercel Blob upload
   const handleUploadToServer = useCallback(async (forceReplace = false) => {
     if (!selectedFile || !parseResult || !matchedFranchisee) return;
@@ -390,7 +417,13 @@ export default function BkmvDataPage() {
 
     try {
       // Step 1: Upload directly to Vercel Blob (bypasses serverless function body limit)
-      const blob = await upload(selectedFile.name, selectedFile, {
+      // Use unique filename to avoid "blob already exists" errors
+      const uniqueFileName = generateUniqueFileName(
+        matchedFranchisee.name,
+        filterStartDate || null,
+        selectedFile.name
+      );
+      const blob = await upload(uniqueFileName, selectedFile, {
         access: "public",
         handleUploadUrl: "/api/bkmvdata/admin-upload-url",
       });
