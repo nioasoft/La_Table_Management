@@ -101,7 +101,7 @@ export function SupplierCombobox({
                         )}
                       />
                       <Badge variant="outline" className="text-xs">
-                        {supplier.fileMapping?.fileType.toUpperCase()}
+                        {supplier.fileMapping?.fileType?.toUpperCase() ?? 'N/A'}
                       </Badge>
                     </div>
                     <div className="flex items-center gap-2">
@@ -125,7 +125,7 @@ export function SupplierCombobox({
           <div className="flex items-center gap-1.5">
             <span>סוג קובץ:</span>
             <Badge variant="outline" className="text-xs">
-              {selectedSupplier.fileMapping?.fileType.toUpperCase()}
+              {selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? 'N/A'}
             </Badge>
           </div>
           <div className="flex items-center gap-1.5">
