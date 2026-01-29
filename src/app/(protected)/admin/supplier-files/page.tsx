@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, type DragEvent } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useCallback, useRef, useMemo, type DragEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -162,6 +162,7 @@ interface ProcessingResult {
 
 export default function SupplierFilesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -248,6 +249,19 @@ export default function SupplierFilesPage() {
   }, [sortedFranchisees, franchiseeSearch]);
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+
+  // Pre-select supplier from URL query parameter
+  React.useEffect(() => {
+    const supplierIdFromUrl = searchParams.get('supplierId');
+    if (supplierIdFromUrl && suppliers.length > 0) {
+      const supplierExists = suppliers.some(
+        (s: SupplierWithMapping) => s.id === supplierIdFromUrl
+      );
+      if (supplierExists && selectedSupplierId !== supplierIdFromUrl) {
+        setSelectedSupplierId(supplierIdFromUrl);
+      }
+    }
+  }, [searchParams, suppliers, selectedSupplierId]);
 
   // Handle supplier change - reset period and file state
   const handleSupplierChange = useCallback((supplierId: string) => {

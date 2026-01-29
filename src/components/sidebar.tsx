@@ -159,7 +159,7 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
               },
               {
                 label: he.sidebar.subNavigation.supplierFiles,
-                href: "/admin/supplier-files",
+                href: "/admin/supplier-files/completeness",
                 icon: <FileUp className="h-4 w-4" />,
                 badge: filesNeedingReviewCount > 0 ? filesNeedingReviewCount : null,
               },

@@ -471,9 +471,13 @@ function SupplierRow({
     <TableRow className="hover:bg-muted/50">
       <TableCell className="sticky right-0 bg-background z-10 py-1.5">
         <div className="flex items-center gap-2">
-          <span className="font-medium truncate max-w-[160px]" title={supplier.supplier.name}>
+          <Link
+            href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}
+            className="font-medium truncate max-w-[160px] hover:underline hover:text-primary"
+            title={supplier.supplier.name}
+          >
             {supplier.supplier.name}
-          </span>
+          </Link>
           {supplier.brands.length > 0 && (
             <span className="text-xs text-muted-foreground">
               ({supplier.brands.map(b => b.nameHe.charAt(0)).join("")})
