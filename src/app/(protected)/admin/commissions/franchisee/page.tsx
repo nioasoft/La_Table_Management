@@ -540,7 +540,7 @@ export default function FranchiseePurchaseReportPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  סכום נטו
+                  סכום לפני מע״מ
                 </CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
@@ -630,8 +630,8 @@ export default function FranchiseePurchaseReportPage() {
                           <TableHead>ספק</TableHead>
                           <TableHead>קוד</TableHead>
                           <TableHead>מספר רכישות</TableHead>
-                          <TableHead>סכום ברוטו</TableHead>
-                          <TableHead>סכום נטו</TableHead>
+                          <TableHead>סכום כולל מע״מ</TableHead>
+                          <TableHead>סכום לפני מע״מ</TableHead>
                           <TableHead>סכום עמלה</TableHead>
                           <TableHead>עמלה ממוצעת</TableHead>
                         </TableRow>
@@ -686,8 +686,8 @@ export default function FranchiseePurchaseReportPage() {
                           <TableHead>תאריך התחלה</TableHead>
                           <TableHead>תאריך סיום</TableHead>
                           <TableHead>מספר רכישות</TableHead>
-                          <TableHead>סכום ברוטו</TableHead>
-                          <TableHead>סכום נטו</TableHead>
+                          <TableHead>סכום כולל מע״מ</TableHead>
+                          <TableHead>סכום לפני מע״מ</TableHead>
                           <TableHead>סכום עמלה</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -740,8 +740,8 @@ export default function FranchiseePurchaseReportPage() {
                           <TableRow>
                             <TableHead>ספק</TableHead>
                             <TableHead>תקופה</TableHead>
-                            <TableHead>ברוטו</TableHead>
-                            <TableHead>נטו</TableHead>
+                            <TableHead>כולל מע״מ</TableHead>
+                            <TableHead>לפני מע״מ</TableHead>
                             <TableHead>עמלה</TableHead>
                             <TableHead>שיעור</TableHead>
                             <TableHead>סטטוס</TableHead>

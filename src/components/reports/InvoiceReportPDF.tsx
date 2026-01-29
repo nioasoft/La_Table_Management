@@ -310,14 +310,14 @@ const InvoiceHeaderPage: React.FC<{ invoice: InvoiceData }> = ({ invoice }) => (
         </View>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>סכום ברוטו</Text>
+          <Text style={styles.summaryLabel}>סכום כולל מע״מ</Text>
           <Text style={styles.summaryValue}>
             {formatCurrency(invoice.totals.totalGrossAmount)}
           </Text>
         </View>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>סכום נטו</Text>
+          <Text style={styles.summaryLabel}>סכום לפני מע״מ</Text>
           <Text style={styles.summaryValue}>
             {formatCurrency(invoice.totals.totalNetAmount)}
           </Text>
@@ -375,10 +375,10 @@ const BrandDetailsPage: React.FC<{ invoice: InvoiceData }> = ({ invoice }) => (
             <Text style={styles.tableHeaderCell}>מספר עמלות</Text>
           </View>
           <View style={styles.colGrossAmount}>
-            <Text style={styles.tableHeaderCell}>סכום ברוטו</Text>
+            <Text style={styles.tableHeaderCell}>סכום כולל מע״מ</Text>
           </View>
           <View style={styles.colNetAmount}>
-            <Text style={styles.tableHeaderCell}>סכום נטו</Text>
+            <Text style={styles.tableHeaderCell}>סכום לפני מע״מ</Text>
           </View>
           <View style={styles.colAvgRate}>
             <Text style={styles.tableHeaderCell}>שיעור ממוצע</Text>

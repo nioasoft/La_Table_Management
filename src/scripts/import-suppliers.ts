@@ -456,7 +456,7 @@ const suppliersData: SupplierData[] = [
     commissionType: "percentage",
     settlementFrequency: "annual",
     vatIncluded: false,
-    notes: "מקניות ברוטו",
+    notes: "מקניות כולל מע״מ",
   },
   {
     name: "תנובה",

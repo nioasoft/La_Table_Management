@@ -264,13 +264,13 @@ export default function ReportsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{formatCurrency(reportData?.summary.totalGrossAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ ברוטו</p>
+            <p className="text-muted-foreground text-sm">סה"כ כולל מע״מ</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{formatCurrency(reportData?.summary.totalNetAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ נטו</p>
+            <p className="text-muted-foreground text-sm">סה"כ לפני מע״מ</p>
           </CardContent>
         </Card>
         <Card>
@@ -317,8 +317,8 @@ export default function ReportsPage() {
                   <TableRow>
                     <TableHead className="text-right">מותג</TableHead>
                     <TableHead className="text-right">מס' עמלות</TableHead>
-                    <TableHead className="text-right">ברוטו</TableHead>
-                    <TableHead className="text-right">נטו</TableHead>
+                    <TableHead className="text-right">כולל מע״מ</TableHead>
+                    <TableHead className="text-right">לפני מע״מ</TableHead>
                     <TableHead className="text-right">עמלות</TableHead>
                     <TableHead className="text-right">% ממוצע</TableHead>
                   </TableRow>
@@ -367,8 +367,8 @@ export default function ReportsPage() {
                     <TableHead className="text-right">ספק</TableHead>
                     <TableHead className="text-right">קוד</TableHead>
                     <TableHead className="text-right">מס' עמלות</TableHead>
-                    <TableHead className="text-right">ברוטו</TableHead>
-                    <TableHead className="text-right">נטו</TableHead>
+                    <TableHead className="text-right">כולל מע״מ</TableHead>
+                    <TableHead className="text-right">לפני מע״מ</TableHead>
                     <TableHead className="text-right">עמלות</TableHead>
                     <TableHead className="text-right">% ממוצע</TableHead>
                   </TableRow>

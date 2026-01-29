@@ -48,8 +48,8 @@ function createSummarySheet(
         : "לא זמין",
     ],
     ["", ""],
-    ["סה״כ סכום ברוטו (₪)", formatCurrency(report.summary.totalGrossAmount)],
-    ["סה״כ סכום נטו (₪)", formatCurrency(report.summary.totalNetAmount)],
+    ["סה״כ סכום כולל מע״מ (₪)", formatCurrency(report.summary.totalGrossAmount)],
+    ["סה״כ סכום לפני מע״מ (₪)", formatCurrency(report.summary.totalNetAmount)],
     [
       "סה״כ סכום עמלה (₪)",
       formatCurrency(report.summary.totalCommissionAmount),
@@ -72,8 +72,8 @@ function createByBrandSheet(
   const headers = [
     "מותג",
     "מספר עמלות",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "סכום עמלה (₪)",
     "שיעור עמלה ממוצע (%)",
   ];
@@ -110,8 +110,8 @@ function createByPeriodSheet(
     "תאריך התחלה",
     "תאריך סיום",
     "מספר עמלות",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "סכום עמלה (₪)",
   ];
 
@@ -147,8 +147,8 @@ function createBySupplierSheet(
     "שם ספק",
     "קוד ספק",
     "מספר עמלות",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "סכום עמלה (₪)",
     "שיעור עמלה ממוצע (%)",
   ];
@@ -192,8 +192,8 @@ function createDetailsSheet(
     "מותג",
     "תאריך התחלה",
     "תאריך סיום",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "שיעור עמלה (%)",
     "סכום עמלה (₪)",
     "סטטוס",

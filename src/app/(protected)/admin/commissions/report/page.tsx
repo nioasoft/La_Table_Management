@@ -506,7 +506,7 @@ export default function CommissionReportPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
-                  סה״כ ברוטו
+                  סה״כ כולל מע״מ
                 </CardTitle>
                 <TrendingUp className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
@@ -515,7 +515,7 @@ export default function CommissionReportPage() {
                   {formatCurrency(report.summary.totalGrossAmount)}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  נטו: {formatCurrency(report.summary.totalNetAmount)}
+                  לפני מע״מ: {formatCurrency(report.summary.totalNetAmount)}
                 </p>
               </CardContent>
             </Card>
@@ -599,8 +599,8 @@ export default function CommissionReportPage() {
                         <TableRow>
                           <TableHead className="text-end">מותג</TableHead>
                           <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום ברוטו</TableHead>
-                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
+                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                           <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
@@ -654,8 +654,8 @@ export default function CommissionReportPage() {
                           <TableHead className="text-end">תאריך התחלה</TableHead>
                           <TableHead className="text-end">תאריך סיום</TableHead>
                           <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום ברוטו</TableHead>
-                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
+                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -708,8 +708,8 @@ export default function CommissionReportPage() {
                           <TableHead className="text-end">ספק</TableHead>
                           <TableHead className="text-end">קוד</TableHead>
                           <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום ברוטו</TableHead>
-                          <TableHead className="text-end">סכום נטו</TableHead>
+                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
+                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                           <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
@@ -766,7 +766,7 @@ export default function CommissionReportPage() {
                             <TableHead className="text-end">זכיין</TableHead>
                             <TableHead className="text-end">מותג</TableHead>
                             <TableHead className="text-end">תקופה</TableHead>
-                            <TableHead className="text-end">ברוטו</TableHead>
+                            <TableHead className="text-end">כולל מע״מ</TableHead>
                             <TableHead className="text-end">עמלה</TableHead>
                             <TableHead className="text-end">שיעור</TableHead>
                             <TableHead className="text-end">סטטוס</TableHead>

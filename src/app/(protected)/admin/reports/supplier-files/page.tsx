@@ -199,14 +199,14 @@ const fileColumns: ColumnDef<SupplierFileEntry>[] = [
   },
   {
     id: "totalGrossAmount",
-    header: "ברוטו",
+    header: "כולל מע״מ",
     accessor: (row) => formatCurrency(row.totalGrossAmount),
     accessorKey: "totalGrossAmount",
     className: "text-left",
   },
   {
     id: "totalNetAmount",
-    header: "נטו",
+    header: "לפני מע״מ",
     accessor: (row) => formatCurrency(row.totalNetAmount),
     accessorKey: "totalNetAmount",
     className: "text-left",
@@ -298,14 +298,14 @@ const supplierColumns: ColumnDef<SupplierFileSummary>[] = [
   },
   {
     id: "totalGrossAmount",
-    header: "ברוטו כולל",
+    header: "סה״כ כולל מע״מ",
     accessor: (row) => formatCurrency(row.totalGrossAmount),
     accessorKey: "totalGrossAmount",
     className: "font-medium",
   },
   {
     id: "totalNetAmount",
-    header: "נטו כולל",
+    header: "סה״כ לפני מע״מ",
     accessor: (row) => formatCurrency(row.totalNetAmount),
     accessorKey: "totalNetAmount",
     className: "font-medium",
@@ -441,15 +441,15 @@ export default function SupplierFilesReportPage() {
           icon: FileSpreadsheet,
         },
         {
-          title: "סה״כ ברוטו",
+          title: "סה״כ כולל מע״מ",
           value: formatCurrency(report.summary.totalGrossAmount),
-          subtitle: "סכום ברוטו כולל",
+          subtitle: "סכום כולל מע״מ",
           icon: DollarSign,
         },
         {
-          title: "סה״כ נטו",
+          title: "סה״כ לפני מע״מ",
           value: formatCurrency(report.summary.totalNetAmount),
-          subtitle: "סכום נטו כולל",
+          subtitle: "סכום לפני מע״מ",
           icon: HardDrive,
         },
         {

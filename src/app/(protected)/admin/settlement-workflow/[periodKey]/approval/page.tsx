@@ -385,7 +385,7 @@ export default function ApprovalPage() {
               </div>
               <div className="pt-2 border-t">
                 <div className="flex justify-between">
-                  <span className="font-medium">סה"כ נטו</span>
+                  <span className="font-medium">סה"כ לפני מע״מ</span>
                   <span className="text-lg font-bold" dir="ltr">
                     {formatCurrency(summary?.commissionSummary.netAmount || 0)}
                   </span>

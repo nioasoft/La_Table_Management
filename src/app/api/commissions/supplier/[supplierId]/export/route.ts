@@ -54,8 +54,8 @@ function createSummarySheet(report: PerSupplierReportData): XLSX.WorkSheet {
     ["", ""],
     ["סה״כ זכיינים", report.summary.totalFranchisees],
     ["סה״כ עמלות", report.summary.totalCommissions],
-    ["סה״כ סכום ברוטו (₪)", formatCurrency(report.summary.totalGrossAmount)],
-    ["סה״כ סכום נטו (₪)", formatCurrency(report.summary.totalNetAmount)],
+    ["סה״כ סכום כולל מע״מ (₪)", formatCurrency(report.summary.totalGrossAmount)],
+    ["סה״כ סכום לפני מע״מ (₪)", formatCurrency(report.summary.totalNetAmount)],
     ["סה״כ סכום עמלה (₪)", formatCurrency(report.summary.totalCommissionAmount)],
     ["שיעור עמלה ממוצע (%)", formatPercent(report.summary.avgCommissionRate)],
   ];
@@ -64,9 +64,9 @@ function createSummarySheet(report: PerSupplierReportData): XLSX.WorkSheet {
   if (report.comparison) {
     data.push(["", ""]);
     data.push(["השוואה לתקופה קודמת", ""]);
-    data.push(["סכום ברוטו קודם (₪)", formatCurrency(report.comparison.previousPeriod.totalGrossAmount)]);
-    data.push(["שינוי בסכום ברוטו (₪)", formatCurrency(report.comparison.changes.grossAmountChange)]);
-    data.push(["שינוי בסכום ברוטו (%)", formatPercent(report.comparison.changes.grossAmountChangePercent)]);
+    data.push(["סכום כולל מע״מ קודם (₪)", formatCurrency(report.comparison.previousPeriod.totalGrossAmount)]);
+    data.push(["שינוי בסכום כולל מע״מ (₪)", formatCurrency(report.comparison.changes.grossAmountChange)]);
+    data.push(["שינוי בסכום כולל מע״מ (%)", formatPercent(report.comparison.changes.grossAmountChangePercent)]);
     data.push(["סכום עמלה קודם (₪)", formatCurrency(report.comparison.previousPeriod.totalCommissionAmount)]);
     data.push(["שינוי בסכום עמלה (₪)", formatCurrency(report.comparison.changes.commissionAmountChange)]);
     data.push(["שינוי בסכום עמלה (%)", formatPercent(report.comparison.changes.commissionAmountChangePercent)]);
@@ -101,8 +101,8 @@ function createByFranchiseeSheet(
     "קוד זכיין",
     "מותג",
     "מספר עמלות",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "סכום עמלה (₪)",
     "שיעור עמלה ממוצע (%)",
   ];
@@ -143,8 +143,8 @@ function createByPeriodSheet(
     "תאריך התחלה",
     "תאריך סיום",
     "מספר עמלות",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "סכום עמלה (₪)",
   ];
 
@@ -181,8 +181,8 @@ function createDetailsSheet(details: CommissionWithDetails[]): XLSX.WorkSheet {
     "מותג",
     "תאריך התחלה",
     "תאריך סיום",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "שיעור עמלה (%)",
     "סכום עמלה (₪)",
     "סטטוס",

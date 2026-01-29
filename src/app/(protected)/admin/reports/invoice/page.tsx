@@ -118,13 +118,13 @@ const brandColumns: ColumnDef<BrandGroup>[] = [
   },
   {
     id: "totalGrossAmount",
-    header: "סכום ברוטו",
+    header: "סכום כולל מע״מ",
     accessor: (row) => formatCurrency(row.summary.totalGrossAmount),
     sortable: false,
   },
   {
     id: "totalNetAmount",
-    header: "סכום נטו",
+    header: "סכום לפני מע״מ",
     accessor: (row) => formatCurrency(row.summary.totalNetAmount),
     sortable: false,
   },
@@ -282,7 +282,7 @@ export default function InvoiceReportPage() {
           icon: FileSpreadsheet,
         },
         {
-          title: "סכום נטו",
+          title: "סכום לפני מע״מ",
           value: formatCurrency(invoiceData.totals.totalNetAmount),
           subtitle: "לפני מע״מ",
           icon: DollarSign,
@@ -516,10 +516,10 @@ export default function InvoiceReportPage() {
                     <div className="flex gap-8">
                       <span>{invoiceData.totals.totalCommissions} עמלות</span>
                       <span>
-                        ברוטו: {formatCurrency(invoiceData.totals.totalGrossAmount)}
+                        כולל מע״מ: {formatCurrency(invoiceData.totals.totalGrossAmount)}
                       </span>
                       <span>
-                        נטו: {formatCurrency(invoiceData.totals.totalNetAmount)}
+                        לפני מע״מ: {formatCurrency(invoiceData.totals.totalNetAmount)}
                       </span>
                       <span className="text-lg text-primary">
                         {formatCurrency(invoiceData.totals.totalCommissionAmount)}

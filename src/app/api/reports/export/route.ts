@@ -73,8 +73,8 @@ function createCommissionSheets(
     ["תאריך הפקה", formatDateHe(data.generatedAt)],
     ["", ""],
     ["סה״כ רשומות", data.summary.totalRecords],
-    ["סה״כ סכום ברוטו (₪)", formatCurrency(data.summary.totalGrossAmount)],
-    ["סה״כ סכום נטו (₪)", formatCurrency(data.summary.totalNetAmount)],
+    ["סה״כ סכום כולל מע״מ (₪)", formatCurrency(data.summary.totalGrossAmount)],
+    ["סה״כ סכום לפני מע״מ (₪)", formatCurrency(data.summary.totalNetAmount)],
     ["סה״כ סכום עמלה (₪)", formatCurrency(data.summary.totalCommissionAmount)],
     ["שיעור עמלה ממוצע (%)", formatPercent(data.summary.avgCommissionRate)],
   ];
@@ -92,8 +92,8 @@ function createCommissionSheets(
     "מותג",
     "תאריך התחלה",
     "תאריך סיום",
-    "סכום ברוטו (₪)",
-    "סכום נטו (₪)",
+    "סכום כולל מע״מ (₪)",
+    "סכום לפני מע״מ (₪)",
     "שיעור עמלה (%)",
     "סכום עמלה (₪)",
     "סטטוס",
@@ -144,10 +144,10 @@ function createSettlementSheets(
     ["תאריך הפקה", formatDateHe(data.generatedAt)],
     ["", ""],
     ["סה״כ רשומות", data.summary.totalRecords],
-    ["סה״כ מכירות ברוטו (₪)", formatCurrency(data.summary.totalGrossSales)],
-    ["סה״כ מכירות נטו (₪)", formatCurrency(data.summary.totalNetSales)],
+    ["סה״כ מכירות כולל מע״מ (₪)", formatCurrency(data.summary.totalGrossSales)],
+    ["סה״כ מכירות לפני מע״מ (₪)", formatCurrency(data.summary.totalNetSales)],
     ["סה״כ תמלוגים (₪)", formatCurrency(data.summary.totalRoyaltyAmount)],
-    ["סה״כ לתשלום נטו (₪)", formatCurrency(data.summary.totalNetPayable)],
+    ["סה״כ לתשלום לפני מע״מ (₪)", formatCurrency(data.summary.totalNetPayable)],
   ];
 
   const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
@@ -164,11 +164,11 @@ function createSettlementSheets(
     "תאריך התחלה",
     "תאריך סיום",
     "סטטוס",
-    "מכירות ברוטו (₪)",
-    "מכירות נטו (₪)",
+    "מכירות כולל מע״מ (₪)",
+    "מכירות לפני מע״מ (₪)",
     "תמלוגים (₪)",
     "דמי שיווק (₪)",
-    "לתשלום נטו (₪)",
+    "לתשלום לפני מע״מ (₪)",
   ];
 
   const detailsData = data.rows.map((row) => [

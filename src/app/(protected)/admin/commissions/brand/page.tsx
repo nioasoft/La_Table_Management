@@ -464,7 +464,7 @@ export default function BrandCommissionReportPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">סכום ברוטו</CardTitle>
+                <CardTitle className="text-sm font-medium">סכום כולל מע״מ</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -479,7 +479,7 @@ export default function BrandCommissionReportPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">סכום נטו</CardTitle>
+                <CardTitle className="text-sm font-medium">סכום לפני מע״מ</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -580,8 +580,8 @@ export default function BrandCommissionReportPage() {
                           <th className="text-end py-3 px-4">זכיין</th>
                           <th className="text-end py-3 px-4">קוד</th>
                           <th className="text-end py-3 px-4">עמלות</th>
-                          <th className="text-end py-3 px-4">סכום ברוטו</th>
-                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">סכום לפני מע״מ</th>
                           <th className="text-end py-3 px-4">סכום עמלה</th>
                           <th className="text-end py-3 px-4">שיעור ממוצע</th>
                         </tr>
@@ -640,8 +640,8 @@ export default function BrandCommissionReportPage() {
                           <th className="text-end py-3 px-4">ספק</th>
                           <th className="text-end py-3 px-4">קוד</th>
                           <th className="text-end py-3 px-4">עמלות</th>
-                          <th className="text-end py-3 px-4">סכום ברוטו</th>
-                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">סכום לפני מע״מ</th>
                           <th className="text-end py-3 px-4">סכום עמלה</th>
                           <th className="text-end py-3 px-4">שיעור ממוצע</th>
                         </tr>
@@ -700,8 +700,8 @@ export default function BrandCommissionReportPage() {
                           <th className="text-end py-3 px-4">תאריך התחלה</th>
                           <th className="text-end py-3 px-4">תאריך סיום</th>
                           <th className="text-end py-3 px-4">עמלות</th>
-                          <th className="text-end py-3 px-4">סכום ברוטו</th>
-                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">סכום לפני מע״מ</th>
                           <th className="text-end py-3 px-4">סכום עמלה</th>
                         </tr>
                       </thead>
@@ -768,8 +768,8 @@ export default function BrandCommissionReportPage() {
                           <th className="text-end py-3 px-4">ספק</th>
                           <th className="text-end py-3 px-4">זכיין</th>
                           <th className="text-end py-3 px-4">תקופה</th>
-                          <th className="text-end py-3 px-4">ברוטו</th>
-                          <th className="text-end py-3 px-4">נטו</th>
+                          <th className="text-end py-3 px-4">כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">לפני מע״מ</th>
                           <th className="text-end py-3 px-4">שיעור</th>
                           <th className="text-end py-3 px-4">עמלה</th>
                           <th className="text-end py-3 px-4">סטטוס</th>

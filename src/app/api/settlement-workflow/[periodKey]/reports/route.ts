@@ -165,8 +165,8 @@ export async function GET(
       // Summary section
       csvRows.push("סיכום כללי");
       csvRows.push(`מספר עמלות,${reportData.summary.totalCommissions}`);
-      csvRows.push(`סה"כ ברוטו,${reportData.summary.totalGrossAmount.toFixed(2)}`);
-      csvRows.push(`סה"כ נטו,${reportData.summary.totalNetAmount.toFixed(2)}`);
+      csvRows.push(`סה"כ כולל מע״מ,${reportData.summary.totalGrossAmount.toFixed(2)}`);
+      csvRows.push(`סה"כ לפני מע״מ,${reportData.summary.totalNetAmount.toFixed(2)}`);
       csvRows.push(`סה"כ עמלות,${reportData.summary.totalCommissionAmount.toFixed(2)}`);
       csvRows.push(`התאמות,${reportData.summary.totalAdjustments.toFixed(2)}`);
       csvRows.push(`סה"כ סופי,${reportData.summary.grandTotal.toFixed(2)}`);
@@ -174,7 +174,7 @@ export async function GET(
 
       // By Brand section
       csvRows.push("לפי מותג");
-      csvRows.push("מותג,מספר עמלות,ברוטו,נטו,עמלות,אחוז ממוצע");
+      csvRows.push("מותג,מספר עמלות,כולל מע״מ,לפני מע״מ,עמלות,אחוז ממוצע");
       for (const brand of reportData.byBrand) {
         csvRows.push([
           brand.brandNameHe,
@@ -189,7 +189,7 @@ export async function GET(
 
       // By Supplier section
       csvRows.push("לפי ספק");
-      csvRows.push("ספק,קוד,מספר עמלות,ברוטו,נטו,עמלות,אחוז ממוצע");
+      csvRows.push("ספק,קוד,מספר עמלות,כולל מע״מ,לפני מע״מ,עמלות,אחוז ממוצע");
       for (const supplier of reportData.bySupplier) {
         csvRows.push([
           supplier.supplierName,
@@ -220,7 +220,7 @@ export async function GET(
         if (detailsData) {
           csvRows.push("");
           csvRows.push("פירוט");
-          csvRows.push("ספק,קוד ספק,זכיין,קוד זכיין,מותג,ברוטו,נטו,אחוז עמלה,עמלה,סטטוס");
+          csvRows.push("ספק,קוד ספק,זכיין,קוד זכיין,מותג,כולל מע״מ,לפני מע״מ,אחוז עמלה,עמלה,סטטוס");
           for (const detail of detailsData) {
             csvRows.push([
               detail.supplierName,

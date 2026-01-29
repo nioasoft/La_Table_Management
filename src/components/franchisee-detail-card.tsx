@@ -763,7 +763,7 @@ export function FranchiseeDetailCard({
                     </Card>
                     <Card>
                       <CardContent className="p-4">
-                        <p className="text-sm text-muted-foreground">סכום נטו</p>
+                        <p className="text-sm text-muted-foreground">סכום לפני מע״מ</p>
                         <p className="text-xl font-bold">{formatCurrency(purchaseSummary.totalNetAmount)}</p>
                       </CardContent>
                     </Card>
@@ -794,7 +794,7 @@ export function FranchiseeDetailCard({
                               <TableHead>ספק</TableHead>
                               <TableHead>קוד</TableHead>
                               <TableHead>רכישות</TableHead>
-                              <TableHead>סכום ברוטו</TableHead>
+                              <TableHead>סכום כולל מע״מ</TableHead>
                               <TableHead>עמלה</TableHead>
                               <TableHead>% עמלה</TableHead>
                             </TableRow>

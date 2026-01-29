@@ -132,7 +132,7 @@ const detailColumns: ColumnDef<CommissionWithDetails>[] = [
   },
   {
     id: "grossAmount",
-    header: "ברוטו",
+    header: "כולל מע״מ",
     accessor: (row) => formatCurrency(Number(row.grossAmount)),
     accessorKey: "grossAmount",
   },
@@ -163,8 +163,8 @@ const detailColumns: ColumnDef<CommissionWithDetails>[] = [
 const brandColumns: ColumnDef<CommissionSummaryByBrand>[] = [
   { id: "brandNameHe", header: "מותג", accessorKey: "brandNameHe", className: "font-medium" },
   { id: "commissionCount", header: "מספר עמלות", accessorKey: "commissionCount" },
-  { id: "totalGrossAmount", header: "סכום ברוטו", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
-  { id: "totalNetAmount", header: "סכום נטו", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
+  { id: "totalGrossAmount", header: "סכום כולל מע״מ", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
+  { id: "totalNetAmount", header: "סכום לפני מע״מ", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
   { id: "totalCommissionAmount", header: "סכום עמלה", accessor: (row) => formatCurrency(row.totalCommissionAmount), accessorKey: "totalCommissionAmount", className: "font-medium" },
   { id: "avgCommissionRate", header: "עמלה ממוצעת", accessor: (row) => formatPercent(row.avgCommissionRate), accessorKey: "avgCommissionRate" },
 ];
@@ -173,8 +173,8 @@ const periodColumns: ColumnDef<CommissionSummaryByPeriod>[] = [
   { id: "periodStartDate", header: "תאריך התחלה", accessor: (row) => formatDateHe(row.periodStartDate), accessorKey: "periodStartDate" },
   { id: "periodEndDate", header: "תאריך סיום", accessor: (row) => formatDateHe(row.periodEndDate), accessorKey: "periodEndDate" },
   { id: "commissionCount", header: "מספר עמלות", accessorKey: "commissionCount" },
-  { id: "totalGrossAmount", header: "סכום ברוטו", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
-  { id: "totalNetAmount", header: "סכום נטו", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
+  { id: "totalGrossAmount", header: "סכום כולל מע״מ", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
+  { id: "totalNetAmount", header: "סכום לפני מע״מ", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
   { id: "totalCommissionAmount", header: "סכום עמלה", accessor: (row) => formatCurrency(row.totalCommissionAmount), accessorKey: "totalCommissionAmount", className: "font-medium" },
 ];
 
@@ -182,8 +182,8 @@ const supplierColumns: ColumnDef<CommissionSummaryBySupplier>[] = [
   { id: "supplierName", header: "ספק", accessorKey: "supplierName", className: "font-medium" },
   { id: "supplierCode", header: "קוד", accessorKey: "supplierCode" },
   { id: "commissionCount", header: "מספר עמלות", accessorKey: "commissionCount" },
-  { id: "totalGrossAmount", header: "סכום ברוטו", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
-  { id: "totalNetAmount", header: "סכום נטו", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
+  { id: "totalGrossAmount", header: "סכום כולל מע״מ", accessor: (row) => formatCurrency(row.totalGrossAmount), accessorKey: "totalGrossAmount" },
+  { id: "totalNetAmount", header: "סכום לפני מע״מ", accessor: (row) => formatCurrency(row.totalNetAmount), accessorKey: "totalNetAmount" },
   { id: "totalCommissionAmount", header: "סכום עמלה", accessor: (row) => formatCurrency(row.totalCommissionAmount), accessorKey: "totalCommissionAmount", className: "font-medium" },
   { id: "avgCommissionRate", header: "עמלה ממוצעת", accessor: (row) => formatPercent(row.avgCommissionRate), accessorKey: "avgCommissionRate" },
 ];
@@ -277,9 +277,9 @@ export default function CommissionsReportPage() {
           icon: DollarSign,
         },
         {
-          title: "סה״כ ברוטו",
+          title: "סה״כ כולל מע״מ",
           value: formatCurrency(report.summary.totalGrossAmount),
-          subtitle: `נטו: ${formatCurrency(report.summary.totalNetAmount)}`,
+          subtitle: `לפני מע״מ: ${formatCurrency(report.summary.totalNetAmount)}`,
           icon: DollarSign,
         },
         {

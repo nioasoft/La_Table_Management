@@ -315,12 +315,12 @@ const SummaryPage: React.FC<{ report: CommissionReportData }> = ({
         </View>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>סה״כ ברוטו</Text>
+          <Text style={styles.summaryLabel}>סה״כ כולל מע״מ</Text>
           <Text style={styles.summaryValue}>
             {formatCurrency(report.summary.totalGrossAmount)}
           </Text>
           <Text style={styles.summaryLabel}>
-            נטו: {formatCurrency(report.summary.totalNetAmount)}
+            לפני מע״מ: {formatCurrency(report.summary.totalNetAmount)}
           </Text>
         </View>
 
@@ -355,10 +355,10 @@ const SummaryPage: React.FC<{ report: CommissionReportData }> = ({
             <Text style={styles.tableHeaderCell}>מספר עמלות</Text>
           </View>
           <View style={styles.colGross}>
-            <Text style={styles.tableHeaderCell}>ברוטו</Text>
+            <Text style={styles.tableHeaderCell}>כולל מע״מ</Text>
           </View>
           <View style={styles.colNet}>
-            <Text style={styles.tableHeaderCell}>נטו</Text>
+            <Text style={styles.tableHeaderCell}>לפני מע״מ</Text>
           </View>
           <View style={styles.colCommission}>
             <Text style={styles.tableHeaderCell}>עמלה</Text>
@@ -440,10 +440,10 @@ const ByPeriodPage: React.FC<{ report: CommissionReportData }> = ({
             <Text style={styles.tableHeaderCell}>מספר עמלות</Text>
           </View>
           <View style={styles.colPeriodGross}>
-            <Text style={styles.tableHeaderCell}>ברוטו</Text>
+            <Text style={styles.tableHeaderCell}>כולל מע״מ</Text>
           </View>
           <View style={styles.colPeriodNet}>
-            <Text style={styles.tableHeaderCell}>נטו</Text>
+            <Text style={styles.tableHeaderCell}>לפני מע״מ</Text>
           </View>
           <View style={styles.colPeriodCommission}>
             <Text style={styles.tableHeaderCell}>עמלה</Text>
@@ -524,10 +524,10 @@ const BySupplierPage: React.FC<{ report: CommissionReportData }> = ({
             <Text style={styles.tableHeaderCell}>עמלות</Text>
           </View>
           <View style={styles.colSupplierGross}>
-            <Text style={styles.tableHeaderCell}>ברוטו</Text>
+            <Text style={styles.tableHeaderCell}>כולל מע״מ</Text>
           </View>
           <View style={styles.colSupplierNet}>
-            <Text style={styles.tableHeaderCell}>נטו</Text>
+            <Text style={styles.tableHeaderCell}>לפני מע״מ</Text>
           </View>
           <View style={styles.colSupplierCommission}>
             <Text style={styles.tableHeaderCell}>עמלה</Text>
@@ -625,7 +625,7 @@ const DetailsPages: React.FC<{ details: CommissionWithDetails[] }> = ({
                 <Text style={styles.tableHeaderCell}>תקופה</Text>
               </View>
               <View style={{ width: "12%" }}>
-                <Text style={styles.tableHeaderCell}>ברוטו</Text>
+                <Text style={styles.tableHeaderCell}>כולל מע״מ</Text>
               </View>
               <View style={{ width: "12%" }}>
                 <Text style={styles.tableHeaderCell}>עמלה</Text>

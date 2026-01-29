@@ -545,7 +545,7 @@ export default function SupplierCommissionReportPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">סכום ברוטו</CardTitle>
+                <CardTitle className="text-sm font-medium">סכום כולל מע״מ</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -565,7 +565,7 @@ export default function SupplierCommissionReportPage() {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">סכום נטו</CardTitle>
+                <CardTitle className="text-sm font-medium">סכום לפני מע״מ</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
@@ -619,7 +619,7 @@ export default function SupplierCommissionReportPage() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">סכום ברוטו קודם</p>
+                    <p className="text-sm text-muted-foreground">סכום כולל מע״מ קודם</p>
                     <p className="text-lg font-bold">
                       {formatCurrency(reportData.comparison.previousPeriod.totalGrossAmount)}
                     </p>
@@ -635,7 +635,7 @@ export default function SupplierCommissionReportPage() {
                     </div>
                   </div>
                   <div className="p-4 bg-muted/50 rounded-lg">
-                    <p className="text-sm text-muted-foreground">סכום נטו קודם</p>
+                    <p className="text-sm text-muted-foreground">סכום לפני מע״מ קודם</p>
                     <p className="text-lg font-bold">
                       {formatCurrency(reportData.comparison.previousPeriod.totalNetAmount)}
                     </p>
@@ -719,8 +719,8 @@ export default function SupplierCommissionReportPage() {
                           <th className="text-end py-3 px-4">קוד</th>
                           <th className="text-end py-3 px-4">מותג</th>
                           <th className="text-end py-3 px-4">עמלות</th>
-                          <th className="text-end py-3 px-4">סכום ברוטו</th>
-                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">סכום לפני מע״מ</th>
                           <th className="text-end py-3 px-4">סכום עמלה</th>
                           <th className="text-end py-3 px-4">שיעור ממוצע</th>
                         </tr>
@@ -782,8 +782,8 @@ export default function SupplierCommissionReportPage() {
                           <th className="text-end py-3 px-4">תאריך התחלה</th>
                           <th className="text-end py-3 px-4">תאריך סיום</th>
                           <th className="text-end py-3 px-4">עמלות</th>
-                          <th className="text-end py-3 px-4">סכום ברוטו</th>
-                          <th className="text-end py-3 px-4">סכום נטו</th>
+                          <th className="text-end py-3 px-4">סכום כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">סכום לפני מע״מ</th>
                           <th className="text-end py-3 px-4">סכום עמלה</th>
                         </tr>
                       </thead>
@@ -850,8 +850,8 @@ export default function SupplierCommissionReportPage() {
                           <th className="text-end py-3 px-4">זכיין</th>
                           <th className="text-end py-3 px-4">מותג</th>
                           <th className="text-end py-3 px-4">תקופה</th>
-                          <th className="text-end py-3 px-4">ברוטו</th>
-                          <th className="text-end py-3 px-4">נטו</th>
+                          <th className="text-end py-3 px-4">כולל מע״מ</th>
+                          <th className="text-end py-3 px-4">לפני מע״מ</th>
                           <th className="text-end py-3 px-4">שיעור</th>
                           <th className="text-end py-3 px-4">עמלה</th>
                           <th className="text-end py-3 px-4">סטטוס</th>
