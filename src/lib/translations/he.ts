@@ -2890,6 +2890,7 @@ export const he = {
       settlements: "התחשבנויות",
       reconciliation: "התאמות",
       commissions: "עמלות",
+      settlementSimple: "התחשבנות",
 
       // Data Management
       suppliers: "ספקים",

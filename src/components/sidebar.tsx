@@ -31,6 +31,7 @@ import {
   FileUp,
   Percent,
   Files,
+  Scale,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
@@ -121,6 +122,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
             label: he.sidebar.navigation.settlementWorkflow,
             icon: <Receipt className="h-5 w-5" />,
             children: [
+              {
+                label: he.sidebar.subNavigation.settlementSimple,
+                href: "/admin/settlement-simple",
+                icon: <Scale className="h-4 w-4" />,
+              },
               {
                 label: he.sidebar.subNavigation.settlements,
                 href: "/admin/settlements",

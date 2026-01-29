@@ -7,3 +7,4 @@ export * from "./reconciliation";
 export * from "./commissions";
 export * from "./franchisee-reminders";
 export * from "./supplier-file-uploads";
+export * from "./settlement-simple";
