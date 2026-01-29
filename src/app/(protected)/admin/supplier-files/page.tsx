@@ -250,18 +250,25 @@ export default function SupplierFilesPage() {
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
-  // Pre-select supplier from URL query parameter
+  // Track if initial selection from URL has been done
+  const initialSelectionDone = useRef(false);
+
+  // Pre-select supplier from URL query parameter (only on initial load)
   React.useEffect(() => {
+    // Skip if initial selection already done
+    if (initialSelectionDone.current) return;
+
     const supplierIdFromUrl = searchParams.get('supplierId');
     if (supplierIdFromUrl && suppliers.length > 0) {
       const supplierExists = suppliers.some(
         (s: SupplierWithMapping) => s.id === supplierIdFromUrl
       );
-      if (supplierExists && selectedSupplierId !== supplierIdFromUrl) {
+      if (supplierExists) {
         setSelectedSupplierId(supplierIdFromUrl);
+        initialSelectionDone.current = true;
       }
     }
-  }, [searchParams, suppliers, selectedSupplierId]);
+  }, [searchParams, suppliers]);
 
   // Handle supplier change - reset period and file state
   const handleSupplierChange = useCallback((supplierId: string) => {
