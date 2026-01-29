@@ -9,6 +9,12 @@ import { parseMadagFile } from "../lib/custom-parsers/madag-parser";
 import { parseAvrahamiFile } from "../lib/custom-parsers/avrahami-parser";
 import { parseYaakovAgenciesFile } from "../lib/custom-parsers/yaakov-agencies-parser";
 import { parseMorBriutFile } from "../lib/custom-parsers/mor-briut-parser";
+import { parseKiroskaiFile } from "../lib/custom-parsers/kiroskai-parser";
+import { parseGreenTeaFile } from "../lib/custom-parsers/green-tea-parser";
+import { parseOrenJuicesFile } from "../lib/custom-parsers/oren-juices-parser";
+import { parseSoberLernerFile } from "../lib/custom-parsers/sober-lerner-parser";
+import { parseWongShuFile } from "../lib/custom-parsers/wong-shu-parser";
+import { parseSuperNovaFile } from "../lib/custom-parsers/super-nova-parser";
 
 const BASE_PATH = "raw_data/raw_files_suppliers/קבצים לעמלות רשת";
 
@@ -38,6 +44,36 @@ const testCases: TestCase[] = [
     name: "מור בריאות",
     file: "מור בריאות.xls",
     parser: parseMorBriutFile,
+  },
+  {
+    name: "קירוסקאי",
+    file: "קירוסקאי.xlsx",
+    parser: parseKiroskaiFile,
+  },
+  {
+    name: "גרינטי",
+    file: "גרינטי כללי.xlsx",
+    parser: parseGreenTeaFile,
+  },
+  {
+    name: "אורן שיווק מיצים",
+    file: "אורן שיווק מיצים.xlsx",
+    parser: parseOrenJuicesFile,
+  },
+  {
+    name: "סובר לרנר",
+    file: "סובר.xlsx",
+    parser: parseSoberLernerFile,
+  },
+  {
+    name: "וונג שו",
+    file: "וונג שו.xlsx",
+    parser: parseWongShuFile,
+  },
+  {
+    name: "סופר נובה",
+    file: "סופר נובה.xlsx",
+    parser: parseSuperNovaFile,
   },
 ];
 

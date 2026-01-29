@@ -23,6 +23,12 @@ export { parseMaadaneiHatevaFile } from "./maadanei-hateva-parser";
 export { parseKillBillFile } from "./kill-bill-parser";
 export { parseJumonFile } from "./jumon-parser";
 export { parseYamaVekadmaFile } from "./yama-vekadma-parser";
+export { parseKiroskaiFile } from "./kiroskai-parser";
+export { parseGreenTeaFile } from "./green-tea-parser";
+export { parseOrenJuicesFile } from "./oren-juices-parser";
+export { parseSoberLernerFile } from "./sober-lerner-parser";
+export { parseWongShuFile } from "./wong-shu-parser";
+export { parseSuperNovaFile } from "./super-nova-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -103,6 +109,31 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   YAMA_VEKADMA: async (buffer, vatRate) => {
     const { parseYamaVekadmaFile } = await import("./yama-vekadma-parser");
     return parseYamaVekadmaFile(buffer);
+  },
+  KIROSKAI: async (buffer, vatRate) => {
+    const { parseKiroskaiFile } = await import("./kiroskai-parser");
+    return parseKiroskaiFile(buffer);
+  },
+  GREEN_TEA: async (buffer, vatRate) => {
+    const { parseGreenTeaFile } = await import("./green-tea-parser");
+    return parseGreenTeaFile(buffer);
+  },
+  OREN_JUICES: async (buffer, vatRate) => {
+    const { parseOrenJuicesFile } = await import("./oren-juices-parser");
+    return parseOrenJuicesFile(buffer);
+  },
+  SOBER_LERNER: async (buffer, vatRate) => {
+    const { parseSoberLernerFile } = await import("./sober-lerner-parser");
+    return parseSoberLernerFile(buffer);
+  },
+  // Note: WONGֹ_SHU has a Hebrew diacritical mark (U+05B9) after G
+  "WONG\u05B9_SHU": async (buffer, vatRate) => {
+    const { parseWongShuFile } = await import("./wong-shu-parser");
+    return parseWongShuFile(buffer);
+  },
+  SUPER_NOVA: async (buffer, vatRate) => {
+    const { parseSuperNovaFile } = await import("./super-nova-parser");
+    return parseSuperNovaFile(buffer);
   },
 };
 
