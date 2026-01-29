@@ -192,6 +192,19 @@ function parseB110Record(line: string): BkmvAccount | null {
 
     const accountKey = extractField(line, B110_FIELDS.ACCOUNT_KEY);
     const accountDescription = extractField(line, B110_FIELDS.ACCOUNT_DESC);
+    let accountName = extractField(line, B110_FIELDS.ACCOUNT_NAME);
+
+    // Some accounting systems (like the newer format) put the account name in the
+    // description field instead of the name field. If accountName is empty or
+    // only contains numbers/symbols, try to extract a meaningful name from description.
+    if (!accountName || /^[\d\s\-\.]+$/.test(accountName)) {
+      // Extract the first Hebrew/English word sequence from description
+      // Format may be: "מליסרון בע"מ             30" - name followed by sort code
+      const descMatch = accountDescription.match(/^([א-תa-zA-Z][\s\S]*?)(?:\s{3,}|\d{2,}|$)/);
+      if (descMatch && descMatch[1]) {
+        accountName = descMatch[1].trim();
+      }
+    }
 
     // Extract account sort from description (format: 000000000000XXX[optional Hebrew text])
     // The sort code is the last 3 digits from the leading 15-digit number
@@ -199,6 +212,15 @@ function parseB110Record(line: string): BkmvAccount | null {
     const match = accountDescription.match(/0{12}(\d{3})/);
     if (match && match[1]) {
       accountSort = match[1]; // The 3-digit sort code
+    }
+
+    // If accountSort not found in old format, try to find it in new format
+    // New format: name followed by 2-4 digit sort code (e.g., "מליסרון בע"מ             30")
+    if (!accountSort) {
+      const sortMatch = accountDescription.match(/\s{3,}(\d{1,4})\s*$/);
+      if (sortMatch && sortMatch[1]) {
+        accountSort = sortMatch[1];
+      }
     }
 
     // Extract the 5-digit account code from accountKey
@@ -211,7 +233,7 @@ function parseB110Record(line: string): BkmvAccount | null {
       companyId: extractField(line, B110_FIELDS.COMPANY_ID),
       accountKey,
       accountCode,
-      accountName: extractField(line, B110_FIELDS.ACCOUNT_NAME),
+      accountName,
       accountDescription: accountDescription,
       accountType: extractField(line, B110_FIELDS.ACCOUNT_TYPE),
       accountSort,
@@ -327,19 +349,45 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
     }
   }
 
-  // Build account key to account sort mapping from B110 records
-  // B110 accountKey contains the supplier name that matches B100 counterparty
+  // Build mappings from B110 records:
+  // 1. accountKey → accountSort (for filtering by account type)
+  // 2. accountKey → accountName (for resolving numeric counterparty references)
   const accountKeyToSort = new Map<string, string>();
+  const accountKeyToName = new Map<string, string>();
   for (const account of result.accounts) {
-    if (account.accountSort && account.accountKey) {
-      accountKeyToSort.set(account.accountKey.trim(), account.accountSort);
+    const key = account.accountKey.trim();
+    if (account.accountSort && key) {
+      accountKeyToSort.set(key, account.accountSort);
+    }
+    if (account.accountName && key) {
+      accountKeyToName.set(key, account.accountName.trim());
     }
   }
 
-  // Populate account sort in transactions by matching counterparty name to account key
+  // Populate account sort and resolve counterparty names from B110 records
+  // B110 contains the full account name, while B100 counterparty may contain:
+  // - A short code (old format: "דגי" -> full name "כ.נ. דגי הקיבוצים בע"מ")
+  // - A numeric key (new format: "65" -> full name "מליסרון בע"מ")
+  // - A numeric key with suffix (new format: "40           1" -> account 40)
   for (const tx of result.transactions) {
     const counterparty = tx.counterpartyName.trim();
-    tx.accountSort = accountKeyToSort.get(counterparty) || '';
+
+    // Try to find the account key - could be the full counterparty value or just the first number
+    let accountKey = counterparty;
+    const numericMatch = counterparty.match(/^(\d+)/);
+    if (numericMatch) {
+      // For numeric counterparties (like "65" or "40           1"), use the first number
+      accountKey = numericMatch[1];
+    }
+
+    // Get account sort from B110
+    tx.accountSort = accountKeyToSort.get(accountKey) || '';
+
+    // Always try to resolve the counterparty name from B110 for the full name
+    const resolvedName = accountKeyToName.get(accountKey);
+    if (resolvedName) {
+      tx.counterpartyName = resolvedName;
+    }
   }
 
   // Build supplier summary from credit transactions
