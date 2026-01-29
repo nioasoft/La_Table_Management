@@ -70,7 +70,7 @@ import {
   Ban,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
-import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, type BkmvParseResult, type BkmvTransaction } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, getAccountSortLabels, findAccountSortByType, type BkmvParseResult, type BkmvTransaction, type AccountSortLabel } from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
@@ -275,10 +275,10 @@ export default function BkmvDataPage() {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [franchisees]);
 
-  // Get unique account sorts for dropdown
-  const uniqueAccountSorts = useMemo(() => {
+  // Get account sort labels for dropdown (includes type names like "ספקים")
+  const accountSortLabels = useMemo((): AccountSortLabel[] => {
     if (!parseResult) return [];
-    return getUniqueAccountSorts(parseResult.supplierSummary);
+    return getAccountSortLabels(parseResult);
   }, [parseResult]);
 
   // Update supplier mutation (for adding aliases)
@@ -526,10 +526,29 @@ export default function BkmvDataPage() {
         setFranchiseeError("מספר חברה (ח.פ) לא נמצא בקובץ");
       }
 
-      // Apply account sort filter before matching (default is "200" for suppliers)
+      // Smart default for account sort filter:
+      // 1. If "200" exists, use it (old format)
+      // 2. Otherwise, find the sort code for "ספקים" (suppliers)
+      // 3. Fallback to "all" if nothing matches
+      const sortLabels = getAccountSortLabels(result);
+      const availableSorts = sortLabels.map(l => l.sort);
+      let defaultAccountSort = 'all';
+
+      if (availableSorts.includes('200')) {
+        defaultAccountSort = '200';
+      } else {
+        // Find supplier sort code by looking for "ספקים" label
+        const supplierSort = findAccountSortByType(result, 'ספקים');
+        if (supplierSort) {
+          defaultAccountSort = supplierSort;
+        }
+      }
+      setFilterAccountSort(defaultAccountSort);
+
+      // Apply account sort filter before matching
       let summaryToUse = result.supplierSummary;
-      if (filterAccountSort !== 'all') {
-        summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
+      if (defaultAccountSort !== 'all') {
+        summaryToUse = filterSuppliersByAccountSort(summaryToUse, defaultAccountSort);
       }
 
       // Match against suppliers
@@ -546,7 +565,7 @@ export default function BkmvDataPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, suppliers, blacklistedNames, filterAccountSort]);
+  }, [selectedFile, suppliers, blacklistedNames]);
 
   // Add alias to supplier
   const handleAddAlias = useCallback(async (supplierId: string, alias: string) => {
@@ -1177,14 +1196,14 @@ export default function BkmvDataPage() {
                     value={filterAccountSort}
                     onValueChange={handleAccountSortFilterChange}
                   >
-                    <SelectTrigger className="w-[140px]" id="filterAccountSort">
+                    <SelectTrigger className="w-[180px]" id="filterAccountSort">
                       <SelectValue placeholder="בחר מיון" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px]">
                       <SelectItem value="all">הכל</SelectItem>
-                      {uniqueAccountSorts.map((sort) => (
+                      {accountSortLabels.map(({ sort, label, count }) => (
                         <SelectItem key={sort} value={sort}>
-                          {sort}
+                          {sort} - {label} ({count})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1193,18 +1212,32 @@ export default function BkmvDataPage() {
                 {(isDateFiltered || filterAccountSort !== 'all') && (
                   <div className="text-sm text-blue-700 flex items-center gap-2 me-auto">
                     <Calendar className="h-4 w-4" />
-                    {isDateFiltered && filterAccountSort !== 'all' && (
-                      <>
-                        מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
-                        {' '}עבור מיון חשבון: {filterAccountSort}
-                      </>
-                    )}
-                    {isDateFiltered && filterAccountSort === 'all' && (
-                      <>מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}</>
-                    )}
-                    {!isDateFiltered && filterAccountSort !== 'all' && (
-                      <>מציג נתונים עבור מיון חשבון: {filterAccountSort}</>
-                    )}
+                    {(() => {
+                      const selectedLabel = accountSortLabels.find(l => l.sort === filterAccountSort);
+                      const sortDisplayText = selectedLabel
+                        ? `${selectedLabel.sort} - ${selectedLabel.label}`
+                        : filterAccountSort;
+
+                      if (isDateFiltered && filterAccountSort !== 'all') {
+                        return (
+                          <>
+                            מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
+                            {' '}עבור מיון חשבון: {sortDisplayText}
+                          </>
+                        );
+                      }
+                      if (isDateFiltered && filterAccountSort === 'all') {
+                        return (
+                          <>מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}</>
+                        );
+                      }
+                      if (!isDateFiltered && filterAccountSort !== 'all') {
+                        return (
+                          <>מציג נתונים עבור מיון חשבון: {sortDisplayText}</>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                 )}
               </div>

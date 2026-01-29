@@ -6,7 +6,8 @@ import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, DollarSign, Percent, Calendar, Building2, Users, Store } from "lucide-react";
+import { Loader2, DollarSign, Percent, Calendar, Building2, Users, Store, FileSpreadsheet, ArrowLeft } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   ReportLayout,
   ReportFilters,
@@ -357,8 +358,33 @@ export default function CommissionsReportPage() {
         </div>
       )}
 
+      {/* Empty State - No commission records */}
+      {!isLoading && report && report.summary.totalCommissions === 0 && (
+        <Card className="p-8">
+          <div className="flex flex-col items-center text-center">
+            <FileSpreadsheet className="mx-auto h-12 w-12 text-muted-foreground" />
+            <h3 className="mt-4 text-lg font-semibold">לא נמצאו רשומות עמלות</h3>
+            <p className="mt-2 max-w-md text-muted-foreground">
+              רשומות עמלות נוצרות לאחר ביצוע הצלבה בתהליך ההתחשבנות.
+              <br />
+              קבצי ספקים שהועלו זמינים בדוח נפרד.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-4">
+              <Button variant="outline" onClick={() => router.push("/admin/reports/supplier-files")}>
+                <FileSpreadsheet className="ml-2 h-4 w-4" />
+                צפה בנתוני קבצי ספקים
+              </Button>
+              <Button onClick={() => router.push("/admin/settlement-workflow")}>
+                <ArrowLeft className="ml-2 h-4 w-4" />
+                עבור לתהליך התחשבנות
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Report Content */}
-      {!isLoading && report && (
+      {!isLoading && report && report.summary.totalCommissions > 0 && (
         <>
           {/* Summary Cards */}
           <ReportSummaryCards cards={summaryCards} columns={4} />

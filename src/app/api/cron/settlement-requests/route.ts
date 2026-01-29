@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/db";
-import { supplier, type Supplier, type SettlementFrequency } from "@/db/schema";
+import { supplier, type Supplier, type SettlementFrequency, type SettlementPeriodType } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
+import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 
 /**
  * Settlement File Requests Cron Job
@@ -28,6 +30,23 @@ import { formatDateAsLocal } from "@/lib/date-utils";
  * This endpoint uses a secret token for authentication.
  * Set CRON_SECRET environment variable and pass it as Authorization header.
  */
+
+// Map settlement frequency to settlement period type
+function frequencyToPeriodType(frequency: SettlementFrequency): SettlementPeriodType | null {
+  switch (frequency) {
+    case "monthly":
+      return "monthly";
+    case "quarterly":
+      return "quarterly";
+    case "semi_annual":
+      return "semi_annual";
+    case "annual":
+      return "annual";
+    default:
+      // bi_weekly and weekly don't have corresponding period types
+      return null;
+  }
+}
 
 // Determine which settlement frequencies should be processed on this date
 function getActiveFrequencies(date: Date): SettlementFrequency[] {
@@ -153,13 +172,42 @@ async function processFrequency(
   failed: number;
   errors: string[];
   suppliers: string[];
+  settlementPeriodCreated?: { periodKey: string; created: boolean };
 }> {
   const results = {
     processed: 0,
     failed: 0,
     errors: [] as string[],
     suppliers: [] as string[],
+    settlementPeriodCreated: undefined as { periodKey: string; created: boolean } | undefined,
   };
+
+  // Create settlement period for this frequency if applicable
+  const periodType = frequencyToPeriodType(frequency);
+  if (periodType && !dryRun) {
+    try {
+      // Get the most recent completed period for this frequency
+      const periods = getPeriodsForFrequency(periodType, new Date(), 1);
+      if (periods.length > 0) {
+        const currentPeriod = periods[0]; // The most recent completed period
+        const result = await getOrCreateSettlementPeriodByPeriodKey(currentPeriod.key);
+        if (result) {
+          results.settlementPeriodCreated = {
+            periodKey: currentPeriod.key,
+            created: result.created,
+          };
+          console.log(
+            `Settlement period ${currentPeriod.key}: ${result.created ? "created" : "already exists"}`
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error creating settlement period:", error);
+      results.errors.push(
+        `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
+      );
+    }
+  }
 
   const suppliers = await getSuppliersByFrequency(frequency);
 
@@ -254,6 +302,7 @@ export async function POST(request: NextRequest) {
           failed: number;
           errors: string[];
           suppliers: string[];
+          settlementPeriodCreated?: { periodKey: string; created: boolean };
         }
       >;
       totals: {
@@ -261,6 +310,7 @@ export async function POST(request: NextRequest) {
         failed: number;
         errors: string[];
       };
+      settlementPeriodsCreated: { frequency: string; periodKey: string; created: boolean }[];
     } = {
       timestamp: new Date().toISOString(),
       dryRun,
@@ -271,6 +321,7 @@ export async function POST(request: NextRequest) {
         failed: 0,
         errors: [],
       },
+      settlementPeriodsCreated: [],
     };
 
     // Determine which frequencies to process
@@ -309,6 +360,14 @@ export async function POST(request: NextRequest) {
       results.totals.processed += frequencyResults.processed;
       results.totals.failed += frequencyResults.failed;
       results.totals.errors.push(...frequencyResults.errors);
+
+      // Track settlement periods created
+      if (frequencyResults.settlementPeriodCreated) {
+        results.settlementPeriodsCreated.push({
+          frequency,
+          ...frequencyResults.settlementPeriodCreated,
+        });
+      }
     }
 
     return NextResponse.json({

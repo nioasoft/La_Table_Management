@@ -229,13 +229,36 @@ function parseB110Record(line: string): BkmvAccount | null {
     // So accountCode = accountKey.substring(5, 10)
     const accountCode = accountKey.substring(5, 10).trim();
 
+    // Extract account type (e.g., "ספקים") from multiple possible locations
+    // Old format: position 200 (B110_FIELDS.ACCOUNT_TYPE)
+    let accountType = extractField(line, B110_FIELDS.ACCOUNT_TYPE);
+
+    // Try to extract from description in old format:
+    // Pattern: 12 zeros + 3-digit sort + Hebrew account type (e.g., "000000000000200ספקים")
+    if (!accountType) {
+      const typeMatch = accountDescription.match(/0{12}\d{3}([א-ת\s]+)/);
+      if (typeMatch && typeMatch[1]) {
+        accountType = typeMatch[1].trim();
+      }
+    }
+
+    // New format: accountType is at position 117-147
+    if (!accountType) {
+      const newFormatType = line.substring(117, 147).trim();
+      // Filter out addresses (contain numbers) - only keep pure Hebrew type names
+      // Account types are short Hebrew words like "ספקים", "עובדים", "בנק"
+      if (newFormatType && /^[א-ת\s]+$/.test(newFormatType) && newFormatType.length <= 20) {
+        accountType = newFormatType;
+      }
+    }
+
     return {
       companyId: extractField(line, B110_FIELDS.COMPANY_ID),
       accountKey,
       accountCode,
       accountName,
       accountDescription: accountDescription,
-      accountType: extractField(line, B110_FIELDS.ACCOUNT_TYPE),
+      accountType,
       accountSort,
     };
   } catch (error) {
@@ -672,4 +695,63 @@ export function getUniqueAccountSorts(supplierSummary: Map<string, SupplierPurch
   }
 
   return Array.from(sorts).sort();
+}
+
+/**
+ * Account sort label with count information
+ */
+export interface AccountSortLabel {
+  sort: string;
+  label: string;
+  count: number;
+}
+
+/**
+ * Get account sort codes with their labels (account types) and transaction counts
+ * Returns array of objects with sort code, label (account type name), and count
+ * Useful for UI dropdowns that need to show meaningful names instead of just codes
+ *
+ * @example
+ * // Returns: [{ sort: "200", label: "ספקים", count: 45 }, { sort: "330", label: "עובדים", count: 12 }]
+ */
+export function getAccountSortLabels(parseResult: BkmvParseResult): AccountSortLabel[] {
+  // Build mapping from account sort to account type (e.g., "200" → "ספקים")
+  const sortToType = new Map<string, string>();
+  for (const account of parseResult.accounts) {
+    if (account.accountSort && account.accountType) {
+      // Only store the first mapping we find for each sort code
+      if (!sortToType.has(account.accountSort)) {
+        sortToType.set(account.accountSort, account.accountType);
+      }
+    }
+  }
+
+  // Count transactions for each account sort
+  const sortCounts = new Map<string, number>();
+  for (const summary of parseResult.supplierSummary.values()) {
+    for (const tx of summary.transactions) {
+      if (tx.accountSort) {
+        sortCounts.set(tx.accountSort, (sortCounts.get(tx.accountSort) || 0) + 1);
+      }
+    }
+  }
+
+  // Get unique sorts from supplier summary
+  const sorts = getUniqueAccountSorts(parseResult.supplierSummary);
+
+  return sorts.map(sort => ({
+    sort,
+    label: sortToType.get(sort) || sort, // Use sort code as fallback label
+    count: sortCounts.get(sort) || 0,
+  }));
+}
+
+/**
+ * Find the account sort code for a given account type label (e.g., "ספקים" → "200" or "30")
+ * Useful for setting smart defaults when "200" doesn't exist in a new format file
+ */
+export function findAccountSortByType(parseResult: BkmvParseResult, accountType: string): string | undefined {
+  const labels = getAccountSortLabels(parseResult);
+  const match = labels.find(l => l.label === accountType);
+  return match?.sort;
 }

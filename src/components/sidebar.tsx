@@ -204,6 +204,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/reports/files",
                 icon: <Files className="h-4 w-4" />,
               },
+              {
+                label: he.sidebar.subNavigation.supplierFilesReport,
+                href: "/admin/reports/supplier-files",
+                icon: <FileUp className="h-4 w-4" />,
+              },
             ],
           },
           {

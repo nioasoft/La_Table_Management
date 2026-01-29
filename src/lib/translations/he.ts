@@ -2906,6 +2906,7 @@ export const he = {
       unauthorizedReport: "ספקים לא מורשים",
       depositsReport: "מעקב פיקדונות",
       filesReport: "ניהול קבצים",
+      supplierFilesReport: "נתוני קבצי ספקים",
       generalReports: "דוחות כלליים",
 
       // Settings
