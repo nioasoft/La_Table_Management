@@ -449,27 +449,25 @@ export async function getSettlementHistory(
  * Get filter options for the settlement simple page
  */
 export async function getSettlementSimpleFilterOptions(): Promise<SettlementSimpleFilterOptions> {
-  // Get active suppliers that have commissions
+  // Get all active suppliers (without requiring commissions)
   const suppliers = await database
-    .selectDistinct({
+    .select({
       id: supplier.id,
       name: supplier.name,
       code: supplier.code,
     })
     .from(supplier)
-    .innerJoin(commission, eq(supplier.id, commission.supplierId))
     .where(eq(supplier.isActive, true))
     .orderBy(supplier.name);
 
-  // Get active franchisees
+  // Get all active franchisees (without requiring commissions)
   const franchisees = await database
-    .selectDistinct({
+    .select({
       id: franchisee.id,
       name: franchisee.name,
       code: franchisee.code,
     })
     .from(franchisee)
-    .innerJoin(commission, eq(franchisee.id, commission.franchiseeId))
     .where(eq(franchisee.isActive, true))
     .orderBy(franchisee.name);
 
