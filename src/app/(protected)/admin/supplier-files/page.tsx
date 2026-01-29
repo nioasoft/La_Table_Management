@@ -811,7 +811,7 @@ export default function SupplierFilesPage() {
             </CardTitle>
             <CardDescription>
               {selectedPeriodKey && selectedSupplier
-                ? `העלה קובץ ${selectedSupplier.fileMapping?.fileType.toUpperCase()} מהספק`
+                ? `העלה קובץ ${selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? 'קובץ'} מהספק`
                 : "בחר ספק ותקופה תחילה"}
             </CardDescription>
           </CardHeader>
@@ -860,7 +860,7 @@ export default function SupplierFilesPage() {
                     </div>
                     {selectedSupplier && (
                       <p className="text-xs text-muted-foreground">
-                        קבצים נתמכים: {selectedSupplier.fileMapping?.fileType.toUpperCase()}
+                        קבצים נתמכים: {selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? 'N/A'}
                       </p>
                     )}
                   </>
