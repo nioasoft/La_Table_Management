@@ -88,6 +88,14 @@ export function PeriodSelector({
     fetchPeriods();
   }, [supplierId]);
 
+  // Auto-select the latest period when periods are loaded and no selection exists
+  React.useEffect(() => {
+    if (periods.length > 0 && !selectedPeriodKey) {
+      // periods[0] is the latest period (sorted by endDate descending)
+      onSelect(periods[0].key);
+    }
+  }, [periods, selectedPeriodKey, onSelect]);
+
   // Handle selection
   const handleSelect = (periodKey: string) => {
     const selectedPeriod = periods.find((p) => p.key === periodKey);

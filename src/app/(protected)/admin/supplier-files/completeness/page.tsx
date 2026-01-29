@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -125,20 +124,6 @@ export default function SupplierCompletenessPage() {
   const brands = brandsData?.brands || [];
   const suppliers = completenessData?.suppliers || [];
 
-  // Calculate stats
-  const stats = suppliers.reduce(
-    (acc, s) => ({
-      approved: acc.approved + s.stats.approved,
-      pending: acc.pending + s.stats.pending,
-      missing: acc.missing + s.stats.missing,
-      total: acc.total + s.stats.total,
-    }),
-    { approved: 0, pending: 0, missing: 0, total: 0 }
-  );
-  const completionPct = stats.total > 0
-    ? Math.round(((stats.approved + stats.pending) / stats.total) * 100)
-    : 0;
-
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
   if (isSessionPending || isLoading) {
@@ -172,7 +157,7 @@ export default function SupplierCompletenessPage() {
         </div>
       </div>
 
-      {/* Filters + Summary Row */}
+      {/* Filters Row */}
       <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
         <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
           <SelectTrigger className="w-24 h-8">
@@ -197,26 +182,7 @@ export default function SupplierCompletenessPage() {
           </SelectContent>
         </Select>
 
-        <div className="h-6 w-px bg-border mx-2" />
-
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-muted-foreground">{suppliers.length} ספקים</span>
-          <span className="flex items-center gap-1">
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-            <span className="text-green-600 font-medium">{stats.approved}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5 text-amber-500" />
-            <span className="text-amber-600 font-medium">{stats.pending}</span>
-          </span>
-          <span className="flex items-center gap-1">
-            <XCircle className="h-3.5 w-3.5 text-red-500" />
-            <span className="text-red-600 font-medium">{stats.missing}</span>
-          </span>
-          <Badge variant={completionPct >= 80 ? "success" : completionPct >= 50 ? "warning" : "destructive"}>
-            {completionPct}%
-          </Badge>
-        </div>
+        <span className="text-sm text-muted-foreground">{suppliers.length} ספקים</span>
       </div>
 
       {/* Table */}
@@ -470,20 +436,13 @@ function SupplierRow({
   return (
     <TableRow className="hover:bg-muted/50">
       <TableCell className="sticky right-0 bg-background z-10 py-1.5">
-        <div className="flex items-center gap-2">
-          <Link
-            href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}
-            className="font-medium truncate max-w-[160px] hover:underline hover:text-primary"
-            title={supplier.supplier.name}
-          >
-            {supplier.supplier.name}
-          </Link>
-          {supplier.brands.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({supplier.brands.map(b => b.nameHe.charAt(0)).join("")})
-            </span>
-          )}
-        </div>
+        <Link
+          href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}
+          className="font-medium truncate max-w-[160px] hover:underline hover:text-primary"
+          title={supplier.supplier.name}
+        >
+          {supplier.supplier.name}
+        </Link>
       </TableCell>
       <TableCell className="text-center py-1.5">
         <span className="text-xs text-muted-foreground">

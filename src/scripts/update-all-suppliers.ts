@@ -242,10 +242,11 @@ const supplierConfigs: Record<
     commissionRate: "17",
     fileMapping: {
       fileType: "xlsx",
-      columnMappings: { franchiseeColumn: "B", amountColumn: "F" },
-      headerRow: 3,
-      dataStartRow: 4,
-      sheetName: "עמלה",
+      columnMappings: { franchiseeColumn: "B", amountColumn: "C" },
+      headerRow: 2,
+      dataStartRow: 3,
+      sheetName: "פט ויני",
+      skipKeywords: ["סה\"כ"],
     },
   },
   PASTA_LA_CASA: {

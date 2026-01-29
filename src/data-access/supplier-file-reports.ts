@@ -230,18 +230,35 @@ export async function getSupplierFilesReport(
   }
 
   // Filter by brand if specified
-  let supplierIdsForBrand: string[] | null = null;
   if (filters.brandId) {
     const supplierBrands = await database
       .select({ supplierId: supplierBrand.supplierId })
       .from(supplierBrand)
       .where(eq(supplierBrand.brandId, filters.brandId));
-    supplierIdsForBrand = supplierBrands.map((sb) => sb.supplierId);
+    const supplierIdsForBrand = supplierBrands.map((sb) => sb.supplierId);
 
     if (supplierIdsForBrand.length > 0) {
       finalQuery = finalQuery.where(
         inArray(supplierFileUpload.supplierId, supplierIdsForBrand)
       ) as typeof filesQuery;
+    } else {
+      // No suppliers associated with this brand - return empty result
+      return {
+        summary: {
+          totalFiles: 0,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          totalCalculatedCommission: 0,
+          supplierCount: 0,
+          periodRange: {
+            startDate: null,
+            endDate: null,
+          },
+          generatedAt: new Date().toISOString(),
+        },
+        bySupplier: [],
+        files: [],
+      };
     }
   }
 

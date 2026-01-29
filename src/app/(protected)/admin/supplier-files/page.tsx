@@ -232,8 +232,14 @@ export default function SupplierFilesPage() {
   // Fetch review count for badge
   const { data: reviewCount } = useSupplierFileReviewCount();
 
-  const suppliers: SupplierWithMapping[] = suppliersData || [];
-  const franchisees: Franchisee[] = franchiseesData?.franchisees || [];
+  const suppliers: SupplierWithMapping[] = useMemo(
+    () => suppliersData || [],
+    [suppliersData]
+  );
+  const franchisees: Franchisee[] = useMemo(
+    () => franchiseesData?.franchisees || [],
+    [franchiseesData?.franchisees]
+  );
 
   const sortedFranchisees = useMemo(() => {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
@@ -328,6 +334,49 @@ export default function SupplierFilesPage() {
 
     setIsSaving(true);
     try {
+      // Build franchiseeMatches first so we can calculate accurate matchStats
+      const franchiseeMatches = result.data.map(row => {
+        const match = row.matchResult;
+        let matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none" = "none";
+
+        if (row.isBlacklisted) {
+          matchType = "blacklisted";
+        } else if (row.manualMatch) {
+          matchType = "manual";
+        } else if (match?.matchedFranchisee) {
+          matchType = match.confidence === 1 ? "exact" : "fuzzy";
+        }
+
+        return {
+          originalName: row.franchisee,
+          rowNumber: row.rowNumber,
+          grossAmount: row.grossAmount,
+          netAmount: row.netAmount,
+          matchedFranchiseeId: row.manualMatch?.franchiseeId || match?.matchedFranchisee?.id || null,
+          matchedFranchiseeName: row.manualMatch?.franchiseeName || match?.matchedFranchisee?.name || null,
+          confidence: row.manualMatch ? 100 : (match?.confidence || 0) * 100,
+          matchType,
+          requiresReview: !row.isBlacklisted && !row.manualMatch && (match?.requiresReview || !match?.matchedFranchisee),
+        };
+      });
+
+      // Calculate matchStats from current state (including manual matches and blacklisted)
+      const recalculatedStats = {
+        total: franchiseeMatches.length,
+        exactMatches: franchiseeMatches.filter(m =>
+          m.matchType === "exact" || m.matchType === "manual"
+        ).length,
+        fuzzyMatches: franchiseeMatches.filter(m =>
+          m.matchType === "fuzzy"
+        ).length,
+        unmatched: franchiseeMatches.filter(m =>
+          m.matchType === "none"
+        ).length,
+        blacklisted: franchiseeMatches.filter(m =>
+          m.matchType === "blacklisted"
+        ).length,
+      };
+
       // Convert ProcessingResult to SupplierFileProcessingResult format
       const processingResultForDB: SupplierFileProcessingResult = {
         totalRows: result.summary.totalRows,
@@ -336,36 +385,8 @@ export default function SupplierFilesPage() {
         totalGrossAmount: result.summary.totalGrossAmount,
         totalNetAmount: result.summary.totalNetAmount,
         vatAdjusted: result.summary.vatIncluded,
-        matchStats: {
-          total: result.matchSummary?.total || 0,
-          exactMatches: result.matchSummary?.matched || 0,
-          fuzzyMatches: result.matchSummary?.needsReview || 0,
-          unmatched: result.matchSummary?.unmatched || 0,
-        },
-        franchiseeMatches: result.data.map(row => {
-          const match = row.matchResult;
-          let matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none" = "none";
-
-          if (row.isBlacklisted) {
-            matchType = "blacklisted";
-          } else if (row.manualMatch) {
-            matchType = "manual";
-          } else if (match?.matchedFranchisee) {
-            matchType = match.confidence === 1 ? "exact" : "fuzzy";
-          }
-
-          return {
-            originalName: row.franchisee,
-            rowNumber: row.rowNumber,
-            grossAmount: row.grossAmount,
-            netAmount: row.netAmount,
-            matchedFranchiseeId: row.manualMatch?.franchiseeId || match?.matchedFranchisee?.id || null,
-            matchedFranchiseeName: row.manualMatch?.franchiseeName || match?.matchedFranchisee?.name || null,
-            confidence: row.manualMatch ? 100 : (match?.confidence || 0) * 100,
-            matchType,
-            requiresReview: !row.isBlacklisted && !row.manualMatch && (match?.requiresReview || !match?.matchedFranchisee),
-          };
-        }),
+        matchStats: recalculatedStats,
+        franchiseeMatches,
         processedAt: new Date().toISOString(),
       };
 
@@ -688,6 +709,16 @@ export default function SupplierFilesPage() {
     return { type: "unmatched" as const, name: null };
   };
 
+  // Check if all rows can be auto-approved (no unmatched or fuzzy)
+  const canAutoApprove = useMemo(() => {
+    if (!processingResult?.data) return false;
+    return processingResult.data.every(row => {
+      const match = getEffectiveMatch(row);
+      // Auto-approve if exact match, manual match, or blacklisted
+      return match.type === "exact" || match.type === "manual" || match.type === "blacklisted";
+    });
+  }, [processingResult?.data]);
+
   // Get status badge color
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -933,7 +964,7 @@ export default function SupplierFilesPage() {
                   </div>
                   <div className="rounded-lg border p-2.5 text-center">
                     <p className="text-xl font-bold">{formatCurrency(processingResult.summary.totalNetAmount)}</p>
-                    <p className="text-xs text-muted-foreground">סה&quot;כ נטו</p>
+                    <p className="text-xs text-muted-foreground">סה&quot;כ לפני מע״מ</p>
                   </div>
                   {processingResult.matchSummary && (
                     <>
@@ -950,15 +981,21 @@ export default function SupplierFilesPage() {
                 </div>
 
                 {/* Save to Review Queue */}
-                <div className="flex items-center justify-between rounded-lg border bg-muted/50 p-3">
+                <div className={`flex items-center justify-between rounded-lg border p-3 ${canAutoApprove ? "bg-green-50 border-green-200" : "bg-muted/50"}`}>
                   <div>
                     <p className="font-medium text-sm">
-                      {savedFileId ? "הקובץ נשמר לתור הבדיקה" : "שמירה לתור הבדיקה"}
+                      {savedFileId
+                        ? "הקובץ נשמר"
+                        : canAutoApprove
+                          ? "כל השורות מותאמות - הקובץ יאושר אוטומטית"
+                          : "שמירה לתור הבדיקה"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {savedFileId
-                        ? "ניתן לצפות בקובץ ולאשר/לדחות אותו בתור האישורים"
-                        : "שמור את הקובץ כדי לאפשר בדיקה ואישור"}
+                        ? "ניתן לצפות בקובץ בתור האישורים"
+                        : canAutoApprove
+                          ? "הקובץ יישמר ויאושר ללא צורך בבדיקה נוספת"
+                          : "שמור את הקובץ כדי לאפשר בדיקה ואישור"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -972,6 +1009,8 @@ export default function SupplierFilesPage() {
                     ) : (
                       <Button
                         size="sm"
+                        variant={canAutoApprove ? "default" : "secondary"}
+                        className={canAutoApprove ? "bg-green-600 hover:bg-green-700" : ""}
                         onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey)}
                         disabled={isSaving || !processingResult.success}
                       >
@@ -979,6 +1018,11 @@ export default function SupplierFilesPage() {
                           <>
                             <Loader2 className="h-4 w-4 me-2 animate-spin" />
                             שומר...
+                          </>
+                        ) : canAutoApprove ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 me-2" />
+                            שמור ואשר
                           </>
                         ) : (
                           <>
@@ -1075,8 +1119,8 @@ export default function SupplierFilesPage() {
                             <TableHead>זכיין (מקובץ)</TableHead>
                             <TableHead>התאמה</TableHead>
                             <TableHead>סטטוס</TableHead>
-                            <TableHead>כולל מע"מ</TableHead>
-                            <TableHead>לפני מע"מ</TableHead>
+                            <TableHead>כולל מע&quot;מ</TableHead>
+                            <TableHead>לפני מע&quot;מ</TableHead>
                             <TableHead className="w-[100px]">פעולות</TableHead>
                           </TableRow>
                         </TableHeader>
