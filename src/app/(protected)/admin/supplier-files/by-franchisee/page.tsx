@@ -77,9 +77,18 @@ export default function SupplierFilesByFranchiseePage() {
     const startMonth = (quarter - 1) * 3;
     const start = new Date(year, startMonth, 1);
     const end = new Date(year, startMonth + 3, 0); // Last day of quarter
+
+    // Format as local date (YYYY-MM-DD) without timezone conversion
+    const formatLocalDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
     return {
-      startDate: start.toISOString().split("T")[0],
-      endDate: end.toISOString().split("T")[0],
+      startDate: formatLocalDate(start),
+      endDate: formatLocalDate(end),
     };
   }, [year, quarter]);
 

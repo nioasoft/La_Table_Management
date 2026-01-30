@@ -163,3 +163,20 @@ The application is configured for Hebrew language by default:
 
 - We keep a dedicated test user for QA. During active testing, this user can be temporarily promoted to `admin`.
 - After testing, the user must be demoted back to a regular, non-privileged state (role unset and status not active).
+
+## Date Formatting (Important!)
+
+**Never use `toISOString()` for date formatting in user-facing code!**
+
+`toISOString()` converts to UTC which shifts dates by timezone offset (Israel is UTC+2/3).
+This causes bugs where October 1st becomes September 30th.
+
+**Correct way to format dates as YYYY-MM-DD:**
+```typescript
+const formatLocalDate = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+```

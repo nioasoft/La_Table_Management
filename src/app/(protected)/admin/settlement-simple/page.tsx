@@ -62,9 +62,17 @@ function getDefaultPeriod(): { start: string; end: string } {
   const start = new Date(startYear, startMonth, 1);
   const end = new Date(startYear, startMonth + 3, 0);
 
+  // Format as local date (YYYY-MM-DD) without timezone conversion
+  const formatLocalDate = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
+    start: formatLocalDate(start),
+    end: formatLocalDate(end),
   };
 }
 

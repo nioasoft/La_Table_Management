@@ -50,11 +50,19 @@ export async function GET(request: NextRequest) {
 
     const filters = result.data;
 
-    // Convert Date objects to ISO strings for the data access layer
+    // Format as local date (YYYY-MM-DD) without timezone conversion
+    const formatLocalDate = (date: Date) => {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    // Convert Date objects to date strings for the data access layer
     const dataAccessFilters = {
       ...filters,
-      startDate: filters.startDate ? filters.startDate.toISOString().split('T')[0] : undefined,
-      endDate: filters.endDate ? filters.endDate.toISOString().split('T')[0] : undefined,
+      startDate: filters.startDate ? formatLocalDate(filters.startDate) : undefined,
+      endDate: filters.endDate ? formatLocalDate(filters.endDate) : undefined,
     };
 
     // Fetch report data and filter options in parallel
