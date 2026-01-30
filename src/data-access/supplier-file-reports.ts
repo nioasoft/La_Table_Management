@@ -452,6 +452,7 @@ export interface FranchiseeSupplierEntry {
   grossAmount: number;
   netAmount: number;
   matchType: string;
+  createdAt: Date; // Added for deduplication - tracks which file is newest
 }
 
 export interface FranchiseeBreakdownEntry {
@@ -536,6 +537,7 @@ export async function getFranchiseeBreakdownReport(
       processingResult: supplierFileUpload.processingResult,
       periodStartDate: supplierFileUpload.periodStartDate,
       periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt, // Added for deduplication
       supplierName: supplier.name,
     })
     .from(supplierFileUpload)
@@ -564,8 +566,6 @@ export async function getFranchiseeBreakdownReport(
     franchiseeName: string;
     brandId: string;
     brandName: string;
-    totalGrossAmount: number;
-    totalNetAmount: number;
     suppliers: Map<string, FranchiseeSupplierEntry>;
   }>();
 
@@ -596,54 +596,63 @@ export async function getFranchiseeBreakdownReport(
           franchiseeName: franchiseeInfo.name,
           brandId: franchiseeInfo.brandId,
           brandName: franchiseeInfo.brandName,
-          totalGrossAmount: 0,
-          totalNetAmount: 0,
           suppliers: new Map(),
         };
         franchiseeDataMap.set(match.matchedFranchiseeId, franchiseeData);
       }
 
-      // Add amounts
-      franchiseeData.totalGrossAmount += match.grossAmount || 0;
-      franchiseeData.totalNetAmount += match.netAmount || 0;
-
-      // Add supplier entry (aggregate by supplier for this franchisee)
-      const supplierKey = `${file.supplierId}-${file.id}`;
+      // Add supplier entry - group by supplier only, keep only the LATEST file per supplier
+      const supplierKey = file.supplierId;
       const existingSupplier = franchiseeData.suppliers.get(supplierKey);
+
       if (existingSupplier) {
-        existingSupplier.grossAmount += match.grossAmount || 0;
-        existingSupplier.netAmount += match.netAmount || 0;
-      } else {
-        franchiseeData.suppliers.set(supplierKey, {
-          supplierId: file.supplierId,
-          supplierName: file.supplierName,
-          fileId: file.id,
-          fileName: file.originalFileName,
-          originalName: match.originalName,
-          grossAmount: match.grossAmount || 0,
-          netAmount: match.netAmount || 0,
-          matchType: match.matchType,
-        });
+        // Same file - aggregate amounts (same franchisee listed twice in one file)
+        if (existingSupplier.fileId === file.id) {
+          existingSupplier.grossAmount += match.grossAmount || 0;
+          existingSupplier.netAmount += match.netAmount || 0;
+          continue;
+        }
+        // Different file - keep only the newer one
+        if (file.createdAt <= existingSupplier.createdAt) {
+          continue; // Skip - we already have a newer file
+        }
+        // This file is newer - will replace below
       }
+
+      franchiseeData.suppliers.set(supplierKey, {
+        supplierId: file.supplierId,
+        supplierName: file.supplierName,
+        fileId: file.id,
+        fileName: file.originalFileName,
+        originalName: match.originalName,
+        grossAmount: match.grossAmount || 0,
+        netAmount: match.netAmount || 0,
+        matchType: match.matchType,
+        createdAt: file.createdAt, // Track for comparison
+      });
     }
   }
 
   // Convert to array and sort by total amount
+  // Calculate totals from supplier entries (which only contain latest file per supplier)
   const franchisees: FranchiseeBreakdownEntry[] = Array.from(
     franchiseeDataMap.values()
   )
-    .map((data) => ({
-      franchiseeId: data.franchiseeId,
-      franchiseeName: data.franchiseeName,
-      brandId: data.brandId,
-      brandName: data.brandName,
-      totalGrossAmount: Math.round(data.totalGrossAmount * 100) / 100,
-      totalNetAmount: Math.round(data.totalNetAmount * 100) / 100,
-      supplierCount: data.suppliers.size,
-      suppliers: Array.from(data.suppliers.values()).sort(
-        (a, b) => b.netAmount - a.netAmount
-      ),
-    }))
+    .map((data) => {
+      const suppliersList = Array.from(data.suppliers.values());
+      const totalGross = suppliersList.reduce((sum, s) => sum + s.grossAmount, 0);
+      const totalNet = suppliersList.reduce((sum, s) => sum + s.netAmount, 0);
+      return {
+        franchiseeId: data.franchiseeId,
+        franchiseeName: data.franchiseeName,
+        brandId: data.brandId,
+        brandName: data.brandName,
+        totalGrossAmount: Math.round(totalGross * 100) / 100,
+        totalNetAmount: Math.round(totalNet * 100) / 100,
+        supplierCount: data.suppliers.size,
+        suppliers: suppliersList.sort((a, b) => b.netAmount - a.netAmount),
+      };
+    })
     .sort((a, b) => b.totalNetAmount - a.totalNetAmount);
 
   // Calculate summary
