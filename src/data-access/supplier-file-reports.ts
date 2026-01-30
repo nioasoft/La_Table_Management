@@ -12,6 +12,7 @@ import {
   supplierBrand,
   brand,
   user,
+  franchisee,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
 import { eq, and, sql, desc, gte, lte, inArray } from "drizzle-orm";
@@ -436,4 +437,233 @@ export async function getSupplierFileById(fileId: string): Promise<{
     .limit(1);
 
   return result[0] || null;
+}
+
+// ============================================================================
+// FRANCHISEE BREAKDOWN REPORT
+// ============================================================================
+
+export interface FranchiseeSupplierEntry {
+  supplierId: string;
+  supplierName: string;
+  fileId: string;
+  fileName: string;
+  originalName: string;
+  grossAmount: number;
+  netAmount: number;
+  matchType: string;
+}
+
+export interface FranchiseeBreakdownEntry {
+  franchiseeId: string;
+  franchiseeName: string;
+  brandId: string;
+  brandName: string;
+  totalGrossAmount: number;
+  totalNetAmount: number;
+  supplierCount: number;
+  suppliers: FranchiseeSupplierEntry[];
+}
+
+export interface FranchiseeBreakdownReport {
+  summary: {
+    totalFranchisees: number;
+    totalGrossAmount: number;
+    totalNetAmount: number;
+    totalFiles: number;
+    generatedAt: string;
+  };
+  franchisees: FranchiseeBreakdownEntry[];
+}
+
+export interface FranchiseeBreakdownFilters {
+  startDate?: string;
+  endDate?: string;
+  brandId?: string;
+}
+
+/**
+ * Get supplier files data grouped by franchisee
+ * Shows which suppliers reported amounts for each franchisee
+ */
+export async function getFranchiseeBreakdownReport(
+  filters: FranchiseeBreakdownFilters = {}
+): Promise<FranchiseeBreakdownReport> {
+  // Build conditions array
+  const conditions: ReturnType<typeof eq>[] = [
+    inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"]),
+  ];
+
+  // Apply date filters
+  if (filters.startDate) {
+    conditions.push(gte(supplierFileUpload.periodStartDate, filters.startDate));
+  }
+
+  if (filters.endDate) {
+    conditions.push(lte(supplierFileUpload.periodEndDate, filters.endDate));
+  }
+
+  // Filter by brand if specified (through supplier-brand relationship)
+  if (filters.brandId) {
+    const supplierBrandsResult = await database
+      .select({ supplierId: supplierBrand.supplierId })
+      .from(supplierBrand)
+      .where(eq(supplierBrand.brandId, filters.brandId));
+    const supplierIdsForBrand = supplierBrandsResult.map((sb) => sb.supplierId);
+
+    if (supplierIdsForBrand.length > 0) {
+      conditions.push(inArray(supplierFileUpload.supplierId, supplierIdsForBrand));
+    } else {
+      // No suppliers for this brand
+      return {
+        summary: {
+          totalFranchisees: 0,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          totalFiles: 0,
+          generatedAt: new Date().toISOString(),
+        },
+        franchisees: [],
+      };
+    }
+  }
+
+  const rawFiles = await database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      originalFileName: supplierFileUpload.originalFileName,
+      processingResult: supplierFileUpload.processingResult,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      supplierName: supplier.name,
+    })
+    .from(supplierFileUpload)
+    .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+    .where(and(...conditions));
+
+  // Get all franchisees with their brand info
+  const franchiseesData = await database
+    .select({
+      id: franchisee.id,
+      name: franchisee.name,
+      brandId: franchisee.brandId,
+      brandName: brand.nameHe,
+    })
+    .from(franchisee)
+    .innerJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(eq(franchisee.isActive, true));
+
+  const franchiseeMap = new Map(
+    franchiseesData.map((f) => [f.id, f])
+  );
+
+  // Group data by franchisee
+  const franchiseeDataMap = new Map<string, {
+    franchiseeId: string;
+    franchiseeName: string;
+    brandId: string;
+    brandName: string;
+    totalGrossAmount: number;
+    totalNetAmount: number;
+    suppliers: Map<string, FranchiseeSupplierEntry>;
+  }>();
+
+  let totalFiles = 0;
+
+  for (const file of rawFiles) {
+    const processingResult = file.processingResult as SupplierFileProcessingResult | null;
+    if (!processingResult?.franchiseeMatches) continue;
+
+    totalFiles++;
+
+    for (const match of processingResult.franchiseeMatches) {
+      if (!match.matchedFranchiseeId) continue;
+
+      // Skip blacklisted entries
+      if (match.matchType === "blacklisted") continue;
+
+      const franchiseeInfo = franchiseeMap.get(match.matchedFranchiseeId);
+      if (!franchiseeInfo) continue;
+
+      // Apply brand filter at franchisee level too
+      if (filters.brandId && franchiseeInfo.brandId !== filters.brandId) continue;
+
+      let franchiseeData = franchiseeDataMap.get(match.matchedFranchiseeId);
+      if (!franchiseeData) {
+        franchiseeData = {
+          franchiseeId: match.matchedFranchiseeId,
+          franchiseeName: franchiseeInfo.name,
+          brandId: franchiseeInfo.brandId,
+          brandName: franchiseeInfo.brandName,
+          totalGrossAmount: 0,
+          totalNetAmount: 0,
+          suppliers: new Map(),
+        };
+        franchiseeDataMap.set(match.matchedFranchiseeId, franchiseeData);
+      }
+
+      // Add amounts
+      franchiseeData.totalGrossAmount += match.grossAmount || 0;
+      franchiseeData.totalNetAmount += match.netAmount || 0;
+
+      // Add supplier entry (aggregate by supplier for this franchisee)
+      const supplierKey = `${file.supplierId}-${file.id}`;
+      const existingSupplier = franchiseeData.suppliers.get(supplierKey);
+      if (existingSupplier) {
+        existingSupplier.grossAmount += match.grossAmount || 0;
+        existingSupplier.netAmount += match.netAmount || 0;
+      } else {
+        franchiseeData.suppliers.set(supplierKey, {
+          supplierId: file.supplierId,
+          supplierName: file.supplierName,
+          fileId: file.id,
+          fileName: file.originalFileName,
+          originalName: match.originalName,
+          grossAmount: match.grossAmount || 0,
+          netAmount: match.netAmount || 0,
+          matchType: match.matchType,
+        });
+      }
+    }
+  }
+
+  // Convert to array and sort by total amount
+  const franchisees: FranchiseeBreakdownEntry[] = Array.from(
+    franchiseeDataMap.values()
+  )
+    .map((data) => ({
+      franchiseeId: data.franchiseeId,
+      franchiseeName: data.franchiseeName,
+      brandId: data.brandId,
+      brandName: data.brandName,
+      totalGrossAmount: Math.round(data.totalGrossAmount * 100) / 100,
+      totalNetAmount: Math.round(data.totalNetAmount * 100) / 100,
+      supplierCount: data.suppliers.size,
+      suppliers: Array.from(data.suppliers.values()).sort(
+        (a, b) => b.netAmount - a.netAmount
+      ),
+    }))
+    .sort((a, b) => b.totalNetAmount - a.totalNetAmount);
+
+  // Calculate summary
+  const totalGrossAmount = franchisees.reduce(
+    (sum, f) => sum + f.totalGrossAmount,
+    0
+  );
+  const totalNetAmount = franchisees.reduce(
+    (sum, f) => sum + f.totalNetAmount,
+    0
+  );
+
+  return {
+    summary: {
+      totalFranchisees: franchisees.length,
+      totalGrossAmount: Math.round(totalGrossAmount * 100) / 100,
+      totalNetAmount: Math.round(totalNetAmount * 100) / 100,
+      totalFiles,
+      generatedAt: new Date().toISOString(),
+    },
+    franchisees,
+  };
 }

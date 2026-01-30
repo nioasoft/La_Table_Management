@@ -771,6 +771,12 @@ export default function SupplierFilesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link href="/admin/supplier-files/by-franchisee">
+            <Button variant="outline">
+              <BarChart3 className="h-4 w-4 me-2" />
+              לפי זכיין
+            </Button>
+          </Link>
           <Link href="/admin/supplier-files/completeness">
             <Button variant="outline">
               <BarChart3 className="h-4 w-4 me-2" />
