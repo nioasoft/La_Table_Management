@@ -325,6 +325,17 @@ const supplierColumns: ColumnDef<SupplierFileSummary>[] = [
 ];
 
 // ============================================================================
+// HELPER: Row styling for suppliers with zero amounts
+// ============================================================================
+
+function getSupplierRowClassName(row: SupplierFileSummary): string | undefined {
+  if (row.totalNetAmount === 0 && row.totalGrossAmount === 0) {
+    return "bg-muted/30 text-muted-foreground";
+  }
+  return undefined;
+}
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -703,6 +714,7 @@ export default function SupplierFilesReportPage() {
                       rowKey="supplierId"
                       searchPlaceholder="חיפוש ספק..."
                       emptyMessage="אין נתונים להצגה"
+                      rowClassName={getSupplierRowClassName}
                     />
                   )}
                 </CardContent>

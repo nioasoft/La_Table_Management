@@ -92,6 +92,8 @@ export interface ReportDataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Highlight row on hover */
   highlightOnHover?: boolean;
+  /** Function to return custom className for a row */
+  rowClassName?: (row: T) => string | undefined;
 }
 
 // ============================================================================
@@ -113,6 +115,7 @@ export function ReportDataTable<T extends object>({
   className,
   onRowClick,
   highlightOnHover = true,
+  rowClassName,
 }: ReportDataTableProps<T>) {
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
@@ -334,7 +337,8 @@ export function ReportDataTable<T extends object>({
                   key={getRowKey(row, index)}
                   className={cn(
                     highlightOnHover && "hover:bg-muted/50",
-                    onRowClick && "cursor-pointer"
+                    onRowClick && "cursor-pointer",
+                    rowClassName?.(row)
                   )}
                   onClick={() => onRowClick?.(row)}
                 >
