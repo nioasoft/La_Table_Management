@@ -1,22 +1,25 @@
 /**
  * Custom parser for סובר לרנר (SOBER_LERNER) supplier files
  *
- * Problem: Grouped by month/franchisee, per-item commission calculation
+ * Problem: Grouped by month/franchisee, with pre-calculated totals
  * Structure:
- *   - Row 1: Headers - includes "סניף" (col 1/B), "כמות" (col 4/E), "עמלת רשת לפריט" (col 7/H)
+ *   - Row 1: Headers
  *   - Row 2+: Data rows grouped by month and franchisee
  *
  * Key columns:
  *   - Column A (0): Month (only filled on first row of month block)
  *   - Column B (1): Franchisee name ("סניף") - only filled on first row of franchisee block
  *   - Column E (4): Quantity ("כמות")
+ *   - Column F (5): Price per item ("מחיר לזכיין")
+ *   - Column G (6): Total amount for franchisee ("סהכ לזכיין") - PURCHASE AMOUNT
  *   - Column H (7): Commission per item ("עמלת רשת לפריט")
+ *   - Column I (8): Total commission ("סהכ עמלת רשת") - PRE-CALCULATED COMMISSION
  *
  * Logic:
- *   - Track current month and franchisee as we iterate
- *   - For each product row: calculate quantity * commission_per_item
- *   - Aggregate commission by franchisee
- *   - Note: This supplier has per-item commission, not percentage-based
+ *   - Track current franchisee as we iterate
+ *   - Read pre-calculated totals from columns G (purchase amount) and I (commission)
+ *   - Aggregate by franchisee
+ *   - Note: This supplier provides pre-calculated values, no need to calculate
  */
 
 import * as XLSX from "xlsx";
@@ -30,8 +33,8 @@ import { createFileProcessingError } from "../file-processing-errors";
 // Column indices (0-based)
 const MONTH_COL = 0; // Column A - חודש
 const FRANCHISEE_COL = 1; // Column B - סניף
-const QUANTITY_COL = 4; // Column E - כמות
-const COMMISSION_PER_ITEM_COL = 7; // Column H - עמלת רשת לפריט
+const TOTAL_AMOUNT_COL = 6; // Column G - סהכ לזכיין (purchase amount)
+const TOTAL_COMMISSION_COL = 8; // Column I - סהכ עמלת רשת (pre-calculated commission)
 
 // Row configuration
 const HEADER_ROW = 0; // Row 1 (0-indexed)
@@ -119,9 +122,9 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
       );
     }
 
-    // Track current franchisee and aggregate commissions
+    // Track current franchisee and aggregate amounts/commissions
     let currentFranchisee = "";
-    const franchiseeCommissions: Map<string, number> = new Map();
+    const franchiseeData: Map<string, { amount: number; commission: number }> = new Map();
     let skippedRows = 0;
 
     for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
@@ -148,54 +151,57 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      // Get quantity and commission per item
-      const quantity = parseNumericValue(row[QUANTITY_COL]);
-      const commissionPerItem = parseNumericValue(row[COMMISSION_PER_ITEM_COL]);
+      // Read pre-calculated totals from columns G (amount) and I (commission)
+      const totalAmount = parseNumericValue(row[TOTAL_AMOUNT_COL]);
+      const totalCommission = parseNumericValue(row[TOTAL_COMMISSION_COL]);
 
-      // Calculate commission for this row: quantity * commission_per_item
-      const rowCommission = quantity * commissionPerItem;
-
-      if (rowCommission !== 0) {
-        const existing = franchiseeCommissions.get(currentFranchisee) || 0;
-        franchiseeCommissions.set(currentFranchisee, existing + rowCommission);
+      // Aggregate by franchisee
+      if (totalAmount !== 0 || totalCommission !== 0) {
+        const existing = franchiseeData.get(currentFranchisee) || { amount: 0, commission: 0 };
+        franchiseeData.set(currentFranchisee, {
+          amount: existing.amount + totalAmount,
+          commission: existing.commission + totalCommission,
+        });
       }
     }
 
     // Convert to ParsedRowData
-    // Note: For per-item commission suppliers, we use the commission as both
-    // the amount and store it in preCalculatedCommission
+    // Purchase amount goes to grossAmount/netAmount, commission to preCalculatedCommission
+    let totalAmount = 0;
     let totalCommission = 0;
     let processedRows = 0;
     let rowNumber = 1;
 
-    for (const [franchisee, commission] of franchiseeCommissions.entries()) {
-      // Skip franchisees with zero or negative commission
-      if (commission <= 0) {
-        if (commission < 0) {
+    for (const [franchisee, { amount, commission }] of franchiseeData.entries()) {
+      // Skip franchisees with zero or negative amounts
+      if (amount <= 0) {
+        if (amount < 0) {
           warnings.push(
             createFileProcessingError("NEGATIVE_AMOUNT", {
-              details: `Franchisee "${franchisee}" has negative commission: ${commission}`,
-              value: String(commission),
+              details: `Franchisee "${franchisee}" has negative amount: ${amount}`,
+              value: String(amount),
             })
           );
         }
         continue;
       }
 
+      const roundedAmount = roundToTwoDecimals(amount);
       const roundedCommission = roundToTwoDecimals(commission);
 
-      // For per-item commission suppliers, the commission is pre-calculated
-      // We don't have a purchase amount for cross-reference, so we use commission as the amount
+      // Purchase amount (סהכ לזכיין) goes to grossAmount/netAmount
+      // Pre-calculated commission (סהכ עמלת רשת) goes to preCalculatedCommission
       data.push({
         franchisee,
         date: null,
-        grossAmount: roundedCommission,
-        netAmount: roundedCommission,
-        originalAmount: roundedCommission,
+        grossAmount: roundedAmount,
+        netAmount: roundedAmount,
+        originalAmount: roundedAmount,
         rowNumber: rowNumber++,
         preCalculatedCommission: roundedCommission,
       });
 
+      totalAmount += roundedAmount;
       totalCommission += roundedCommission;
       processedRows++;
     }
@@ -220,8 +226,8 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedRows,
       skippedRows,
-      totalCommission,
-      totalCommission
+      totalAmount,
+      totalAmount
     );
   } catch (error) {
     errors.push(

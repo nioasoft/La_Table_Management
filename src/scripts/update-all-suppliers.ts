@@ -198,7 +198,8 @@ const supplierConfigs: Record<
       customParser: true,
     },
   },
-  TUVIOT_HATZAFON: {
+  // Note: Database uses TAVIOT (with A), not TUVIOT (with U)
+  TAVIOT_HATZAFON: {
     commissionRate: "15",
     fileMapping: {
       fileType: "xlsx",

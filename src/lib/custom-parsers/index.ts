@@ -58,7 +58,8 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
     const { parseUnikoFile } = await import("./uniko-parser");
     return parseUnikoFile(buffer);
   },
-  TUVIOT_HATZAFON: async (buffer, vatRate) => {
+  // Note: Database uses TAVIOT (with A), not TUVIOT (with U)
+  TAVIOT_HATZAFON: async (buffer, vatRate) => {
     const { parseTuviotHatzafonFile } = await import("./tuviot-hatzafon-parser");
     return parseTuviotHatzafonFile(buffer);
   },
