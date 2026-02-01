@@ -49,6 +49,15 @@ export interface SupplierFileEntry {
   reviewNotes: string | null;
 }
 
+export interface SupplierFranchiseeEntry {
+  franchiseeId: string;
+  franchiseeName: string;
+  brandId: string;
+  brandName: string;
+  grossAmount: number;
+  netAmount: number;
+}
+
 export interface SupplierFileSummary {
   supplierId: string;
   supplierName: string;
@@ -57,6 +66,7 @@ export interface SupplierFileSummary {
   totalGrossAmount: number;
   totalNetAmount: number;
   totalCommission: number;
+  franchisees: SupplierFranchiseeEntry[];
 }
 
 export interface SupplierFilesReport {
@@ -277,21 +287,26 @@ export async function getSupplierFilesReport(
   }
   const dedupedFiles = Array.from(supplierLatestFile.values());
 
-  // Load franchisee brand mappings for brand filtering
-  let franchiseeBrandMap: Map<string, string> | null = null;
-  if (filters.brandId) {
-    const franchiseesData = await database
-      .select({
-        id: franchisee.id,
-        brandId: franchisee.brandId,
-      })
-      .from(franchisee)
-      .where(eq(franchisee.isActive, true));
+  // Load franchisee data with brand names for display and filtering
+  const franchiseesData = await database
+    .select({
+      id: franchisee.id,
+      name: franchisee.name,
+      brandId: franchisee.brandId,
+      brandName: brand.nameHe,
+    })
+    .from(franchisee)
+    .innerJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(eq(franchisee.isActive, true));
 
-    franchiseeBrandMap = new Map(
-      franchiseesData.map((f) => [f.id, f.brandId])
-    );
-  }
+  const franchiseeInfoMap = new Map(
+    franchiseesData.map((f) => [f.id, { name: f.name, brandId: f.brandId, brandName: f.brandName }])
+  );
+
+  // For brand filtering, create a simple brandId map
+  const franchiseeBrandMap: Map<string, string> | null = filters.brandId
+    ? new Map(franchiseesData.map((f) => [f.id, f.brandId]))
+    : null;
 
   // Process files and calculate commissions
   const files: SupplierFileEntry[] = dedupedFiles.map((file) => {
@@ -376,31 +391,91 @@ export async function getSupplierFilesReport(
     };
   });
 
-  // Calculate summary by supplier
-  const supplierMap = new Map<string, SupplierFileSummary>();
-  for (const file of files) {
-    const existing = supplierMap.get(file.supplierId);
-    if (existing) {
-      existing.fileCount++;
-      existing.totalGrossAmount += file.totalGrossAmount;
-      existing.totalNetAmount += file.totalNetAmount;
-      existing.totalCommission += file.calculatedCommission;
-    } else {
-      supplierMap.set(file.supplierId, {
+  // Calculate summary by supplier with franchisee details
+  // We need to go back to raw files to get franchisee breakdown
+  const supplierMap = new Map<string, {
+    supplierId: string;
+    supplierName: string;
+    supplierCode: string;
+    fileCount: number;
+    totalGrossAmount: number;
+    totalNetAmount: number;
+    totalCommission: number;
+    franchiseeMap: Map<string, SupplierFranchiseeEntry>;
+  }>();
+
+  for (const file of dedupedFiles) {
+    const fileEntry = files.find((f) => f.id === file.id);
+    if (!fileEntry) continue;
+
+    const processingResult = file.processingResult as SupplierFileProcessingResult | null;
+
+    let existing = supplierMap.get(file.supplierId);
+    if (!existing) {
+      existing = {
         supplierId: file.supplierId,
         supplierName: file.supplierName,
         supplierCode: file.supplierCode,
-        fileCount: 1,
-        totalGrossAmount: file.totalGrossAmount,
-        totalNetAmount: file.totalNetAmount,
-        totalCommission: file.calculatedCommission,
-      });
+        fileCount: 0,
+        totalGrossAmount: 0,
+        totalNetAmount: 0,
+        totalCommission: 0,
+        franchiseeMap: new Map(),
+      };
+      supplierMap.set(file.supplierId, existing);
+    }
+
+    existing.fileCount++;
+    existing.totalGrossAmount += fileEntry.totalGrossAmount;
+    existing.totalNetAmount += fileEntry.totalNetAmount;
+    existing.totalCommission += fileEntry.calculatedCommission;
+
+    // Extract franchisee details from processing result
+    if (processingResult?.franchiseeMatches) {
+      for (const match of processingResult.franchiseeMatches) {
+        if (!match.matchedFranchiseeId) continue;
+        if (match.matchType === "blacklisted") continue;
+
+        // Apply brand filter at franchisee level
+        if (filters.brandId && franchiseeBrandMap) {
+          if (franchiseeBrandMap.get(match.matchedFranchiseeId) !== filters.brandId) continue;
+        }
+
+        const franchiseeInfo = franchiseeInfoMap.get(match.matchedFranchiseeId);
+        if (!franchiseeInfo) continue;
+
+        const existingFranchisee = existing.franchiseeMap.get(match.matchedFranchiseeId);
+        if (existingFranchisee) {
+          existingFranchisee.grossAmount += match.grossAmount || 0;
+          existingFranchisee.netAmount += match.netAmount || 0;
+        } else {
+          existing.franchiseeMap.set(match.matchedFranchiseeId, {
+            franchiseeId: match.matchedFranchiseeId,
+            franchiseeName: franchiseeInfo.name,
+            brandId: franchiseeInfo.brandId,
+            brandName: franchiseeInfo.brandName,
+            grossAmount: match.grossAmount || 0,
+            netAmount: match.netAmount || 0,
+          });
+        }
+      }
     }
   }
 
-  const bySupplier = Array.from(supplierMap.values()).sort(
-    (a, b) => b.totalCommission - a.totalCommission
-  );
+  const bySupplier: SupplierFileSummary[] = Array.from(supplierMap.values())
+    .map((s) => ({
+      supplierId: s.supplierId,
+      supplierName: s.supplierName,
+      supplierCode: s.supplierCode,
+      fileCount: s.fileCount,
+      totalGrossAmount: s.totalGrossAmount,
+      totalNetAmount: s.totalNetAmount,
+      totalCommission: s.totalCommission,
+      franchisees: Array.from(s.franchiseeMap.values()).sort(
+        (a, b) => b.netAmount - a.netAmount
+      ),
+    }))
+    .sort((a, b) => b.totalCommission - a.totalCommission);
 
   // Calculate overall summary
   const totalGrossAmount = files.reduce((sum, f) => sum + f.totalGrossAmount, 0);

@@ -31,6 +31,7 @@ import {
   XCircle,
   Eye,
   HardDrive,
+  Users,
 } from "lucide-react";
 import {
   ReportLayout,
@@ -74,6 +75,15 @@ interface SupplierFileEntry {
   uploadedByName: string | null;
 }
 
+interface SupplierFranchiseeEntry {
+  franchiseeId: string;
+  franchiseeName: string;
+  brandId: string;
+  brandName: string;
+  grossAmount: number;
+  netAmount: number;
+}
+
 interface SupplierFileSummary {
   supplierId: string;
   supplierName: string;
@@ -82,6 +92,29 @@ interface SupplierFileSummary {
   totalGrossAmount: number;
   totalNetAmount: number;
   totalCommission: number;
+  franchisees: SupplierFranchiseeEntry[];
+}
+
+interface FranchiseeSupplierEntry {
+  supplierId: string;
+  supplierName: string;
+  fileId: string;
+  fileName: string;
+  originalName: string;
+  grossAmount: number;
+  netAmount: number;
+  matchType: string;
+}
+
+interface FranchiseeBreakdownEntry {
+  franchiseeId: string;
+  franchiseeName: string;
+  brandId: string;
+  brandName: string;
+  totalGrossAmount: number;
+  totalNetAmount: number;
+  supplierCount: number;
+  suppliers: FranchiseeSupplierEntry[];
 }
 
 interface SupplierFilesReport {
@@ -99,6 +132,7 @@ interface SupplierFilesReport {
   };
   bySupplier: SupplierFileSummary[];
   files: SupplierFileEntry[];
+  byFranchisee: FranchiseeBreakdownEntry[];
 }
 
 interface FilterOption {
@@ -297,6 +331,11 @@ const supplierColumns: ColumnDef<SupplierFileSummary>[] = [
     accessorKey: "fileCount",
   },
   {
+    id: "franchiseeCount",
+    header: "זכיינים",
+    accessor: (row) => row.franchisees?.length || 0,
+  },
+  {
     id: "totalGrossAmount",
     header: "סה״כ כולל מע״מ",
     accessor: (row) => formatCurrency(row.totalGrossAmount),
@@ -324,6 +363,46 @@ const supplierColumns: ColumnDef<SupplierFileSummary>[] = [
   },
 ];
 
+const franchiseeColumns: ColumnDef<FranchiseeBreakdownEntry>[] = [
+  {
+    id: "franchiseeName",
+    header: "זכיין",
+    accessorKey: "franchiseeName",
+    cell: (row) => (
+      <div>
+        <div className="font-medium">{row.franchiseeName}</div>
+      </div>
+    ),
+  },
+  {
+    id: "brandName",
+    header: "מותג",
+    accessorKey: "brandName",
+    cell: (row) => (
+      <Badge variant="outline">{row.brandName}</Badge>
+    ),
+  },
+  {
+    id: "supplierCount",
+    header: "ספקים",
+    accessorKey: "supplierCount",
+  },
+  {
+    id: "totalGrossAmount",
+    header: "סה״כ כולל מע״מ",
+    accessor: (row) => formatCurrency(row.totalGrossAmount),
+    accessorKey: "totalGrossAmount",
+    className: "font-medium",
+  },
+  {
+    id: "totalNetAmount",
+    header: "סה״כ לפני מע״מ",
+    accessor: (row) => formatCurrency(row.totalNetAmount),
+    accessorKey: "totalNetAmount",
+    className: "font-medium",
+  },
+];
+
 // ============================================================================
 // HELPER: Row styling for suppliers with zero amounts
 // ============================================================================
@@ -333,6 +412,94 @@ function getSupplierRowClassName(row: SupplierFileSummary): string | undefined {
     return "bg-muted/30 text-muted-foreground";
   }
   return undefined;
+}
+
+// ============================================================================
+// HELPER: Expandable row content for suppliers (shows franchisees)
+// ============================================================================
+
+function SupplierExpandedContent({ franchisees }: { franchisees: SupplierFranchiseeEntry[] }) {
+  if (!franchisees || franchisees.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-2">
+        אין נתוני זכיינים לספק זה
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-muted-foreground mb-2">
+        זכיינים ({franchisees.length})
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {franchisees.map((f) => (
+          <div
+            key={f.franchiseeId}
+            className="flex items-center justify-between py-1.5 px-3 bg-background rounded-md border text-sm"
+          >
+            <div className="flex items-center gap-3">
+              <span className="font-medium">{f.franchiseeName}</span>
+              <Badge variant="outline" className="text-xs">{f.brandName}</Badge>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-muted-foreground">
+                כולל מע״מ: {formatCurrency(f.grossAmount)}
+              </span>
+              <span className="font-medium">
+                לפני מע״מ: {formatCurrency(f.netAmount)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// HELPER: Expandable row content for franchisees (shows suppliers)
+// ============================================================================
+
+function FranchiseeExpandedContent({ suppliers }: { suppliers: FranchiseeSupplierEntry[] }) {
+  if (!suppliers || suppliers.length === 0) {
+    return (
+      <div className="text-sm text-muted-foreground py-2">
+        אין נתוני ספקים לזכיין זה
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-muted-foreground mb-2">
+        ספקים ({suppliers.length})
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {suppliers.map((s) => (
+          <div
+            key={`${s.supplierId}-${s.fileId}`}
+            className="flex items-center justify-between py-1.5 px-3 bg-background rounded-md border text-sm"
+          >
+            <div className="flex items-center gap-3">
+              <span className="font-medium">{s.supplierName}</span>
+              <span className="text-xs text-muted-foreground truncate max-w-[200px]" title={s.originalName}>
+                ({s.originalName})
+              </span>
+            </div>
+            <div className="flex items-center gap-4">
+              <span className="text-muted-foreground">
+                כולל מע״מ: {formatCurrency(s.grossAmount)}
+              </span>
+              <span className="font-medium">
+                לפני מע״מ: {formatCurrency(s.netAmount)}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ============================================================================
@@ -660,6 +827,10 @@ export default function SupplierFilesReportPage() {
                 <Building2 className="h-4 w-4" />
                 לפי ספק
               </TabsTrigger>
+              <TabsTrigger value="byFranchisee" className="flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                לפי זכיין
+              </TabsTrigger>
             </TabsList>
 
             {/* Files Tab */}
@@ -715,6 +886,43 @@ export default function SupplierFilesReportPage() {
                       searchPlaceholder="חיפוש ספק..."
                       emptyMessage="אין נתונים להצגה"
                       rowClassName={getSupplierRowClassName}
+                      expandedRowRender={(row) => (
+                        <SupplierExpandedContent franchisees={row.franchisees} />
+                      )}
+                      isRowExpandable={(row) => row.franchisees && row.franchisees.length > 0}
+                    />
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* By Franchisee Tab */}
+            <TabsContent value="byFranchisee">
+              <Card>
+                <CardHeader>
+                  <CardTitle>סיכום לפי זכיין</CardTitle>
+                  <CardDescription>סכומים מקובצים לפי זכיין עם פירוט ספקים</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {!report.byFranchisee || report.byFranchisee.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-medium mb-2">אין נתונים</h3>
+                      <p className="text-muted-foreground">
+                        לא נמצאו נתונים לפי זכיין
+                      </p>
+                    </div>
+                  ) : (
+                    <ReportDataTable
+                      data={report.byFranchisee}
+                      columns={franchiseeColumns}
+                      rowKey="franchiseeId"
+                      searchPlaceholder="חיפוש זכיין..."
+                      emptyMessage="אין נתונים להצגה"
+                      expandedRowRender={(row) => (
+                        <FranchiseeExpandedContent suppliers={row.suppliers} />
+                      )}
+                      isRowExpandable={(row) => row.suppliers && row.suppliers.length > 0}
                     />
                   )}
                 </CardContent>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import {
   Table,
   TableBody,
@@ -28,6 +28,7 @@ import {
   ArrowDown,
   Search,
   FileSpreadsheet,
+  ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -94,6 +95,10 @@ export interface ReportDataTableProps<T> {
   highlightOnHover?: boolean;
   /** Function to return custom className for a row */
   rowClassName?: (row: T) => string | undefined;
+  /** Render function for expanded row content */
+  expandedRowRender?: (row: T) => React.ReactNode;
+  /** Check if row is expandable */
+  isRowExpandable?: (row: T) => boolean;
 }
 
 // ============================================================================
@@ -116,9 +121,14 @@ export function ReportDataTable<T extends object>({
   onRowClick,
   highlightOnHover = true,
   rowClassName,
+  expandedRowRender,
+  isRowExpandable,
 }: ReportDataTableProps<T>) {
   // Search state
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Expanded rows state
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   // Sort state
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
@@ -224,6 +234,20 @@ export function ReportDataTable<T extends object>({
     setCurrentPage(1); // Reset to first page on search
   }, []);
 
+  // Toggle row expansion
+  const toggleRowExpansion = useCallback((rowKey: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setExpandedRows((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(rowKey)) {
+        newSet.delete(rowKey);
+      } else {
+        newSet.add(rowKey);
+      }
+      return newSet;
+    });
+  }, []);
+
   // Get cell value
   const getCellValue = useCallback(
     (row: T, column: ColumnDef<T>): React.ReactNode => {
@@ -284,6 +308,7 @@ export function ReportDataTable<T extends object>({
         <Table aria-label="טבלת נתונים">
           <TableHeader>
             <TableRow>
+              {expandedRowRender && <TableHead className="w-10" />}
               {columns.map((column) => (
                 <TableHead
                   key={column.id}
@@ -322,7 +347,7 @@ export function ReportDataTable<T extends object>({
             ) : paginatedData.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={columns.length}
+                  colSpan={columns.length + (expandedRowRender ? 1 : 0)}
                   className="h-32 text-center"
                 >
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -332,26 +357,64 @@ export function ReportDataTable<T extends object>({
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedData.map((row, index) => (
-                <TableRow
-                  key={getRowKey(row, index)}
-                  className={cn(
-                    highlightOnHover && "hover:bg-muted/50",
-                    onRowClick && "cursor-pointer",
-                    rowClassName?.(row)
-                  )}
-                  onClick={() => onRowClick?.(row)}
-                >
-                  {columns.map((column) => (
-                    <TableCell
-                      key={column.id}
-                      className={cn("text-start", column.className)}
+              paginatedData.map((row, index) => {
+                const key = getRowKey(row, index);
+                const isExpanded = expandedRows.has(key);
+                const canExpand = expandedRowRender && (!isRowExpandable || isRowExpandable(row));
+
+                return (
+                  <Fragment key={key}>
+                    <TableRow
+                      className={cn(
+                        highlightOnHover && "hover:bg-muted/50",
+                        (onRowClick || canExpand) && "cursor-pointer",
+                        isExpanded && "bg-muted/30",
+                        rowClassName?.(row)
+                      )}
+                      onClick={() => {
+                        if (canExpand) {
+                          toggleRowExpansion(key);
+                        } else {
+                          onRowClick?.(row);
+                        }
+                      }}
                     >
-                      {getCellValue(row, column)}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+                      {expandedRowRender && (
+                        <TableCell className="w-10 px-2">
+                          {canExpand && (
+                            <ChevronDown
+                              className={cn(
+                                "h-4 w-4 transition-transform duration-200",
+                                isExpanded && "rotate-180"
+                              )}
+                            />
+                          )}
+                        </TableCell>
+                      )}
+                      {columns.map((column) => (
+                        <TableCell
+                          key={column.id}
+                          className={cn("text-start", column.className)}
+                        >
+                          {getCellValue(row, column)}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {isExpanded && canExpand && (
+                      <TableRow className="bg-muted/20">
+                        <TableCell
+                          colSpan={columns.length + 1}
+                          className="p-0"
+                        >
+                          <div className="ps-8 py-3 pe-4">
+                            {expandedRowRender(row)}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>

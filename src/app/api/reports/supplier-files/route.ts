@@ -6,6 +6,7 @@ import {
 import {
   getSupplierFilesReport,
   getSupplierFilesFilterOptions,
+  getFranchiseeBreakdownReport,
 } from "@/data-access/supplier-file-reports";
 import { supplierFilesFiltersSchema } from "@/lib/validations/report-schemas";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -50,13 +51,21 @@ export async function GET(request: NextRequest) {
     };
 
     // Get report data and filter options in parallel
-    const [report, filterOptions] = await Promise.all([
+    const [report, filterOptions, byFranchiseeReport] = await Promise.all([
       getSupplierFilesReport(filters),
       getSupplierFilesFilterOptions(),
+      getFranchiseeBreakdownReport({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        brandId: filters.brandId,
+      }),
     ]);
 
     return NextResponse.json({
-      report,
+      report: {
+        ...report,
+        byFranchisee: byFranchiseeReport.franchisees,
+      },
       filters: filterOptions,
     });
   } catch (error) {
