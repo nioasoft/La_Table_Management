@@ -9,7 +9,6 @@ import { database } from "@/db";
 import {
   supplierFileUpload,
   supplier,
-  supplierBrand,
   brand,
   user,
   franchisee,
@@ -242,38 +241,9 @@ export async function getSupplierFilesReport(
     ) as typeof filesQuery;
   }
 
-  // Filter by brand if specified
-  if (filters.brandId) {
-    const supplierBrands = await database
-      .select({ supplierId: supplierBrand.supplierId })
-      .from(supplierBrand)
-      .where(eq(supplierBrand.brandId, filters.brandId));
-    const supplierIdsForBrand = supplierBrands.map((sb) => sb.supplierId);
-
-    if (supplierIdsForBrand.length > 0) {
-      finalQuery = finalQuery.where(
-        inArray(supplierFileUpload.supplierId, supplierIdsForBrand)
-      ) as typeof filesQuery;
-    } else {
-      // No suppliers associated with this brand - return empty result
-      return {
-        summary: {
-          totalFiles: 0,
-          totalGrossAmount: 0,
-          totalNetAmount: 0,
-          totalCalculatedCommission: 0,
-          supplierCount: 0,
-          periodRange: {
-            startDate: null,
-            endDate: null,
-          },
-          generatedAt: new Date().toISOString(),
-        },
-        bySupplier: [],
-        files: [],
-      };
-    }
-  }
+  // Note: Brand filtering is done at franchisee-match level, not supplier level.
+  // This allows filtering by "שונות" brand which contains franchisees like "דון פדרו"
+  // that appear in supplier files but aren't supplier-brand associations.
 
   const rawFiles = await finalQuery.orderBy(desc(supplierFileUpload.createdAt));
 
@@ -309,7 +279,7 @@ export async function getSupplierFilesReport(
     : null;
 
   // Process files and calculate commissions
-  const files: SupplierFileEntry[] = dedupedFiles.map((file) => {
+  const filesUnfiltered: SupplierFileEntry[] = dedupedFiles.map((file) => {
     const processingResult = file.processingResult as SupplierFileProcessingResult | null;
     const commissionRate = file.commissionRate ? parseFloat(file.commissionRate) : null;
 
@@ -390,6 +360,11 @@ export async function getSupplierFilesReport(
       reviewNotes: file.reviewNotes,
     };
   });
+
+  // When brand filter is active, exclude files that have no matches for that brand
+  const files = filters.brandId
+    ? filesUnfiltered.filter((f) => f.franchiseeCount > 0)
+    : filesUnfiltered;
 
   // Calculate summary by supplier with franchisee details
   // We need to go back to raw files to get franchisee breakdown
@@ -653,30 +628,9 @@ export async function getFranchiseeBreakdownReport(
     conditions.push(lte(supplierFileUpload.periodStartDate, filters.endDate));
   }
 
-  // Filter by brand if specified (through supplier-brand relationship)
-  if (filters.brandId) {
-    const supplierBrandsResult = await database
-      .select({ supplierId: supplierBrand.supplierId })
-      .from(supplierBrand)
-      .where(eq(supplierBrand.brandId, filters.brandId));
-    const supplierIdsForBrand = supplierBrandsResult.map((sb) => sb.supplierId);
-
-    if (supplierIdsForBrand.length > 0) {
-      conditions.push(inArray(supplierFileUpload.supplierId, supplierIdsForBrand));
-    } else {
-      // No suppliers for this brand
-      return {
-        summary: {
-          totalFranchisees: 0,
-          totalGrossAmount: 0,
-          totalNetAmount: 0,
-          totalFiles: 0,
-          generatedAt: new Date().toISOString(),
-        },
-        franchisees: [],
-      };
-    }
-  }
+  // Note: Brand filtering is done at franchisee-match level below, not at supplier level.
+  // This allows filtering by "שונות" brand which contains franchisees like "דון פדרו"
+  // that appear in supplier files but aren't supplier-brand associations.
 
   const rawFiles = await database
     .select({
