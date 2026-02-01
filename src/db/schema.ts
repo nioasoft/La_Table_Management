@@ -25,6 +25,12 @@ export const franchiseeStatusEnum = pgEnum("franchisee_status", [
   "terminated",
 ]);
 
+// Franchisee category enum - distinguishes regular franchisees from other income sources
+export const franchiseeCategoryEnum = pgEnum("franchisee_category", [
+  "regular", // Regular franchisees
+  "other", // Other income sources (e.g., Don Pedro)
+]);
+
 export const documentStatusEnum = pgEnum("document_status", [
   "draft",
   "active",
@@ -477,6 +483,10 @@ export const brand = pgTable(
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),
+    // System brands are hidden from regular UI (e.g., "שונות" for other income)
+    isSystemBrand: boolean("is_system_brand")
+      .$default(() => false)
+      .notNull(),
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())
       .notNull(),
@@ -490,6 +500,7 @@ export const brand = pgTable(
   (table) => [
     index("idx_brand_code").on(table.code),
     index("idx_brand_is_active").on(table.isActive),
+    index("idx_brand_is_system_brand").on(table.isSystemBrand),
   ]
 );
 
@@ -648,6 +659,10 @@ export const franchisee = pgTable(
       () => managementCompany.id,
       { onDelete: "set null" }
     ),
+    // Category: 'regular' for actual franchisees, 'other' for other income sources (e.g., Don Pedro)
+    category: franchiseeCategoryEnum("category")
+      .$default(() => "regular")
+      .notNull(),
     name: text("name").notNull(),
     code: text("code").notNull().unique(),
     // New fields
@@ -705,8 +720,11 @@ export const franchisee = pgTable(
     index("idx_franchisee_code").on(table.code),
     index("idx_franchisee_status").on(table.status),
     index("idx_franchisee_is_active").on(table.isActive),
+    index("idx_franchisee_category").on(table.category),
     // Composite index for brand-based report queries with active filter
     index("idx_franchisee_brand_active").on(table.brandId, table.isActive),
+    // Composite index for filtering regular franchisees
+    index("idx_franchisee_category_active").on(table.category, table.isActive),
   ]
 );
 
@@ -2010,6 +2028,7 @@ export type UpdateFranchiseeData = Partial<
   Omit<CreateFranchiseeData, "id" | "createdAt">
 >;
 export type FranchiseeStatus = (typeof franchiseeStatusEnum.enumValues)[number];
+export type FranchiseeCategory = (typeof franchiseeCategoryEnum.enumValues)[number];
 
 // Document types
 export type Document = typeof document.$inferSelect;

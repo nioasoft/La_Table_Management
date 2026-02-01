@@ -3,21 +3,76 @@ import { brand, type Brand, type CreateBrandData, type UpdateBrandData } from "@
 import { eq, desc, and } from "drizzle-orm";
 
 /**
- * Get all brands from the database
+ * Options for filtering brands
  */
-export async function getBrands(): Promise<Brand[]> {
-  return database.select().from(brand).orderBy(desc(brand.createdAt)) as unknown as Promise<Brand[]>;
+export interface GetBrandsOptions {
+  /** Include system brands (default: false) */
+  includeSystemBrands?: boolean;
+  /** Filter by active status */
+  isActive?: boolean;
 }
 
 /**
- * Get all active brands
+ * Get all brands from the database
+ * By default, excludes system brands (like "שונות" for other income sources)
+ *
+ * @param options - Filter options
  */
-export async function getActiveBrands(): Promise<Brand[]> {
+export async function getBrands(options: GetBrandsOptions = {}): Promise<Brand[]> {
+  const { includeSystemBrands = false, isActive } = options;
+
+  const conditions = [];
+
+  // Exclude system brands by default
+  if (!includeSystemBrands) {
+    conditions.push(eq(brand.isSystemBrand, false));
+  }
+
+  // Filter by active status if specified
+  if (isActive !== undefined) {
+    conditions.push(eq(brand.isActive, isActive));
+  }
+
   return database
     .select()
     .from(brand)
-    .where(eq(brand.isActive, true))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(brand.createdAt)) as unknown as Promise<Brand[]>;
+}
+
+/**
+ * Get all active brands (excludes system brands by default)
+ *
+ * @param options - Filter options
+ */
+export async function getActiveBrands(
+  options: Pick<GetBrandsOptions, "includeSystemBrands"> = {}
+): Promise<Brand[]> {
+  return getBrands({ ...options, isActive: true });
+}
+
+/**
+ * Get the "Other" system brand for other income sources
+ * Creates it if it doesn't exist
+ */
+export async function getOtherBrand(): Promise<Brand> {
+  const OTHER_BRAND_CODE = "OTHER";
+
+  const existingBrand = await getBrandByCode(OTHER_BRAND_CODE);
+  if (existingBrand) {
+    return existingBrand;
+  }
+
+  // Create the system brand if it doesn't exist
+  return createBrand({
+    id: crypto.randomUUID(),
+    code: OTHER_BRAND_CODE,
+    nameHe: "שונות",
+    nameEn: "Other",
+    description: "מקורות הכנסה שאינם זכיינים (כגון דון פדרו)",
+    isActive: true,
+    isSystemBrand: true,
+  });
 }
 
 /**
@@ -110,14 +165,18 @@ export async function isBrandCodeUnique(code: string, excludeId?: string): Promi
 }
 
 /**
- * Get brand statistics
+ * Get brand statistics (excludes system brands by default)
+ *
+ * @param options - Filter options
  */
-export async function getBrandStats(): Promise<{
+export async function getBrandStats(
+  options: Pick<GetBrandsOptions, "includeSystemBrands"> = {}
+): Promise<{
   total: number;
   active: number;
   inactive: number;
 }> {
-  const allBrands = await getBrands();
+  const allBrands = await getBrands(options);
 
   const stats = {
     total: allBrands.length,

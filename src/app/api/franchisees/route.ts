@@ -13,9 +13,11 @@ import {
   getFranchiseeStats,
   isFranchiseeCodeUnique,
   getFranchiseesPageData,
+  getOtherIncomeSources,
+  type GetFranchiseesOptions,
 } from "@/data-access/franchisees";
 import { randomUUID } from "crypto";
-import type { FranchiseeStatus, FranchiseeOwner } from "@/db/schema";
+import type { FranchiseeStatus, FranchiseeOwner, FranchiseeCategory } from "@/db/schema";
 
 /**
  * GET /api/franchisees - Get all franchisees (Admin/Super User only)
@@ -26,6 +28,7 @@ import type { FranchiseeStatus, FranchiseeOwner } from "@/db/schema";
  * - brandId: Filter by brand
  * - companyId: Search by company ID (for BKMVDATA matching)
  * - stats=true: Include stats in response
+ * - category: "regular" (default), "other", or "all" - filter by franchisee category
  */
 export async function GET(request: NextRequest) {
   try {
@@ -44,6 +47,13 @@ export async function GET(request: NextRequest) {
     const filter = searchParams.get("filter"); // "all", "active", or a specific status
     const brandId = searchParams.get("brandId");
     const companyId = searchParams.get("companyId"); // ח.פ - for BKMVDATA matching
+    const categoryParam = searchParams.get("category"); // "regular", "other", or "all"
+
+    // Determine category filter
+    const category: GetFranchiseesOptions["category"] =
+      categoryParam === "all" ? "all" :
+      categoryParam === "other" ? "other" :
+      "regular"; // default to regular
 
     let franchisees;
 
@@ -56,20 +66,27 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Shortcut for "other" income sources
+    if (category === "other" && !brandId && !filter) {
+      franchisees = await getOtherIncomeSources();
+      const stats = searchParams.get("stats") === "true" ? await getFranchiseeStats({ category: "other" }) : null;
+      return NextResponse.json({ franchisees, stats });
+    }
+
     if (brandId) {
       // Filter by brand
-      franchisees = await getFranchiseesByBrand(brandId);
+      franchisees = await getFranchiseesByBrand(brandId, { category });
     } else if (filter === "active") {
-      franchisees = await getActiveFranchisees();
+      franchisees = await getActiveFranchisees({ category });
     } else if (filter && ["pending", "inactive", "suspended", "terminated"].includes(filter)) {
-      franchisees = await getFranchiseesByStatus(filter as FranchiseeStatus);
+      franchisees = await getFranchiseesByStatus(filter as FranchiseeStatus, { category });
     } else {
-      franchisees = await getFranchiseesWithContacts();
+      franchisees = await getFranchiseesWithContacts({ category });
     }
 
     // Get stats if requested
     const includeStats = searchParams.get("stats") === "true";
-    const stats = includeStats ? await getFranchiseeStats() : null;
+    const stats = includeStats ? await getFranchiseeStats({ category }) : null;
 
     return NextResponse.json({ franchisees, stats });
   } catch (error) {
@@ -114,6 +131,7 @@ export async function POST(request: NextRequest) {
       status,
       notes,
       isActive,
+      category,
     } = body;
 
     // Validate required fields
@@ -178,6 +196,7 @@ export async function POST(request: NextRequest) {
       status: status || "pending",
       notes: notes || null,
       isActive: isActive !== undefined ? isActive : true,
+      category: category || "regular",
       createdBy: user.id,
     });
 

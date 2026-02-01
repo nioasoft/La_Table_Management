@@ -2297,6 +2297,216 @@ export const he = {
       },
     },
 
+    // Communication Schedules
+    schedules: {
+      title: "לוחות זמנים",
+      description: "סקירת לוחות זמנים לבקשות קבצים מספקים וזכיינים",
+
+      stats: {
+        totalSuppliers: "סה״כ ספקים",
+        withPendingRequests: "בקשות ממתינות",
+        withoutEmail: "ללא אימייל",
+      },
+
+      filters: {
+        allTypes: "כל הסוגים",
+        suppliers: "ספקים",
+        franchisees: "זכיינים",
+        allFrequencies: "כל התדירויות",
+        frequency: "תדירות",
+      },
+
+      frequencies: {
+        weekly: "שבועי",
+        bi_weekly: "דו-שבועי",
+        monthly: "חודשי",
+        quarterly: "רבעוני",
+        semi_annual: "חצי שנתי",
+        annual: "שנתי",
+      },
+
+      table: {
+        name: "שם",
+        type: "סוג",
+        frequency: "תדירות",
+        email: "אימייל",
+        lastRequest: "בקשה אחרונה",
+        nextRequest: "בקשה הבאה",
+        pendingRequests: "בקשות ממתינות",
+        actions: "פעולות",
+        noEmail: "לא הוגדר",
+        never: "מעולם לא",
+      },
+
+      actions: {
+        refresh: "רענן",
+        sendNow: "שלח עכשיו",
+      },
+
+      emptyState: "לא נמצאו לוחות זמנים",
+
+      errors: {
+        failedToFetch: "שגיאה בטעינת לוחות הזמנים",
+        failedToSend: "שגיאה בשליחת הבקשה",
+      },
+
+      messages: {
+        sendSuccess: "הבקשה נשלחה בהצלחה",
+      },
+    },
+
+    // CRON Monitor
+    cronMonitor: {
+      title: "מעקב משימות",
+      description: "מעקב ובקרה על משימות אוטומטיות",
+
+      stats: {
+        totalJobs: "סה״כ משימות",
+        pendingItems: "פריטים ממתינים",
+        lastRun: "הרצה אחרונה",
+      },
+
+      jobs: {
+        fileRequests: {
+          name: "בקשות קבצים",
+          description: "שליחת בקשות קבצים מתוזמנות לספקים",
+        },
+        settlementRequests: {
+          name: "בקשות התחשבנות",
+          description: "שליחת בקשות התחשבנות לפי תדירות",
+        },
+        uploadReminders: {
+          name: "תזכורות העלאה",
+          description: "שליחת תזכורות לבקשות שטרם קיבלו מענה",
+        },
+        franchiseeReminders: {
+          name: "תזכורות זכיינים",
+          description: "שליחת תזכורות לזכיינים על מועדים חשובים",
+        },
+      },
+
+      status: {
+        ok: "תקין",
+        pending: "ממתין",
+        error: "שגיאה",
+        running: "פועל",
+      },
+
+      pendingRequests: {
+        title: "בקשות ממתינות לתשובה",
+        emptyState: "אין בקשות ממתינות",
+        sentAt: "נשלח",
+        reminders: "תזכורות",
+        sendReminder: "שלח תזכורת",
+      },
+
+      actions: {
+        refresh: "רענן",
+        runNow: "הפעל עכשיו",
+        dryRun: "הרצה יבשה",
+      },
+
+      errors: {
+        failedToFetch: "שגיאה בטעינת נתוני המשימות",
+        failedToRun: "שגיאה בהפעלת המשימה",
+      },
+
+      messages: {
+        runSuccess: "המשימה הופעלה בהצלחה",
+        dryRunSuccess: "הרצה יבשה הושלמה",
+      },
+    },
+
+    // Email Logs
+    emailLogs: {
+      title: "יומן אימיילים",
+      description: "היסטוריית אימיילים שנשלחו מהמערכת",
+
+      stats: {
+        total: "סה״כ",
+        delivered: "נמסרו",
+        failed: "נכשלו",
+        last24Hours: "24 שעות אחרונות",
+      },
+
+      filters: {
+        allStatuses: "כל הסטטוסים",
+        status: "סטטוס",
+        allTemplates: "כל התבניות",
+        template: "תבנית",
+        dateRange: "טווח תאריכים",
+        search: "חיפוש אימייל",
+        searchPlaceholder: "הקלד כתובת אימייל...",
+      },
+
+      statuses: {
+        pending: "ממתין",
+        sent: "נשלח",
+        delivered: "נמסר",
+        failed: "נכשל",
+        bounced: "חזר",
+      },
+
+      table: {
+        recipient: "נמען",
+        subject: "נושא",
+        template: "תבנית",
+        status: "סטטוס",
+        sentAt: "נשלח",
+        actions: "פעולות",
+        noTemplate: "ללא תבנית",
+      },
+
+      details: {
+        title: "פרטי אימייל",
+        from: "מאת",
+        to: "אל",
+        subject: "נושא",
+        template: "תבנית",
+        status: "סטטוס",
+        sentAt: "נשלח",
+        deliveredAt: "נמסר",
+        failedAt: "נכשל",
+        errorMessage: "הודעת שגיאה",
+        messageId: "מזהה הודעה",
+        preview: "תצוגה מקדימה",
+        close: "סגור",
+      },
+
+      actions: {
+        refresh: "רענן",
+        viewDetails: "צפה בפרטים",
+        sendManual: "שלח מייל",
+      },
+
+      emptyState: "לא נמצאו אימיילים",
+
+      errors: {
+        failedToFetch: "שגיאה בטעינת יומן האימיילים",
+        failedToSend: "שגיאה בשליחת האימייל",
+      },
+
+      messages: {
+        sendSuccess: "האימייל נשלח בהצלחה",
+      },
+
+      // Manual send dialog
+      sendDialog: {
+        title: "שליחת אימייל ידני",
+        description: "שלח אימייל חדש באמצעות תבנית קיימת",
+        selectTemplate: "בחר תבנית",
+        recipientEmail: "כתובת נמען",
+        recipientEmailPlaceholder: "email@example.com",
+        recipientName: "שם נמען (אופציונלי)",
+        recipientNamePlaceholder: "שם הנמען",
+        variables: "משתנים",
+        variablesDescription: "מלא את המשתנים הנדרשים לתבנית",
+        cancel: "ביטול",
+        send: "שלח",
+        sending: "שולח...",
+      },
+    },
+
     // Reports
     reports: {
       title: "דוחות",

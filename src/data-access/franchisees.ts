@@ -10,6 +10,7 @@ import {
   type CreateFranchiseeData,
   type UpdateFranchiseeData,
   type FranchiseeStatus,
+  type FranchiseeCategory,
   type FranchiseeStatusHistory,
   type CreateFranchiseeStatusHistoryData,
   type Contact,
@@ -52,9 +53,38 @@ export type FranchiseeWithBrandAndContacts = FranchiseeWithBrand & {
 };
 
 /**
- * Get all franchisees from the database with brand info
+ * Options for filtering franchisees
  */
-export async function getFranchisees(): Promise<FranchiseeWithBrand[]> {
+export interface GetFranchiseesOptions {
+  /** Filter by category. Default: 'regular' to exclude other income sources */
+  category?: FranchiseeCategory | "all";
+  /** Filter by active status */
+  isActive?: boolean;
+}
+
+/**
+ * Get all franchisees from the database with brand info
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
+ *
+ * @param options - Filter options (category defaults to 'regular')
+ */
+export async function getFranchisees(
+  options: GetFranchiseesOptions = {}
+): Promise<FranchiseeWithBrand[]> {
+  const { category = "regular", isActive } = options;
+
+  const conditions = [];
+
+  // Filter by category (unless 'all' is specified)
+  if (category !== "all") {
+    conditions.push(eq(franchisee.category, category));
+  }
+
+  // Filter by active status if specified
+  if (isActive !== undefined) {
+    conditions.push(eq(franchisee.isActive, isActive));
+  }
+
   const results = await database
     .select({
       franchisee: franchisee,
@@ -67,6 +97,7 @@ export async function getFranchisees(): Promise<FranchiseeWithBrand[]> {
     })
     .from(franchisee)
     .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(franchisee.createdAt));
 
   return results.map((r) => ({
@@ -76,9 +107,36 @@ export async function getFranchisees(): Promise<FranchiseeWithBrand[]> {
 }
 
 /**
- * Get all franchisees from the database with brand info and contacts
+ * Get all "other" income sources (category = 'other')
+ * These are non-franchisee entities like Don Pedro that receive commissions
  */
-export async function getFranchiseesWithContacts(): Promise<FranchiseeWithBrandAndContacts[]> {
+export async function getOtherIncomeSources(): Promise<FranchiseeWithBrand[]> {
+  return getFranchisees({ category: "other" });
+}
+
+/**
+ * Get all franchisees from the database with brand info and contacts
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
+ *
+ * @param options - Filter options (category defaults to 'regular')
+ */
+export async function getFranchiseesWithContacts(
+  options: GetFranchiseesOptions = {}
+): Promise<FranchiseeWithBrandAndContacts[]> {
+  const { category = "regular", isActive } = options;
+
+  const conditions = [];
+
+  // Filter by category (unless 'all' is specified)
+  if (category !== "all") {
+    conditions.push(eq(franchisee.category, category));
+  }
+
+  // Filter by active status if specified
+  if (isActive !== undefined) {
+    conditions.push(eq(franchisee.isActive, isActive));
+  }
+
   const results = await database
     .select({
       franchisee: franchisee,
@@ -91,6 +149,7 @@ export async function getFranchiseesWithContacts(): Promise<FranchiseeWithBrandA
     })
     .from(franchisee)
     .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(franchisee.createdAt));
 
   // Get all contacts for these franchisees
@@ -123,19 +182,38 @@ export async function getFranchiseesWithContacts(): Promise<FranchiseeWithBrandA
 /**
  * Get franchisees with brand info and contacts - PAGINATED
  * Optimized for large datasets with offset-based pagination
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
  *
  * @param params - Pagination parameters (page, limit)
+ * @param options - Filter options (category defaults to 'regular')
  * @returns Paginated result with franchisees and pagination metadata
  */
 export async function getFranchiseesWithContactsPaginated(
-  params: PaginationParams = {}
+  params: PaginationParams = {},
+  options: GetFranchiseesOptions = {}
 ): Promise<PaginatedResult<FranchiseeWithBrandAndContacts>> {
   const { page, limit, offset } = normalizePaginationParams(params);
+  const { category = "regular", isActive } = options;
 
-  // Get total count first
+  const conditions = [];
+
+  // Filter by category (unless 'all' is specified)
+  if (category !== "all") {
+    conditions.push(eq(franchisee.category, category));
+  }
+
+  // Filter by active status if specified
+  if (isActive !== undefined) {
+    conditions.push(eq(franchisee.isActive, isActive));
+  }
+
+  const whereCondition = conditions.length > 0 ? and(...conditions) : undefined;
+
+  // Get total count first (with same filters)
   const [countResult] = await database
     .select({ total: count() })
-    .from(franchisee);
+    .from(franchisee)
+    .where(whereCondition);
   const totalCount = countResult?.total ?? 0;
 
   // Get paginated franchisees
@@ -151,6 +229,7 @@ export async function getFranchiseesWithContactsPaginated(
     })
     .from(franchisee)
     .leftJoin(brand, eq(franchisee.brandId, brand.id))
+    .where(whereCondition)
     .orderBy(desc(franchisee.createdAt))
     .limit(limit)
     .offset(offset);
@@ -187,35 +266,41 @@ export async function getFranchiseesWithContactsPaginated(
 
 /**
  * Get all active franchisees with brand info
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
+ *
+ * @param options - Filter options (category defaults to 'regular')
  */
-export async function getActiveFranchisees(): Promise<FranchiseeWithBrand[]> {
-  const results = await database
-    .select({
-      franchisee: franchisee,
-      brand: {
-        id: brand.id,
-        code: brand.code,
-        nameHe: brand.nameHe,
-        nameEn: brand.nameEn,
-      },
-    })
-    .from(franchisee)
-    .leftJoin(brand, eq(franchisee.brandId, brand.id))
-    .where(eq(franchisee.isActive, true))
-    .orderBy(desc(franchisee.createdAt));
-
-  return results.map((r) => ({
-    ...r.franchisee,
-    brand: r.brand,
-  }));
+export async function getActiveFranchisees(
+  options: Pick<GetFranchiseesOptions, "category"> = {}
+): Promise<FranchiseeWithBrand[]> {
+  return getFranchisees({ ...options, isActive: true });
 }
 
 /**
  * Get franchisees by brand ID with brand info
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
+ *
+ * @param brandId - The brand ID to filter by
+ * @param options - Filter options (category defaults to 'regular')
  */
 export async function getFranchiseesByBrand(
-  brandId: string
+  brandId: string,
+  options: GetFranchiseesOptions = {}
 ): Promise<FranchiseeWithBrand[]> {
+  const { category = "regular", isActive } = options;
+
+  const conditions = [eq(franchisee.brandId, brandId)];
+
+  // Filter by category (unless 'all' is specified)
+  if (category !== "all") {
+    conditions.push(eq(franchisee.category, category));
+  }
+
+  // Filter by active status if specified
+  if (isActive !== undefined) {
+    conditions.push(eq(franchisee.isActive, isActive));
+  }
+
   const results = await database
     .select({
       franchisee: franchisee,
@@ -228,7 +313,7 @@ export async function getFranchiseesByBrand(
     })
     .from(franchisee)
     .leftJoin(brand, eq(franchisee.brandId, brand.id))
-    .where(eq(franchisee.brandId, brandId))
+    .where(and(...conditions))
     .orderBy(desc(franchisee.createdAt));
 
   return results.map((r) => ({
@@ -239,10 +324,24 @@ export async function getFranchiseesByBrand(
 
 /**
  * Get franchisees by status with brand info
+ * By default, returns only 'regular' category franchisees (excludes other income sources)
+ *
+ * @param status - The status to filter by
+ * @param options - Filter options (category defaults to 'regular')
  */
 export async function getFranchiseesByStatus(
-  status: FranchiseeStatus
+  status: FranchiseeStatus,
+  options: Pick<GetFranchiseesOptions, "category"> = {}
 ): Promise<FranchiseeWithBrand[]> {
+  const { category = "regular" } = options;
+
+  const conditions = [eq(franchisee.status, status)];
+
+  // Filter by category (unless 'all' is specified)
+  if (category !== "all") {
+    conditions.push(eq(franchisee.category, category));
+  }
+
   const results = await database
     .select({
       franchisee: franchisee,
@@ -255,7 +354,7 @@ export async function getFranchiseesByStatus(
     })
     .from(franchisee)
     .leftJoin(brand, eq(franchisee.brandId, brand.id))
-    .where(eq(franchisee.status, status))
+    .where(and(...conditions))
     .orderBy(desc(franchisee.createdAt));
 
   return results.map((r) => ({
@@ -511,8 +610,13 @@ export async function isFranchiseeCodeUnique(
 
 /**
  * Get franchisee statistics
+ * By default, returns stats only for 'regular' category franchisees (excludes other income sources)
+ *
+ * @param options - Filter options (category defaults to 'regular')
  */
-export async function getFranchiseeStats(): Promise<{
+export async function getFranchiseeStats(
+  options: Pick<GetFranchiseesOptions, "category"> = {}
+): Promise<{
   total: number;
   active: number;
   inactive: number;
@@ -521,7 +625,7 @@ export async function getFranchiseeStats(): Promise<{
   terminated: number;
   byBrand: { brandId: string; brandName: string; count: number; activeCount: number }[];
 }> {
-  const allFranchisees = await getFranchisees();
+  const allFranchisees = await getFranchisees(options);
 
   const stats = {
     total: allFranchisees.length,

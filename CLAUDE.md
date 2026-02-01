@@ -86,6 +86,30 @@ La Table Management is a commission management system for a restaurant franchise
 - **Granular Permissions**: Module-level (view/edit/create/delete/approve) × 10 modules
 - **Audit Trail**: Comprehensive logging of all entity changes with before/after values
 
+### API Route Authentication
+
+**IMPORTANT**: Always use `@/lib/api-middleware` for API route authentication, NOT direct auth imports.
+
+```typescript
+// ✅ Correct pattern for API routes
+import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
+
+export async function GET(request: NextRequest) {
+  const authResult = await requireAdminOrSuperUser(request);
+  if (isAuthError(authResult)) return authResult;
+  // ... rest of handler
+}
+
+// ❌ Wrong - do NOT use these in API routes
+import { auth } from "@/lib/auth";      // Path doesn't exist
+import { auth } from "@/utils/auth";    // Use api-middleware instead
+```
+
+Available middleware functions:
+- `requireAuth` - Any authenticated user
+- `requireAdminOrSuperUser` - Admin or Super User only
+- `requireSuperUser` - Super User only
+
 ## Database Environment
 
 **IMPORTANT: Always work with the PRODUCTION database only.**

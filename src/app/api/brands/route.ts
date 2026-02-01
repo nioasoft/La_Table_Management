@@ -8,6 +8,11 @@ import { randomUUID } from "crypto";
 
 /**
  * GET /api/brands - Get all brands (Admin/Super User only)
+ *
+ * Query params:
+ * - filter: "active" to get only active brands
+ * - includeSystem: "true" to include system brands (default: false)
+ * - stats: "true" to include stats
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,17 +21,20 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get("filter");
+    const includeSystem = searchParams.get("includeSystem") === "true";
+
+    const options = { includeSystemBrands: includeSystem };
 
     let brands;
     if (filter === "active") {
-      brands = await getActiveBrands();
+      brands = await getActiveBrands(options);
     } else {
-      brands = await getBrands();
+      brands = await getBrands(options);
     }
 
     // Get stats if requested
     const includeStats = searchParams.get("stats") === "true";
-    const stats = includeStats ? await getBrandStats() : null;
+    const stats = includeStats ? await getBrandStats(options) : null;
 
     return NextResponse.json({ brands, stats });
   } catch (error) {
