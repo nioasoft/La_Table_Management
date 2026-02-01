@@ -29,6 +29,7 @@ export { parseOrenJuicesFile } from "./oren-juices-parser";
 export { parseSoberLernerFile } from "./sober-lerner-parser";
 export { parseWongShuFile } from "./wong-shu-parser";
 export { parseSuperNovaFile } from "./super-nova-parser";
+export { parseNespressoFile } from "./nespresso-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -135,6 +136,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   SUPER_NOVA: async (buffer, vatRate) => {
     const { parseSuperNovaFile } = await import("./super-nova-parser");
     return parseSuperNovaFile(buffer);
+  },
+  NESPRESSO: async (buffer, vatRate) => {
+    const { parseNespressoFile } = await import("./nespresso-parser");
+    return parseNespressoFile(buffer);
   },
 };
 
