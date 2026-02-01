@@ -206,15 +206,17 @@ export async function getSupplierFilesReport(
   // Apply date filters using raw SQL
   let finalQuery = filesQuery;
 
+  // Use overlap logic: show files whose period overlaps with the filter range
+  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
   if (filters.startDate) {
     finalQuery = finalQuery.where(
-      sql`${supplierFileUpload.periodStartDate} >= ${filters.startDate}`
+      sql`${supplierFileUpload.periodEndDate} >= ${filters.startDate}`
     ) as typeof filesQuery;
   }
 
   if (filters.endDate) {
     finalQuery = finalQuery.where(
-      sql`${supplierFileUpload.periodEndDate} <= ${filters.endDate}`
+      sql`${supplierFileUpload.periodStartDate} <= ${filters.endDate}`
     ) as typeof filesQuery;
   }
 
@@ -265,15 +267,86 @@ export async function getSupplierFilesReport(
 
   const rawFiles = await finalQuery.orderBy(desc(supplierFileUpload.createdAt));
 
+  // Deduplicate: keep only the latest file per supplier
+  const supplierLatestFile = new Map<string, typeof rawFiles[0]>();
+  for (const file of rawFiles) {
+    const existing = supplierLatestFile.get(file.supplierId);
+    if (!existing || file.createdAt > existing.createdAt) {
+      supplierLatestFile.set(file.supplierId, file);
+    }
+  }
+  const dedupedFiles = Array.from(supplierLatestFile.values());
+
+  // Load franchisee brand mappings for brand filtering
+  let franchiseeBrandMap: Map<string, string> | null = null;
+  if (filters.brandId) {
+    const franchiseesData = await database
+      .select({
+        id: franchisee.id,
+        brandId: franchisee.brandId,
+      })
+      .from(franchisee)
+      .where(eq(franchisee.isActive, true));
+
+    franchiseeBrandMap = new Map(
+      franchiseesData.map((f) => [f.id, f.brandId])
+    );
+  }
+
   // Process files and calculate commissions
-  const files: SupplierFileEntry[] = rawFiles.map((file) => {
+  const files: SupplierFileEntry[] = dedupedFiles.map((file) => {
     const processingResult = file.processingResult as SupplierFileProcessingResult | null;
     const commissionRate = file.commissionRate ? parseFloat(file.commissionRate) : null;
-    const { calculated, preCalculated } = calculateCommission(
-      processingResult,
-      commissionRate,
-      file.commissionType
-    );
+
+    // When brand filter is active, calculate amounts only from franchisees of that brand
+    let totalGrossAmount = processingResult?.totalGrossAmount || 0;
+    let totalNetAmount = processingResult?.totalNetAmount || 0;
+    let franchiseeCount = processingResult?.matchStats?.total || 0;
+
+    if (filters.brandId && franchiseeBrandMap && processingResult?.franchiseeMatches) {
+      const filteredMatches = processingResult.franchiseeMatches.filter(
+        (match) =>
+          match.matchedFranchiseeId &&
+          franchiseeBrandMap!.get(match.matchedFranchiseeId) === filters.brandId
+      );
+
+      totalGrossAmount = filteredMatches.reduce((sum, m) => sum + (m.grossAmount || 0), 0);
+      totalNetAmount = filteredMatches.reduce((sum, m) => sum + (m.netAmount || 0), 0);
+      franchiseeCount = filteredMatches.length;
+    }
+
+    // Calculate commission based on filtered amounts when brand filter is active
+    let calculated = 0;
+    if (commissionRate && file.commissionType === "percentage") {
+      calculated = totalNetAmount * (commissionRate / 100);
+    } else if (commissionRate && file.commissionType === "per_item") {
+      // For per_item, we need to count filtered transactions
+      calculated = (filters.brandId && franchiseeBrandMap ? franchiseeCount : (processingResult?.processedRows || 0)) * commissionRate;
+    }
+    calculated = Math.round(calculated * 100) / 100;
+
+    // Check for pre-calculated commission in franchisee matches (filtered by brand if needed)
+    let preCalculated: number | null = null;
+    if (processingResult?.franchiseeMatches) {
+      const matchesToUse = filters.brandId && franchiseeBrandMap
+        ? processingResult.franchiseeMatches.filter(
+            (match) =>
+              match.matchedFranchiseeId &&
+              franchiseeBrandMap!.get(match.matchedFranchiseeId) === filters.brandId
+          )
+        : processingResult.franchiseeMatches;
+
+      let preCalculatedTotal = 0;
+      let hasPreCalculated = false;
+      for (const match of matchesToUse) {
+        const matchAny = match as Record<string, unknown>;
+        if (typeof matchAny.preCalculatedCommission === "number") {
+          preCalculatedTotal += matchAny.preCalculatedCommission;
+          hasPreCalculated = true;
+        }
+      }
+      preCalculated = hasPreCalculated ? Math.round(preCalculatedTotal * 100) / 100 : null;
+    }
 
     return {
       id: file.id,
@@ -286,13 +359,13 @@ export async function getSupplierFilesReport(
       periodStartDate: file.periodStartDate,
       periodEndDate: file.periodEndDate,
       processingStatus: file.processingStatus,
-      totalGrossAmount: processingResult?.totalGrossAmount || 0,
-      totalNetAmount: processingResult?.totalNetAmount || 0,
+      totalGrossAmount,
+      totalNetAmount,
       commissionRate,
       commissionType: file.commissionType,
       calculatedCommission: preCalculated !== null ? preCalculated : calculated,
       preCalculatedCommission: preCalculated,
-      franchiseeCount: processingResult?.matchStats?.total || 0,
+      franchiseeCount,
       transactionCount: processingResult?.processedRows || 0,
       uploadedAt: file.createdAt,
       uploadedBy: file.createdBy,
@@ -495,13 +568,14 @@ export async function getFranchiseeBreakdownReport(
     inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"]),
   ];
 
-  // Apply date filters
+  // Apply date filters using overlap logic
+  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
   if (filters.startDate) {
-    conditions.push(gte(supplierFileUpload.periodStartDate, filters.startDate));
+    conditions.push(gte(supplierFileUpload.periodEndDate, filters.startDate));
   }
 
   if (filters.endDate) {
-    conditions.push(lte(supplierFileUpload.periodEndDate, filters.endDate));
+    conditions.push(lte(supplierFileUpload.periodStartDate, filters.endDate));
   }
 
   // Filter by brand if specified (through supplier-brand relationship)
