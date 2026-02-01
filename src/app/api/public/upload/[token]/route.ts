@@ -7,10 +7,10 @@ import {
   markUploadLinkAsUsed,
   updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
-import { getSuppliers } from "@/data-access/suppliers";
+import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
-import { getFranchiseeByCompanyId } from "@/data-access/franchisees";
-import type { BkmvProcessingResult } from "@/db/schema";
+import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import type { BkmvProcessingResult, SupplierFileMapping, SupplierFileProcessingResult } from "@/db/schema";
 import {
   uploadDocument,
   generateEntityFileName,
@@ -26,6 +26,8 @@ import { isBkmvDataFile, parseBkmvData, extractDateRange } from "@/lib/bkmvdata-
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
+import { createSupplierFileUpload } from "@/data-access/supplier-file-uploads";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -398,8 +400,186 @@ export async function POST(
       }
     }
 
+    // Automatic supplier file processing for supplier uploads
+    let supplierProcessingResult = null;
+    const isExcelFile = file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                        file.type === "application/vnd.ms-excel";
+
+    if (link.entityType === "supplier" && isExcelFile) {
+      try {
+        console.log("Detected Excel file upload from supplier:", link.entityId);
+
+        // Get supplier details
+        const supplier = await getSupplierById(link.entityId);
+        if (!supplier) {
+          console.error("Supplier not found:", link.entityId);
+          supplierProcessingResult = {
+            processed: false,
+            error: "Supplier not found",
+          };
+        } else if (!supplier.fileMapping) {
+          console.warn("Supplier has no file mapping configured:", supplier.name);
+          // Mark for manual review since we can't process automatically
+          await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
+          supplierProcessingResult = {
+            processed: false,
+            error: "Supplier file mapping not configured - requires manual processing",
+            supplierName: supplier.name,
+          };
+        } else {
+          // Mark file as processing
+          await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "processing");
+
+          // Get VAT rate
+          const vatRate = await getCurrentVatRate();
+
+          // Process the supplier file
+          const fileMapping = supplier.fileMapping as SupplierFileMapping;
+          const processResult = await processSupplierFile(
+            buffer,
+            fileMapping,
+            supplier.vatIncluded ?? false,
+            vatRate,
+            supplier.code ?? undefined
+          );
+
+          if (!processResult.success || processResult.data.length === 0) {
+            console.error("Failed to process supplier file:", processResult.errors);
+            await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
+            supplierProcessingResult = {
+              processed: false,
+              error: processResult.errors?.[0]?.message || "Failed to process file",
+              supplierName: supplier.name,
+            };
+          } else {
+            // Match franchisee names
+            const matchedResults = await matchFranchiseeNamesFromFile(processResult.data);
+
+            // Calculate match statistics
+            const exactMatches = matchedResults.filter(
+              r => r.matchResult.matchedFranchisee && r.matchResult.confidence === 1
+            ).length;
+            const fuzzyMatches = matchedResults.filter(
+              r => r.matchResult.matchedFranchisee && r.matchResult.confidence < 1 && !r.matchResult.requiresReview
+            ).length;
+            const needsReview = matchedResults.filter(
+              r => r.matchResult.matchedFranchisee && r.matchResult.requiresReview
+            ).length;
+            const unmatched = matchedResults.filter(
+              r => !r.matchResult.matchedFranchisee
+            ).length;
+
+            // Extract period dates from processed data
+            const datesInFile = processResult.data
+              .map(row => row.date)
+              .filter((d): d is Date => d !== null);
+
+            let periodStartDate = formatDateAsLocal(new Date());
+            let periodEndDate = formatDateAsLocal(new Date());
+
+            if (datesInFile.length > 0) {
+              const earliest = datesInFile.reduce((min, d) => d < min ? d : min, datesInFile[0]);
+              const latest = datesInFile.reduce((max, d) => d > max ? d : max, datesInFile[0]);
+              periodStartDate = formatDateAsLocal(earliest);
+              periodEndDate = formatDateAsLocal(latest);
+            }
+
+            // Determine processing status
+            const shouldAutoApprove = unmatched === 0 && needsReview === 0;
+            const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
+
+            // Determine match type for each result
+            const getMatchType = (r: typeof matchedResults[0]): "exact" | "fuzzy" | "manual" | "blacklisted" | "none" => {
+              if (!r.matchResult.matchedFranchisee) return "none";
+              if (r.matchResult.confidence === 1) return "exact";
+              return "fuzzy";
+            };
+
+            // Prepare processing result for storage
+            const storedResult: SupplierFileProcessingResult = {
+              totalRows: processResult.summary.totalRows,
+              processedRows: processResult.summary.processedRows,
+              skippedRows: processResult.summary.skippedRows,
+              totalGrossAmount: processResult.summary.totalGrossAmount,
+              totalNetAmount: processResult.summary.totalNetAmount,
+              vatAdjusted: supplier.vatIncluded ?? false,
+              matchStats: {
+                total: matchedResults.length,
+                exactMatches,
+                fuzzyMatches,
+                unmatched,
+              },
+              franchiseeMatches: matchedResults.map(r => ({
+                originalName: r.franchisee,
+                rowNumber: r.rowNumber,
+                grossAmount: r.grossAmount,
+                netAmount: r.netAmount,
+                matchedFranchiseeId: r.matchResult.matchedFranchisee?.id || null,
+                matchedFranchiseeName: r.matchResult.matchedFranchisee?.name || null,
+                confidence: r.matchResult.confidence,
+                matchType: getMatchType(r),
+                requiresReview: r.matchResult.requiresReview,
+              })),
+              processedAt: new Date().toISOString(),
+            };
+
+            // Create supplier_file_upload record
+            const supplierFileRecord = await createSupplierFileUpload({
+              supplierId: supplier.id,
+              originalFileName: file.name,
+              fileUrl: uploadResult.url,
+              fileSize: uploadResult.fileSize,
+              processingStatus,
+              processingResult: storedResult,
+              periodStartDate,
+              periodEndDate,
+              createdBy: null, // Public upload, no user
+            });
+
+            // Update uploaded_file status
+            await updateUploadedFileProcessingStatus(
+              uploadedFileRecord.id,
+              processingStatus
+            );
+
+            supplierProcessingResult = {
+              processed: true,
+              supplierName: supplier.name,
+              supplierFileId: supplierFileRecord.id,
+              periodStartDate,
+              periodEndDate,
+              totalRows: processResult.summary.processedRows,
+              matchStats: {
+                total: matchedResults.length,
+                exactMatches,
+                fuzzyMatches,
+                needsReview,
+                unmatched,
+              },
+              processingStatus,
+              autoApproved: shouldAutoApprove,
+            };
+
+            // Only notify if file needs manual review
+            shouldNotify = processingStatus === "needs_review";
+
+            console.log("Supplier file processing completed:", supplierProcessingResult);
+          }
+        }
+      } catch (supplierError) {
+        console.error("Error processing supplier file:", supplierError);
+        await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
+        supplierProcessingResult = {
+          processed: false,
+          error: supplierError instanceof Error ? supplierError.message : "Unknown error",
+        };
+        // Still notify on error since file needs manual review
+        shouldNotify = true;
+      }
+    }
+
     // Notify super users about the upload (non-blocking)
-    // Only notify if the file needs review (auto-approved BKMVDATA files skip notification)
+    // Only notify if the file needs review (auto-approved files skip notification)
     if (shouldNotify) {
       notifySuperUsersAboutUpload(link.id, uploadedFileRecord).catch((error) => {
         console.error("Failed to notify super users about upload:", error);
@@ -418,6 +598,7 @@ export async function POST(
         },
         filesRemaining: link.maxFiles - newFilesCount,
         bkmvProcessing: bkmvProcessingResult,
+        supplierProcessing: supplierProcessingResult,
       },
       { status: 201 }
     );
