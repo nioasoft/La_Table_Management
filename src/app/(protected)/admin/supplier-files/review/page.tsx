@@ -100,7 +100,7 @@ export default function SupplierFilesReviewPage() {
   }
 
   // Fetch files needing review
-  const { data: reviewData, isLoading, error, refetch } = useQuery({
+  const { data: reviewData, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["supplier-files", "review"],
     queryFn: async () => {
       const response = await fetch("/api/supplier-files/review");
@@ -196,8 +196,8 @@ export default function SupplierFilesReviewPage() {
               חזרה לעיבוד קבצים
             </Button>
           </Link>
-          <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 ms-2 ${isLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
+            <RefreshCw className={`h-4 w-4 ms-2 ${isFetching ? "animate-spin" : ""}`} />
             רענן
           </Button>
         </div>
