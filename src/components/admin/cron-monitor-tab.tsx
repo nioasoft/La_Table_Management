@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { he } from "@/lib/translations/he";
+import { cn } from "@/lib/utils";
 
 const t = he.admin.cronMonitor;
 const tCommon = he.common;
@@ -224,156 +225,215 @@ export default function CronMonitorTab() {
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="border-s-4 border-s-blue-500 bg-gradient-to-l from-blue-50/50 to-transparent dark:from-blue-950/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t.stats.totalJobs}</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.totalJobs}</CardTitle>
+            <div className="rounded-full bg-blue-100 p-2 dark:bg-blue-900/30">
+              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{CRON_JOBS.length}</div>
+            <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">{CRON_JOBS.length}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-s-4 border-s-amber-500 bg-gradient-to-l from-amber-50/50 to-transparent dark:from-amber-950/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">{t.stats.pendingItems}</CardTitle>
-            <AlertCircle className="h-4 w-4 text-yellow-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.pendingItems}</CardTitle>
+            <div className="rounded-full bg-amber-100 p-2 dark:bg-amber-900/30">
+              <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.sent || 0}</div>
+            <div className="text-3xl font-bold text-amber-700 dark:text-amber-300">{stats?.sent || 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="border-s-4 border-s-green-500 bg-gradient-to-l from-green-50/50 to-transparent dark:from-green-950/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">הושלמו</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">הושלמו</CardTitle>
+            <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+              <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.submitted || 0}</div>
+            <div className="text-3xl font-bold text-green-700 dark:text-green-300">{stats?.submitted || 0}</div>
           </CardContent>
         </Card>
       </div>
 
       {/* CRON Jobs Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {CRON_JOBS.map((job) => (
-          <Card key={job.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <div className="p-2 bg-muted rounded-lg">{job.icon}</div>
-                <Badge variant="outline" className="gap-1">
-                  <CheckCircle className="h-3 w-3 text-green-500" />
-                  {t.status.ok}
-                </Badge>
-              </div>
-              <CardTitle className="text-lg">{job.name}</CardTitle>
-              <CardDescription className="text-xs">{job.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => handleRunJob(job.id, job.endpoint, true)}
-                  disabled={runningJob === job.id}
-                >
-                  {runningJob === job.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin ms-1" />
-                  ) : null}
-                  {t.actions.dryRun}
-                </Button>
-                <Button
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => handleRunJob(job.id, job.endpoint, false)}
-                  disabled={runningJob === job.id}
-                >
-                  {runningJob === job.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin ms-1" />
-                  ) : (
-                    <Play className="h-4 w-4 ms-1" />
-                  )}
-                  {t.actions.runNow}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {CRON_JOBS.map((job, index) => {
+          const colors = [
+            { bg: "from-indigo-50/80", border: "border-indigo-200", icon: "bg-indigo-100 text-indigo-600", dark: "dark:from-indigo-950/30 dark:border-indigo-800" },
+            { bg: "from-emerald-50/80", border: "border-emerald-200", icon: "bg-emerald-100 text-emerald-600", dark: "dark:from-emerald-950/30 dark:border-emerald-800" },
+            { bg: "from-orange-50/80", border: "border-orange-200", icon: "bg-orange-100 text-orange-600", dark: "dark:from-orange-950/30 dark:border-orange-800" },
+            { bg: "from-pink-50/80", border: "border-pink-200", icon: "bg-pink-100 text-pink-600", dark: "dark:from-pink-950/30 dark:border-pink-800" },
+          ];
+          const color = colors[index % colors.length];
+
+          return (
+            <Card
+              key={job.id}
+              className={cn(
+                "bg-gradient-to-b to-transparent transition-shadow hover:shadow-md",
+                color.bg,
+                color.border,
+                color.dark
+              )}
+            >
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-row-reverse">
+                  <div className={cn("p-2.5 rounded-xl", color.icon, "dark:bg-opacity-30")}>
+                    {job.icon}
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800"
+                  >
+                    <CheckCircle className="h-3 w-3" />
+                    {t.status.ok}
+                  </Badge>
+                </div>
+                <div className="text-right mt-3">
+                  <CardTitle className="text-base">{job.name}</CardTitle>
+                  <CardDescription className="text-xs mt-1">{job.description}</CardDescription>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2 pt-0">
+                <div className="flex gap-2 flex-row-reverse">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 gap-2"
+                    onClick={() => handleRunJob(job.id, job.endpoint, true)}
+                    disabled={runningJob === job.id}
+                  >
+                    {runningJob === job.id && (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    )}
+                    {t.actions.dryRun}
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1 gap-2"
+                    onClick={() => handleRunJob(job.id, job.endpoint, false)}
+                    disabled={runningJob === job.id}
+                  >
+                    {runningJob === job.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
+                    {t.actions.runNow}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Pending Requests */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              {t.pendingRequests.title}
-            </CardTitle>
-            <CardDescription>בקשות שנשלחו וטרם התקבל מענה</CardDescription>
+        <CardHeader className="border-b bg-muted/30">
+          <div className="flex items-center justify-between flex-row-reverse">
+            <div className="flex items-center gap-3 flex-row-reverse">
+              <div className="rounded-lg bg-primary/10 p-2">
+                <Clock className="h-5 w-5 text-primary" />
+              </div>
+              <div className="text-right">
+                <CardTitle>{t.pendingRequests.title}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">בקשות שנשלחו וטרם התקבל מענה</p>
+              </div>
+            </div>
+            <Button variant="outline" onClick={() => refetch()} disabled={pendingLoading} className="gap-2">
+              {pendingLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {t.actions.refresh}
+            </Button>
           </div>
-          <Button variant="outline" onClick={() => refetch()} disabled={pendingLoading}>
-            {pendingLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin ms-2" />
-            ) : (
-              <RefreshCw className="h-4 w-4 ms-2" />
-            )}
-            {t.actions.refresh}
-          </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {pendingLoading ? (
-            <div className="flex items-center justify-center py-8">
+            <div className="flex items-center justify-center py-12">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : pendingRequests.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {t.pendingRequests.emptyState}
+            <div className="text-center py-12 text-muted-foreground">
+              <Clock className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <p>{t.pendingRequests.emptyState}</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right">שם</TableHead>
-                  <TableHead className="text-right">אימייל</TableHead>
-                  <TableHead className="text-right">{t.pendingRequests.sentAt}</TableHead>
-                  <TableHead className="text-right">{t.pendingRequests.reminders}</TableHead>
-                  <TableHead className="text-right">פעולות</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingRequests.map((request) => (
-                  <TableRow key={request.id}>
-                    <TableCell className="text-right font-medium">
-                      {request.entityName}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {request.recipientEmail}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatDate(request.sentAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant="outline">{request.remindersCount}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => sendReminderMutation.mutate(request.id)}
-                        disabled={sendReminderMutation.isPending}
-                      >
-                        {sendReminderMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin ms-1" />
-                        ) : (
-                          <Send className="h-4 w-4 ms-1" />
-                        )}
-                        {t.pendingRequests.sendReminder}
-                      </Button>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="text-right font-semibold">שם</TableHead>
+                    <TableHead className="text-right font-semibold">אימייל</TableHead>
+                    <TableHead className="text-right font-semibold">{t.pendingRequests.sentAt}</TableHead>
+                    <TableHead className="text-center font-semibold">{t.pendingRequests.reminders}</TableHead>
+                    <TableHead className="text-center font-semibold">פעולות</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {pendingRequests.map((request, index) => (
+                    <TableRow
+                      key={request.id}
+                      className={cn(
+                        "transition-colors",
+                        index % 2 === 0 ? "bg-background" : "bg-muted/20"
+                      )}
+                    >
+                      <TableCell className="text-right">
+                        <div className="flex items-center gap-3 flex-row-reverse justify-end">
+                          <div className="rounded-lg bg-muted p-2">
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium">{request.entityName}</p>
+                            <p className="text-xs text-muted-foreground">{request.entityType === "supplier" ? "ספק" : "זכיין"}</p>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-mono text-sm text-muted-foreground">{request.recipientEmail}</span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {formatDate(request.sentAt)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {request.remindersCount > 0 ? (
+                          <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300">
+                            {request.remindersCount}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground">0</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="default"
+                          onClick={() => sendReminderMutation.mutate(request.id)}
+                          disabled={sendReminderMutation.isPending}
+                          className="gap-2"
+                        >
+                          {sendReminderMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Send className="h-4 w-4" />
+                          )}
+                          {t.pendingRequests.sendReminder}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>

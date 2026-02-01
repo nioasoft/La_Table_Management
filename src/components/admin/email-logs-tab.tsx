@@ -47,6 +47,7 @@ import {
 } from "lucide-react";
 import type { EmailLog, EmailStatus } from "@/db/schema";
 import { he } from "@/lib/translations/he";
+import { cn } from "@/lib/utils";
 
 const t = he.admin.emailLogs;
 
@@ -137,144 +138,189 @@ export default function EmailLogsTab() {
       {/* Stats Cards */}
       {stats && (
         <div className="grid gap-4 md:grid-cols-4">
-          <Card>
+          <Card className="border-s-4 border-s-blue-500 bg-gradient-to-l from-blue-50/50 to-transparent dark:from-blue-950/20">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t.stats.total}</CardTitle>
-              <Mail className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.total}</CardTitle>
+              <div className="rounded-full bg-blue-100 p-2 dark:bg-blue-900/30">
+                <Mail className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
+              <div className="text-3xl font-bold text-blue-700 dark:text-blue-300">{stats.total}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-s-4 border-s-green-500 bg-gradient-to-l from-green-50/50 to-transparent dark:from-green-950/20">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t.stats.delivered}</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.delivered}</CardTitle>
+              <div className="rounded-full bg-green-100 p-2 dark:bg-green-900/30">
+                <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.byStatus.delivered || 0}</div>
+              <div className="text-3xl font-bold text-green-700 dark:text-green-300">{stats.byStatus.delivered || 0}</div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-s-4 border-s-red-500 bg-gradient-to-l from-red-50/50 to-transparent dark:from-red-950/20">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t.stats.failed}</CardTitle>
-              <XCircle className="h-4 w-4 text-red-500" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.failed}</CardTitle>
+              <div className="rounded-full bg-red-100 p-2 dark:bg-red-900/30">
+                <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-3xl font-bold text-red-700 dark:text-red-300">
                 {(stats.byStatus.failed || 0) + (stats.byStatus.bounced || 0)}
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className="border-s-4 border-s-purple-500 bg-gradient-to-l from-purple-50/50 to-transparent dark:from-purple-950/20">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{t.stats.last24Hours}</CardTitle>
-              <Clock className="h-4 w-4 text-blue-500" />
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t.stats.last24Hours}</CardTitle>
+              <div className="rounded-full bg-purple-100 p-2 dark:bg-purple-900/30">
+                <Clock className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stats.last24Hours}</div>
+              <div className="text-3xl font-bold text-purple-700 dark:text-purple-300">{stats.last24Hours}</div>
             </CardContent>
           </Card>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-4 flex-wrap">
-        <Select
-          value={statusFilter}
-          onValueChange={(value) => setStatusFilter(value as "all" | EmailStatus)}
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder={t.filters.status} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t.filters.allStatuses}</SelectItem>
-            <SelectItem value="pending">{t.statuses.pending}</SelectItem>
-            <SelectItem value="sent">{t.statuses.sent}</SelectItem>
-            <SelectItem value="delivered">{t.statuses.delivered}</SelectItem>
-            <SelectItem value="failed">{t.statuses.failed}</SelectItem>
-            <SelectItem value="bounced">{t.statuses.bounced}</SelectItem>
-          </SelectContent>
-        </Select>
+      <Card className="p-4">
+        <div className="flex items-center gap-4 flex-wrap flex-row-reverse justify-end">
+          <Button variant="outline" onClick={() => refetch()} disabled={isFetching} className="gap-2">
+            {isFetching ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            {t.actions.refresh}
+          </Button>
 
-        <Input
-          placeholder={t.filters.searchPlaceholder}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="w-[250px]"
-        />
+          <div className="flex items-center gap-2 flex-row-reverse">
+            <span className="text-sm text-muted-foreground">סינון:</span>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value as "all" | EmailStatus)}
+            >
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder={t.filters.status} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t.filters.allStatuses}</SelectItem>
+                <SelectItem value="pending">{t.statuses.pending}</SelectItem>
+                <SelectItem value="sent">{t.statuses.sent}</SelectItem>
+                <SelectItem value="delivered">{t.statuses.delivered}</SelectItem>
+                <SelectItem value="failed">{t.statuses.failed}</SelectItem>
+                <SelectItem value="bounced">{t.statuses.bounced}</SelectItem>
+              </SelectContent>
+            </Select>
 
-        <Button variant="outline" onClick={() => refetch()} disabled={isFetching}>
-          {isFetching ? (
-            <Loader2 className="h-4 w-4 animate-spin ms-2" />
-          ) : (
-            <RefreshCw className="h-4 w-4 ms-2" />
-          )}
-          {t.actions.refresh}
-        </Button>
-      </div>
+            <Input
+              placeholder={t.filters.searchPlaceholder}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-[220px]"
+            />
+          </div>
+        </div>
+      </Card>
 
       {/* Email Logs Table */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            {t.title}
-          </CardTitle>
-          <CardDescription>{t.description}</CardDescription>
+        <CardHeader className="border-b bg-muted/30">
+          <div className="flex items-center gap-3 flex-row-reverse">
+            <div className="rounded-lg bg-primary/10 p-2">
+              <Mail className="h-5 w-5 text-primary" />
+            </div>
+            <div className="text-right">
+              <CardTitle>{t.title}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {filteredLogs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {t.emptyState}
+            <div className="text-center py-12 text-muted-foreground">
+              <Mail className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <p>{t.emptyState}</p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-right">{t.table.recipient}</TableHead>
-                  <TableHead className="text-right">{t.table.subject}</TableHead>
-                  <TableHead className="text-right">{t.table.status}</TableHead>
-                  <TableHead className="text-right">{t.table.sentAt}</TableHead>
-                  <TableHead className="text-right">{t.table.actions}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredLogs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="text-right">
-                      <div>
-                        <p className="font-medium">{log.toEmail}</p>
-                        {log.toName && (
-                          <p className="text-sm text-muted-foreground">{log.toName}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right max-w-[300px] truncate">
-                      {log.subject}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={statusColors[log.status]} className="gap-1">
-                        {statusIcons[log.status]}
-                        {t.statuses[log.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatDate(log.sentAt || log.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedLog(log)}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="text-right font-semibold">{t.table.recipient}</TableHead>
+                    <TableHead className="text-right font-semibold">{t.table.subject}</TableHead>
+                    <TableHead className="text-center font-semibold">{t.table.status}</TableHead>
+                    <TableHead className="text-right font-semibold">{t.table.sentAt}</TableHead>
+                    <TableHead className="text-center font-semibold">{t.table.actions}</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredLogs.map((log, index) => (
+                    <TableRow
+                      key={log.id}
+                      className={cn(
+                        "transition-colors cursor-pointer hover:bg-muted/40",
+                        index % 2 === 0 ? "bg-background" : "bg-muted/20"
+                      )}
+                      onClick={() => setSelectedLog(log)}
+                    >
+                      <TableCell className="text-right">
+                        <div className="flex items-center gap-3 flex-row-reverse justify-end">
+                          <div className="rounded-lg bg-muted p-2">
+                            <Mail className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div className="text-right">
+                            <p className="font-medium font-mono text-sm">{log.toEmail}</p>
+                            {log.toName && (
+                              <p className="text-sm text-muted-foreground">{log.toName}</p>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right max-w-[300px]">
+                        <span className="truncate block text-sm">{log.subject}</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge
+                          variant={statusColors[log.status]}
+                          className={cn(
+                            "gap-1.5",
+                            log.status === "delivered" && "bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-300",
+                            log.status === "sent" && "bg-blue-100 text-blue-800 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-300",
+                            log.status === "pending" && "bg-amber-100 text-amber-800 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300"
+                          )}
+                        >
+                          {statusIcons[log.status]}
+                          {t.statuses[log.status]}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground">
+                        {formatDate(log.sentAt || log.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLog(log);
+                          }}
+                          className="gap-2"
+                        >
+                          <Eye className="h-4 w-4" />
+                          {t.actions.viewDetails}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </CardContent>
       </Card>
