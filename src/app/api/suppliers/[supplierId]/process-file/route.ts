@@ -167,6 +167,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         "application/zip",
         "application/x-zip-compressed",
         "application/vnd.ms-excel", // Allow XLS for suppliers with ZIP config (single file upload)
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // Allow XLSX for new multi-sheet format
       ],
     };
 
