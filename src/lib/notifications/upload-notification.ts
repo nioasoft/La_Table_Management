@@ -152,9 +152,11 @@ export async function notifySuperUsersAboutUpload(
 
     // Send notification to each super user
     for (const superUser of activeSuperUsers) {
+      // Use notificationEmail if set, otherwise fall back to login email
+      const recipientEmail = superUser.notificationEmail || superUser.email;
       const notificationResult = await sendNotificationEmail(
         superUser.id,
-        superUser.email,
+        recipientEmail,
         subject,
         html,
         text,

@@ -274,6 +274,8 @@ export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
+  // Optional email for notifications (uses email if null)
+  notificationEmail: text("notification_email"),
   emailVerified: boolean("email_verified")
     .$defaultFn(() => false)
     .notNull(),
