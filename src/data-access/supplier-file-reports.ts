@@ -55,6 +55,7 @@ export interface SupplierFranchiseeEntry {
   brandName: string;
   grossAmount: number;
   netAmount: number;
+  commission: number;
 }
 
 export interface SupplierFileSummary {
@@ -406,6 +407,10 @@ export async function getSupplierFilesReport(
     existing.totalCommission += fileEntry.calculatedCommission;
 
     // Extract franchisee details from processing result
+    // Get supplier commission info for calculating per-franchisee commission
+    const commissionRate = file.commissionRate ? parseFloat(file.commissionRate) : null;
+    const commissionType = file.commissionType;
+
     if (processingResult?.franchiseeMatches) {
       for (const match of processingResult.franchiseeMatches) {
         if (!match.matchedFranchiseeId) continue;
@@ -419,10 +424,23 @@ export async function getSupplierFilesReport(
         const franchiseeInfo = franchiseeInfoMap.get(match.matchedFranchiseeId);
         if (!franchiseeInfo) continue;
 
+        // Calculate commission for this franchisee match
+        const matchAny = match as Record<string, unknown>;
+        let matchCommission = 0;
+        if (typeof matchAny.preCalculatedCommission === "number") {
+          // Commission from file (for suppliers like MADAG, AVRAHAMI, etc.)
+          matchCommission = matchAny.preCalculatedCommission;
+        } else if (commissionRate && commissionType === "percentage") {
+          // Fixed commission rate
+          matchCommission = (match.netAmount || 0) * (commissionRate / 100);
+        }
+        matchCommission = Math.trunc(matchCommission * 100) / 100;
+
         const existingFranchisee = existing.franchiseeMap.get(match.matchedFranchiseeId);
         if (existingFranchisee) {
           existingFranchisee.grossAmount += match.grossAmount || 0;
           existingFranchisee.netAmount += match.netAmount || 0;
+          existingFranchisee.commission += matchCommission;
         } else {
           existing.franchiseeMap.set(match.matchedFranchiseeId, {
             franchiseeId: match.matchedFranchiseeId,
@@ -431,6 +449,7 @@ export async function getSupplierFilesReport(
             brandName: franchiseeInfo.brandName,
             grossAmount: match.grossAmount || 0,
             netAmount: match.netAmount || 0,
+            commission: matchCommission,
           });
         }
       }
@@ -576,6 +595,7 @@ export interface FranchiseeSupplierEntry {
   netAmount: number;
   matchType: string;
   createdAt: Date; // Added for deduplication - tracks which file is newest
+  commission: number;
 }
 
 export interface FranchiseeBreakdownEntry {
@@ -585,6 +605,7 @@ export interface FranchiseeBreakdownEntry {
   brandName: string;
   totalGrossAmount: number;
   totalNetAmount: number;
+  totalCommission: number;
   supplierCount: number;
   suppliers: FranchiseeSupplierEntry[];
 }
@@ -642,6 +663,8 @@ export async function getFranchiseeBreakdownReport(
       periodEndDate: supplierFileUpload.periodEndDate,
       createdAt: supplierFileUpload.createdAt, // Added for deduplication
       supplierName: supplier.name,
+      commissionRate: supplier.defaultCommissionRate,
+      commissionType: supplier.commissionType,
     })
     .from(supplierFileUpload)
     .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
@@ -680,6 +703,10 @@ export async function getFranchiseeBreakdownReport(
 
     totalFiles++;
 
+    // Get supplier commission info for calculating per-franchisee commission
+    const commissionRate = file.commissionRate ? parseFloat(file.commissionRate) : null;
+    const commissionType = file.commissionType;
+
     for (const match of processingResult.franchiseeMatches) {
       if (!match.matchedFranchiseeId) continue;
 
@@ -691,6 +718,18 @@ export async function getFranchiseeBreakdownReport(
 
       // Apply brand filter at franchisee level too
       if (filters.brandId && franchiseeInfo.brandId !== filters.brandId) continue;
+
+      // Calculate commission for this match
+      const matchAny = match as Record<string, unknown>;
+      let matchCommission = 0;
+      if (typeof matchAny.preCalculatedCommission === "number") {
+        // Commission from file (for suppliers like MADAG, AVRAHAMI, etc.)
+        matchCommission = matchAny.preCalculatedCommission;
+      } else if (commissionRate && commissionType === "percentage") {
+        // Fixed commission rate
+        matchCommission = (match.netAmount || 0) * (commissionRate / 100);
+      }
+      matchCommission = Math.trunc(matchCommission * 100) / 100;
 
       let franchiseeData = franchiseeDataMap.get(match.matchedFranchiseeId);
       if (!franchiseeData) {
@@ -713,6 +752,7 @@ export async function getFranchiseeBreakdownReport(
         if (existingSupplier.fileId === file.id) {
           existingSupplier.grossAmount += match.grossAmount || 0;
           existingSupplier.netAmount += match.netAmount || 0;
+          existingSupplier.commission += matchCommission;
           continue;
         }
         // Different file - keep only the newer one
@@ -732,6 +772,7 @@ export async function getFranchiseeBreakdownReport(
         netAmount: match.netAmount || 0,
         matchType: match.matchType,
         createdAt: file.createdAt, // Track for comparison
+        commission: matchCommission,
       });
     }
   }
@@ -745,6 +786,7 @@ export async function getFranchiseeBreakdownReport(
       const suppliersList = Array.from(data.suppliers.values());
       const totalGross = suppliersList.reduce((sum, s) => sum + s.grossAmount, 0);
       const totalNet = suppliersList.reduce((sum, s) => sum + s.netAmount, 0);
+      const totalCommission = suppliersList.reduce((sum, s) => sum + s.commission, 0);
       return {
         franchiseeId: data.franchiseeId,
         franchiseeName: data.franchiseeName,
@@ -752,6 +794,7 @@ export async function getFranchiseeBreakdownReport(
         brandName: data.brandName,
         totalGrossAmount: Math.trunc(totalGross * 100) / 100,
         totalNetAmount: Math.trunc(totalNet * 100) / 100,
+        totalCommission: Math.trunc(totalCommission * 100) / 100,
         supplierCount: data.suppliers.size,
         suppliers: suppliersList.sort((a, b) => b.netAmount - a.netAmount),
       };

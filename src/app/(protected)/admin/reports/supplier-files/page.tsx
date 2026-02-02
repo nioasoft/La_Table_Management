@@ -82,6 +82,7 @@ interface SupplierFranchiseeEntry {
   brandName: string;
   grossAmount: number;
   netAmount: number;
+  commission: number;
 }
 
 interface SupplierFileSummary {
@@ -104,6 +105,7 @@ interface FranchiseeSupplierEntry {
   grossAmount: number;
   netAmount: number;
   matchType: string;
+  commission: number;
 }
 
 interface FranchiseeBreakdownEntry {
@@ -113,6 +115,7 @@ interface FranchiseeBreakdownEntry {
   brandName: string;
   totalGrossAmount: number;
   totalNetAmount: number;
+  totalCommission: number;
   supplierCount: number;
   suppliers: FranchiseeSupplierEntry[];
 }
@@ -401,6 +404,18 @@ const franchiseeColumns: ColumnDef<FranchiseeBreakdownEntry>[] = [
     accessorKey: "totalNetAmount",
     className: "font-medium",
   },
+  {
+    id: "totalCommission",
+    header: "סה״כ עמלה",
+    accessor: (row) => formatCurrency(row.totalCommission),
+    accessorKey: "totalCommission",
+    className: "font-medium text-emerald-600 dark:text-emerald-400",
+    cell: (row) => (
+      <span className="font-medium text-emerald-600 dark:text-emerald-400">
+        {formatCurrency(row.totalCommission)}
+      </span>
+    ),
+  },
 ];
 
 // ============================================================================
@@ -446,8 +461,11 @@ function SupplierExpandedContent({ franchisees }: { franchisees: SupplierFranchi
               <span className="text-muted-foreground">
                 כולל מע״מ: {formatCurrency(f.grossAmount)}
               </span>
-              <span className="font-medium">
+              <span className="text-muted-foreground">
                 לפני מע״מ: {formatCurrency(f.netAmount)}
+              </span>
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                עמלה: {formatCurrency(f.commission)}
               </span>
             </div>
           </div>
@@ -491,8 +509,11 @@ function FranchiseeExpandedContent({ suppliers }: { suppliers: FranchiseeSupplie
               <span className="text-muted-foreground">
                 כולל מע״מ: {formatCurrency(s.grossAmount)}
               </span>
-              <span className="font-medium">
+              <span className="text-muted-foreground">
                 לפני מע״מ: {formatCurrency(s.netAmount)}
+              </span>
+              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                עמלה: {formatCurrency(s.commission)}
               </span>
             </div>
           </div>
