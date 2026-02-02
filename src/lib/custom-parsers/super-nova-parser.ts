@@ -175,16 +175,16 @@ export function parseSuperNovaFile(buffer: Buffer): FileProcessingResult {
           continue;
         }
 
-        // Amounts appear to include VAT
-        const grossAmount = roundToTwoDecimals(amount);
-        const netAmount = roundToTwoDecimals(amount / (1 + VAT_RATE));
+        // Amounts are BEFORE VAT (net amounts)
+        const netAmount = roundToTwoDecimals(amount);
+        const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
 
         data.push({
           franchisee: franchiseeName,
           date: null,
           grossAmount,
           netAmount,
-          originalAmount: grossAmount,
+          originalAmount: netAmount, // Original from file is before VAT
           rowNumber: rowNumber++,
         });
 
