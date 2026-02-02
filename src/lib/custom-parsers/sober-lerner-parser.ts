@@ -30,6 +30,9 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
+// VAT rate in Israel
+const VAT_RATE = 0.18;
+
 // Column indices (0-based)
 const MONTH_COL = 0; // Column A - חודש
 const FRANCHISEE_COL = 1; // Column B - סניף
@@ -40,8 +43,8 @@ const TOTAL_COMMISSION_COL = 8; // Column I - סהכ עמלת רשת (pre-calcul
 const HEADER_ROW = 0; // Row 1 (0-indexed)
 const DATA_START_ROW = 1; // Row 2 (0-indexed)
 
-// Skip keywords
-const SKIP_KEYWORDS = ["סה״כ", "סהכ", "סיכום", "total", "סניף"];
+// Skip keywords (note: "סניף" removed - it's a valid franchisee column header, not a summary indicator)
+const SKIP_KEYWORDS = ["סה״כ", "סהכ", "סיכום", "total"];
 
 /**
  * Parse a numeric value from cell content
@@ -167,8 +170,8 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
 
     // Convert to ParsedRowData
     // Purchase amount goes to grossAmount/netAmount, commission to preCalculatedCommission
-    let totalAmount = 0;
-    let totalCommission = 0;
+    let totalNetAmount = 0;
+    let totalGrossAmount = 0;
     let processedRows = 0;
     let rowNumber = 1;
 
@@ -186,23 +189,25 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      const roundedAmount = roundToTwoDecimals(amount);
+      // Amounts are BEFORE VAT (net amounts)
+      const netAmount = roundToTwoDecimals(amount);
+      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
       const roundedCommission = roundToTwoDecimals(commission);
 
-      // Purchase amount (סהכ לזכיין) goes to grossAmount/netAmount
+      // Purchase amount (סהכ לזכיין) is net amount for cross-reference
       // Pre-calculated commission (סהכ עמלת רשת) goes to preCalculatedCommission
       data.push({
         franchisee,
         date: null,
-        grossAmount: roundedAmount,
-        netAmount: roundedAmount,
-        originalAmount: roundedAmount,
+        grossAmount,
+        netAmount,
+        originalAmount: netAmount, // Original from file is before VAT
         rowNumber: rowNumber++,
         preCalculatedCommission: roundedCommission,
       });
 
-      totalAmount += roundedAmount;
-      totalCommission += roundedCommission;
+      totalNetAmount += netAmount;
+      totalGrossAmount += grossAmount;
       processedRows++;
     }
 
@@ -226,8 +231,8 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedRows,
       skippedRows,
-      totalAmount,
-      totalAmount
+      totalGrossAmount,
+      totalNetAmount
     );
   } catch (error) {
     errors.push(
@@ -266,7 +271,7 @@ function createResult(
       skippedRows,
       totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
       totalNetAmount: roundToTwoDecimals(totalNetAmount),
-      vatAdjusted: false,
+      vatAdjusted: true,
     },
   };
 }
