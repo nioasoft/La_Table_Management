@@ -198,16 +198,16 @@ export function parseWongShuFile(buffer: Buffer): FileProcessingResult {
       // Use sheet name as franchisee name
       const franchisee = sheetName.trim();
 
-      // Amounts appear to include VAT
-      const grossAmount = roundToTwoDecimals(totalAmount);
-      const netAmount = roundToTwoDecimals(totalAmount / (1 + VAT_RATE));
+      // Amounts are BEFORE VAT (net amounts)
+      const netAmount = roundToTwoDecimals(totalAmount);
+      const grossAmount = roundToTwoDecimals(totalAmount * (1 + VAT_RATE));
 
       data.push({
         franchisee,
         date: null,
         grossAmount,
         netAmount,
-        originalAmount: grossAmount,
+        originalAmount: netAmount, // Original from file is before VAT
         rowNumber: rowNumber++,
       });
 
