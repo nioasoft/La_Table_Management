@@ -8,7 +8,6 @@
  * rather than calculated using the supplier's default commission rate.
  */
 export const SUPPLIERS_WITH_FILE_COMMISSION = [
-  "MADAG",
   "AVRAHAMI",
   "FANDANGO",
   "KIROSKAI",
