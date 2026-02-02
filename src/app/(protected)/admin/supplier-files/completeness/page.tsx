@@ -32,6 +32,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
 import {
   Loader2,
   CheckCircle2,
@@ -40,6 +41,7 @@ import {
   FileText,
   RefreshCw,
   ArrowLeft,
+  Search,
 } from "lucide-react";
 import Link from "next/link";
 import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus } from "@/app/api/dashboard/supplier-completeness/route";
@@ -84,6 +86,7 @@ export default function SupplierCompletenessPage() {
 
   const [year, setYear] = useState(defaultYear);
   const [brandId, setBrandId] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: session, isPending: isSessionPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -122,7 +125,14 @@ export default function SupplierCompletenessPage() {
   });
 
   const brands = brandsData?.brands || [];
-  const suppliers = completenessData?.suppliers || [];
+  const allSuppliers = completenessData?.suppliers || [];
+
+  // Filter suppliers by search query
+  const suppliers = searchQuery.trim()
+    ? allSuppliers.filter((s) =>
+        s.supplier.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allSuppliers;
 
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
@@ -159,6 +169,17 @@ export default function SupplierCompletenessPage() {
 
       {/* Filters Row */}
       <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
+        <div className="relative">
+          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="חיפוש ספק..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-48 h-8 pe-8 ps-3"
+          />
+        </div>
+
         <Select value={year.toString()} onValueChange={(v) => setYear(parseInt(v))}>
           <SelectTrigger className="w-24 h-8">
             <SelectValue />
