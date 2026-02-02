@@ -145,17 +145,8 @@ export function parseKiroskaiFile(buffer: Buffer): FileProcessingResult {
       const totalAmount = parseNumericValue(row[TOTAL_AMOUNT_COL]);
       const commission = parseNumericValue(row[COMMISSION_COL]);
 
-      // Skip rows with zero or negative amounts
-      if (totalAmount <= 0) {
-        if (totalAmount < 0) {
-          warnings.push(
-            createFileProcessingError("NEGATIVE_AMOUNT", {
-              rowNumber: rowIdx + 1,
-              details: `Negative amount ${totalAmount} for "${franchisee}"`,
-              value: String(totalAmount),
-            })
-          );
-        }
+      // Skip rows with zero amounts only - include negative amounts (credits/refunds)
+      if (totalAmount === 0) {
         skippedRows++;
         continue;
       }

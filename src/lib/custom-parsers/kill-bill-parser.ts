@@ -212,9 +212,9 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      // Kill Bill amounts appear to include VAT based on common practice
-      const grossAmount = roundToTwoDecimals(amounts.amount);
-      const netAmount = roundToTwoDecimals(amounts.amount / 1.18); // Remove VAT for net
+      // Kill Bill amounts are NET (before VAT) - need to add VAT for gross
+      const netAmount = roundToTwoDecimals(amounts.amount);
+      const grossAmount = roundToTwoDecimals(amounts.amount * 1.18);
 
       data.push({
         franchisee,
@@ -225,7 +225,7 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
         rowNumber: rowNumber++,
       });
 
-      totalAmount += grossAmount;
+      totalAmount += netAmount;
       processedFranchisees++;
     }
 
@@ -249,8 +249,8 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedFranchisees,
       skippedRows,
-      totalAmount,
-      roundToTwoDecimals(totalAmount / 1.18)
+      roundToTwoDecimals(totalAmount * 1.18), // totalGrossAmount
+      totalAmount // totalNetAmount (original amounts are net)
     );
   } catch (error) {
     errors.push(

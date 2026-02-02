@@ -93,6 +93,17 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
+      // Skip customer total rows (סה"כ למס. לקוח) to avoid double-counting
+      const rowStr = row.map((c) => String(c || "")).join(" ");
+      if (
+        rowStr.includes('סה"כ') ||
+        rowStr.includes("סה״כ") ||
+        rowStr.includes("סהכ")
+      ) {
+        skippedRows++;
+        continue;
+      }
+
       // Skip rows without a current customer
       if (!currentCustomer) {
         skippedRows++;
