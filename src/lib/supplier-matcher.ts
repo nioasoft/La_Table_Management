@@ -295,7 +295,7 @@ export function matchSupplierNames(
       matched: matched.length,
       needsReview: needsReview.length,
       unmatched: unmatched.length,
-      averageConfidence: Math.round(averageConfidence * 100) / 100,
+      averageConfidence: Math.trunc(averageConfidence * 100) / 100,
     },
   };
 }

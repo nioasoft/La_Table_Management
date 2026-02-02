@@ -146,8 +146,8 @@ function calculateCommission(
   }
 
   return {
-    calculated: Math.round(calculated * 100) / 100,
-    preCalculated: hasPreCalculated ? Math.round(preCalculatedTotal * 100) / 100 : null,
+    calculated: Math.trunc(calculated * 100) / 100,
+    preCalculated: hasPreCalculated ? Math.trunc(preCalculatedTotal * 100) / 100 : null,
   };
 }
 
@@ -308,7 +308,7 @@ export async function getSupplierFilesReport(
       // For per_item, we need to count filtered transactions
       calculated = (filters.brandId && franchiseeBrandMap ? franchiseeCount : (processingResult?.processedRows || 0)) * commissionRate;
     }
-    calculated = Math.round(calculated * 100) / 100;
+    calculated = Math.trunc(calculated * 100) / 100;
 
     // Check for pre-calculated commission in franchisee matches (filtered by brand if needed)
     let preCalculated: number | null = null;
@@ -330,7 +330,7 @@ export async function getSupplierFilesReport(
           hasPreCalculated = true;
         }
       }
-      preCalculated = hasPreCalculated ? Math.round(preCalculatedTotal * 100) / 100 : null;
+      preCalculated = hasPreCalculated ? Math.trunc(preCalculatedTotal * 100) / 100 : null;
     }
 
     return {
@@ -466,9 +466,9 @@ export async function getSupplierFilesReport(
   return {
     summary: {
       totalFiles: files.length,
-      totalGrossAmount: Math.round(totalGrossAmount * 100) / 100,
-      totalNetAmount: Math.round(totalNetAmount * 100) / 100,
-      totalCalculatedCommission: Math.round(totalCalculatedCommission * 100) / 100,
+      totalGrossAmount: Math.trunc(totalGrossAmount * 100) / 100,
+      totalNetAmount: Math.trunc(totalNetAmount * 100) / 100,
+      totalCalculatedCommission: Math.trunc(totalCalculatedCommission * 100) / 100,
       supplierCount: supplierMap.size,
       periodRange: {
         startDate: validDates[0] || null,
@@ -750,8 +750,8 @@ export async function getFranchiseeBreakdownReport(
         franchiseeName: data.franchiseeName,
         brandId: data.brandId,
         brandName: data.brandName,
-        totalGrossAmount: Math.round(totalGross * 100) / 100,
-        totalNetAmount: Math.round(totalNet * 100) / 100,
+        totalGrossAmount: Math.trunc(totalGross * 100) / 100,
+        totalNetAmount: Math.trunc(totalNet * 100) / 100,
         supplierCount: data.suppliers.size,
         suppliers: suppliersList.sort((a, b) => b.netAmount - a.netAmount),
       };
@@ -771,8 +771,8 @@ export async function getFranchiseeBreakdownReport(
   return {
     summary: {
       totalFranchisees: franchisees.length,
-      totalGrossAmount: Math.round(totalGrossAmount * 100) / 100,
-      totalNetAmount: Math.round(totalNetAmount * 100) / 100,
+      totalGrossAmount: Math.trunc(totalGrossAmount * 100) / 100,
+      totalNetAmount: Math.trunc(totalNetAmount * 100) / 100,
       totalFiles,
       generatedAt: new Date().toISOString(),
     },

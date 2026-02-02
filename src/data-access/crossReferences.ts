@@ -281,7 +281,7 @@ export function compareAmounts(
     franchiseeAmount,
     difference,
     absoluteDifference,
-    differencePercentage: Math.round(differencePercentage * 100) / 100,
+    differencePercentage: Math.trunc(differencePercentage * 100) / 100,
     matchStatus,
     threshold,
   };
@@ -566,9 +566,9 @@ export async function generateReconciliationReport(
     matchedCount,
     discrepancyCount,
     pendingCount,
-    totalSupplierAmount: Math.round(totalSupplierAmount * 100) / 100,
-    totalFranchiseeAmount: Math.round(totalFranchiseeAmount * 100) / 100,
-    totalDifference: Math.round(totalDifference * 100) / 100,
+    totalSupplierAmount: Math.trunc(totalSupplierAmount * 100) / 100,
+    totalFranchiseeAmount: Math.trunc(totalFranchiseeAmount * 100) / 100,
+    totalDifference: Math.trunc(totalDifference * 100) / 100,
     entries,
     generatedAt: new Date().toISOString(),
   };

@@ -291,7 +291,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         matched: matched.length,
         needsReview: needsReview.length,
         unmatched: unmatched.length,
-        averageConfidence: Math.round(averageConfidence * 100) / 100,
+        averageConfidence: Math.trunc(averageConfidence * 100) / 100,
         unmatchedNames: [...new Set(unmatched.map(u => u.franchisee))],
         namesNeedingReview: needsReview.map(r => ({
           name: r.franchisee,

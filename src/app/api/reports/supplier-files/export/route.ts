@@ -12,9 +12,9 @@ import {
 } from "@/data-access/supplier-file-reports";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
-// Format currency for Excel
+// Format currency for Excel (truncate to 2 decimals)
 const formatCurrency = (amount: number): number => {
-  return Math.round(amount * 100) / 100;
+  return Math.trunc(amount * 100) / 100;
 };
 
 // Format date for display in Hebrew locale

@@ -13,14 +13,14 @@ import {
 import { type CommissionStatus } from "@/db/schema";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
-// Format currency for Excel (number format)
+// Format currency for Excel (truncate to 2 decimals)
 const formatCurrency = (amount: number): number => {
-  return Math.round(amount * 100) / 100;
+  return Math.trunc(amount * 100) / 100;
 };
 
-// Format percentage for Excel
+// Format percentage for Excel (truncate to 2 decimals)
 const formatPercent = (rate: number): number => {
-  return Math.round(rate * 100) / 100;
+  return Math.trunc(rate * 100) / 100;
 };
 
 // Format date for display in Hebrew locale

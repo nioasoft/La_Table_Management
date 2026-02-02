@@ -74,10 +74,12 @@ export function calculateGrossFromNet(netAmount: number, vatRate: number = ISRAE
 }
 
 /**
- * Round to 2 decimal places for financial calculations
+ * Truncate to 2 decimal places for financial calculations
+ * Uses Math.trunc (not Math.floor) to truncate towards zero for both positive and negative numbers
+ * Example: 1.235 → 1.23, -1.235 → -1.23
  */
 export function roundToTwoDecimals(value: number): number {
-  return Math.round(value * 100) / 100;
+  return Math.trunc(value * 100) / 100;
 }
 
 /**
