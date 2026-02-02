@@ -125,6 +125,8 @@ interface ProcessedRow {
     franchiseeCode: string;
   };
   isBlacklisted?: boolean;
+  // Pre-calculated commission from supplier file (for suppliers with manual commission calculation)
+  preCalculatedCommission?: number;
 }
 
 interface ProcessingResult {
@@ -357,6 +359,7 @@ export default function SupplierFilesPage() {
           confidence: row.manualMatch ? 100 : (match?.confidence || 0) * 100,
           matchType,
           requiresReview: !row.isBlacklisted && !row.manualMatch && (match?.requiresReview || !match?.matchedFranchisee),
+          preCalculatedCommission: row.preCalculatedCommission,
         };
       });
 
