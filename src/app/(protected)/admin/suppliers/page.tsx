@@ -58,7 +58,7 @@ import {
 } from "lucide-react";
 import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
 import { FileMappingConfig } from "@/components/file-mapping-config";
-import { hasCommissionFromFile } from "@/lib/custom-parsers";
+import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import {
   Tooltip,
   TooltipContent,
