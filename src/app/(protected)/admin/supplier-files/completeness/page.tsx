@@ -170,13 +170,13 @@ export default function SupplierCompletenessPage() {
       {/* Filters Row */}
       <div className="flex flex-wrap items-center gap-4 p-3 bg-muted/50 rounded-lg">
         <div className="relative">
-          <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
             placeholder="חיפוש ספק..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-48 h-8 pe-8 ps-3"
+            className="w-48 h-8 ps-8 pe-3"
           />
         </div>
 
