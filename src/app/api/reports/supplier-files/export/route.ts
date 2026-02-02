@@ -43,7 +43,7 @@ function createSupplierFilesSheets(
 ): void {
   // Summary sheet
   const summaryData = [
-    ["דוח קבצי ספקים - סיכום כללי", ""],
+    ["נתוני קבצי ספקים - סיכום כללי", ""],
     ["", ""],
     ["תאריך הפקה", formatDateHe(data.summary.generatedAt)],
     ["", ""],

@@ -16,6 +16,7 @@ export const SUPPLIERS_WITH_FILE_COMMISSION = [
   "MIZRACH_UMAARAV",
   "SOBER_LERNER",
   "MACHALVOT_GAD",
+  "TEMPO",
 ] as const;
 
 /**

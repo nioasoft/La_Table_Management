@@ -104,7 +104,7 @@ const reportCards: ReportCardData[] = [
     color: "text-amber-600 dark:text-amber-400",
   },
   {
-    title: "דוח קבצי ספקים",
+    title: "נתוני קבצי ספקים",
     description: "צפייה בקבצים שהועלו מספקים - סכומים, עמלות מחושבות ואפשרות הורדה.",
     href: "/admin/reports/supplier-files",
     icon: <FileSpreadsheet className="h-6 w-6" />,

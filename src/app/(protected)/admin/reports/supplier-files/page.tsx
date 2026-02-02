@@ -673,7 +673,7 @@ export default function SupplierFilesReportPage() {
 
   return (
     <ReportLayout
-      title="דוח קבצי ספקים"
+      title="נתוני קבצי ספקים"
       description="צפייה בקבצים שהועלו מספקים עם חישוב עמלות והורדה"
       breadcrumbs={[
         { label: "ניהול", href: "/admin" },
