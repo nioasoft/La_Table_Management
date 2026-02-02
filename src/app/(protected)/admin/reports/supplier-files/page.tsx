@@ -32,6 +32,7 @@ import {
   Eye,
   HardDrive,
   Users,
+  Search,
 } from "lucide-react";
 import {
   ReportLayout,
@@ -545,6 +546,7 @@ export default function SupplierFilesReportPage() {
   const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
   const [periodKey, setPeriodKey] = useState("");
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
+  const [fileSearchTerm, setFileSearchTerm] = useState("");
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -628,6 +630,7 @@ export default function SupplierFilesReportPage() {
     setPeriodType("");
     setPeriodKey("");
     setUseCustomDateRange(true);
+    setFileSearchTerm("");
   };
 
   // Summary cards
@@ -695,13 +698,12 @@ export default function SupplierFilesReportPage() {
     >
       {/* Filters Card */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">סינון</CardTitle>
-          <CardDescription>סנן לפי ספק, מותג, סטטוס או תקופה</CardDescription>
+        <CardHeader className="pb-3 pt-4 px-4">
+          <CardTitle className="text-base">סינון</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="px-4 pb-4 space-y-2">
           {/* Period Selector */}
-          <div className="p-3 border rounded-lg bg-muted/30">
+          <div className="pb-2">
             <ReportPeriodSelector
               periodType={periodType}
               periodKey={periodKey}
@@ -713,11 +715,11 @@ export default function SupplierFilesReportPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="supplier">ספק</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[140px]">
+              <Label htmlFor="supplier" className="text-xs mb-1 block">ספק</Label>
               <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
-                <SelectTrigger id="supplier">
+                <SelectTrigger id="supplier" className="h-9">
                   <SelectValue placeholder="כל הספקים" />
                 </SelectTrigger>
                 <SelectContent>
@@ -731,10 +733,10 @@ export default function SupplierFilesReportPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="brand">מותג</Label>
+            <div className="flex-1 min-w-[140px]">
+              <Label htmlFor="brand" className="text-xs mb-1 block">מותג</Label>
               <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-                <SelectTrigger id="brand">
+                <SelectTrigger id="brand" className="h-9">
                   <SelectValue placeholder="כל המותגים" />
                 </SelectTrigger>
                 <SelectContent>
@@ -748,10 +750,10 @@ export default function SupplierFilesReportPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="status">סטטוס</Label>
+            <div className="flex-1 min-w-[140px]">
+              <Label htmlFor="status" className="text-xs mb-1 block">סטטוס</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                <SelectTrigger id="status">
+                <SelectTrigger id="status" className="h-9">
                   <SelectValue placeholder="כל הסטטוסים" />
                 </SelectTrigger>
                 <SelectContent>
@@ -768,37 +770,39 @@ export default function SupplierFilesReportPage() {
             {/* Date inputs - only show when using custom range */}
             {useCustomDateRange && (
               <>
-                <div className="space-y-2">
-                  <Label htmlFor="startDate">מתאריך</Label>
+                <div className="flex-1 min-w-[140px]">
+                  <Label htmlFor="startDate" className="text-xs mb-1 block">מתאריך</Label>
                   <Input
                     id="startDate"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
+                    className="h-9"
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="endDate">עד תאריך</Label>
+                <div className="flex-1 min-w-[140px]">
+                  <Label htmlFor="endDate" className="text-xs mb-1 block">עד תאריך</Label>
                   <Input
                     id="endDate"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
+                    className="h-9"
                   />
                 </div>
               </>
             )}
-          </div>
 
-          <div className="flex gap-2 mt-4">
-            <Button onClick={fetchReport} disabled={isLoading}>
-              {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
-              החל סינון
-            </Button>
-            <Button variant="outline" onClick={handleResetFilters}>
-              איפוס
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={fetchReport} disabled={isLoading} size="sm" className="h-9">
+                {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
+                החל סינון
+              </Button>
+              <Button variant="outline" onClick={handleResetFilters} size="sm" className="h-9">
+                איפוס
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -857,9 +861,21 @@ export default function SupplierFilesReportPage() {
             {/* Files Tab */}
             <TabsContent value="files">
               <Card>
-                <CardHeader>
-                  <CardTitle>פירוט קבצים</CardTitle>
-                  <CardDescription>כל הקבצים שהועלו מספקים</CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                  <div className="flex flex-col space-y-1.5">
+                    <CardTitle>פירוט קבצים</CardTitle>
+                    <CardDescription>כל הקבצים שהועלו מספקים</CardDescription>
+                  </div>
+                  <div className="relative flex-1 max-w-sm ms-4">
+                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      aria-label="חיפוש בטבלה"
+                      placeholder="חיפוש קובץ או ספק..."
+                      value={fileSearchTerm}
+                      onChange={(e) => setFileSearchTerm(e.target.value)}
+                      className="ps-10 h-9"
+                    />
+                  </div>
                 </CardHeader>
                 <CardContent>
                   {report.files.length === 0 ? (
@@ -876,6 +892,8 @@ export default function SupplierFilesReportPage() {
                       columns={fileColumns}
                       rowKey="id"
                       searchPlaceholder="חיפוש קובץ או ספק..."
+                      searchValue={fileSearchTerm}
+                      onSearchChange={setFileSearchTerm}
                       emptyMessage="אין נתונים להצגה"
                     />
                   )}

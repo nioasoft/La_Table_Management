@@ -75,6 +75,10 @@ export interface ReportDataTableProps<T> {
   enableSearch?: boolean;
   /** Search placeholder */
   searchPlaceholder?: string;
+  /** Controlled search value (when provided, hides internal search) */
+  searchValue?: string;
+  /** Search change handler (required when searchValue is provided) */
+  onSearchChange?: (value: string) => void;
   /** Enable sorting */
   enableSorting?: boolean;
   /** Enable pagination */
@@ -111,6 +115,8 @@ export function ReportDataTable<T extends object>({
   rowKey,
   enableSearch = true,
   searchPlaceholder = "חיפוש...",
+  searchValue,
+  onSearchChange,
   enableSorting = true,
   enablePagination = true,
   defaultPageSize = 25,
@@ -124,8 +130,10 @@ export function ReportDataTable<T extends object>({
   expandedRowRender,
   isRowExpandable,
 }: ReportDataTableProps<T>) {
-  // Search state
-  const [searchTerm, setSearchTerm] = useState("");
+  // Search state - use controlled value if provided, otherwise internal state
+  const [internalSearchTerm, setInternalSearchTerm] = useState("");
+  const searchTerm = searchValue !== undefined ? searchValue : internalSearchTerm;
+  const isControlledSearch = searchValue !== undefined;
 
   // Expanded rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -230,9 +238,13 @@ export function ReportDataTable<T extends object>({
 
   // Handle search change
   const handleSearchChange = useCallback((value: string) => {
-    setSearchTerm(value);
+    if (isControlledSearch && onSearchChange) {
+      onSearchChange(value);
+    } else {
+      setInternalSearchTerm(value);
+    }
     setCurrentPage(1); // Reset to first page on search
-  }, []);
+  }, [isControlledSearch, onSearchChange]);
 
   // Toggle row expansion
   const toggleRowExpansion = useCallback((rowKey: string, e?: React.MouseEvent) => {
@@ -282,8 +294,8 @@ export function ReportDataTable<T extends object>({
 
   return (
     <div className={cn("space-y-4", className)}>
-      {/* Search Bar */}
-      {enableSearch && (
+      {/* Search Bar - only show if not controlled */}
+      {enableSearch && !isControlledSearch && (
         <div className="flex items-center gap-4">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

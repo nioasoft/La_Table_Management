@@ -75,14 +75,14 @@ export function ReportSummaryCards({
       <div className={cn("grid grid-cols-1 gap-4", gridCols[columns], className)}>
         {Array.from({ length: cards.length || 4 }).map((_, i) => (
           <Card key={i}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-4 w-4 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-32 mb-1" />
-              <Skeleton className="h-3 w-20" />
-            </CardContent>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-4">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-4 rounded" />
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <Skeleton className="h-8 w-32 mb-1" />
+            <Skeleton className="h-3 w-20" />
+          </CardContent>
           </Card>
         ))}
       </div>
@@ -96,13 +96,13 @@ export function ReportSummaryCards({
           key={index}
           className={cn(variantStyles[card.variant || "default"])}
         >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5 px-4 pt-4">
             <CardTitle className="text-sm font-medium">{card.title}</CardTitle>
             {card.icon && (
               <card.icon className="h-4 w-4 text-muted-foreground" />
             )}
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <div className={cn("text-2xl font-bold", card.valueClassName)}>
               {card.value}
             </div>
