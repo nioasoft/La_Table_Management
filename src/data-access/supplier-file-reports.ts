@@ -130,8 +130,9 @@ function calculateCommission(
   if (processingResult.franchiseeMatches) {
     for (const match of processingResult.franchiseeMatches) {
       // Check if match has preCalculatedCommission field
+      // Only count as pre-calculated if value is positive (0 falls back to rate)
       const matchAny = match as Record<string, unknown>;
-      if (typeof matchAny.preCalculatedCommission === "number") {
+      if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
         preCalculatedTotal += matchAny.preCalculatedCommission;
         hasPreCalculated = true;
       }
@@ -326,7 +327,9 @@ export async function getSupplierFilesReport(
       let hasPreCalculated = false;
       for (const match of matchesToUse) {
         const matchAny = match as Record<string, unknown>;
-        if (typeof matchAny.preCalculatedCommission === "number") {
+        // Only count as pre-calculated if value is a positive number
+        // Zero values should fall back to supplier rate calculation
+        if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
           preCalculatedTotal += matchAny.preCalculatedCommission;
           hasPreCalculated = true;
         }
@@ -427,8 +430,9 @@ export async function getSupplierFilesReport(
         // Calculate commission for this franchisee match
         const matchAny = match as Record<string, unknown>;
         let matchCommission = 0;
-        if (typeof matchAny.preCalculatedCommission === "number") {
-          // Commission from file (for suppliers like MADAG, AVRAHAMI, etc.)
+        // Only use pre-calculated if positive (0 falls back to rate calculation)
+        if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
+          // Commission from file (for suppliers like AVRAHAMI, etc.)
           matchCommission = matchAny.preCalculatedCommission;
         } else if (commissionRate && commissionType === "percentage") {
           // Fixed commission rate
@@ -722,8 +726,9 @@ export async function getFranchiseeBreakdownReport(
       // Calculate commission for this match
       const matchAny = match as Record<string, unknown>;
       let matchCommission = 0;
-      if (typeof matchAny.preCalculatedCommission === "number") {
-        // Commission from file (for suppliers like MADAG, AVRAHAMI, etc.)
+      // Only use pre-calculated if positive (0 falls back to rate calculation)
+      if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
+        // Commission from file (for suppliers like AVRAHAMI, etc.)
         matchCommission = matchAny.preCalculatedCommission;
       } else if (commissionRate && commissionType === "percentage") {
         // Fixed commission rate
