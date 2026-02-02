@@ -54,9 +54,17 @@ import {
   Eye,
   Tags,
   Search,
+  Info,
 } from "lucide-react";
 import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
 import { FileMappingConfig } from "@/components/file-mapping-config";
+import { hasCommissionFromFile } from "@/lib/custom-parsers";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DocumentManager } from "@/components/document-manager";
 import {
   CommissionExceptionsEditor,
@@ -768,6 +776,14 @@ export default function AdminSuppliersPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="defaultCommissionRate">{he.admin.suppliers.form.fields.commissionRate}</Label>
+
+                    {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
+                      <Badge variant="secondary" className="text-xs">
+                        <FileText className="h-3 w-3 me-1" />
+                        העמלה נלקחת מהקובץ
+                      </Badge>
+                    )}
+
                     <div className="flex items-center gap-2">
                       <Input
                         id="defaultCommissionRate"
@@ -778,13 +794,27 @@ export default function AdminSuppliersPage() {
                         value={formData.defaultCommissionRate}
                         onChange={(e) => setFormData({ ...formData, defaultCommissionRate: e.target.value })}
                         placeholder={he.admin.suppliers.form.fields.commissionRatePlaceholder}
-                        disabled={isSubmitting}
+                        disabled={isSubmitting || (editingSupplier ? hasCommissionFromFile(editingSupplier.code) : false)}
                         className="w-28"
                       />
                       <span className="text-muted-foreground">%</span>
+                      {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>לספק זה העמלה מחושבת אוטומטית מהקובץ</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      חל על כל הפריטים, אלא אם הוגדרו חריגות
+                      {editingSupplier && hasCommissionFromFile(editingSupplier.code)
+                        ? "העמלה מחושבת ישירות מקובץ הספק"
+                        : "חל על כל הפריטים, אלא אם הוגדרו חריגות"}
                     </p>
                   </div>
 
@@ -1197,7 +1227,12 @@ export default function AdminSuppliersPage() {
                       {supplier.isHidden && (
                         <Badge variant="destructive" className="text-xs px-1.5 py-0">מוסתר</Badge>
                       )}
-                      {supplier.defaultCommissionRate && (
+                      {hasCommissionFromFile(supplier.code) ? (
+                        <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                          <FileText className="h-3 w-3 me-1" />
+                          מקובץ
+                        </Badge>
+                      ) : supplier.defaultCommissionRate && (
                         <Badge variant="outline" className="text-xs px-1.5 py-0">
                           {supplier.defaultCommissionRate}%
                         </Badge>
