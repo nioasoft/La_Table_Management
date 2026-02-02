@@ -32,6 +32,7 @@ export { parseSuperNovaFile } from "./super-nova-parser";
 export { parseNespressoFile } from "./nespresso-parser";
 export { parseTempoFile } from "./tempo-parser";
 export { parseTrezPazosFile } from "./trez-pazos-parser";
+export { parseMitlandFile } from "./mitland-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -150,6 +151,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   TREZ_PAZOS: async (buffer, vatRate) => {
     const { parseTrezPazosFile } = await import("./trez-pazos-parser");
     return parseTrezPazosFile(buffer);
+  },
+  MITLAND: async (buffer, vatRate) => {
+    const { parseMitlandFile } = await import("./mitland-parser");
+    return parseMitlandFile(buffer);
   },
 };
 
