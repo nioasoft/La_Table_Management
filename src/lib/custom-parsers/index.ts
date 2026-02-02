@@ -31,6 +31,7 @@ export { parseWongShuFile } from "./wong-shu-parser";
 export { parseSuperNovaFile } from "./super-nova-parser";
 export { parseNespressoFile } from "./nespresso-parser";
 export { parseTempoFile } from "./tempo-parser";
+export { parseTrezPazosFile } from "./trez-pazos-parser";
 
 // Custom parser function type - accepts buffer and optional vatRate
 export type CustomParserFn = (
@@ -145,6 +146,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   TEMPO: async (buffer, vatRate) => {
     const { parseTempoFile } = await import("./tempo-parser");
     return parseTempoFile(buffer);
+  },
+  TREZ_PAZOS: async (buffer, vatRate) => {
+    const { parseTrezPazosFile } = await import("./trez-pazos-parser");
+    return parseTrezPazosFile(buffer);
   },
 };
 
