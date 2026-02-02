@@ -10,7 +10,8 @@
  *
  * Two important values per customer:
  *   - Column 3 "הכנסה" (sale amount) - used for cross-reference with franchisee
- *   - Column 6 "סה"כ חיוב לקוח בגין עמלות" (commission amount) - pre-calculated commission
+ *   - Column 6 "סה"כ חיוב לקוח בגין עמלות" - only used if non-zero, otherwise commission
+ *     is calculated using supplier's rate (currently files have empty column 6)
  */
 
 import * as XLSX from "xlsx";
@@ -151,7 +152,11 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
       // Sale amount is used for cross-reference (what franchisee reports)
       const netAmount = roundToTwoDecimals(amounts.sale);
       const grossAmount = roundToTwoDecimals(amounts.sale * (1 + VAT_RATE));
-      const preCalculatedCommission = roundToTwoDecimals(amounts.commission);
+      // Only set preCalculatedCommission if it's a positive value
+      // If 0 or empty, leave undefined so calculation falls back to supplier rate
+      const preCalculatedCommission = amounts.commission > 0
+        ? roundToTwoDecimals(amounts.commission)
+        : undefined;
 
       data.push({
         franchisee: customer,
@@ -160,12 +165,12 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
         netAmount,
         originalAmount: netAmount,
         rowNumber: rowNumber++,
-        preCalculatedCommission, // Commission already calculated by supplier
+        preCalculatedCommission,
       });
 
       totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
-      totalPreCalculatedCommission += preCalculatedCommission;
+      totalPreCalculatedCommission += preCalculatedCommission ?? 0;
       processedRows++;
     }
 
