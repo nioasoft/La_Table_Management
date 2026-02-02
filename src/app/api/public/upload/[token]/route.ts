@@ -519,6 +519,7 @@ export async function POST(
                 confidence: r.matchResult.confidence,
                 matchType: getMatchType(r),
                 requiresReview: r.matchResult.requiresReview,
+                preCalculatedCommission: r.preCalculatedCommission,
               })),
               processedAt: new Date().toISOString(),
             };
