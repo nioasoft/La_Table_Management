@@ -80,7 +80,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
       return response.json();
     },
     enabled: isSuperUserOrAdmin,
-    refetchInterval: 60000, // Refetch every minute
     staleTime: 30000, // Consider data stale after 30 seconds
   });
 

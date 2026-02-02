@@ -108,7 +108,6 @@ export default function SupplierFilesReviewPage() {
       return response.json();
     },
     enabled: !isPending && !!session,
-    refetchInterval: 30000, // Refetch every 30 seconds
   });
 
   const files: ReviewFile[] = reviewData?.files || [];
