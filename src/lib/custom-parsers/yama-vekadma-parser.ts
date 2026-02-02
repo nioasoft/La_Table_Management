@@ -33,32 +33,12 @@ const TOTAL_COL = 6; // Column G - אסמכתה (where "סך הכל" appears)
 // VAT rate in Israel
 const VAT_RATE = 0.18;
 
-// Patterns to identify franchisee name rows
-// These contain the business name but NOT transaction data
-// Any row containing one of these patterns (and not being a data row) is a franchisee header
-const FRANCHISEE_PATTERNS = [
-  /קינג קונג/i,
-  /מינה טומ/i,
-  /פט ויני/i,
-  /פאט ויני/i,
-  /בע"מ/i,
-  /בעמ/i,
-  /^\d+\s*-\s*.+/, // Pattern like "428757 - קינג קונג סניף קרית אתא" (customer ID - name)
-];
-
 // Patterns to skip (total rows, sub-headers, etc.)
 const SKIP_PATTERNS = [
   /סך הכל/i,
   /סה"כ/i,
   /יתרה/i,
   /^שנה\s*$/i,
-];
-
-// Patterns that indicate area markers (standalone location names, not franchisee names)
-// These are rows that just contain a location name without business entity suffix
-const AREA_MARKERS = [
-  "נהריה אין",
-  "חדרה",
 ];
 
 interface FranchiseeData {
@@ -98,28 +78,26 @@ function parseNumericValue(value: unknown): number {
 
 /**
  * Check if a row is a franchisee header row
- * A franchisee header row contains a business name but no transaction data
+ * A franchisee header row is any non-empty row that is NOT:
+ * - A data row (starts with year like 2025)
+ * - A skip pattern (totals, headers)
  */
 function isFranchiseeHeaderRow(row: unknown[]): boolean {
   const firstCell = String(row[0] || "").trim();
+
+  // Must have content
+  if (!firstCell) return false;
+
+  // Skip if it's a data row (starts with year)
+  if (/^\d{4}$/.test(firstCell)) return false;
 
   // Skip if it's a skip pattern
   for (const pattern of SKIP_PATTERNS) {
     if (pattern.test(firstCell)) return false;
   }
 
-  // Check if first cell matches franchisee patterns
-  for (const pattern of FRANCHISEE_PATTERNS) {
-    if (pattern.test(firstCell)) {
-      // Also verify it's not a data row (no year in column A)
-      const yearMatch = /^\d{4}$/.test(firstCell);
-      if (!yearMatch) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  // Any other non-empty row is a franchisee header
+  return true;
 }
 
 /**
@@ -147,23 +125,6 @@ function isTotalRow(row: unknown[]): boolean {
       return true;
     }
   }
-  return false;
-}
-
-/**
- * Check if row is an area marker (not a franchisee name but just area indicator)
- * These are standalone rows with just a location name like "חדרה" or "נהריה אין"
- */
-function isAreaMarker(row: unknown[]): boolean {
-  const firstCell = String(row[0] || "").trim();
-
-  // Area markers are exact matches or have trailing space
-  for (const marker of AREA_MARKERS) {
-    if (firstCell === marker || firstCell === marker + " ") {
-      return true;
-    }
-  }
-
   return false;
 }
 
@@ -227,11 +188,6 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
     for (let rowIdx = 1; rowIdx < rawData.length; rowIdx++) {
       const row = rawData[rowIdx];
       if (!row || row.every(cell => cell === "" || cell === null || cell === undefined)) {
-        continue;
-      }
-
-      // Skip area markers
-      if (isAreaMarker(row)) {
         continue;
       }
 
