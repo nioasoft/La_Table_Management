@@ -31,7 +31,7 @@ import {
   Building2,
   Search,
   Tag,
-  DollarSign,
+  Coins,
   ChevronDown,
   ChevronUp,
   ArrowLeft,
@@ -273,7 +273,7 @@ export default function OtherIncomePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold flex items-center gap-3">
-              <DollarSign className="h-8 w-8 text-primary" />
+              <Coins className="h-8 w-8 text-primary" />
               הכנסות אחרות
             </h1>
             <p className="text-muted-foreground mt-1">
@@ -541,7 +541,7 @@ export default function OtherIncomePage() {
         <CardContent>
           {filteredSources.length === 0 ? (
             <div className="text-center py-12">
-              <DollarSign className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+              <Coins className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
               <p className="text-muted-foreground">
                 {searchTerm.trim()
                   ? "לא נמצאו מקורות הכנסה התואמים לחיפוש"

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import {
   AlertTriangle,
   Calendar,
-  DollarSign,
+  Coins,
   RefreshCw,
   ChevronLeft,
   CheckCircle2,
@@ -136,7 +136,7 @@ export function CommissionSettlementWidget() {
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
+              <Coins className="h-5 w-5" />
               {t.title}
             </CardTitle>
             <CardDescription>
@@ -196,7 +196,7 @@ export function CommissionSettlementWidget() {
         >
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
+              <Coins className="h-4 w-4" />
               {t.commissionSummary.title}
             </h3>
             <Link href="/admin/commissions">

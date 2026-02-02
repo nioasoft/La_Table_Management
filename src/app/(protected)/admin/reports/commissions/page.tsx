@@ -6,7 +6,7 @@ import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Loader2, DollarSign, Percent, Calendar, Building2, Users, Store, FileSpreadsheet, ArrowLeft } from "lucide-react";
+import { Loader2, Coins, Percent, Calendar, Building2, Users, Store, FileSpreadsheet, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ReportLayout,
@@ -274,13 +274,13 @@ export default function CommissionsReportPage() {
           title: "סה״כ עמלות",
           value: formatCurrency(report.summary.totalCommissionAmount),
           subtitle: `${report.summary.totalCommissions} רשומות`,
-          icon: DollarSign,
+          icon: Coins,
         },
         {
           title: "סה״כ כולל מע״מ",
           value: formatCurrency(report.summary.totalGrossAmount),
           subtitle: `לפני מע״מ: ${formatCurrency(report.summary.totalNetAmount)}`,
-          icon: DollarSign,
+          icon: Coins,
         },
         {
           title: "שיעור עמלה ממוצע",

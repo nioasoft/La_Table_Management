@@ -127,6 +127,7 @@ interface SupplierFormData {
   brandIds: string[];
   commissionExceptions: CommissionExceptionFormData[];
   bkmvAliases: string[];
+  hashavshevetCode: string;
   // Commission change logging fields
   commissionChangeReason: string;
   commissionChangeNotes: string;
@@ -155,6 +156,7 @@ const initialFormData: SupplierFormData = {
   brandIds: [],
   commissionExceptions: [],
   bkmvAliases: [],
+  hashavshevetCode: "",
   commissionChangeReason: "",
   commissionChangeNotes: "",
   commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -508,6 +510,7 @@ export default function AdminSuppliersPage() {
       brandIds: supplier.brands?.map((b) => b.id) || [],
       commissionExceptions: commissionExceptionsToFormData(supplier.commissionExceptions as CommissionException[] | null | undefined),
       bkmvAliases: supplier.bkmvAliases || [],
+      hashavshevetCode: supplier.hashavshevetCode || "",
       commissionChangeReason: "",
       commissionChangeNotes: "",
       commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -943,15 +946,31 @@ export default function AdminSuppliersPage() {
                   <Hash className="h-4 w-4" />
                   {he.admin.suppliers.form.sections.taxPayment}
                 </h3>
-                <div className="space-y-2">
-                  <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
-                  <Input
-                    id="paymentTerms"
-                    value={formData.paymentTerms}
-                    onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                    placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
-                    disabled={isSubmitting}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
+                    <Input
+                      id="paymentTerms"
+                      value={formData.paymentTerms}
+                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="hashavshevetCode">קוד חשבשבת</Label>
+                    <Input
+                      id="hashavshevetCode"
+                      value={formData.hashavshevetCode}
+                      onChange={(e) => setFormData({ ...formData, hashavshevetCode: e.target.value })}
+                      placeholder="קוד מפתח חשבון"
+                      disabled={isSubmitting}
+                      dir="ltr"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      קוד הספק במערכת חשבשבת לייבוא עמלות
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1220,6 +1239,9 @@ export default function AdminSuppliersPage() {
                       >
                         {supplier.name}
                       </button>
+                      {supplier.contactName && (
+                        <span className="text-xs text-muted-foreground">{supplier.contactName}</span>
+                      )}
                       <span className="text-xs text-muted-foreground font-mono">{supplier.code}</span>
                       {!supplier.isActive && (
                         <Badge variant="secondary" className="text-xs px-1.5 py-0">לא פעיל</Badge>
@@ -1314,10 +1336,9 @@ export default function AdminSuppliersPage() {
                     </div>
                   </div>
                   {/* Row 2: Meta info */}
-                  {(supplier.contactName || supplier.vatIncluded) && (
+                  {supplier.vatIncluded && (
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      {supplier.contactName && <span>{supplier.contactName}</span>}
-                      {supplier.vatIncluded && <span>כולל מע״מ</span>}
+                      <span>כולל מע״מ</span>
                     </div>
                   )}
                 </div>

@@ -567,6 +567,9 @@ export const supplier = pgTable(
     // BKMV aliases - alternative names as they appear in franchisee unified reports (מבנה אחיד)
     // Used for matching supplier names from BKMVDATA files to this supplier
     bkmvAliases: jsonb("bkmv_aliases").$type<string[]>(),
+    // Hashavshevet code - supplier's code in the Hashavshevet accounting system
+    // Used for exporting commission data for import into Hashavshevet
+    hashavshevetCode: text("hashavshevet_code"),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),

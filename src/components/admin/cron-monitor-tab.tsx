@@ -27,7 +27,7 @@ import {
   Clock,
   AlertCircle,
   FileText,
-  DollarSign,
+  Coins,
   Bell,
   Users,
   Send,
@@ -78,7 +78,7 @@ const CRON_JOBS: CronJob[] = [
     description: t.jobs.settlementRequests.description,
     endpoint: "/api/cron/settlement-requests?action=all",
     schedule: "0 8 1,15 * *",
-    icon: <DollarSign className="h-6 w-6" />,
+    icon: <Coins className="h-6 w-6" />,
   },
   {
     id: "upload-reminders",

@@ -42,7 +42,7 @@ import {
   CheckCircle2,
   Clock,
   ArrowRightLeft,
-  DollarSign,
+  Coins,
   FileUp,
   Send,
   FileText,
@@ -409,7 +409,7 @@ export default function DiscrepancyResolutionPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
+                <Coins className="h-5 w-5" />
                 {t.amountComparison.title}
               </CardTitle>
               <CardDescription>

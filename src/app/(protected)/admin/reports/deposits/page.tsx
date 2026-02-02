@@ -16,7 +16,7 @@ import {
   Wallet,
   Store,
   Building2,
-  DollarSign,
+  Coins,
   FileText,
   Calendar,
   CheckCircle2,
@@ -391,7 +391,7 @@ export default function DepositsReportPage() {
           title: "סכום כולל",
           value: formatCurrency(report.summary.totalDepositAmount),
           subtitle: report.summary.totalDepositAmount >= 0 ? "יתרה לזכות" : "יתרה לחובה",
-          icon: DollarSign,
+          icon: Coins,
           variant: report.summary.totalDepositAmount >= 0 ? "success" : "danger",
         },
         {

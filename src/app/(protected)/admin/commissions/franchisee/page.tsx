@@ -41,7 +41,7 @@ import {
   FileSpreadsheet,
   Loader2,
   Calendar,
-  DollarSign,
+  Coins,
   Percent,
   TrendingUp,
   Store,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,7 +22,7 @@ import {
   FileSpreadsheet,
   Download,
   Building2,
-  DollarSign,
+  Coins,
   FileText,
   Calendar,
   CheckCircle2,
@@ -598,9 +598,15 @@ export default function SupplierFilesReportPage() {
     }
   }, [buildQueryString]);
 
-  // Initial load
+  // Track if initial load has happened to prevent refetch on tab switch
+  const hasInitiallyLoaded = useRef(false);
+
+  // Initial load - only once when authenticated
   useEffect(() => {
-    if (session && (userRole === "super_user" || userRole === "admin")) {
+    const isAuthenticated = !!session && (userRole === "super_user" || userRole === "admin");
+
+    if (isAuthenticated && !hasInitiallyLoaded.current) {
+      hasInitiallyLoaded.current = true;
       fetchReport();
     }
   }, [session, userRole, fetchReport]);
@@ -646,7 +652,7 @@ export default function SupplierFilesReportPage() {
           title: "סה״כ כולל מע״מ",
           value: formatCurrency(report.summary.totalGrossAmount),
           subtitle: "סכום כולל מע״מ",
-          icon: DollarSign,
+          icon: Coins,
         },
         {
           title: "סה״כ לפני מע״מ",
@@ -658,7 +664,7 @@ export default function SupplierFilesReportPage() {
           title: "סה״כ עמלות",
           value: formatCurrency(report.summary.totalCalculatedCommission),
           subtitle: "עמלות מחושבות",
-          icon: DollarSign,
+          icon: Coins,
           variant: "success",
         },
       ]
@@ -701,22 +707,22 @@ export default function SupplierFilesReportPage() {
         <CardHeader className="pb-3 pt-4 px-4">
           <CardTitle className="text-base">סינון</CardTitle>
         </CardHeader>
-        <CardContent className="px-4 pb-4 space-y-2">
-          {/* Period Selector */}
-          <div className="pb-2">
-            <ReportPeriodSelector
-              periodType={periodType}
-              periodKey={periodKey}
-              onChange={handlePeriodChange}
-              onCustomRangeSelect={() => setUseCustomDateRange(true)}
-              showCustomRange={true}
-              layout="horizontal"
-              showLabels={true}
-            />
-          </div>
-
+        <CardContent className="px-4 pb-4">
           <div className="flex flex-wrap items-end gap-2">
-            <div className="flex-1 min-w-[140px]">
+            {/* Period Selector */}
+            <div className="flex-shrink-0">
+              <ReportPeriodSelector
+                periodType={periodType}
+                periodKey={periodKey}
+                onChange={handlePeriodChange}
+                onCustomRangeSelect={() => setUseCustomDateRange(true)}
+                showCustomRange={true}
+                layout="horizontal"
+                showLabels={true}
+              />
+            </div>
+
+            <div className="w-[132px]">
               <Label htmlFor="supplier" className="text-xs mb-1 block">ספק</Label>
               <Select value={selectedSupplier} onValueChange={setSelectedSupplier}>
                 <SelectTrigger id="supplier" className="h-9">
@@ -733,7 +739,7 @@ export default function SupplierFilesReportPage() {
               </Select>
             </div>
 
-            <div className="flex-1 min-w-[140px]">
+            <div className="w-[132px]">
               <Label htmlFor="brand" className="text-xs mb-1 block">מותג</Label>
               <Select value={selectedBrand} onValueChange={setSelectedBrand}>
                 <SelectTrigger id="brand" className="h-9">
@@ -750,7 +756,7 @@ export default function SupplierFilesReportPage() {
               </Select>
             </div>
 
-            <div className="flex-1 min-w-[140px]">
+            <div className="w-[132px]">
               <Label htmlFor="status" className="text-xs mb-1 block">סטטוס</Label>
               <Select value={selectedStatus} onValueChange={setSelectedStatus}>
                 <SelectTrigger id="status" className="h-9">
@@ -770,7 +776,7 @@ export default function SupplierFilesReportPage() {
             {/* Date inputs - only show when using custom range */}
             {useCustomDateRange && (
               <>
-                <div className="flex-1 min-w-[140px]">
+                <div className="w-[144px]">
                   <Label htmlFor="startDate" className="text-xs mb-1 block">מתאריך</Label>
                   <Input
                     id="startDate"
@@ -781,7 +787,7 @@ export default function SupplierFilesReportPage() {
                   />
                 </div>
 
-                <div className="flex-1 min-w-[140px]">
+                <div className="w-[144px]">
                   <Label htmlFor="endDate" className="text-xs mb-1 block">עד תאריך</Label>
                   <Input
                     id="endDate"
@@ -829,18 +835,6 @@ export default function SupplierFilesReportPage() {
           {/* Summary Cards */}
           <ReportSummaryCards cards={summaryCards} columns={4} />
 
-          {/* Info Alert */}
-          {report.summary.totalFiles > 0 && (
-            <Alert>
-              <FileSpreadsheet className="h-4 w-4" />
-              <AlertTitle>סיכום קבצים</AlertTitle>
-              <AlertDescription>
-                נמצאו {report.summary.totalFiles} קבצים מ-{report.summary.supplierCount} ספקים.
-                סה״כ עמלות: {formatCurrency(report.summary.totalCalculatedCommission)}.
-              </AlertDescription>
-            </Alert>
-          )}
-
           {/* Tabs for different views */}
           <Tabs defaultValue="files" className="w-full" dir="rtl">
             <TabsList className="flex w-full gap-1">
@@ -861,12 +855,8 @@ export default function SupplierFilesReportPage() {
             {/* Files Tab */}
             <TabsContent value="files">
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-                  <div className="flex flex-col space-y-1.5">
-                    <CardTitle>פירוט קבצים</CardTitle>
-                    <CardDescription>כל הקבצים שהועלו מספקים</CardDescription>
-                  </div>
-                  <div className="relative flex-1 max-w-sm ms-4">
+                <CardHeader className="flex flex-row items-center justify-start space-y-0 px-6 pt-4 pb-2">
+                  <div className="relative flex-1 max-w-sm">
                     <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       aria-label="חיפוש בטבלה"

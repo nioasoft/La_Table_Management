@@ -25,10 +25,16 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const filter = searchParams.get("filter");
+    const hasHashavshevet = searchParams.get("hasHashavshevet") === "true";
 
     // Use optimized single-query function instead of N+1 pattern
     const activeOnly = filter === "active";
-    const suppliersWithBrands = await getSuppliersWithBrands(activeOnly);
+    let suppliersWithBrands = await getSuppliersWithBrands(activeOnly);
+
+    // Filter to only suppliers with hashavshevet code if requested
+    if (hasHashavshevet) {
+      suppliersWithBrands = suppliersWithBrands.filter(s => s.hashavshevetCode);
+    }
 
     // Get stats if requested
     const includeStats = searchParams.get("stats") === "true";

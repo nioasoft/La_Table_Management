@@ -3118,6 +3118,7 @@ export const he = {
       depositsReport: "מעקב פיקדונות",
       filesReport: "ניהול קבצים",
       supplierFilesReport: "נתוני קבצי ספקים",
+      hashavshevetExport: "ייצוא לחשבשבת",
       generalReports: "דוחות כלליים",
 
       // Settings

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import {
   Loader2,
-  DollarSign,
+  Coins,
   Building2,
   FileSpreadsheet,
   Receipt,
@@ -285,7 +285,7 @@ export default function InvoiceReportPage() {
           title: "סכום לפני מע״מ",
           value: formatCurrency(invoiceData.totals.totalNetAmount),
           subtitle: "לפני מע״מ",
-          icon: DollarSign,
+          icon: Coins,
         },
         {
           title: "סכום חשבונית",

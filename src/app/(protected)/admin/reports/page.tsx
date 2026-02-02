@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Loader2,
-  DollarSign,
+  Coins,
   TrendingUp,
   AlertTriangle,
   Wallet,
@@ -43,7 +43,7 @@ const reportCards: ReportCardData[] = [
     title: "דוח עמלות",
     description: "סיכום עמלות כולל עם פירוט לפי מותג, ספק ותקופה. כולל ייצוא לאקסל ו-PDF.",
     href: "/admin/reports/commissions",
-    icon: <DollarSign className="h-6 w-6" />,
+    icon: <Coins className="h-6 w-6" />,
     status: "active",
     color: "text-emerald-600 dark:text-emerald-400",
   },
@@ -219,7 +219,7 @@ export default function ReportsHubPage() {
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" asChild>
               <Link href="/admin/reports/commissions?status=pending">
-                <DollarSign className="h-4 w-4 me-2" />
+                <Coins className="h-4 w-4 me-2" />
                 עמלות ממתינות
               </Link>
             </Button>

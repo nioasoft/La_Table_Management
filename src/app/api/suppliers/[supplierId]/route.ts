@@ -93,6 +93,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       fileMapping,
       commissionExceptions,
       bkmvAliases,
+      hashavshevetCode,
       // Commission change logging fields
       commissionChangeReason,
       commissionChangeNotes,
@@ -206,6 +207,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           .map((a: string) => a.trim());
         updateData.bkmvAliases = validatedAliases.length > 0 ? validatedAliases : null;
       }
+    }
+
+    // Handle Hashavshevet code update
+    if (hashavshevetCode !== undefined) {
+      updateData.hashavshevetCode = hashavshevetCode?.trim() || null;
     }
 
     // Add commission change logging fields

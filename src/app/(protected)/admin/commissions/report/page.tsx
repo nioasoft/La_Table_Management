@@ -44,7 +44,7 @@ import {
   FileText,
   Loader2,
   Calendar,
-  DollarSign,
+  Coins,
   Percent,
   TrendingUp,
   Building2,
@@ -491,7 +491,7 @@ export default function CommissionReportPage() {
                 <CardTitle className="text-sm font-medium">
                   סה״כ עמלות
                 </CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
+                <Coins className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">

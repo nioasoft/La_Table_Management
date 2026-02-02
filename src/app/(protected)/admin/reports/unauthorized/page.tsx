@@ -15,7 +15,7 @@ import {
   AlertTriangle,
   Store,
   Building2,
-  DollarSign,
+  Coins,
   FileText,
   Users,
 } from "lucide-react";
@@ -250,7 +250,7 @@ export default function UnauthorizedSuppliersReportPage() {
           title: "סכום כולל",
           value: formatCurrency(report.summary.totalAmount),
           subtitle: `${formatNumber(report.summary.totalTransactions)} עסקאות`,
-          icon: DollarSign,
+          icon: Coins,
         },
         {
           title: "זכיינים מושפעים",

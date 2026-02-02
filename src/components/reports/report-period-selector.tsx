@@ -102,19 +102,17 @@ export function ReportPeriodSelector({
   const isHorizontal = layout === "horizontal";
 
   return (
-    <div className={isHorizontal ? "flex items-end gap-4" : "space-y-4"}>
+    <div className={isHorizontal ? "flex items-end gap-2" : "space-y-4"}>
       {/* Period Type Selector */}
-      <div className={isHorizontal ? "space-y-2 min-w-[140px]" : "space-y-2"}>
-        {showLabels && <Label htmlFor="periodType">סוג תקופה</Label>}
+      <div className={isHorizontal ? "space-y-1 w-[132px]" : "space-y-2"}>
+        {showLabels && <Label htmlFor="periodType" className="text-xs">סוג תקופה</Label>}
         <Select
           value={periodType || "custom"}
           onValueChange={handleTypeChange}
           disabled={disabled}
         >
-          <SelectTrigger id="periodType" dir="rtl" className="[&>span]:text-end" aria-label="בחר סוג תקופה">
-            <SelectValue placeholder="בחר סוג תקופה">
-              {periodType ? getPeriodTypeLabel(periodType) : "טווח מותאם"}
-            </SelectValue>
+          <SelectTrigger id="periodType" dir="rtl" className="[&>span]:text-end [&>span]:text-right [&>span]:dir-rtl h-9" aria-label="בחר סוג תקופה">
+            <SelectValue placeholder="בחר סוג תקופה" />
           </SelectTrigger>
           <SelectContent dir="rtl">
             {PERIOD_TYPES.map((type) => (
@@ -124,7 +122,7 @@ export function ReportPeriodSelector({
             ))}
             {showCustomRange && (
               <SelectItem value="custom" className="text-end border-t mt-1 pt-1">
-                טווח מותאם אישית
+                טווח מותאם
               </SelectItem>
             )}
           </SelectContent>
@@ -133,14 +131,14 @@ export function ReportPeriodSelector({
 
       {/* Period Selector (only shown when a type is selected) */}
       {periodType && (
-        <div className={isHorizontal ? "space-y-2 min-w-[200px]" : "space-y-2"}>
-          {showLabels && <Label htmlFor="periodKey">תקופה</Label>}
+        <div className={isHorizontal ? "space-y-1 w-[180px]" : "space-y-2"}>
+          {showLabels && <Label htmlFor="periodKey" className="text-xs">תקופה</Label>}
           <Select
             value={periodKey}
             onValueChange={handlePeriodChange}
             disabled={disabled || !periodType}
           >
-            <SelectTrigger id="periodKey" dir="rtl" className="[&>span]:text-end" aria-label="בחר תקופה">
+            <SelectTrigger id="periodKey" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר תקופה">
               <SelectValue placeholder="בחר תקופה">
                 {selectedPeriod && (
                   <span className="flex items-center gap-2">
@@ -166,9 +164,9 @@ export function ReportPeriodSelector({
         </div>
       )}
 
-      {/* Date Range Display */}
-      {selectedPeriod && (
-        <div className={isHorizontal ? "text-sm text-muted-foreground pb-2" : "text-sm text-muted-foreground"}>
+      {/* Date Range Display - hide in horizontal compact mode */}
+      {selectedPeriod && !isHorizontal && (
+        <div className="text-sm text-muted-foreground">
           <span className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
             {formatPeriodRange(selectedPeriod)}

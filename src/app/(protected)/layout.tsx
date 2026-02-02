@@ -3,20 +3,23 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
-import { Sidebar, MobileSidebarToggle } from "@/components/sidebar";
+import {
+  Sidebar,
+  MobileSidebarToggle,
+  SidebarProvider,
+  useSidebar,
+} from "@/components/sidebar";
 import { QueryProvider } from "@/lib/query-client";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { UserRole, UserStatus } from "@/db/schema";
 import { cn } from "@/lib/utils";
 
-export default function ProtectedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { data: session, isPending } = authClient.useSession();
+  const { isCollapsed } = useSidebar();
 
   const userStatus = session
     ? (session.user as { status?: UserStatus })?.status
@@ -61,49 +64,63 @@ export default function ProtectedLayout({
   }
 
   return (
-    <QueryProvider>
-      <div className="min-h-screen bg-background">
-        {/* Desktop Sidebar */}
-        <div className="hidden lg:block">
-          <Sidebar
-            userRole={userRole}
-            userName={userName}
-            userEmail={userEmail}
-          />
-        </div>
-
-        {/* Mobile Sidebar Overlay */}
-        {isMobileSidebarOpen && (
-          <>
-            {/* Backdrop */}
-            <div
-              className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-              onClick={() => setIsMobileSidebarOpen(false)}
-            />
-            {/* Mobile Sidebar */}
-            <div className="lg:hidden">
-              <Sidebar
-                userRole={userRole}
-                userName={userName}
-                userEmail={userEmail}
-              />
-            </div>
-          </>
-        )}
-
-        {/* Mobile Toggle Button */}
-        <MobileSidebarToggle onClick={() => setIsMobileSidebarOpen(true)} />
-
-        {/* Main Content */}
-        <main
-          className={cn(
-            "transition-all duration-300",
-            "lg:ms-64" // Offset for desktop sidebar
-          )}
-        >
-          {children}
-        </main>
+    <div className="min-h-screen bg-background">
+      {/* Desktop Sidebar */}
+      <div className="hidden lg:block">
+        <Sidebar
+          userRole={userRole}
+          userName={userName}
+          userEmail={userEmail}
+        />
       </div>
+
+      {/* Mobile Sidebar Overlay */}
+      {isMobileSidebarOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setIsMobileSidebarOpen(false)}
+          />
+          {/* Mobile Sidebar */}
+          <div className="lg:hidden">
+            <Sidebar
+              userRole={userRole}
+              userName={userName}
+              userEmail={userEmail}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Mobile Toggle Button */}
+      <MobileSidebarToggle onClick={() => setIsMobileSidebarOpen(true)} />
+
+      {/* Main Content */}
+      <main
+        className={cn(
+          "transition-[margin] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]",
+          isCollapsed ? "lg:ms-16" : "lg:ms-64"
+        )}
+      >
+        {children}
+      </main>
+    </div>
+  );
+}
+
+export default function ProtectedLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <QueryProvider>
+      <TooltipProvider>
+        <SidebarProvider>
+          <ProtectedLayoutContent>{children}</ProtectedLayoutContent>
+        </SidebarProvider>
+      </TooltipProvider>
     </QueryProvider>
   );
 }
