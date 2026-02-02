@@ -111,43 +111,58 @@ export function parseAvrahamiFile(buffer: Buffer): FileProcessingResult {
       customerColumns.set(cleanName, { saleColIdx, commissionColIdx });
     }
 
-    // Sum amounts for each customer across all data rows
+    // Find the Grand Total row and extract values directly from it
+    // This is safer than summing all rows (avoids double-counting from extra summary rows)
     const customerTotals: Map<string, { sale: number; commission: number }> = new Map();
+    let grandTotalRowIdx = -1;
 
-    // Start from row 2 (skip header and column types)
+    // Search for Grand Total row
     for (let rowIdx = 2; rowIdx < rawData.length; rowIdx++) {
       const row = rawData[rowIdx];
       if (!row) continue;
 
-      // Skip summary rows
       const firstCell = String(row[0] || "").toLowerCase();
-      if (firstCell.includes("סה״כ") || firstCell.includes("סהכ") || firstCell.includes("total") || firstCell.includes("grand")) {
-        continue;
+      if (firstCell.includes("grand total") || firstCell === "grand total") {
+        grandTotalRowIdx = rowIdx;
+        break;
+      }
+    }
+
+    if (grandTotalRowIdx === -1) {
+      errors.push(
+        createFileProcessingError("PARSE_ERROR", {
+          details: "Could not find Grand Total row in the pivot table",
+        })
+      );
+      legacyErrors.push("Could not find Grand Total row in the pivot table");
+      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
+    }
+
+    const grandTotalRow = rawData[grandTotalRowIdx];
+
+    // Extract values for each customer from the Grand Total row
+    for (const [customer, cols] of customerColumns.entries()) {
+      const saleValue = grandTotalRow[cols.saleColIdx];
+      const commissionValue = grandTotalRow[cols.commissionColIdx];
+
+      let sale = 0;
+      let commission = 0;
+
+      if (saleValue !== null && saleValue !== undefined && saleValue !== "") {
+        const parsed = parseFloat(String(saleValue).replace(/[,₪\s]/g, ""));
+        if (!isNaN(parsed)) {
+          sale = parsed;
+        }
       }
 
-      // Sum for each customer
-      for (const [customer, cols] of customerColumns.entries()) {
-        const saleValue = row[cols.saleColIdx];
-        const commissionValue = row[cols.commissionColIdx];
-
-        const existing = customerTotals.get(customer) || { sale: 0, commission: 0 };
-
-        if (saleValue !== null && saleValue !== undefined && saleValue !== "") {
-          const sale = parseFloat(String(saleValue).replace(/[,₪\s]/g, ""));
-          if (!isNaN(sale)) {
-            existing.sale += sale;
-          }
+      if (commissionValue !== null && commissionValue !== undefined && commissionValue !== "") {
+        const parsed = parseFloat(String(commissionValue).replace(/[,₪\s]/g, ""));
+        if (!isNaN(parsed)) {
+          commission = parsed;
         }
-
-        if (commissionValue !== null && commissionValue !== undefined && commissionValue !== "") {
-          const commission = parseFloat(String(commissionValue).replace(/[,₪\s]/g, ""));
-          if (!isNaN(commission)) {
-            existing.commission += commission;
-          }
-        }
-
-        customerTotals.set(customer, existing);
       }
+
+      customerTotals.set(customer, { sale, commission });
     }
 
     // Convert to ParsedRowData
