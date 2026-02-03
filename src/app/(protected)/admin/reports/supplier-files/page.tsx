@@ -546,7 +546,7 @@ export default function SupplierFilesReportPage() {
   const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
   const [periodKey, setPeriodKey] = useState("");
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
-  const [fileSearchTerm, setFileSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -636,7 +636,7 @@ export default function SupplierFilesReportPage() {
     setPeriodType("");
     setPeriodKey("");
     setUseCustomDateRange(true);
-    setFileSearchTerm("");
+    setSearchTerm("");
   };
 
   // Summary cards
@@ -835,6 +835,18 @@ export default function SupplierFilesReportPage() {
           {/* Summary Cards */}
           <ReportSummaryCards cards={summaryCards} columns={4} />
 
+          {/* Shared Search */}
+          <div className="relative max-w-sm">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              aria-label="חיפוש בטבלה"
+              placeholder="חיפוש..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="ps-10 h-9"
+            />
+          </div>
+
           {/* Tabs for different views */}
           <Tabs defaultValue="files" className="w-full" dir="rtl">
             <TabsList className="flex w-full gap-1">
@@ -855,19 +867,7 @@ export default function SupplierFilesReportPage() {
             {/* Files Tab */}
             <TabsContent value="files">
               <Card>
-                <CardHeader className="flex flex-row items-center justify-start space-y-0 px-6 pt-4 pb-2">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      aria-label="חיפוש בטבלה"
-                      placeholder="חיפוש קובץ או ספק..."
-                      value={fileSearchTerm}
-                      onChange={(e) => setFileSearchTerm(e.target.value)}
-                      className="ps-10 h-9"
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent>
+                <CardContent className="pt-6">
                   {report.files.length === 0 ? (
                     <div className="text-center py-8">
                       <FileSpreadsheet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
@@ -881,9 +881,8 @@ export default function SupplierFilesReportPage() {
                       data={report.files}
                       columns={fileColumns}
                       rowKey="id"
-                      searchPlaceholder="חיפוש קובץ או ספק..."
-                      searchValue={fileSearchTerm}
-                      onSearchChange={setFileSearchTerm}
+                      searchValue={searchTerm}
+                      onSearchChange={setSearchTerm}
                       emptyMessage="אין נתונים להצגה"
                     />
                   )}
@@ -912,7 +911,8 @@ export default function SupplierFilesReportPage() {
                       data={report.bySupplier}
                       columns={supplierColumns}
                       rowKey="supplierId"
-                      searchPlaceholder="חיפוש ספק..."
+                      searchValue={searchTerm}
+                      onSearchChange={setSearchTerm}
                       emptyMessage="אין נתונים להצגה"
                       rowClassName={getSupplierRowClassName}
                       expandedRowRender={(row) => (
@@ -946,7 +946,8 @@ export default function SupplierFilesReportPage() {
                       data={report.byFranchisee}
                       columns={franchiseeColumns}
                       rowKey="franchiseeId"
-                      searchPlaceholder="חיפוש זכיין..."
+                      searchValue={searchTerm}
+                      onSearchChange={setSearchTerm}
                       emptyMessage="אין נתונים להצגה"
                       expandedRowRender={(row) => (
                         <FranchiseeExpandedContent suppliers={row.suppliers} />
