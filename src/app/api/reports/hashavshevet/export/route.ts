@@ -82,6 +82,7 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("endDate");
     const brandIdsParam = searchParams.get("brandIds");
     const supplierIdsParam = searchParams.get("supplierIds");
+    const startDocNumber = parseInt(searchParams.get("startDocNumber") || "5001", 10);
 
     // Validate required parameters
     if (!startDate || !endDate) {
@@ -151,6 +152,7 @@ export async function GET(request: NextRequest) {
 
     // Build rows for Hashavshevet format
     const rows: HashavshevetRow[] = [];
+    let currentDocNumber = startDocNumber;
 
     for (const file of files) {
       if (!file.processingResult || !file.hashavshevetCode) continue;
@@ -189,8 +191,9 @@ export async function GET(request: NextRequest) {
           quantity: 1,
           price: commissionAmount,
           documentType: 11,
-          documentNumber: "", // Empty - set in Hashavshevet
+          documentNumber: String(currentDocNumber),
         });
+        currentDocNumber++;
       }
     }
 

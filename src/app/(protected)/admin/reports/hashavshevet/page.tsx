@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,7 @@ interface HashavshevetEntry {
   periodEndDate: string;
   // Derived fields for display
   itemKey: string; // "עמלות " + franchisee name
+  docNumber?: number; // Document number (added client-side)
 }
 
 interface BrandOption {
@@ -86,6 +87,13 @@ interface HashavshevetReport {
 // ============================================================================
 
 const entryColumns: ColumnDef<HashavshevetEntry>[] = [
+  {
+    id: "docNumber",
+    header: "מס׳ מסמך",
+    accessor: (row) => row.docNumber?.toString() || "",
+    accessorKey: "docNumber",
+    className: "font-mono text-muted-foreground",
+  },
   {
     id: "hashavshevetCode",
     header: "מפתח חשבון",
@@ -205,6 +213,7 @@ export default function HashavshevetExportPage() {
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
   const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
+  const [startDocNumber, setStartDocNumber] = useState("5001");
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -308,7 +317,8 @@ export default function HashavshevetExportPage() {
     setIsExporting(true);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/reports/hashavshevet/export?${queryString}`);
+      const docNumParam = startDocNumber ? `&startDocNumber=${startDocNumber}` : "";
+      const response = await fetch(`/api/reports/hashavshevet/export?${queryString}${docNumParam}`);
 
       if (!response.ok) {
         throw new Error("Failed to export");
@@ -424,9 +434,20 @@ export default function HashavshevetExportPage() {
     setUseCustomDateRange(true);
     setSelectedBrandIds([]);
     setSelectedSupplierIds([]);
+    setStartDocNumber("5001");
     setReport(null);
     setDuplicateWarning(null);
   };
+
+  // Compute entries with document numbers
+  const entriesWithDocNumbers = useMemo(() => {
+    if (!report?.entries) return [];
+    const startNum = parseInt(startDocNumber, 10) || 5001;
+    return report.entries.map((entry, index) => ({
+      ...entry,
+      docNumber: startNum + index,
+    }));
+  }, [report?.entries, startDocNumber]);
 
   // Summary cards
   const summaryCards: SummaryCardData[] = report
@@ -664,7 +685,7 @@ export default function HashavshevetExportPage() {
           {report.entries.length > 0 && (
             <Card>
               <CardContent className="py-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center gap-3">
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
                     <div>
@@ -676,14 +697,29 @@ export default function HashavshevetExportPage() {
                       </p>
                     </div>
                   </div>
-                  <Button onClick={handleExport} disabled={isExporting} size="lg">
-                    {isExporting ? (
-                      <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4 me-2" />
-                    )}
-                    ייצא לחשבשבת
-                  </Button>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="startDocNumber" className="text-sm whitespace-nowrap">
+                        מספר מסמך התחלתי:
+                      </Label>
+                      <Input
+                        id="startDocNumber"
+                        type="number"
+                        value={startDocNumber}
+                        onChange={(e) => setStartDocNumber(e.target.value)}
+                        className="w-24 h-9"
+                        min="1"
+                      />
+                    </div>
+                    <Button onClick={handleExport} disabled={isExporting} size="lg">
+                      {isExporting ? (
+                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                      ) : (
+                        <Download className="h-4 w-4 me-2" />
+                      )}
+                      ייצא לחשבשבת
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -713,9 +749,9 @@ export default function HashavshevetExportPage() {
                 </div>
               ) : (
                 <ReportDataTable
-                  data={report.entries}
+                  data={entriesWithDocNumbers}
                   columns={entryColumns}
-                  rowKey={(row) => `${row.supplierId}-${row.franchiseeId}`}
+                  rowKey={(row) => `${row.supplierId}-${row.franchiseeId}-${row.docNumber}`}
                   searchPlaceholder="חיפוש ספק או זכיין..."
                   emptyMessage="אין נתונים להצגה"
                 />
@@ -742,7 +778,7 @@ export default function HashavshevetExportPage() {
                   <li><strong>כמות</strong> - 1</li>
                   <li><strong>מחיר</strong> - סכום העמלה</li>
                   <li><strong>סוג המסמך</strong> - 11</li>
-                  <li><strong>מספר מסמך</strong> - ריק (נקבע בחשבשבת)</li>
+                  <li><strong>מספר מסמך</strong> - מספר רץ החל מהמספר שנבחר</li>
                 </ul>
               </div>
             </CardContent>
