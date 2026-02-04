@@ -22,7 +22,7 @@ import {
 import { validateFileType } from "@/lib/file-validation";
 import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
-import { isBkmvDataFile, parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
+import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -317,6 +317,15 @@ export async function POST(
           const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
           const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
+          // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)
+          const supplierIdMap = new Map<string, string | null>();
+          for (const r of matchResults) {
+            supplierIdMap.set(r.bkmvName, r.matchResult.matchedSupplier?.id || null);
+          }
+
+          // Build monthly breakdown for precise period matching
+          const monthlyBreakdown = buildMonthlyBreakdown(parseResult.transactions, supplierIdMap);
+
           // Prepare processing result for storage
           const storedResult: BkmvProcessingResult = {
             companyId: parseResult.companyId,
@@ -343,6 +352,7 @@ export async function POST(
               matchType: r.matchResult.matchType,
               requiresReview: r.matchResult.requiresReview,
             })),
+            monthlyBreakdown,
             processedAt: new Date().toISOString(),
           };
 

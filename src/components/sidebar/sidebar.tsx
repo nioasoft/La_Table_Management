@@ -161,6 +161,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
             icon: <FileText className="h-5 w-5" />,
             children: [
               {
+                label: he.sidebar.subNavigation.supplierReconciliation,
+                href: "/admin/reconciliation-v2",
+                icon: <Scale className="h-4 w-4" />,
+              },
+              {
                 label: he.sidebar.subNavigation.invoiceReport,
                 href: "/admin/reports/invoice",
                 icon: <Receipt className="h-4 w-4" />,

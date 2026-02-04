@@ -1215,7 +1215,7 @@ export type BkmvProcessingResult = {
   };
   /** Matched franchisee ID if detected */
   matchedFranchiseeId: string | null;
-  /** Supplier matching results */
+  /** Supplier matching results (cumulative totals) */
   supplierMatches: Array<{
     bkmvName: string;
     amount: number;
@@ -1226,6 +1226,13 @@ export type BkmvProcessingResult = {
     matchType: string;
     requiresReview: boolean;
   }>;
+  /** Monthly breakdown per supplier - for precise period matching */
+  monthlyBreakdown?: Record<string, Array<{
+    supplierId: string | null;
+    supplierName: string;
+    amount: number;
+    transactionCount: number;
+  }>>;
   /** Timestamp of processing */
   processedAt: string;
 };
@@ -2411,3 +2418,262 @@ export type Contact = typeof contact.$inferSelect;
 export type CreateContactData = typeof contact.$inferInsert;
 export type UpdateContactData = Partial<Omit<CreateContactData, "id" | "createdAt">>;
 export type ContactRole = (typeof contactRoleEnum.enumValues)[number];
+
+// ============================================================================
+// RECONCILIATION V2 TABLES (Supplier Reconciliation Module)
+// ============================================================================
+
+// Reconciliation session status enum
+export const reconciliationSessionStatusEnum = pgEnum("reconciliation_session_status", [
+  "in_progress",
+  "completed",
+  "file_approved",
+  "file_rejected",
+]);
+
+// Reconciliation comparison status enum
+export const reconciliationComparisonStatusEnum = pgEnum("reconciliation_comparison_status", [
+  "pending",
+  "auto_approved",
+  "needs_review",
+  "manually_approved",
+  "sent_to_review_queue",
+]);
+
+// Reconciliation review queue status enum
+export const reconciliationReviewQueueStatusEnum = pgEnum("reconciliation_review_queue_status", [
+  "pending",
+  "resolved",
+]);
+
+// Reconciliation Session table - Main session for supplier vs franchisee comparison
+export const reconciliationSession = pgTable(
+  "reconciliation_session",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => supplier.id, { onDelete: "cascade" }),
+    supplierFileId: text("supplier_file_id")
+      .references(() => supplierFileUpload.id, { onDelete: "set null" }),
+    periodStartDate: date("period_start_date").notNull(),
+    periodEndDate: date("period_end_date").notNull(),
+    status: reconciliationSessionStatusEnum("status")
+      .$default(() => "in_progress")
+      .notNull(),
+    // Statistics
+    totalFranchisees: integer("total_franchisees")
+      .$default(() => 0)
+      .notNull(),
+    matchedCount: integer("matched_count")
+      .$default(() => 0)
+      .notNull(),
+    needsReviewCount: integer("needs_review_count")
+      .$default(() => 0)
+      .notNull(),
+    approvedCount: integer("approved_count")
+      .$default(() => 0)
+      .notNull(),
+    toReviewQueueCount: integer("to_review_queue_count")
+      .$default(() => 0)
+      .notNull(),
+    // Totals
+    totalSupplierAmount: decimal("total_supplier_amount", { precision: 12, scale: 2 }),
+    totalFranchiseeAmount: decimal("total_franchisee_amount", { precision: 12, scale: 2 }),
+    totalDifference: decimal("total_difference", { precision: 12, scale: 2 }),
+    // File approval/rejection
+    fileRejectionReason: text("file_rejection_reason"),
+    fileApprovedAt: timestamp("file_approved_at"),
+    fileApprovedBy: text("file_approved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Audit
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_reconciliation_session_supplier").on(table.supplierId),
+    index("idx_reconciliation_session_supplier_file").on(table.supplierFileId),
+    index("idx_reconciliation_session_period").on(table.periodStartDate, table.periodEndDate),
+    index("idx_reconciliation_session_status").on(table.status),
+    index("idx_reconciliation_session_created_at").on(table.createdAt),
+    // Unique constraint for supplier + period to prevent duplicate sessions
+    uniqueIndex("idx_reconciliation_session_unique").on(
+      table.supplierId,
+      table.periodStartDate,
+      table.periodEndDate
+    ),
+  ]
+);
+
+// Reconciliation Comparison table - Individual comparison rows
+export const reconciliationComparison = pgTable(
+  "reconciliation_comparison",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => reconciliationSession.id, { onDelete: "cascade" }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "restrict" }),
+    // Amounts
+    supplierAmount: decimal("supplier_amount", { precision: 12, scale: 2 }).notNull(),
+    franchiseeAmount: decimal("franchisee_amount", { precision: 12, scale: 2 }).notNull(),
+    difference: decimal("difference", { precision: 12, scale: 2 }).notNull(),
+    absoluteDifference: decimal("absolute_difference", { precision: 12, scale: 2 }).notNull(),
+    // Original name from supplier file (for reference)
+    supplierOriginalName: text("supplier_original_name"),
+    // Reference to franchisee's BKMVDATA file
+    franchiseeFileId: text("franchisee_file_id").references(() => uploadedFile.id, {
+      onDelete: "set null",
+    }),
+    // Status
+    status: reconciliationComparisonStatusEnum("status")
+      .$default(() => "pending")
+      .notNull(),
+    // Review info
+    reviewedBy: text("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+  },
+  (table) => [
+    index("idx_reconciliation_comparison_session").on(table.sessionId),
+    index("idx_reconciliation_comparison_franchisee").on(table.franchiseeId),
+    index("idx_reconciliation_comparison_status").on(table.status),
+    // Unique constraint for session + franchisee
+    uniqueIndex("idx_reconciliation_comparison_unique").on(table.sessionId, table.franchiseeId),
+  ]
+);
+
+// Reconciliation Review Queue table - Items flagged for review
+export const reconciliationReviewQueue = pgTable(
+  "reconciliation_review_queue",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    comparisonId: text("comparison_id")
+      .notNull()
+      .references(() => reconciliationComparison.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => reconciliationSession.id, { onDelete: "cascade" }),
+    // Denormalized fields for quick access without joins
+    supplierId: text("supplier_id").notNull(),
+    supplierName: text("supplier_name").notNull(),
+    franchiseeId: text("franchisee_id").notNull(),
+    franchiseeName: text("franchisee_name").notNull(),
+    periodStartDate: date("period_start_date").notNull(),
+    periodEndDate: date("period_end_date").notNull(),
+    supplierAmount: decimal("supplier_amount", { precision: 12, scale: 2 }).notNull(),
+    franchiseeAmount: decimal("franchisee_amount", { precision: 12, scale: 2 }).notNull(),
+    difference: decimal("difference", { precision: 12, scale: 2 }).notNull(),
+    // Status
+    status: reconciliationReviewQueueStatusEnum("status")
+      .$default(() => "pending")
+      .notNull(),
+    // Resolution
+    resolvedBy: text("resolved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: timestamp("resolved_at"),
+    resolutionNotes: text("resolution_notes"),
+    // Timestamps
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("idx_reconciliation_review_queue_comparison").on(table.comparisonId),
+    index("idx_reconciliation_review_queue_session").on(table.sessionId),
+    index("idx_reconciliation_review_queue_status").on(table.status),
+    index("idx_reconciliation_review_queue_created_at").on(table.createdAt),
+    // Unique constraint for comparison to prevent duplicate queue entries
+    uniqueIndex("idx_reconciliation_review_queue_unique").on(table.comparisonId),
+  ]
+);
+
+// Reconciliation Session relations
+export const reconciliationSessionRelations = relations(reconciliationSession, ({ one, many }) => ({
+  supplier: one(supplier, {
+    fields: [reconciliationSession.supplierId],
+    references: [supplier.id],
+  }),
+  supplierFile: one(supplierFileUpload, {
+    fields: [reconciliationSession.supplierFileId],
+    references: [supplierFileUpload.id],
+  }),
+  comparisons: many(reconciliationComparison),
+  reviewQueueItems: many(reconciliationReviewQueue),
+  approvedByUser: one(user, {
+    fields: [reconciliationSession.fileApprovedBy],
+    references: [user.id],
+    relationName: "approvedReconciliationSessions",
+  }),
+  createdByUser: one(user, {
+    fields: [reconciliationSession.createdBy],
+    references: [user.id],
+    relationName: "createdReconciliationSessions",
+  }),
+}));
+
+// Reconciliation Comparison relations
+export const reconciliationComparisonRelations = relations(reconciliationComparison, ({ one }) => ({
+  session: one(reconciliationSession, {
+    fields: [reconciliationComparison.sessionId],
+    references: [reconciliationSession.id],
+  }),
+  franchisee: one(franchisee, {
+    fields: [reconciliationComparison.franchiseeId],
+    references: [franchisee.id],
+  }),
+  franchiseeFile: one(uploadedFile, {
+    fields: [reconciliationComparison.franchiseeFileId],
+    references: [uploadedFile.id],
+  }),
+  reviewedByUser: one(user, {
+    fields: [reconciliationComparison.reviewedBy],
+    references: [user.id],
+  }),
+}));
+
+// Reconciliation Review Queue relations
+export const reconciliationReviewQueueRelations = relations(reconciliationReviewQueue, ({ one }) => ({
+  comparison: one(reconciliationComparison, {
+    fields: [reconciliationReviewQueue.comparisonId],
+    references: [reconciliationComparison.id],
+  }),
+  session: one(reconciliationSession, {
+    fields: [reconciliationReviewQueue.sessionId],
+    references: [reconciliationSession.id],
+  }),
+  resolvedByUser: one(user, {
+    fields: [reconciliationReviewQueue.resolvedBy],
+    references: [user.id],
+  }),
+}));
+
+// Reconciliation Session types
+export type ReconciliationSession = typeof reconciliationSession.$inferSelect;
+export type CreateReconciliationSessionData = typeof reconciliationSession.$inferInsert;
+export type UpdateReconciliationSessionData = Partial<Omit<CreateReconciliationSessionData, "id" | "createdAt">>;
+export type ReconciliationSessionStatus = (typeof reconciliationSessionStatusEnum.enumValues)[number];
+
+// Reconciliation Comparison types
+export type ReconciliationComparison = typeof reconciliationComparison.$inferSelect;
+export type CreateReconciliationComparisonData = typeof reconciliationComparison.$inferInsert;
+export type UpdateReconciliationComparisonData = Partial<Omit<CreateReconciliationComparisonData, "id">>;
+export type ReconciliationComparisonStatus = (typeof reconciliationComparisonStatusEnum.enumValues)[number];
+
+// Reconciliation Review Queue types
+export type ReconciliationReviewQueue = typeof reconciliationReviewQueue.$inferSelect;
+export type CreateReconciliationReviewQueueData = typeof reconciliationReviewQueue.$inferInsert;
+export type ReconciliationReviewQueueStatus = (typeof reconciliationReviewQueueStatusEnum.enumValues)[number];

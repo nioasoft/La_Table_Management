@@ -3080,6 +3080,111 @@ export const he = {
   },
 
   // ==========================================================================
+  // RECONCILIATION V2 (Supplier Reconciliation)
+  // ==========================================================================
+  reconciliationV2: {
+    pageTitle: "התאמות ספקים",
+    selectSupplier: "בחר ספק",
+    selectPeriod: "בחר תקופה",
+    startReconciliation: "התחל התאמה",
+    continueSession: "המשך עבודה על סשן קיים",
+    supplierData: "נתוני ספק",
+    franchiseeData: "נתוני זכיין",
+    supplierAmount: "סכום ספק",
+    franchiseeAmount: "סכום זכיין",
+    difference: "הפרש",
+    approve: "אישור",
+    toReview: "לבדיקה",
+    matched: "תואם",
+    needsReview: "לבדיקה",
+    autoApproved: "אושר אוטומטית",
+    manuallyApproved: "אושר ידנית",
+    approveFile: "אשר קובץ",
+    rejectFile: "דחה קובץ",
+    rejectionReason: "סיבת דחייה",
+    sendNewUploadLink: "שלח קישור העלאה חדש",
+    reviewQueue: "תור בדיקה",
+    history: "היסטוריה",
+    resolve: "פתור",
+    notes: "הערות",
+    noItems: "אין פריטים",
+
+    // Session statuses
+    status: {
+      inProgress: "בתהליך",
+      completed: "הושלם",
+      fileApproved: "קובץ אושר",
+      fileRejected: "קובץ נדחה",
+      pending: "ממתין",
+      resolved: "נפתר",
+      sentToReviewQueue: "בתור בדיקה",
+    },
+
+    // Statistics
+    stats: {
+      totalFranchisees: "סה״כ זכיינים",
+      matched: "מאושרים",
+      needsReview: "לבדיקה",
+      inQueue: "בתור",
+      totalDifference: "סה״כ הפרש",
+    },
+
+    // Messages
+    messages: {
+      sessionCreated: "סשן התאמה נוצר בהצלחה",
+      comparisonApproved: "השוואה אושרה",
+      addedToQueue: "נוסף לתור בדיקה",
+      fileApproved: "קובץ אושר בהצלחה",
+      fileRejected: "קובץ נדחה",
+      itemResolved: "פריט נפתר בהצלחה",
+      errorCreatingSession: "שגיאה ביצירת סשן התאמה",
+      errorApprovingComparison: "שגיאה באישור השוואה",
+      errorAddingToQueue: "שגיאה בהוספה לתור בדיקה",
+      errorApprovingFile: "שגיאה באישור הקובץ",
+      errorRejectingFile: "שגיאה בדחיית הקובץ",
+      errorResolvingItem: "שגיאה בפתרון פריט",
+    },
+
+    // Info section
+    info: {
+      howItWorks: "איך זה עובד?",
+      step1Title: "בחירת ספק ותקופה",
+      step1Desc: "בחר ספק שיש לו קבצים מעובדים ותקופה להשוואה",
+      step2Title: "השוואת סכומים",
+      step2Desc: "המערכת משווה את סכומי הספק לסכומים מקבצי BKMVDATA של הזכיינים",
+      step3Title: "סף ₪30",
+      step3Desc: "הפרשים עד ₪30 מאושרים אוטומטית. הפרשים גדולים יותר דורשים אישור ידני",
+      step4Title: "אישור או דחיית הקובץ",
+      step4Desc: "לאחר בדיקת כל הפערים, ניתן לאשר או לדחות את קובץ הספק",
+    },
+
+    // Review queue
+    reviewQueuePage: {
+      title: "תור בדיקת פערים",
+      description: "פריטים שנשלחו לבדיקה ידנית מסשנים שונים",
+      pendingItems: "פריטים ממתינים",
+      pendingItemsDesc: "רשימת כל הפריטים שממתינים לבדיקה ופתרון",
+      noItemsTitle: "אין פריטים בתור בדיקה!",
+      noItemsDesc: "כל הפערים נפתרו",
+    },
+
+    // History page
+    historyPage: {
+      title: "היסטוריית התאמות",
+      description: "צפייה בכל ההתאמות שבוצעו לאורך זמן",
+      filters: "סינון",
+      results: "תוצאות",
+      noResults: "לא נמצאו רשומות היסטוריה",
+      allSuppliers: "כל הספקים",
+      allFranchisees: "כל הזכיינים",
+      fromDate: "מתאריך",
+      toDate: "עד תאריך",
+      applyFilter: "החל סינון",
+      clearFilter: "נקה סינון",
+    },
+  },
+
+  // ==========================================================================
   // SIDEBAR NAVIGATION
   // ==========================================================================
   sidebar: {
@@ -3113,6 +3218,7 @@ export const he = {
       supplierFiles: "קבצי ספקים",
 
       // Reports
+      supplierReconciliation: "התאמות ספקים",
       reportsHub: "מרכז דוחות",
       commissionsReport: "דוח עמלות",
       varianceReport: "דוח סטיות",

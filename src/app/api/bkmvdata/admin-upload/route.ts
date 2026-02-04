@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
 import { uploadDocument, generateEntityFileName } from "@/lib/storage";
-import { parseBkmvData, extractDateRange } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, extractDateRange, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
@@ -190,6 +190,15 @@ export async function POST(request: NextRequest) {
     const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
     const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
+    // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)
+    const supplierIdMap = new Map<string, string | null>();
+    for (const r of matchResults) {
+      supplierIdMap.set(r.bkmvName, r.matchResult.matchedSupplier?.id || null);
+    }
+
+    // Build monthly breakdown for precise period matching
+    const monthlyBreakdown = buildMonthlyBreakdown(parseResult.transactions, supplierIdMap);
+
     // Prepare processing result
     const storedResult: BkmvProcessingResult = {
       companyId: parseResult.companyId,
@@ -217,6 +226,7 @@ export async function POST(request: NextRequest) {
         matchType: r.matchResult.matchType,
         requiresReview: r.matchResult.requiresReview,
       })),
+      monthlyBreakdown,
       processedAt: new Date().toISOString(),
     };
 

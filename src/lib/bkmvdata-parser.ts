@@ -755,3 +755,160 @@ export function findAccountSortByType(parseResult: BkmvParseResult, accountType:
   const match = labels.find(l => l.label === accountType);
   return match?.sort;
 }
+
+// ============================================================================
+// MONTHLY BREAKDOWN FUNCTIONS
+// ============================================================================
+
+/**
+ * Entry in the monthly breakdown
+ */
+export interface MonthlyBreakdownEntry {
+  supplierId: string | null;
+  supplierName: string;
+  amount: number;
+  transactionCount: number;
+}
+
+/**
+ * Monthly breakdown type - maps month key (YYYY-MM) to supplier entries
+ */
+export type MonthlyBreakdown = Record<string, MonthlyBreakdownEntry[]>;
+
+/**
+ * Format a Date to YYYY-MM string
+ */
+function formatYearMonth(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/**
+ * Build monthly breakdown from transactions
+ * Groups credit transactions by month and supplier name
+ */
+export function buildMonthlyBreakdown(
+  transactions: BkmvTransaction[],
+  supplierIdMap?: Map<string, string | null>
+): MonthlyBreakdown {
+  const breakdown: Record<string, Map<string, { amount: number; count: number }>> = {};
+
+  for (const tx of transactions) {
+    // Skip non-credit transactions (same logic as buildSupplierSummary)
+    if (tx.side !== 'credit' || tx.amount === 0) {
+      continue;
+    }
+
+    // Skip internal accounts
+    const skipPatterns = [
+      'מעמתש', 'ניכוי', 'קופה', 'דיינרס', 'ויזה',
+      'מזרחי', 'לאומי', 'פועלים', 'אשראי',
+    ];
+    const counterparty = tx.counterpartyName.toLowerCase();
+    if (skipPatterns.some(pattern => counterparty.includes(pattern.toLowerCase()))) {
+      continue;
+    }
+
+    const supplierKey = tx.counterpartyName.trim();
+    if (!supplierKey) continue;
+
+    // Get month key from document date
+    const monthKey = formatYearMonth(tx.documentDate);
+
+    if (!breakdown[monthKey]) {
+      breakdown[monthKey] = new Map();
+    }
+
+    const current = breakdown[monthKey].get(supplierKey);
+    if (current) {
+      current.amount += tx.amount;
+      current.count++;
+    } else {
+      breakdown[monthKey].set(supplierKey, { amount: tx.amount, count: 1 });
+    }
+  }
+
+  // Convert to final format
+  const result: MonthlyBreakdown = {};
+
+  for (const [month, suppliers] of Object.entries(breakdown)) {
+    result[month] = [];
+    for (const [supplierName, data] of suppliers.entries()) {
+      result[month].push({
+        supplierId: supplierIdMap?.get(supplierName) ?? null,
+        supplierName,
+        amount: data.amount,
+        transactionCount: data.count,
+      });
+    }
+    // Sort by amount descending
+    result[month].sort((a, b) => b.amount - a.amount);
+  }
+
+  return result;
+}
+
+/**
+ * Get amount for a specific supplier in a specific period from monthly breakdown
+ *
+ * @param monthlyBreakdown - The monthly breakdown data
+ * @param supplierId - The supplier ID to look for
+ * @param periodStart - Period start date string (YYYY-MM-DD)
+ * @param periodEnd - Period end date string (YYYY-MM-DD)
+ * @returns The total amount for the supplier in that period, or null if no data
+ */
+export function getAmountForPeriod(
+  monthlyBreakdown: MonthlyBreakdown | undefined,
+  supplierId: string,
+  periodStart: string,
+  periodEnd: string
+): number | null {
+  if (!monthlyBreakdown) return null;
+
+  let total = 0;
+  let hasData = false;
+
+  // Extract month portion from dates
+  const startMonth = periodStart.slice(0, 7); // "2025-12-01" -> "2025-12"
+  const endMonth = periodEnd.slice(0, 7);
+
+  for (const [month, suppliers] of Object.entries(monthlyBreakdown)) {
+    if (month >= startMonth && month <= endMonth) {
+      const match = suppliers.find(s => s.supplierId === supplierId);
+      if (match) {
+        total += match.amount;
+        hasData = true;
+      }
+    }
+  }
+
+  return hasData ? total : null;
+}
+
+/**
+ * Merge monthly breakdown from a new file into existing breakdown
+ * New data overwrites existing data for the same months (last write wins)
+ *
+ * @param existing - Existing monthly breakdown (or undefined)
+ * @param newData - New monthly breakdown to merge
+ * @param sourceFileId - ID of the source file (for tracking)
+ * @returns Merged monthly breakdown
+ */
+export function mergeMonthlyBreakdown(
+  existing: MonthlyBreakdown | undefined,
+  newData: MonthlyBreakdown
+): MonthlyBreakdown {
+  if (!existing) {
+    return { ...newData };
+  }
+
+  const result = { ...existing };
+
+  // New data overwrites existing data for the same months
+  for (const [month, suppliers] of Object.entries(newData)) {
+    result[month] = suppliers;
+  }
+
+  return result;
+}
