@@ -965,8 +965,6 @@ export default function AdminSuppliersPage() {
                       onChange={(e) => setFormData({ ...formData, hashavshevetCode: e.target.value })}
                       placeholder="קוד מפתח חשבון"
                       disabled={isSubmitting}
-                      dir="ltr"
-                      className="[unicode-bidi:isolate]"
                     />
                     <p className="text-xs text-muted-foreground">
                       קוד הספק במערכת חשבשבת לייבוא עמלות
