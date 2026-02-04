@@ -8,6 +8,7 @@ import { getSuppliersWithBrands, type SupplierWithBrands } from "@/data-access/s
 import { getPeriodsForYear, type SettlementPeriodInfo } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import type { SettlementPeriodType } from "@/db/schema";
+import { requiresCustomParser } from "@/lib/custom-parsers";
 
 // File upload processing status type
 type SupplierFileProcessingStatus =
@@ -56,11 +57,22 @@ export interface SupplierCompleteness {
 }
 
 /**
+ * Supplier without parser configuration
+ */
+export interface SupplierWithoutParser {
+  id: string;
+  name: string;
+  code: string;
+  brands: { id: string; nameHe: string }[];
+}
+
+/**
  * API Response type
  */
 export interface SupplierCompletenessResponse {
   year: number;
   suppliers: SupplierCompleteness[];
+  suppliersWithoutParser: SupplierWithoutParser[];
   summary: {
     totalSuppliers: number;
     totalExpectedFiles: number;
@@ -92,8 +104,12 @@ export async function GET(request: NextRequest) {
     // Get all active suppliers with brands
     const allSuppliers = await getSuppliersWithBrands(true);
 
-    // Filter suppliers
-    let filteredSuppliers = allSuppliers.filter(s => s.fileMapping !== null);
+    // Helper to check if supplier has a parser (either fileMapping or custom parser)
+    const hasParser = (s: SupplierWithBrands) =>
+      s.fileMapping !== null || (s.code && requiresCustomParser(s.code));
+
+    // Filter suppliers - include those with fileMapping OR custom parser
+    let filteredSuppliers = allSuppliers.filter(hasParser);
 
     if (brandId) {
       filteredSuppliers = filteredSuppliers.filter(s =>
@@ -230,6 +246,27 @@ export async function GET(request: NextRequest) {
       return a.supplier.name.localeCompare(b.supplier.name, 'he');
     });
 
+    // Get suppliers without parser (no fileMapping AND no custom parser)
+    let suppliersWithoutParser = allSuppliers
+      .filter(s => !hasParser(s));
+
+    // Apply brand filter if specified
+    if (brandId) {
+      suppliersWithoutParser = suppliersWithoutParser.filter(s =>
+        s.brands.some(b => b.id === brandId)
+      );
+    }
+
+    // Map to response format and sort by name
+    const suppliersWithoutParserResponse: SupplierWithoutParser[] = suppliersWithoutParser
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        code: s.code,
+        brands: s.brands.map(b => ({ id: b.id, nameHe: b.nameHe })),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'he'));
+
     // Calculate summary
     const summary = {
       totalSuppliers: supplierCompleteness.length,
@@ -248,6 +285,7 @@ export async function GET(request: NextRequest) {
     const response: SupplierCompletenessResponse = {
       year,
       suppliers: supplierCompleteness,
+      suppliersWithoutParser: suppliersWithoutParserResponse,
       summary,
     };
 

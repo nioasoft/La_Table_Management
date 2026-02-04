@@ -27,6 +27,7 @@ import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
+import { requiresCustomParser } from "@/lib/custom-parsers";
 import { createSupplierFileUpload } from "@/data-access/supplier-file-uploads";
 
 /**
@@ -406,25 +407,43 @@ export async function POST(
                         file.type === "application/vnd.ms-excel";
 
     if (link.entityType === "supplier" && isExcelFile) {
+      // Get supplier details outside try-catch so we have access in catch block
+      const supplier = await getSupplierById(link.entityId);
+
       try {
         console.log("Detected Excel file upload from supplier:", link.entityId);
-
-        // Get supplier details
-        const supplier = await getSupplierById(link.entityId);
         if (!supplier) {
           console.error("Supplier not found:", link.entityId);
           supplierProcessingResult = {
             processed: false,
             error: "Supplier not found",
           };
-        } else if (!supplier.fileMapping) {
-          console.warn("Supplier has no file mapping configured:", supplier.name);
-          // Mark for manual review since we can't process automatically
+        } else if (!supplier.fileMapping && !(supplier.code && requiresCustomParser(supplier.code))) {
+          // Supplier has neither fileMapping nor custom parser - cannot process automatically
+          console.warn("Supplier has no file mapping or custom parser configured:", supplier.name);
+
+          // Create a supplier_file_upload record so it appears in the supplier files review queue
+          // (not in the BKMVDATA review queue)
+          const supplierFileRecord = await createSupplierFileUpload({
+            supplierId: supplier.id,
+            originalFileName: file.name,
+            fileUrl: uploadResult.url,
+            fileSize: uploadResult.fileSize,
+            processingStatus: "needs_review",
+            processingResult: null,
+            periodStartDate: null,
+            periodEndDate: null,
+            createdBy: null,
+          });
+
+          // Update uploaded_file status (without bkmvProcessingResult, so it won't appear in BKMVDATA review)
           await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
+
           supplierProcessingResult = {
             processed: false,
             error: "Supplier file mapping not configured - requires manual processing",
             supplierName: supplier.name,
+            supplierFileId: supplierFileRecord.id,
           };
         } else {
           // Mark file as processing
@@ -445,11 +464,26 @@ export async function POST(
 
           if (!processResult.success || processResult.data.length === 0) {
             console.error("Failed to process supplier file:", processResult.errors);
+
+            // Create supplier_file_upload record even on failure so it appears in the correct review queue
+            const supplierFileRecord = await createSupplierFileUpload({
+              supplierId: supplier.id,
+              originalFileName: file.name,
+              fileUrl: uploadResult.url,
+              fileSize: uploadResult.fileSize,
+              processingStatus: "needs_review",
+              processingResult: null,
+              periodStartDate: null,
+              periodEndDate: null,
+              createdBy: null,
+            });
+
             await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
             supplierProcessingResult = {
               processed: false,
               error: processResult.errors?.[0]?.message || "Failed to process file",
               supplierName: supplier.name,
+              supplierFileId: supplierFileRecord.id,
             };
           } else {
             // Match franchisee names
@@ -569,11 +603,34 @@ export async function POST(
         }
       } catch (supplierError) {
         console.error("Error processing supplier file:", supplierError);
+
+        // Create supplier_file_upload record on error so it appears in the correct review queue
+        if (supplier) {
+          const supplierFileRecord = await createSupplierFileUpload({
+            supplierId: supplier.id,
+            originalFileName: file.name,
+            fileUrl: uploadResult.url,
+            fileSize: uploadResult.fileSize,
+            processingStatus: "needs_review",
+            processingResult: null,
+            periodStartDate: null,
+            periodEndDate: null,
+            createdBy: null,
+          });
+
+          supplierProcessingResult = {
+            processed: false,
+            error: supplierError instanceof Error ? supplierError.message : "Unknown error",
+            supplierFileId: supplierFileRecord.id,
+          };
+        } else {
+          supplierProcessingResult = {
+            processed: false,
+            error: supplierError instanceof Error ? supplierError.message : "Unknown error",
+          };
+        }
+
         await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
-        supplierProcessingResult = {
-          processed: false,
-          error: supplierError instanceof Error ? supplierError.message : "Unknown error",
-        };
         // Still notify on error since file needs manual review
         shouldNotify = true;
       }

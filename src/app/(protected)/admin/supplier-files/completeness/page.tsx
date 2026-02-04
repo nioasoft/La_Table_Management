@@ -44,7 +44,9 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
-import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus } from "@/app/api/dashboard/supplier-completeness/route";
+import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus, SupplierWithoutParser } from "@/app/api/dashboard/supplier-completeness/route";
+import { Badge } from "@/components/ui/badge";
+import { AlertTriangle, Settings } from "lucide-react";
 
 // Compact status icons in different sizes
 const StatusIcon = ({ status, size = "normal" }: { status: PeriodStatus["status"]; size?: "small" | "normal" }) => {
@@ -126,6 +128,7 @@ export default function SupplierCompletenessPage() {
 
   const brands = brandsData?.brands || [];
   const allSuppliers = completenessData?.suppliers || [];
+  const allSuppliersWithoutParser = completenessData?.suppliersWithoutParser || [];
 
   // Filter suppliers by search query
   const suppliers = searchQuery.trim()
@@ -133,6 +136,13 @@ export default function SupplierCompletenessPage() {
         s.supplier.name.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : allSuppliers;
+
+  // Filter suppliers without parser by search query
+  const suppliersWithoutParser = searchQuery.trim()
+    ? allSuppliersWithoutParser.filter((s) =>
+        s.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : allSuppliersWithoutParser;
 
   const years = [currentYear, currentYear - 1, currentYear - 2];
 
@@ -203,7 +213,14 @@ export default function SupplierCompletenessPage() {
           </SelectContent>
         </Select>
 
-        <span className="text-sm text-muted-foreground">{suppliers.length} ספקים</span>
+        <span className="text-sm text-muted-foreground">
+          {suppliers.length} ספקים
+          {suppliersWithoutParser.length > 0 && (
+            <span className="text-amber-600 ms-2">
+              + {suppliersWithoutParser.length} ללא פרסר
+            </span>
+          )}
+        </span>
       </div>
 
       {/* Table */}
@@ -247,6 +264,76 @@ export default function SupplierCompletenessPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Suppliers without parser */}
+      {suppliersWithoutParser.length > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600" />
+              <span>ספקים ללא פרסר מוגדר</span>
+              <Badge variant="outline" className="text-amber-600 border-amber-300">
+                {suppliersWithoutParser.length}
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <Table className="text-sm">
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="py-2 w-48">ספק</TableHead>
+                    <TableHead className="py-2">מותגים</TableHead>
+                    <TableHead className="py-2 w-64">סטטוס</TableHead>
+                    <TableHead className="py-2 w-24"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {suppliersWithoutParser.map((supplier) => (
+                    <TableRow key={supplier.id} className="hover:bg-amber-100/50">
+                      <TableCell className="py-1.5 font-medium">
+                        {supplier.name}
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <div className="flex flex-wrap gap-1">
+                          {supplier.brands.map((brand) => (
+                            <Badge key={brand.id} variant="secondary" className="text-xs">
+                              {brand.nameHe}
+                            </Badge>
+                          ))}
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <TooltipProvider delayDuration={200}>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1.5 text-amber-700">
+                                <AlertTriangle className="h-3.5 w-3.5" />
+                                <span className="text-xs">לא ניתן לעקוב אחר דוחות</span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="text-xs max-w-[250px]">
+                              <p>יש להגדיר פרסר (מיפוי קובץ) כדי לעקוב אחר דוחות הספק</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </TableCell>
+                      <TableCell className="py-1.5">
+                        <Link href={`/admin/suppliers/${supplier.id}`}>
+                          <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                            <Settings className="h-3 w-3" />
+                            הגדרות
+                          </Button>
+                        </Link>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Legend */}
       <div className="flex items-center gap-6 text-xs text-muted-foreground justify-center">

@@ -42,6 +42,7 @@ import {
   Scale,
   FileSpreadsheet,
   Menu,
+  Archive,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -74,7 +75,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
   const router = useRouter();
   const { isCollapsed, toggle } = useSidebar();
   const [expandedSections, setExpandedSections] = useState<string[]>([
-    "settlementWorkflow",
     "dataManagement",
     "settings",
     "reports",
@@ -129,32 +129,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
     ...(isSuperUserOrAdmin
       ? [
           {
-            label: he.sidebar.navigation.settlementWorkflow,
-            icon: <Receipt className="h-5 w-5" />,
-            children: [
-              {
-                label: he.sidebar.subNavigation.settlementSimple,
-                href: "/admin/settlement-simple",
-                icon: <Scale className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.settlements,
-                href: "/admin/settlements",
-                icon: <CheckCircle className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.reconciliation,
-                href: "/admin/reconciliation",
-                icon: <FileBarChart className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.commissions,
-                href: "/admin/commissions",
-                icon: <Calculator className="h-4 w-4" />,
-              },
-            ],
-          },
-          {
             label: he.sidebar.navigation.dataManagement,
             icon: <Database className="h-5 w-5" />,
             children: [
@@ -186,31 +160,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
             label: he.sidebar.navigation.reports,
             icon: <FileText className="h-5 w-5" />,
             children: [
-              {
-                label: he.sidebar.subNavigation.reportsHub,
-                href: "/admin/reports",
-                icon: <FileText className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.commissionsReport,
-                href: "/admin/reports/commissions",
-                icon: <FileBarChart className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.varianceReport,
-                href: "/admin/reports/variance",
-                icon: <FileBarChart className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.unauthorizedReport,
-                href: "/admin/reports/unauthorized",
-                icon: <FileBarChart className="h-4 w-4" />,
-              },
-              {
-                label: he.sidebar.subNavigation.depositsReport,
-                href: "/admin/reports/deposits",
-                icon: <FileBarChart className="h-4 w-4" />,
-              },
               {
                 label: he.sidebar.subNavigation.invoiceReport,
                 href: "/admin/reports/invoice",
@@ -251,6 +200,57 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.vatRates,
                 href: "/admin/vat-rates",
                 icon: <Percent className="h-4 w-4" />,
+              },
+            ],
+          },
+          {
+            label: he.sidebar.navigation.archive,
+            icon: <Archive className="h-5 w-5" />,
+            children: [
+              {
+                label: he.sidebar.subNavigation.settlementSimple,
+                href: "/admin/settlement-simple",
+                icon: <Scale className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.settlements,
+                href: "/admin/settlements",
+                icon: <CheckCircle className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.reconciliation,
+                href: "/admin/reconciliation",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.commissions,
+                href: "/admin/commissions",
+                icon: <Calculator className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.reportsHub,
+                href: "/admin/reports",
+                icon: <FileText className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.commissionsReport,
+                href: "/admin/reports/commissions",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.varianceReport,
+                href: "/admin/reports/variance",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.unauthorizedReport,
+                href: "/admin/reports/unauthorized",
+                icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.depositsReport,
+                href: "/admin/reports/deposits",
+                icon: <FileBarChart className="h-4 w-4" />,
               },
             ],
           },

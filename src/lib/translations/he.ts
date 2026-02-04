@@ -3094,6 +3094,7 @@ export const he = {
       dataManagement: "ניהול נתונים",
       reports: "דוחות",
       settings: "הגדרות",
+      archive: "ארכיון",
     },
 
     // Sub-navigation items

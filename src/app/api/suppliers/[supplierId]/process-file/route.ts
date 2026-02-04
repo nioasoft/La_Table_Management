@@ -7,6 +7,7 @@ import {
 import { getSupplierById } from "@/data-access/suppliers";
 import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
+import { requiresCustomParser } from "@/lib/custom-parsers";
 import type { SupplierFileMapping, SettlementPeriodType } from "@/db/schema";
 import type { MatcherConfig, FranchiseeMatchResult } from "@/lib/franchisee-matcher";
 import {
@@ -81,10 +82,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     supplierName = supplier.name;
 
-    // Check if supplier has file mapping configured
-    if (!supplier.fileMapping) {
+    // Check if supplier has file mapping or custom parser configured
+    const hasCustomParser = supplier.code && requiresCustomParser(supplier.code);
+    if (!supplier.fileMapping && !hasCustomParser) {
       const error = createFileProcessingError('NO_FILE_MAPPING', {
-        details: `Supplier "${supplier.name}" does not have file mapping configured`,
+        details: `Supplier "${supplier.name}" does not have file mapping or custom parser configured`,
       });
 
       // Log the configuration error
@@ -150,8 +152,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     fileSize = file.size;
     mimeType = file.type || undefined;
 
-    // Validate file type matches configured type
-    const fileMapping = supplier.fileMapping as SupplierFileMapping;
+    // Validate file type matches configured type (skip for custom parsers without fileMapping)
+    const fileMapping = supplier.fileMapping as SupplierFileMapping | null;
     const mimeTypes: Record<string, string[]> = {
       xlsx: [
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -171,10 +173,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
       ],
     };
 
-    const allowedMimeTypes = mimeTypes[fileMapping.fileType] || [];
-    if (!allowedMimeTypes.includes(file.type) && file.type !== "") {
+    // For custom parsers without fileMapping, default to accepting xlsx files
+    const configuredFileType = fileMapping?.fileType || (hasCustomParser ? 'xlsx' : null);
+    const allowedMimeTypes = configuredFileType ? (mimeTypes[configuredFileType] || []) : [];
+    if (allowedMimeTypes.length > 0 && !allowedMimeTypes.includes(file.type) && file.type !== "") {
       const error = createFileProcessingError('FILE_TYPE_MISMATCH', {
-        details: `Expected ${fileMapping.fileType} file, got ${file.type}`,
+        details: `Expected ${configuredFileType} file, got ${file.type}`,
       });
 
       // Log the file type error
@@ -217,7 +221,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
           errorCategory: error.category,
           message: error.message,
           suggestion: error.suggestion,
-          expected: fileMapping.fileType,
+          expected: configuredFileType,
           received: file.type,
         },
         { status: 400 }

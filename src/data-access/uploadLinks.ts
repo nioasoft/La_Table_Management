@@ -328,12 +328,19 @@ export async function updateUploadedFileProcessingStatus(
 
 /**
  * Get uploaded files that need review (needs_review status)
+ * Only returns BKMVDATA files (files with bkmvProcessingResult set)
+ * Supplier files without fileMapping are handled separately in supplier_file_upload table
  */
 export async function getUploadedFilesNeedingReview(): Promise<UploadedFile[]> {
   return await database
     .select()
     .from(uploadedFile)
-    .where(eq(uploadedFile.processingStatus, "needs_review"))
+    .where(
+      and(
+        eq(uploadedFile.processingStatus, "needs_review"),
+        isNotNull(uploadedFile.bkmvProcessingResult)
+      )
+    )
     .orderBy(desc(uploadedFile.createdAt));
 }
 

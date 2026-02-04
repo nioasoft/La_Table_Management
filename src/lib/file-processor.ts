@@ -545,20 +545,42 @@ export function parseSupplierFile(
  */
 export async function processSupplierFile(
   fileBuffer: Buffer,
-  fileMapping: SupplierFileMapping,
+  fileMapping: SupplierFileMapping | null,
   vatIncluded: boolean,
   vatRate?: number,
   supplierCode?: string
 ): Promise<FileProcessingResult> {
-  // Check if supplier requires custom parser
-  if (fileMapping.customParser && supplierCode) {
+  // First, check if supplier has a custom parser (regardless of fileMapping)
+  if (supplierCode) {
     const { getCustomParser } = await import("./custom-parsers");
     const customParser = getCustomParser(supplierCode);
 
     if (customParser) {
-      // Pass vatRate to custom parsers for consistency
+      // Use custom parser - it handles everything internally
       return customParser(fileBuffer, vatRate);
     }
+  }
+
+  // No custom parser - fileMapping is required for generic parsing
+  if (!fileMapping) {
+    return {
+      success: false,
+      data: [],
+      errors: [createFileProcessingError('NO_FILE_MAPPING', {
+        details: 'Supplier has no file mapping configured and no custom parser available',
+      })],
+      warnings: [],
+      legacyErrors: ['Supplier has no file mapping configured'],
+      legacyWarnings: [],
+      summary: {
+        totalRows: 0,
+        processedRows: 0,
+        skippedRows: 0,
+        totalGrossAmount: 0,
+        totalNetAmount: 0,
+        vatAdjusted: false,
+      },
+    };
   }
 
   const vatConfig: VatConfig = {
