@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     const supplierIds = supplierIdsParam ? supplierIdsParam.split(",").filter(Boolean) : [];
 
     // Build conditions array
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const conditions: any[] = [
       // Only approved files
       or(
@@ -153,6 +153,7 @@ export async function GET(request: NextRequest) {
           id: franchisee.id,
           name: franchisee.name,
           brandId: franchisee.brandId,
+          hashavshevetItemKey: franchisee.hashavshevetItemKey,
         })
         .from(franchisee),
       database
@@ -219,7 +220,7 @@ export async function GET(request: NextRequest) {
           commissionAmount,
           periodStartDate: file.periodStartDate || "",
           periodEndDate: file.periodEndDate || "",
-          itemKey: `עמלות ${franchiseeInfo.name}`,
+          itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
         });
 
         supplierSet.add(file.supplierId);

@@ -874,6 +874,8 @@ export const he = {
 
           notes: "הערות",
           notesPlaceholder: "הערות נוספות",
+          hashavshevetItemKey: "מפתח פריט (חשבשבת)",
+          hashavshevetItemKeyPlaceholder: "מפתח פריט לייבוא חשבשבת",
           isActive: "פעיל",
         },
 

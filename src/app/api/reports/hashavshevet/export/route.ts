@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     const supplierIds = supplierIdsParam ? supplierIdsParam.split(",").filter(Boolean) : [];
 
     // Build conditions array
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const conditions: any[] = [
       or(
         eq(supplierFileUpload.processingStatus, "approved"),
@@ -137,6 +137,7 @@ export async function GET(request: NextRequest) {
           id: franchisee.id,
           name: franchisee.name,
           brandId: franchisee.brandId,
+          hashavshevetItemKey: franchisee.hashavshevetItemKey,
         })
         .from(franchisee),
       database
@@ -186,8 +187,8 @@ export async function GET(request: NextRequest) {
         rows.push({
           accountKey: file.hashavshevetCode,
           accountName: "", // Empty as per spec
-          itemKey: `עמלות ${franchiseeInfo.name}`,
-          itemName: "", // Empty as per spec
+          itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
+          itemName: franchiseeInfo.name,
           quantity: 1,
           price: commissionAmount,
           documentType: 11,
@@ -236,6 +237,22 @@ export async function GET(request: NextRequest) {
     // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(data);
 
+    // Set numeric columns to number type (columns E, F, G = indices 4, 5, 6)
+    // E = כמות (quantity), F = מחיר (price), G = סוג המסמך (documentType)
+    const numericColumns = [4, 5, 6]; // 0-indexed: E, F, G
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+
+    for (let row = 1; row <= range.e.r; row++) {
+      // Skip header row (row 0)
+      for (const col of numericColumns) {
+        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+        const cell = ws[cellAddress];
+        if (cell && cell.v !== undefined && cell.v !== "") {
+          cell.t = "n"; // Set type to number
+        }
+      }
+    }
+
     // Set column widths
     ws["!cols"] = [
       { wch: 15 }, // מפתח חשבון
@@ -250,6 +267,17 @@ export async function GET(request: NextRequest) {
 
     // Add worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
+
+    // Add named range "חוזים" covering all data (including header)
+    // This is required for Hashavshevet to recognize the data during import
+    if (!wb.Workbook) wb.Workbook = {};
+    if (!wb.Workbook.Names) wb.Workbook.Names = [];
+
+    const lastRow = rows.length + 1; // +1 for header row
+    wb.Workbook.Names.push({
+      Name: "חוזים",
+      Ref: `'ייבוא חשבשבת'!$A$1:$H$${lastRow}`,
+    });
 
     // Generate buffer
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });

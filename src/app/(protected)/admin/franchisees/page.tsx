@@ -146,6 +146,7 @@ interface FranchiseeFormData {
   franchiseAgreementEnd: string;
   status: FranchiseeStatus;
   notes: string;
+  hashavshevetItemKey: string;
   isActive: boolean;
 }
 
@@ -171,6 +172,7 @@ const initialFormData: FranchiseeFormData = {
   franchiseAgreementEnd: "",
   status: "pending",
   notes: "",
+  hashavshevetItemKey: "",
   isActive: true,
 };
 
@@ -447,6 +449,7 @@ export default function AdminFranchiseesPage() {
       franchiseAgreementEnd: franchisee.franchiseAgreementEnd || "",
       status: franchisee.status,
       notes: franchisee.notes || "",
+      hashavshevetItemKey: franchisee.hashavshevetItemKey || "",
       isActive: franchisee.isActive,
     });
     setShowForm(true);
@@ -818,6 +821,20 @@ export default function AdminFranchiseesPage() {
                         <SelectItem value="terminated">{he.admin.franchisees.statuses.terminated}</SelectItem>
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="hashavshevetItemKey">{he.admin.franchisees.form.fields.hashavshevetItemKey}</Label>
+                    <Input
+                      id="hashavshevetItemKey"
+                      value={formData.hashavshevetItemKey}
+                      onChange={(e) =>
+                        setFormData({ ...formData, hashavshevetItemKey: e.target.value })
+                      }
+                      placeholder={he.admin.franchisees.form.fields.hashavshevetItemKeyPlaceholder}
+                      disabled={isSubmitting}
+                      dir="rtl"
+                    />
                   </div>
 
                 </div>

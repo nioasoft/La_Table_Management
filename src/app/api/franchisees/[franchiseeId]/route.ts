@@ -78,6 +78,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       franchiseAgreementEnd,
       status,
       notes,
+      hashavshevetItemKey,
       isActive,
       // Status change logging fields
       statusChangeReason,
@@ -153,6 +154,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.franchiseAgreementEnd = franchiseAgreementEnd;
     if (status !== undefined) updateData.status = status;
     if (notes !== undefined) updateData.notes = notes;
+    if (hashavshevetItemKey !== undefined) updateData.hashavshevetItemKey = hashavshevetItemKey;
     if (isActive !== undefined) updateData.isActive = isActive;
 
     // Include status change logging fields if provided

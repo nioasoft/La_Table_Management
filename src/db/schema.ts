@@ -706,6 +706,8 @@ export const franchisee = pgTable(
       .$default(() => "pending")
       .notNull(),
     notes: text("notes"),
+    // Hashavshevet item key - used in export for "מפתח פריט" column
+    hashavshevetItemKey: text("hashavshevet_item_key"),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),
