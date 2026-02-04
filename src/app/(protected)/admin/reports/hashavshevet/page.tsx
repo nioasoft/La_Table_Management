@@ -211,7 +211,7 @@ export default function HashavshevetExportPage() {
   const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
   const [periodKey, setPeriodKey] = useState("");
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
-  const [selectedBrandId, setSelectedBrandId] = useState<string>("");
+  const [selectedBrandIds, setSelectedBrandIds] = useState<string[]>([]);
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
   const [startDocNumber, setStartDocNumber] = useState("5001");
 
@@ -233,7 +233,7 @@ export default function HashavshevetExportPage() {
   const fetchFilterOptions = useCallback(async () => {
     try {
       const [brandsRes, suppliersRes] = await Promise.all([
-        fetch("/api/brands?filter=active&includeSystem=true"),
+        fetch("/api/brands?filter=active"),
         fetch("/api/suppliers?filter=active&hasHashavshevet=true"),
       ]);
 
@@ -260,10 +260,10 @@ export default function HashavshevetExportPage() {
     const params = new URLSearchParams();
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
-    if (selectedBrandId) params.set("brandIds", selectedBrandId);
+    if (selectedBrandIds.length > 0) params.set("brandIds", selectedBrandIds.join(","));
     if (selectedSupplierIds.length > 0) params.set("supplierIds", selectedSupplierIds.join(","));
     return params.toString();
-  }, [startDate, endDate, selectedBrandId, selectedSupplierIds]);
+  }, [startDate, endDate, selectedBrandIds, selectedSupplierIds]);
 
   // Fetch report data
   const fetchReport = useCallback(async () => {
@@ -292,7 +292,7 @@ export default function HashavshevetExportPage() {
       const duplicate = checkForDuplicateExport(
         startDate,
         endDate,
-        selectedBrandId ? [selectedBrandId] : [],
+        selectedBrandIds,
         selectedSupplierIds
       );
       if (duplicate) {
@@ -305,7 +305,7 @@ export default function HashavshevetExportPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [buildQueryString, startDate, endDate, selectedBrandId, selectedSupplierIds]);
+  }, [buildQueryString, startDate, endDate, selectedBrandIds, selectedSupplierIds]);
 
   // Handle export
   const handleExport = async () => {
@@ -348,7 +348,7 @@ export default function HashavshevetExportPage() {
         exportedAt: new Date().toISOString(),
         startDate,
         endDate,
-        brandIds: selectedBrandId ? [selectedBrandId] : [],
+        brandIds: selectedBrandIds,
         supplierIds: selectedSupplierIds,
         entryCount: report.entries.length,
         totalAmount: report.summary.totalCommission,
@@ -389,6 +389,15 @@ export default function HashavshevetExportPage() {
     }
   };
 
+  // Handle brand toggle
+  const handleBrandToggle = (brandId: string) => {
+    setSelectedBrandIds((prev) =>
+      prev.includes(brandId)
+        ? prev.filter((id) => id !== brandId)
+        : [...prev, brandId]
+    );
+  };
+
   // Handle supplier toggle
   const handleSupplierToggle = (supplierId: string) => {
     setSelectedSupplierIds((prev) =>
@@ -396,6 +405,15 @@ export default function HashavshevetExportPage() {
         ? prev.filter((id) => id !== supplierId)
         : [...prev, supplierId]
     );
+  };
+
+  // Handle select all brands
+  const handleSelectAllBrands = () => {
+    if (selectedBrandIds.length === brands.length) {
+      setSelectedBrandIds([]);
+    } else {
+      setSelectedBrandIds(brands.map((b) => b.id));
+    }
   };
 
   // Handle select all suppliers
@@ -414,7 +432,7 @@ export default function HashavshevetExportPage() {
     setPeriodType("");
     setPeriodKey("");
     setUseCustomDateRange(true);
-    setSelectedBrandId("");
+    setSelectedBrandIds([]);
     setSelectedSupplierIds([]);
     setStartDocNumber("5001");
     setReport(null);
@@ -536,17 +554,24 @@ export default function HashavshevetExportPage() {
 
           {/* Brand Selection */}
           <div className="space-y-2">
-            <Label className="text-sm font-medium">רשת *</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium">רשתות</Label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSelectAllBrands}
+                className="h-7 text-xs"
+              >
+                {selectedBrandIds.length === brands.length ? "בטל הכל" : "בחר הכל"}
+              </Button>
+            </div>
             <div className="flex flex-wrap gap-3">
               {brands.map((brand) => (
                 <div key={brand.id} className="flex items-center space-x-2 space-x-reverse">
-                  <input
-                    type="radio"
+                  <Checkbox
                     id={`brand-${brand.id}`}
-                    name="brand-selection"
-                    checked={selectedBrandId === brand.id}
-                    onChange={() => setSelectedBrandId(brand.id)}
-                    className="h-4 w-4 text-primary border-border focus:ring-primary"
+                    checked={selectedBrandIds.includes(brand.id)}
+                    onCheckedChange={() => handleBrandToggle(brand.id)}
                   />
                   <Label htmlFor={`brand-${brand.id}`} className="cursor-pointer text-sm">
                     {brand.nameHe}
@@ -554,11 +579,6 @@ export default function HashavshevetExportPage() {
                 </div>
               ))}
             </div>
-            {!selectedBrandId && (
-              <p className="text-sm text-muted-foreground">
-                יש לבחור רשת לפני הייצוא
-              </p>
-            )}
           </div>
 
           {/* Supplier Selection */}
@@ -691,7 +711,7 @@ export default function HashavshevetExportPage() {
                         min="1"
                       />
                     </div>
-                    <Button onClick={handleExport} disabled={isExporting || !selectedBrandId} size="lg">
+                    <Button onClick={handleExport} disabled={isExporting} size="lg">
                       {isExporting ? (
                         <Loader2 className="h-4 w-4 me-2 animate-spin" />
                       ) : (
