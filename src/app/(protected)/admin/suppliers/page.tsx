@@ -966,7 +966,6 @@ export default function AdminSuppliersPage() {
                       placeholder="קוד מפתח חשבון"
                       disabled={isSubmitting}
                       dir="ltr"
-                      className="text-left"
                     />
                     <p className="text-xs text-muted-foreground">
                       קוד הספק במערכת חשבשבת לייבוא עמלות
