@@ -16,7 +16,6 @@ import { cn } from "@/lib/utils";
 
 function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { data: session, isPending } = authClient.useSession();
   const { isCollapsed } = useSidebar();
@@ -30,32 +29,35 @@ function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
   const userName = session?.user?.name;
   const userEmail = session?.user?.email;
 
+  // Handle redirects for unauthenticated/invalid users
   useEffect(() => {
+    if (isPending) return;
+
     // Check if user is logged in
-    if (!isPending && !session) {
+    if (!session) {
       router.push("/sign-in");
       return;
     }
 
     // Check if user is pending
-    if (!isPending && session?.user && userStatus === "pending") {
+    if (userStatus === "pending") {
       router.push("/pending-approval");
       return;
     }
 
     // Check if user is suspended
-    if (!isPending && session?.user && userStatus === "suspended") {
+    if (userStatus === "suspended") {
       router.push("/sign-in");
       return;
     }
-
-    if (!isPending) {
-      setIsLoading(false);
-    }
   }, [session, isPending, router, userStatus]);
 
-  // Loading state
-  if (isLoading || isPending) {
+  // Loading state - show while pending or if redirect conditions are met
+  const shouldRedirect =
+    !isPending &&
+    (!session || userStatus === "pending" || userStatus === "suspended");
+
+  if (isPending || shouldRedirect) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

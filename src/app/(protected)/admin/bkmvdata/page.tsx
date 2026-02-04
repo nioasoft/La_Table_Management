@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -818,12 +819,12 @@ export default function BkmvDataPage() {
             העלה קובץ BKMVDATA כדי לזהות ספקים ולהשוות מול דוחות ספקים
           </p>
         </div>
-        <a href="/admin/bkmvdata/review">
+        <Link href="/admin/bkmvdata/review">
           <Button variant="outline" className="gap-2">
             <AlertTriangle className="h-4 w-4" />
             תור סקירת קבצים
           </Button>
-        </a>
+        </Link>
       </div>
 
       {/* Tabs for Upload and History */}

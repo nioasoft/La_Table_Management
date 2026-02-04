@@ -773,7 +773,7 @@ export default function HashavshevetExportPage() {
                 <ul className="list-disc list-inside ps-2 space-y-0.5">
                   <li><strong>מפתח חשבון</strong> - קוד הספק בחשבשבת</li>
                   <li><strong>שם</strong> - ריק</li>
-                  <li><strong>מפתח פריט</strong> - "עמלות " + שם הזכיין</li>
+                  <li><strong>מפתח פריט</strong> - &quot;עמלות &quot; + שם הזכיין</li>
                   <li><strong>שם פריט</strong> - ריק</li>
                   <li><strong>כמות</strong> - 1</li>
                   <li><strong>מחיר</strong> - סכום העמלה</li>

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/error-boundaries -- This file uses JSX for PDF generation, not React DOM rendering */
 import React from "react";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/utils/auth";

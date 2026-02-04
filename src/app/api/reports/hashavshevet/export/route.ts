@@ -188,7 +188,7 @@ export async function GET(request: NextRequest) {
           accountKey: file.hashavshevetCode,
           accountName: "", // Empty as per spec
           itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
-          itemName: franchiseeInfo.name,
+          itemName: "", // Empty as per spec
           quantity: 1,
           price: commissionAmount,
           documentType: 11,
@@ -237,18 +237,24 @@ export async function GET(request: NextRequest) {
     // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(data);
 
-    // Set numeric columns to number type (columns E, F, G = indices 4, 5, 6)
+    // Set numeric columns to number type with explicit number format
     // E = כמות (quantity), F = מחיר (price), G = סוג המסמך (documentType)
-    const numericColumns = [4, 5, 6]; // 0-indexed: E, F, G
+    // columns: [index, format] - format is Excel number format string
+    const numericColumns: [number, string][] = [
+      [4, "0"],        // כמות - integer
+      [5, "#,##0.00"], // מחיר - decimal with 2 places
+      [6, "0"],        // סוג המסמך - integer
+    ];
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
 
     for (let row = 1; row <= range.e.r; row++) {
       // Skip header row (row 0)
-      for (const col of numericColumns) {
+      for (const [col, format] of numericColumns) {
         const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
         const cell = ws[cellAddress];
         if (cell && cell.v !== undefined && cell.v !== "") {
           cell.t = "n"; // Set type to number
+          cell.z = format; // Set number format
         }
       }
     }

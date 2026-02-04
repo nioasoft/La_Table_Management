@@ -536,13 +536,13 @@ export default function AdjustmentsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{summary?.total || 0}</div>
-            <p className="text-muted-foreground text-sm">סה"כ התאמות</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ התאמות`}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{formatCurrency(summary?.totalAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ סכום</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ סכום`}</p>
           </CardContent>
         </Card>
         <Card>
@@ -658,7 +658,7 @@ export default function AdjustmentsPage() {
 
           {adjustments.length === 0 && (
             <div className="text-center py-8 text-muted-foreground">
-              אין התאמות. לחץ על "התאמה חדשה" כדי להוסיף.
+              {`אין התאמות. לחץ על "התאמה חדשה" כדי להוסיף.`}
             </div>
           )}
         </CardContent>

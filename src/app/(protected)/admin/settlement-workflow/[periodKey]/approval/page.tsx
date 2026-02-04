@@ -296,7 +296,7 @@ export default function ApprovalPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span>סה"כ: {summary?.reconciliation.totalPairs || 0}</span>
+                  <span>{`סה"כ:`} {summary?.reconciliation.totalPairs || 0}</span>
                 </div>
               </div>
             </div>
@@ -337,7 +337,7 @@ export default function ApprovalPage() {
               </div>
               <div className="pt-2 border-t">
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">סה"כ סכום</span>
+                  <span className="text-sm text-muted-foreground">{`סה"כ סכום`}</span>
                   <span className="font-medium" dir="ltr">
                     {formatCurrency(summary?.adjustments.totalAmount || 0)}
                   </span>
@@ -365,7 +365,7 @@ export default function ApprovalPage() {
           <CardContent>
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-sm text-muted-foreground">סה"כ מספקים</span>
+                <span className="text-sm text-muted-foreground">{`סה"כ מספקים`}</span>
                 <span className="font-medium" dir="ltr">
                   {formatCurrency(summary?.commissionSummary.totalSupplierAmount || 0)}
                 </span>
@@ -385,7 +385,7 @@ export default function ApprovalPage() {
               </div>
               <div className="pt-2 border-t">
                 <div className="flex justify-between">
-                  <span className="font-medium">סה"כ לפני מע״מ</span>
+                  <span className="font-medium">{`סה"כ לפני מע״מ`}</span>
                   <span className="text-lg font-bold" dir="ltr">
                     {formatCurrency(summary?.commissionSummary.netAmount || 0)}
                   </span>

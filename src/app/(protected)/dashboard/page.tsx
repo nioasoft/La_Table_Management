@@ -1,28 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import type { UserRole } from "@/db/schema";
 import { MinimalDashboard } from "@/components/minimal-dashboard";
 import { he } from "@/lib/translations";
 
 export default function DashboardPage() {
-  const [isLoading, setIsLoading] = useState(true);
   const { data: session, isPending } = authClient.useSession();
 
   const userRole = session
     ? (session.user as { role?: UserRole })?.role
     : undefined;
 
-  useEffect(() => {
-    // Auth checks are handled by the protected layout
-    // Just wait for session to load
-    if (!isPending) {
-      setIsLoading(false);
-    }
-  }, [isPending]);
-
-  if (isLoading || isPending) {
+  if (isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

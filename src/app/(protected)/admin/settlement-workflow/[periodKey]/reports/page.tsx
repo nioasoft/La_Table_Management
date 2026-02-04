@@ -264,25 +264,25 @@ export default function ReportsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{formatCurrency(reportData?.summary.totalGrossAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ כולל מע״מ</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ כולל מע״מ`}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{formatCurrency(reportData?.summary.totalNetAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ לפני מע״מ</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ לפני מע״מ`}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-green-600">{formatCurrency(reportData?.summary.totalCommissionAmount || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ עמלות</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ עמלות`}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-primary">{formatCurrency(reportData?.summary.grandTotal || 0)}</div>
-            <p className="text-muted-foreground text-sm">סה"כ סופי (כולל התאמות)</p>
+            <p className="text-muted-foreground text-sm">{`סה"כ סופי (כולל התאמות)`}</p>
           </CardContent>
         </Card>
       </div>
@@ -316,7 +316,7 @@ export default function ReportsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-right">מותג</TableHead>
-                    <TableHead className="text-right">מס' עמלות</TableHead>
+                    <TableHead className="text-right">{`מס' עמלות`}</TableHead>
                     <TableHead className="text-right">כולל מע״מ</TableHead>
                     <TableHead className="text-right">לפני מע״מ</TableHead>
                     <TableHead className="text-right">עמלות</TableHead>
@@ -366,7 +366,7 @@ export default function ReportsPage() {
                   <TableRow>
                     <TableHead className="text-right">ספק</TableHead>
                     <TableHead className="text-right">קוד</TableHead>
-                    <TableHead className="text-right">מס' עמלות</TableHead>
+                    <TableHead className="text-right">{`מס' עמלות`}</TableHead>
                     <TableHead className="text-right">כולל מע״מ</TableHead>
                     <TableHead className="text-right">לפני מע״מ</TableHead>
                     <TableHead className="text-right">עמלות</TableHead>
@@ -410,7 +410,7 @@ export default function ReportsPage() {
             <CardHeader>
               <CardTitle>התאמות</CardTitle>
               <CardDescription>
-                סה"כ התאמות: {formatCurrency(reportData?.summary.totalAdjustments || 0)}
+                {`סה"כ התאמות:`} {formatCurrency(reportData?.summary.totalAdjustments || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>

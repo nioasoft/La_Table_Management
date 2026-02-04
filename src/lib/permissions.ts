@@ -134,8 +134,8 @@ export function createFullPermissions(
   defaultValue: boolean = false
 ): UserPermissions {
   const permissions: UserPermissions = {};
-  for (const module of SYSTEM_MODULES) {
-    permissions[module] = {
+  for (const mod of SYSTEM_MODULES) {
+    permissions[mod] = {
       view: defaultValue,
       edit: defaultValue,
       create: defaultValue,
@@ -156,9 +156,9 @@ export function mergePermissions(
 ): UserPermissions {
   const merged: UserPermissions = { ...rolePermissions };
 
-  for (const module of SYSTEM_MODULES) {
-    if (customPermissions[module]) {
-      merged[module] = { ...rolePermissions[module], ...customPermissions[module] };
+  for (const mod of SYSTEM_MODULES) {
+    if (customPermissions[mod]) {
+      merged[mod] = { ...rolePermissions[mod], ...customPermissions[mod] };
     }
   }
 

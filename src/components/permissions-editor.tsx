@@ -112,8 +112,8 @@ export function PermissionsEditor({
     }
     // Return all false if no role
     const empty: UserPermissions = {};
-    for (const module of SYSTEM_MODULES) {
-      empty[module] = {
+    for (const mod of SYSTEM_MODULES) {
+      empty[mod] = {
         view: false,
         edit: false,
         create: false,
@@ -125,14 +125,14 @@ export function PermissionsEditor({
   };
 
   const handlePermissionChange = (
-    module: SystemModule,
+    mod: SystemModule,
     action: PermissionAction,
     checked: boolean
   ) => {
     setPermissions((prev) => ({
       ...prev,
-      [module]: {
-        ...(prev[module] || {
+      [mod]: {
+        ...(prev[mod] || {
           view: false,
           edit: false,
           create: false,
@@ -211,10 +211,10 @@ export function PermissionsEditor({
   const hasChanges = JSON.stringify(permissions) !== JSON.stringify(originalPermissions);
 
   const getModulePermission = (
-    module: SystemModule,
+    mod: SystemModule,
     action: PermissionAction
   ): boolean => {
-    return permissions[module]?.[action] ?? false;
+    return permissions[mod]?.[action] ?? false;
   };
 
   return (
@@ -262,16 +262,16 @@ export function PermissionsEditor({
                 </tr>
               </thead>
               <tbody>
-                {SYSTEM_MODULES.map((module) => (
-                  <tr key={module} className="border-b hover:bg-muted/30">
-                    <td className="p-3 font-medium">{MODULE_LABELS[module]}</td>
+                {SYSTEM_MODULES.map((mod) => (
+                  <tr key={mod} className="border-b hover:bg-muted/30">
+                    <td className="p-3 font-medium">{MODULE_LABELS[mod]}</td>
                     {PERMISSION_ACTIONS.map((action) => (
                       <td key={action} className="p-3 text-center">
                         <Checkbox
-                          checked={getModulePermission(module, action)}
+                          checked={getModulePermission(mod, action)}
                           onCheckedChange={(checked) =>
                             handlePermissionChange(
-                              module,
+                              mod,
                               action,
                               checked === true
                             )
