@@ -324,12 +324,19 @@ export default function HashavshevetExportPage() {
         throw new Error("Failed to export");
       }
 
-      // Get filename from Content-Disposition header
+      // Get filename from Content-Disposition header (supports RFC 5987 encoding)
       const contentDisposition = response.headers.get("Content-Disposition");
       let filename = "hashavshevet_export.xlsx";
       if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match) filename = match[1];
+        // Try RFC 5987 format first (filename*=UTF-8''encoded_name)
+        const rfc5987Match = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
+        if (rfc5987Match) {
+          filename = decodeURIComponent(rfc5987Match[1]);
+        } else {
+          // Fall back to standard format
+          const standardMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+          if (standardMatch) filename = standardMatch[1];
+        }
       }
 
       // Download file

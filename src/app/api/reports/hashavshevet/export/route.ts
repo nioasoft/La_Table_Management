@@ -307,12 +307,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Return Excel file
+    // Encode filename for Content-Disposition header (RFC 5987 for non-ASCII)
+    const encodedFilename = encodeURIComponent(filename);
     return new NextResponse(buffer, {
       status: 200,
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
       },
     });
   } catch (error) {
