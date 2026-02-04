@@ -288,9 +288,23 @@ export async function GET(request: NextRequest) {
     // Generate buffer
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
-    // Generate filename
-    const today = formatDateAsLocal(new Date());
-    const filename = `hashavshevet_${startDate}_${endDate}_${today}.xlsx`;
+    // Generate filename based on selected brand
+    let filename: string;
+    if (brandIds.length === 1) {
+      const selectedBrand = brandMap.get(brandIds[0]);
+      if (selectedBrand) {
+        // For system brand "שונות", don't add "רשת"
+        if (selectedBrand.nameHe === "שונות") {
+          filename = `עמלות שונות.xlsx`;
+        } else {
+          filename = `עמלות רשת ${selectedBrand.nameHe}.xlsx`;
+        }
+      } else {
+        filename = `hashavshevet_export.xlsx`;
+      }
+    } else {
+      filename = `hashavshevet_export.xlsx`;
+    }
 
     // Return Excel file
     return new NextResponse(buffer, {
