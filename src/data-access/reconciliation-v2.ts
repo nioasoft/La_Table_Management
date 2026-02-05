@@ -29,6 +29,7 @@ import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull } from "drizzle-
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
+import { getDatabaseError } from "@/lib/drizzle-errors";
 
 // ============================================================================
 // CONSTANTS
@@ -427,51 +428,67 @@ export async function createReconciliationSession(
 
   // Wrap session + comparisons + stats update in a single transaction
   // to prevent orphaned sessions if comparison insert fails
-  const newSession = await database.transaction(async (tx) => {
-    const [session] = await tx
-      .insert(reconciliationSession)
-      .values({
-        supplierId,
-        supplierFileId,
-        periodStartDate,
-        periodEndDate,
-        status: "in_progress",
-        createdBy,
-      })
-      .returning();
+  let newSession: ReconciliationSession;
+  try {
+    newSession = await database.transaction(async (tx) => {
+      const [session] = await tx
+        .insert(reconciliationSession)
+        .values({
+          supplierId,
+          supplierFileId,
+          periodStartDate,
+          periodEndDate,
+          status: "in_progress",
+          createdBy,
+        })
+        .returning();
 
-    if (comparisonEntries.length > 0) {
-      const comparisons: CreateReconciliationComparisonData[] = comparisonEntries.map((entry) => ({
-        sessionId: session.id,
-        franchiseeId: entry.franchiseeId,
-        supplierAmount: entry.supplierAmount.toString(),
-        franchiseeAmount: entry.franchiseeAmount.toString(),
-        difference: entry.difference.toString(),
-        absoluteDifference: entry.absoluteDifference.toString(),
-        supplierOriginalName: entry.supplierOriginalName,
-        franchiseeFileId: entry.franchiseeFileId,
-        status: entry.status,
-      }));
+      if (comparisonEntries.length > 0) {
+        const comparisons: CreateReconciliationComparisonData[] = comparisonEntries.map((entry) => ({
+          sessionId: session.id,
+          franchiseeId: entry.franchiseeId,
+          supplierAmount: entry.supplierAmount.toString(),
+          franchiseeAmount: entry.franchiseeAmount.toString(),
+          difference: entry.difference.toString(),
+          absoluteDifference: entry.absoluteDifference.toString(),
+          supplierOriginalName: entry.supplierOriginalName,
+          franchiseeFileId: entry.franchiseeFileId,
+          status: entry.status,
+        }));
 
-      await tx.insert(reconciliationComparison).values(comparisons);
-    }
+        await tx.insert(reconciliationComparison).values(comparisons);
+      }
 
-    await tx
-      .update(reconciliationSession)
-      .set({
-        totalFranchisees: comparisonEntries.length,
-        matchedCount,
-        needsReviewCount,
-        approvedCount: matchedCount, // Auto-approved counts as approved
-        totalSupplierAmount: totalSupplierAmount.toString(),
-        totalFranchiseeAmount: totalFranchiseeAmount.toString(),
-        totalDifference: totalDifference.toString(),
-        updatedAt: new Date(),
-      })
-      .where(eq(reconciliationSession.id, session.id));
+      await tx
+        .update(reconciliationSession)
+        .set({
+          totalFranchisees: comparisonEntries.length,
+          matchedCount,
+          needsReviewCount,
+          approvedCount: matchedCount, // Auto-approved counts as approved
+          totalSupplierAmount: totalSupplierAmount.toString(),
+          totalFranchiseeAmount: totalFranchiseeAmount.toString(),
+          totalDifference: totalDifference.toString(),
+          updatedAt: new Date(),
+        })
+        .where(eq(reconciliationSession.id, session.id));
 
-    return session;
-  });
+      return session;
+    });
+  } catch (error) {
+    const dbError = getDatabaseError(error);
+    console.error("[createReconciliationSession] Transaction failed:", {
+      supplierId,
+      supplierFileId,
+      periodStartDate,
+      periodEndDate,
+      pgCode: dbError.code,
+      pgConstraint: dbError.constraint,
+      pgDetail: dbError.detail,
+      pgMessage: dbError.message,
+    });
+    throw error;
+  }
 
   return {
     ...newSession,

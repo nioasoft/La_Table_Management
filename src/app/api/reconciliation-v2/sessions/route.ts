@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import { createReconciliationSession, getAllSessions } from "@/data-access/reconciliation-v2";
+import { getDatabaseError, isUniqueViolation, isConnectionError } from "@/lib/drizzle-errors";
 
 /**
  * GET /api/reconciliation-v2/sessions - List all reconciliation sessions
@@ -78,11 +79,19 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(session);
   } catch (error) {
-    console.error("Error creating reconciliation session:", error);
+    const dbError = getDatabaseError(error);
+    console.error("Error creating reconciliation session:", {
+      message: dbError.message,
+      code: dbError.code,
+      constraint: dbError.constraint,
+      detail: dbError.detail,
+      table: dbError.table,
+    });
 
-    // Check for unique constraint violation
-    if (error instanceof Error && error.message.includes("unique")) {
-      const isSessionUnique = error.message.includes("reconciliation_session");
+    // Check for unique constraint violation (PG code 23505)
+    if (isUniqueViolation(error)) {
+      const isSessionUnique = dbError.constraint?.includes("reconciliation_session") ||
+        dbError.table === "reconciliation_session";
       return NextResponse.json(
         {
           error: isSessionUnique
@@ -93,8 +102,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for connection errors (Neon idle timeout, etc.)
+    if (isConnectionError(error)) {
+      return NextResponse.json(
+        { error: "שגיאת חיבור למסד הנתונים. נא לנסות שוב." },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "שגיאה ביצירת סשן התאמה" },
+      { error: "שגיאה ביצירת סשן התאמה" },
       { status: 500 }
     );
   }
