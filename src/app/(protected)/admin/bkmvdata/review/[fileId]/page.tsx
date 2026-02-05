@@ -17,7 +17,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -161,6 +164,33 @@ export default function FileDetailsPage() {
   const sortedSuppliers = useMemo(() => {
     return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [suppliers]);
+
+  // Set of supplier IDs already matched to OTHER bkmv names in this file
+  // (excludes the supplier currently assigned to the row being edited)
+  const alreadyMatchedSupplierIds = useMemo(() => {
+    const matches = fileData?.supplierMatches || [];
+    const ids = new Set<string>();
+    for (const m of matches) {
+      if (m.matchedSupplierId && m.bkmvName !== editingMatch?.bkmvName) {
+        ids.add(m.matchedSupplierId);
+      }
+    }
+    return ids;
+  }, [fileData?.supplierMatches, editingMatch?.bkmvName]);
+
+  // Split suppliers into available (not matched) and already-matched groups
+  const dropdownSuppliers = useMemo(() => {
+    const available: Supplier[] = [];
+    const alreadyMatched: Supplier[] = [];
+    for (const s of sortedSuppliers) {
+      if (alreadyMatchedSupplierIds.has(s.id)) {
+        alreadyMatched.push(s);
+      } else {
+        available.push(s);
+      }
+    }
+    return { available, alreadyMatched };
+  }, [sortedSuppliers, alreadyMatchedSupplierIds]);
 
   // Review action mutation
   const reviewMutation = useMutation({
@@ -657,11 +687,27 @@ export default function FileDetailsPage() {
                   <SelectValue placeholder="בחר ספק..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
-                  {sortedSuppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name} ({s.code})
-                    </SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel>ספקים זמינים</SelectLabel>
+                    {dropdownSuppliers.available.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name} ({s.code})
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  {dropdownSuppliers.alreadyMatched.length > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <SelectGroup>
+                        <SelectLabel className="text-muted-foreground">כבר מותאם</SelectLabel>
+                        {dropdownSuppliers.alreadyMatched.map((s) => (
+                          <SelectItem key={s.id} value={s.id} className="text-muted-foreground">
+                            {s.name} ({s.code})
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>

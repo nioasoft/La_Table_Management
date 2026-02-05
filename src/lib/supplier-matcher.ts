@@ -388,13 +388,19 @@ export interface BkmvSupplierMatchingResult {
 /**
  * Match all suppliers from a BKMVDATA summary against the database
  *
- * IMPORTANT: Uses a two-pass approach to prevent duplicate supplier matches:
- * 1. First pass: Find all exact matches (100% confidence)
- * 2. Second pass: For non-exact matches, exclude suppliers already matched exactly
+ * Uses a greedy assignment algorithm to prevent duplicate supplier matches:
+ * 1. Initial matching: Run matchSupplierName for each BKMV name
+ * 2. Sort all entries by confidence DESC, then amount DESC (tiebreaker)
+ * 3. Greedy assignment: Higher-confidence matches claim suppliers first.
+ *    If a supplier is already claimed, re-match excluding all claimed suppliers.
+ * 4. Sort results for display
  *
  * This prevents cases like:
  * - "ארגל" matching supplier "ארגל" at 100%
  * - "אראל" also matching supplier "ארגל" at 82% (wrong - should look for different supplier)
+ *
+ * Unlike the previous two-pass approach, this handles ALL duplicate collisions
+ * (exact-vs-exact, exact-vs-fuzzy, fuzzy-vs-fuzzy).
  *
  * @param supplierSummary - Map of supplier names to their totals from BKMVDATA
  * @param suppliers - List of suppliers from the database to match against
@@ -407,13 +413,8 @@ export function matchBkmvSuppliers(
   config: Partial<SupplierMatcherConfig> = {},
   blacklistedNames?: Set<string>
 ): BkmvSupplierMatchingResult[] {
-  const results: BkmvSupplierMatchingResult[] = [];
-
-  // Track suppliers that have been matched with exact (100%) confidence
-  const exactMatchedSupplierIds = new Set<string>();
-
-  // First pass: Find all exact matches
-  const firstPassResults: Array<{
+  // Phase 1: Initial matching - run matchSupplierName for each BKMV name
+  const entries: Array<{
     bkmvName: string;
     summary: { totalAmount: number; transactionCount: number };
     matchResult: SupplierMatchResult;
@@ -421,37 +422,44 @@ export function matchBkmvSuppliers(
   }> = [];
 
   for (const [bkmvName, summary] of supplierSummary) {
-    // Check if this name is blacklisted
     const normalizedBkmvName = normalizeName(bkmvName);
     const isBlacklisted = blacklistedNames?.has(normalizedBkmvName) ?? false;
 
     if (isBlacklisted) {
-      // Create a blacklisted match result
       const blacklistedResult: SupplierMatchResult = {
         originalName: bkmvName,
         matchedSupplier: null,
-        confidence: 1, // 100% confident this is blacklisted
+        confidence: 1,
         matchType: "blacklisted",
         matchedOn: "blacklist",
-        requiresReview: false, // No review needed, it's intentionally blacklisted
+        requiresReview: false,
         alternatives: [],
       };
-      firstPassResults.push({ bkmvName, summary, matchResult: blacklistedResult, isBlacklisted: true });
+      entries.push({ bkmvName, summary, matchResult: blacklistedResult, isBlacklisted: true });
     } else {
-      // Regular supplier matching
       const matchResult = matchSupplierName(bkmvName, suppliers, config);
-      firstPassResults.push({ bkmvName, summary, matchResult, isBlacklisted: false });
-
-      // Track exact matches (confidence === 1)
-      if (matchResult.matchedSupplier && matchResult.confidence === 1) {
-        exactMatchedSupplierIds.add(matchResult.matchedSupplier.id);
-      }
+      entries.push({ bkmvName, summary, matchResult, isBlacklisted: false });
     }
   }
 
-  // Second pass: Re-match non-exact matches, excluding already-matched suppliers
-  for (const { bkmvName, summary, matchResult, isBlacklisted } of firstPassResults) {
-    // If this is blacklisted, keep it as-is (no supplier matching needed)
+  // Phase 2: Sort by confidence DESC, then amount DESC (tiebreaker)
+  // Higher-confidence entries get to claim their supplier first
+  entries.sort((a, b) => {
+    if (a.isBlacklisted !== b.isBlacklisted) return a.isBlacklisted ? 1 : -1;
+    const confDiff = b.matchResult.confidence - a.matchResult.confidence;
+    if (confDiff !== 0) return confDiff;
+    return b.summary.totalAmount - a.summary.totalAmount;
+  });
+
+  // Phase 3: Greedy assignment - iterate sorted entries, claim suppliers
+  const claimedSupplierIds = new Set<string>();
+  const results: BkmvSupplierMatchingResult[] = [];
+
+  for (const entry of entries) {
+    const { bkmvName, summary, isBlacklisted } = entry;
+    let { matchResult } = entry;
+
+    // Blacklisted: keep as-is, no supplier to claim
     if (isBlacklisted) {
       results.push({
         bkmvName,
@@ -462,41 +470,48 @@ export function matchBkmvSuppliers(
       continue;
     }
 
-    // If this was an exact match, keep it as-is
-    if (matchResult.matchedSupplier && matchResult.confidence === 1) {
-      results.push({
-        bkmvName,
-        amount: summary.totalAmount,
-        transactionCount: summary.transactionCount,
-        matchResult,
-      });
-      continue;
+    if (matchResult.matchedSupplier) {
+      if (!claimedSupplierIds.has(matchResult.matchedSupplier.id)) {
+        // Supplier not yet claimed - claim it
+        claimedSupplierIds.add(matchResult.matchedSupplier.id);
+
+        // Filter alternatives to exclude already-claimed suppliers
+        matchResult = {
+          ...matchResult,
+          alternatives: matchResult.alternatives.filter(
+            alt => !claimedSupplierIds.has(alt.supplier.id)
+          ),
+        };
+      } else {
+        // Supplier already claimed by a higher-confidence entry
+        // Re-match excluding all claimed suppliers
+        const availableSuppliers = suppliers.filter(s => !claimedSupplierIds.has(s.id));
+        matchResult = matchSupplierName(bkmvName, availableSuppliers, config);
+
+        // If we got a new match, claim it
+        if (matchResult.matchedSupplier) {
+          claimedSupplierIds.add(matchResult.matchedSupplier.id);
+        }
+
+        // Filter alternatives to exclude claimed suppliers
+        matchResult = {
+          ...matchResult,
+          alternatives: matchResult.alternatives.filter(
+            alt => !claimedSupplierIds.has(alt.supplier.id)
+          ),
+        };
+      }
     }
 
-    // For non-exact matches, check if the matched supplier was already claimed
-    if (matchResult.matchedSupplier && exactMatchedSupplierIds.has(matchResult.matchedSupplier.id)) {
-      // This supplier was already matched exactly to another name
-      // Try to find a different match excluding already-matched suppliers
-      const availableSuppliers = suppliers.filter(s => !exactMatchedSupplierIds.has(s.id));
-      const newMatchResult = matchSupplierName(bkmvName, availableSuppliers, config);
-
-      results.push({
-        bkmvName,
-        amount: summary.totalAmount,
-        transactionCount: summary.transactionCount,
-        matchResult: newMatchResult,
-      });
-    } else {
-      // Keep the original match result
-      results.push({
-        bkmvName,
-        amount: summary.totalAmount,
-        transactionCount: summary.transactionCount,
-        matchResult,
-      });
-    }
+    results.push({
+      bkmvName,
+      amount: summary.totalAmount,
+      transactionCount: summary.transactionCount,
+      matchResult,
+    });
   }
 
+  // Phase 4: Sort for display
   /**
    * מיון תוצאות לפי איכות ההתאמה:
    * 1. התאמות 100% ראשונות (exact matches)
