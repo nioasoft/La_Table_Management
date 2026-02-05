@@ -366,6 +366,19 @@ export async function POST(
             storedResult
           );
 
+          // Archive to year-based BKMV table
+          try {
+            const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+            await upsertFromFullBreakdown(
+              link.entityId,
+              monthlyBreakdown,
+              storedResult.supplierMatches,
+              uploadedFileRecord.id
+            );
+          } catch (yearError) {
+            console.error("Error archiving BKMV year data:", yearError);
+          }
+
           // Process the BKMVDATA and update cross-references
           const processingResult = await processFranchiseeBkmvData(
             link.entityId,

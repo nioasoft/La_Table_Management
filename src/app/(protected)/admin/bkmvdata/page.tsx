@@ -69,6 +69,7 @@ import {
   FileCheck,
   ExternalLink,
   Ban,
+  BarChart3,
 } from "lucide-react";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
 import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, getAccountSortLabels, findAccountSortByType, type BkmvParseResult, type BkmvTransaction, type AccountSortLabel } from "@/lib/bkmvdata-parser";
@@ -77,6 +78,7 @@ import {
   type BkmvSupplierMatchingResult,
 } from "@/lib/supplier-matcher";
 import { upload } from "@vercel/blob/client";
+import { BkmvDataExplorer } from "@/components/bkmv-data-explorer";
 
 // Type for franchisee with brand
 interface FranchiseeWithBrand extends Franchisee {
@@ -858,6 +860,10 @@ export default function BkmvDataPage() {
           <TabsTrigger value="history" className="gap-2">
             <History className="h-4 w-4" />
             היסטוריה
+          </TabsTrigger>
+          <TabsTrigger value="explorer" className="gap-2">
+            <BarChart3 className="h-4 w-4" />
+            סייר נתונים
           </TabsTrigger>
         </TabsList>
 
@@ -1715,6 +1721,11 @@ export default function BkmvDataPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Explorer Tab */}
+        <TabsContent value="explorer" className="space-y-6">
+          <BkmvDataExplorer />
         </TabsContent>
       </Tabs>
     </div>

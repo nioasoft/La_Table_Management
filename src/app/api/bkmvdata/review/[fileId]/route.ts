@@ -229,6 +229,22 @@ export async function PATCH(
       updatedResult
     );
 
+    // Re-archive to year-based BKMV table with updated matches
+    const franchiseeId = file.franchiseeId;
+    if (franchiseeId && updatedMonthlyBreakdown) {
+      try {
+        const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+        await upsertFromFullBreakdown(
+          franchiseeId,
+          updatedMonthlyBreakdown,
+          updatedResult.supplierMatches,
+          fileId
+        );
+      } catch (yearError) {
+        console.error("Error archiving BKMV year data:", yearError);
+      }
+    }
+
     // Optionally add as alias to the supplier
     if (addAsAlias) {
       const existingAliases = newSupplier.bkmvAliases || [];

@@ -237,6 +237,22 @@ export async function POST(request: NextRequest) {
       storedResult
     );
 
+    // Archive to year-based BKMV table
+    try {
+      const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+      const yearResult = await upsertFromFullBreakdown(
+        franchiseeId,
+        monthlyBreakdown,
+        storedResult.supplierMatches,
+        uploadedFileRecord.id
+      );
+      if (yearResult.skipped.length > 0) {
+        console.log(`BKMV year archiving: skipped years ${yearResult.skipped.join(", ")} (complete)`);
+      }
+    } catch (yearError) {
+      console.error("Error archiving BKMV year data:", yearError);
+    }
+
     // Process cross-references
     let crossRefResult = null;
     try {

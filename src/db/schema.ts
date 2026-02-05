@@ -1047,6 +1047,72 @@ export type BkmvBlacklist = typeof bkmvBlacklist.$inferSelect;
 export type CreateBkmvBlacklistData = typeof bkmvBlacklist.$inferInsert;
 
 // ============================================================================
+// FRANCHISEE BKMV YEAR - Year-based BKMV data archiving
+// ============================================================================
+
+export const franchiseeBkmvYear = pgTable(
+  "franchisee_bkmv_year",
+  {
+    id: text("id").primaryKey(),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    year: integer("year").notNull(),
+    // Monthly breakdown for this year only (same structure as BkmvProcessingResult.monthlyBreakdown)
+    monthlyBreakdown: jsonb("monthly_breakdown").notNull(),
+    // Aggregated supplier matches for this year
+    supplierMatches: jsonb("supplier_matches"),
+    // How many months have data (0-12)
+    monthCount: integer("month_count").notNull().default(0),
+    // Which months are covered (e.g., [1,2,3,...,12])
+    monthsCovered: jsonb("months_covered"),
+    // Whether this year has all 12 months (locked from overwrite)
+    isComplete: boolean("is_complete").notNull().default(false),
+    // Most recent source file that contributed data
+    latestSourceFileId: text("latest_source_file_id").references(
+      () => uploadedFile.id,
+      { onDelete: "set null" }
+    ),
+    // All source file IDs that contributed data
+    sourceFileIds: jsonb("source_file_ids"),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_franchisee_bkmv_year_unique").on(
+      table.franchiseeId,
+      table.year
+    ),
+    index("idx_franchisee_bkmv_year_franchisee").on(table.franchiseeId),
+    index("idx_franchisee_bkmv_year_year").on(table.year),
+  ]
+);
+
+// Franchisee BKMV Year relations
+export const franchiseeBkmvYearRelations = relations(
+  franchiseeBkmvYear,
+  ({ one }) => ({
+    franchisee: one(franchisee, {
+      fields: [franchiseeBkmvYear.franchiseeId],
+      references: [franchisee.id],
+    }),
+    latestSourceFile: one(uploadedFile, {
+      fields: [franchiseeBkmvYear.latestSourceFileId],
+      references: [uploadedFile.id],
+    }),
+  })
+);
+
+// Franchisee BKMV Year types
+export type FranchiseeBkmvYear = typeof franchiseeBkmvYear.$inferSelect;
+export type CreateFranchiseeBkmvYearData =
+  typeof franchiseeBkmvYear.$inferInsert;
+
+// ============================================================================
 // SUPPLIER FILE PROCESSING RESULT TYPE
 // ============================================================================
 

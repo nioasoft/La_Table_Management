@@ -912,3 +912,79 @@ export function mergeMonthlyBreakdown(
 
   return result;
 }
+
+/**
+ * Split a MonthlyBreakdown by year.
+ * E.g., input with keys "2025-11", "2025-12", "2026-01" →
+ * Map { 2025 → {"2025-11":..., "2025-12":...}, 2026 → {"2026-01":...} }
+ */
+export function groupMonthlyBreakdownByYear(
+  breakdown: MonthlyBreakdown
+): Map<number, MonthlyBreakdown> {
+  const byYear = new Map<number, MonthlyBreakdown>();
+
+  for (const [monthKey, entries] of Object.entries(breakdown)) {
+    const year = parseInt(monthKey.slice(0, 4), 10);
+    if (isNaN(year)) continue;
+
+    if (!byYear.has(year)) {
+      byYear.set(year, {});
+    }
+    byYear.get(year)![monthKey] = entries;
+  }
+
+  return byYear;
+}
+
+/**
+ * Aggregate supplier matches from a MonthlyBreakdown.
+ * Builds cumulative supplier totals (same shape as BkmvProcessingResult.supplierMatches).
+ */
+export function aggregateSupplierMatchesFromBreakdown(
+  breakdown: MonthlyBreakdown
+): Array<{
+  bkmvName: string;
+  amount: number;
+  transactionCount: number;
+  matchedSupplierId: string | null;
+  matchedSupplierName: string | null;
+}> {
+  const supplierMap = new Map<
+    string,
+    {
+      amount: number;
+      transactionCount: number;
+      supplierId: string | null;
+    }
+  >();
+
+  for (const entries of Object.values(breakdown)) {
+    for (const entry of entries) {
+      const existing = supplierMap.get(entry.supplierName);
+      if (existing) {
+        existing.amount += entry.amount;
+        existing.transactionCount += entry.transactionCount;
+        // Keep the non-null supplierId if available
+        if (!existing.supplierId && entry.supplierId) {
+          existing.supplierId = entry.supplierId;
+        }
+      } else {
+        supplierMap.set(entry.supplierName, {
+          amount: entry.amount,
+          transactionCount: entry.transactionCount,
+          supplierId: entry.supplierId,
+        });
+      }
+    }
+  }
+
+  return Array.from(supplierMap.entries())
+    .map(([bkmvName, data]) => ({
+      bkmvName,
+      amount: data.amount,
+      transactionCount: data.transactionCount,
+      matchedSupplierId: data.supplierId,
+      matchedSupplierName: null, // Name not stored in breakdown
+    }))
+    .sort((a, b) => b.amount - a.amount);
+}

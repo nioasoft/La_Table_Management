@@ -205,6 +205,21 @@ export async function POST(request: NextRequest) {
             .where(eq(uploadedFile.id, file.id));
         }
 
+        // Archive to year-based BKMV table
+        if (file.franchiseeId && monthlyBreakdown) {
+          try {
+            const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+            await upsertFromFullBreakdown(
+              file.franchiseeId,
+              monthlyBreakdown,
+              (file.bkmvProcessingResult as BkmvProcessingResult).supplierMatches || null,
+              file.id
+            );
+          } catch (yearError) {
+            console.error("Error archiving BKMV year data for file", file.id, yearError);
+          }
+        }
+
         processed++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";

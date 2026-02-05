@@ -248,102 +248,97 @@ export async function createReconciliationSession(
 
   const processingResult = supplierFileData[0].processingResult as SupplierFileProcessingResult;
 
-  // Get franchisee BKMVDATA files that overlap with this period
-  // Overlap condition: file.start <= period.end AND file.end >= period.start
-  const allFranchiseeFiles = await database
-    .select({
-      id: uploadedFile.id,
-      franchiseeId: uploadedFile.franchiseeId,
-      bkmvProcessingResult: uploadedFile.bkmvProcessingResult,
-      filePeriodStart: uploadedFile.periodStartDate,
-      filePeriodEnd: uploadedFile.periodEndDate,
-      createdAt: uploadedFile.createdAt,
-    })
-    .from(uploadedFile)
-    .where(
-      and(
-        isNotNull(uploadedFile.franchiseeId),
-        isNotNull(uploadedFile.bkmvProcessingResult),
-        // Period overlap check
-        lte(uploadedFile.periodStartDate, periodEndDate),
-        gte(uploadedFile.periodEndDate, periodStartDate),
-        // Only approved or auto-approved files
-        or(
-          eq(uploadedFile.processingStatus, "approved"),
-          eq(uploadedFile.processingStatus, "auto_approved")
-        )
-      )
-    );
-
-  // Deduplicate: keep only the most recent file per franchisee.
-  // Multiple overlapping BKMV files for the same franchisee would cause
-  // double-counting of amounts.
-  const latestFileByFranchisee = new Map<string, typeof allFranchiseeFiles[number]>();
-  for (const file of allFranchiseeFiles) {
-    if (!file.franchiseeId) continue;
-    const existing = latestFileByFranchisee.get(file.franchiseeId);
-    if (!existing || (file.createdAt && existing.createdAt && file.createdAt > existing.createdAt)) {
-      latestFileByFranchisee.set(file.franchiseeId, file);
-    }
-  }
-  const franchiseeFiles = Array.from(latestFileByFranchisee.values());
-
   // Get VAT rate for the period (use period start date)
   // BKMV amounts include VAT, so we need to convert to net amounts for comparison
   const periodDate = new Date(periodStartDate);
   const vatRate = await getVatRateForDate(periodDate);
 
-  // Build franchisee amount map from BKMVDATA files
-  // Uses monthlyBreakdown when available for precise period matching
-  // NOTE: BKMV amounts include VAT, convert to net (before VAT) for comparison
+  // Build franchisee amount map from year-based BKMV archive (preferred)
+  // Falls back to uploaded_file records if year table has no data
   const franchiseeAmounts = new Map<
     string,
     { amount: number; fileId: string | null }
   >();
 
-  for (const file of franchiseeFiles) {
-    if (!file.franchiseeId || !file.bkmvProcessingResult) continue;
+  // Try year-based table first
+  const { getAllFranchiseeAmountsFromYearTable } = await import("@/data-access/franchisee-bkmv-year");
+  const yearAmounts = await getAllFranchiseeAmountsFromYearTable(
+    supplierId,
+    periodStartDate,
+    periodEndDate
+  );
 
-    const bkmvResult = file.bkmvProcessingResult as BkmvProcessingResult;
-    if (!bkmvResult.supplierMatches) continue;
-
-    // Try to get amount from monthly breakdown first (more precise)
-    if (bkmvResult.monthlyBreakdown) {
-      const periodAmount = getAmountForPeriod(
-        bkmvResult.monthlyBreakdown,
-        supplierId,
-        periodStartDate,
-        periodEndDate
+  if (yearAmounts.size > 0) {
+    // Use year table data - apply VAT conversion
+    for (const [fId, data] of yearAmounts) {
+      const netAmount = supplierData[0].vatExempt
+        ? roundToTwoDecimals(data.amount)
+        : roundToTwoDecimals(calculateNetFromGross(data.amount, vatRate));
+      franchiseeAmounts.set(fId, { amount: netAmount, fileId: data.fileId });
+    }
+  } else {
+    // Fallback: query uploaded_file records (legacy path, pre-migration)
+    const allFranchiseeFiles = await database
+      .select({
+        id: uploadedFile.id,
+        franchiseeId: uploadedFile.franchiseeId,
+        bkmvProcessingResult: uploadedFile.bkmvProcessingResult,
+        filePeriodStart: uploadedFile.periodStartDate,
+        filePeriodEnd: uploadedFile.periodEndDate,
+        createdAt: uploadedFile.createdAt,
+      })
+      .from(uploadedFile)
+      .where(
+        and(
+          isNotNull(uploadedFile.franchiseeId),
+          isNotNull(uploadedFile.bkmvProcessingResult),
+          lte(uploadedFile.periodStartDate, periodEndDate),
+          gte(uploadedFile.periodEndDate, periodStartDate),
+          or(
+            eq(uploadedFile.processingStatus, "approved"),
+            eq(uploadedFile.processingStatus, "auto_approved")
+          )
+        )
       );
 
-      if (periodAmount !== null) {
-        // For VAT-exempt suppliers, BKMV amounts don't include VAT - use as-is
-        const netAmount = supplierData[0].vatExempt
-          ? roundToTwoDecimals(periodAmount)
-          : roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
-        franchiseeAmounts.set(file.franchiseeId, {
-          amount: netAmount,
-          fileId: file.id,
-        });
-        continue; // Skip cumulative fallback
+    const latestFileByFranchisee = new Map<string, typeof allFranchiseeFiles[number]>();
+    for (const file of allFranchiseeFiles) {
+      if (!file.franchiseeId) continue;
+      const existing = latestFileByFranchisee.get(file.franchiseeId);
+      if (!existing || (file.createdAt && existing.createdAt && file.createdAt > existing.createdAt)) {
+        latestFileByFranchisee.set(file.franchiseeId, file);
       }
     }
 
-    // Fallback: use cumulative supplierMatches (for files without monthlyBreakdown)
-    // GUARD: Only use cumulative totals when file period exactly matches reconciliation period.
-    // If the file covers a wider range (e.g., Jan-Dec but reconciliation is Q3 only),
-    // the cumulative total would be inflated. Skip in that case.
-    if (file.filePeriodStart === periodStartDate && file.filePeriodEnd === periodEndDate) {
-      for (const match of bkmvResult.supplierMatches) {
-        if (match.matchedSupplierId === supplierId) {
-          // For VAT-exempt suppliers, BKMV amounts don't include VAT - use as-is
+    for (const file of latestFileByFranchisee.values()) {
+      if (!file.franchiseeId || !file.bkmvProcessingResult) continue;
+      const bkmvResult = file.bkmvProcessingResult as BkmvProcessingResult;
+      if (!bkmvResult.supplierMatches) continue;
+
+      if (bkmvResult.monthlyBreakdown) {
+        const periodAmount = getAmountForPeriod(
+          bkmvResult.monthlyBreakdown,
+          supplierId,
+          periodStartDate,
+          periodEndDate
+        );
+        if (periodAmount !== null) {
           const netAmount = supplierData[0].vatExempt
-            ? roundToTwoDecimals(match.amount)
-            : roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
-          franchiseeAmounts.set(file.franchiseeId, {
-            amount: netAmount,
-            fileId: file.id,
-          });
+            ? roundToTwoDecimals(periodAmount)
+            : roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
+          franchiseeAmounts.set(file.franchiseeId, { amount: netAmount, fileId: file.id });
+          continue;
+        }
+      }
+
+      if (file.filePeriodStart === periodStartDate && file.filePeriodEnd === periodEndDate) {
+        for (const match of bkmvResult.supplierMatches) {
+          if (match.matchedSupplierId === supplierId) {
+            const netAmount = supplierData[0].vatExempt
+              ? roundToTwoDecimals(match.amount)
+              : roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
+            franchiseeAmounts.set(file.franchiseeId, { amount: netAmount, fileId: file.id });
+          }
         }
       }
     }
