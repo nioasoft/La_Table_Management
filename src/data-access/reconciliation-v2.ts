@@ -359,11 +359,11 @@ export async function createReconciliationSession(
   for (const match of processingResult.franchiseeMatches) {
     if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
 
-    // For vatExempt suppliers: use grossAmount which includes per-item VAT
-    // (for truly exempt suppliers, gross=net so this is safe).
+    // For vatExempt suppliers: use netAmount (raw from file, no VAT).
+    // BKMV for vatExempt suppliers already reports ~net amounts (no VAT in accounting).
     // For normal suppliers: use netAmount for comparison against BKMV net.
     const supplierAmount = supplierData[0].vatExempt
-      ? (match.grossAmount || match.netAmount)
+      ? match.netAmount
       : (match.netAmount || match.grossAmount);
     const franchiseeData = franchiseeAmounts.get(match.matchedFranchiseeId);
     const franchiseeAmount = franchiseeData?.amount || 0;
