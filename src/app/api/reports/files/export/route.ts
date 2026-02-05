@@ -234,7 +234,8 @@ export async function GET(request: NextRequest) {
 
     const filters: UnifiedFilesFilters = {
       source: searchParams.get("source") as UnifiedFileSource | undefined,
-      entityType: searchParams.get("entityType") as "supplier" | "franchisee" | undefined,
+      supplierId: searchParams.get("supplierId") || undefined,
+      franchiseeId: searchParams.get("franchiseeId") || undefined,
       status: searchParams.get("status") || undefined,
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,

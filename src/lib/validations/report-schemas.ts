@@ -381,11 +381,8 @@ export const unifiedFilesFiltersSchema = z
         message: "מקור קובץ לא תקין. יש לבחור: supplier או uploaded",
       })
       .optional(),
-    entityType: z
-      .enum(["supplier", "franchisee"], {
-        message: "סוג ישות לא תקין. יש לבחור: supplier או franchisee",
-      })
-      .optional(),
+    supplierId: uuidSchema.optional(),
+    franchiseeId: uuidSchema.optional(),
     status: z
       .enum(["pending", "processing", "auto_approved", "needs_review", "approved", "rejected"], {
         message: "סטטוס לא תקין",

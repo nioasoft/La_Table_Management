@@ -16,7 +16,7 @@ import {
   user,
   brand,
 } from "@/db/schema";
-import { eq, sql, desc, or, and } from "drizzle-orm";
+import { eq, sql, desc } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 // ============================================================================
@@ -68,7 +68,8 @@ export interface UnifiedFilesReport {
 
 export interface UnifiedFilesFilters {
   source?: UnifiedFileSource;
-  entityType?: "supplier" | "franchisee";
+  supplierId?: string;
+  franchiseeId?: string;
   status?: string;
   startDate?: string;
   endDate?: string;
@@ -83,7 +84,6 @@ export interface FilterOption {
 
 export interface UnifiedFilesFilterOptions {
   sources: { value: UnifiedFileSource | "all"; label: string }[];
-  entityTypes: { value: string; label: string }[];
   statuses: { value: string; label: string }[];
   suppliers: FilterOption[];
   franchisees: FilterOption[];
@@ -146,67 +146,71 @@ export async function getUnifiedFilesReport(
 
   // Query supplier files if not filtered to uploaded only
   if (!filters.source || filters.source === "supplier") {
-    // Skip if entityType is franchisee (supplier files don't have franchisee entity type)
-    if (!filters.entityType || filters.entityType === "supplier") {
-      let supplierQuery = database
-        .select({
-          id: supplierFileUpload.id,
-          originalFileName: supplierFileUpload.originalFileName,
-          fileUrl: supplierFileUpload.fileUrl,
-          fileSize: supplierFileUpload.fileSize,
-          processingStatus: supplierFileUpload.processingStatus,
-          createdAt: supplierFileUpload.createdAt,
-          periodStartDate: supplierFileUpload.periodStartDate,
-          periodEndDate: supplierFileUpload.periodEndDate,
-          supplierId: supplierFileUpload.supplierId,
-          supplierName: supplier.name,
-          createdByName: user.name,
-          createdByEmail: user.email,
-        })
-        .from(supplierFileUpload)
-        .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
-        .leftJoin(user, eq(supplierFileUpload.createdBy, user.id))
-        .$dynamic();
+    let supplierQuery = database
+      .select({
+        id: supplierFileUpload.id,
+        originalFileName: supplierFileUpload.originalFileName,
+        fileUrl: supplierFileUpload.fileUrl,
+        fileSize: supplierFileUpload.fileSize,
+        processingStatus: supplierFileUpload.processingStatus,
+        createdAt: supplierFileUpload.createdAt,
+        periodStartDate: supplierFileUpload.periodStartDate,
+        periodEndDate: supplierFileUpload.periodEndDate,
+        supplierId: supplierFileUpload.supplierId,
+        supplierName: supplier.name,
+        createdByName: user.name,
+        createdByEmail: user.email,
+      })
+      .from(supplierFileUpload)
+      .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+      .leftJoin(user, eq(supplierFileUpload.createdBy, user.id))
+      .$dynamic();
 
-      // Apply status filter
-      if (filters.status) {
-        supplierQuery = supplierQuery.where(
-          eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
-        );
-      }
+    // Apply supplier filter
+    if (filters.supplierId) {
+      supplierQuery = supplierQuery.where(
+        eq(supplierFileUpload.supplierId, filters.supplierId)
+      );
+    }
 
-      // Apply date filters
-      if (filters.startDate) {
-        supplierQuery = supplierQuery.where(
-          sql`${supplierFileUpload.periodStartDate} >= ${filters.startDate}`
-        );
-      }
-      if (filters.endDate) {
-        supplierQuery = supplierQuery.where(
-          sql`${supplierFileUpload.periodEndDate} <= ${filters.endDate}`
-        );
-      }
+    // Apply status filter
+    if (filters.status) {
+      supplierQuery = supplierQuery.where(
+        eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
+      );
+    }
 
-      const supplierFiles = await supplierQuery.orderBy(desc(supplierFileUpload.createdAt));
+    // Apply date filters
+    if (filters.startDate) {
+      supplierQuery = supplierQuery.where(
+        sql`${supplierFileUpload.periodStartDate} >= ${filters.startDate}`
+      );
+    }
+    if (filters.endDate) {
+      supplierQuery = supplierQuery.where(
+        sql`${supplierFileUpload.periodEndDate} <= ${filters.endDate}`
+      );
+    }
 
-      for (const file of supplierFiles) {
-        files.push({
-          id: file.id,
-          source: "supplier",
-          originalFileName: file.originalFileName,
-          fileUrl: file.fileUrl,
-          fileSize: file.fileSize,
-          processingStatus: file.processingStatus,
-          createdAt: file.createdAt,
-          periodStartDate: file.periodStartDate,
-          periodEndDate: file.periodEndDate,
-          entityType: "supplier",
-          entityId: file.supplierId,
-          entityName: file.supplierName,
-          uploadedByName: file.createdByName,
-          uploadedByEmail: file.createdByEmail,
-        });
-      }
+    const supplierFiles = await supplierQuery.orderBy(desc(supplierFileUpload.createdAt));
+
+    for (const file of supplierFiles) {
+      files.push({
+        id: file.id,
+        source: "supplier",
+        originalFileName: file.originalFileName,
+        fileUrl: file.fileUrl,
+        fileSize: file.fileSize,
+        processingStatus: file.processingStatus,
+        createdAt: file.createdAt,
+        periodStartDate: file.periodStartDate,
+        periodEndDate: file.periodEndDate,
+        entityType: "supplier",
+        entityId: file.supplierId,
+        entityName: file.supplierName,
+        uploadedByName: file.createdByName,
+        uploadedByEmail: file.createdByEmail,
+      });
     }
   }
 
@@ -234,24 +238,18 @@ export async function getUnifiedFilesReport(
       .leftJoin(uploadLink, eq(uploadedFile.uploadLinkId, uploadLink.id))
       .$dynamic();
 
+    // Apply franchisee filter
+    if (filters.franchiseeId) {
+      uploadedQuery = uploadedQuery.where(
+        eq(uploadedFile.franchiseeId, filters.franchiseeId)
+      );
+    }
+
     // Apply status filter
     if (filters.status) {
       uploadedQuery = uploadedQuery.where(
         eq(uploadedFile.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
       );
-    }
-
-    // Apply entity type filter for uploaded files
-    if (filters.entityType === "franchisee") {
-      uploadedQuery = uploadedQuery.where(
-        or(
-          sql`${uploadedFile.franchiseeId} IS NOT NULL`,
-          eq(uploadLink.entityType, "franchisee")
-        )
-      );
-    } else if (filters.entityType === "supplier") {
-      // Skip uploaded files when filtering by supplier entity type
-      // (uploaded files are typically BKMVDATA from franchisees)
     }
 
     // Apply date filters
@@ -266,45 +264,40 @@ export async function getUnifiedFilesReport(
       );
     }
 
-    // Only include if not filtered to supplier entity type
-    if (!filters.entityType || filters.entityType !== "supplier") {
-      const uploadedFiles = await uploadedQuery.orderBy(desc(uploadedFile.createdAt));
+    const uploadedFiles = await uploadedQuery.orderBy(desc(uploadedFile.createdAt));
 
-      for (const file of uploadedFiles) {
-        // Determine entity info
-        let entityType: "franchisee" | "upload_link" | null = null;
-        let entityId: string | null = null;
-        let entityName: string | null = null;
+    for (const file of uploadedFiles) {
+      // Determine entity info
+      let entityType: "franchisee" | "upload_link" | null = null;
+      let entityId: string | null = null;
+      let entityName: string | null = null;
 
-        if (file.franchiseeId) {
-          entityType = "franchisee";
-          entityId = file.franchiseeId;
-          entityName = file.franchiseeName;
-        } else if (file.uploadLinkId) {
-          entityType = "upload_link";
-          entityId = file.uploadLinkEntityId;
-          // Would need additional query to get the actual entity name
-          // For now, use the entity type from upload link
-          entityName = file.uploadLinkEntityType ? `קישור העלאה (${file.uploadLinkEntityType})` : null;
-        }
-
-        files.push({
-          id: file.id,
-          source: "uploaded",
-          originalFileName: file.originalFileName,
-          fileUrl: file.fileUrl,
-          fileSize: file.fileSize,
-          processingStatus: file.processingStatus || "pending",
-          createdAt: file.createdAt,
-          periodStartDate: file.periodStartDate,
-          periodEndDate: file.periodEndDate,
-          entityType,
-          entityId,
-          entityName,
-          uploadedByName: null,
-          uploadedByEmail: file.uploadedByEmail,
-        });
+      if (file.franchiseeId) {
+        entityType = "franchisee";
+        entityId = file.franchiseeId;
+        entityName = file.franchiseeName;
+      } else if (file.uploadLinkId) {
+        entityType = "upload_link";
+        entityId = file.uploadLinkEntityId;
+        entityName = file.uploadLinkEntityType ? `קישור העלאה (${file.uploadLinkEntityType})` : null;
       }
+
+      files.push({
+        id: file.id,
+        source: "uploaded",
+        originalFileName: file.originalFileName,
+        fileUrl: file.fileUrl,
+        fileSize: file.fileSize,
+        processingStatus: file.processingStatus || "pending",
+        createdAt: file.createdAt,
+        periodStartDate: file.periodStartDate,
+        periodEndDate: file.periodEndDate,
+        entityType,
+        entityId,
+        entityName,
+        uploadedByName: null,
+        uploadedByEmail: file.uploadedByEmail,
+      });
     }
   }
 
@@ -409,12 +402,6 @@ export const getUnifiedFilesFilterOptions = unstable_cache(
       { value: "uploaded", label: "קבצים אחידים" },
     ];
 
-    const entityTypes = [
-      { value: "all", label: "כל הסוגים" },
-      { value: "supplier", label: "ספק" },
-      { value: "franchisee", label: "זכיין" },
-    ];
-
     const statuses = [
       { value: "all", label: "כל הסטטוסים" },
       { value: "pending", label: "ממתין" },
@@ -427,7 +414,6 @@ export const getUnifiedFilesFilterOptions = unstable_cache(
 
     return {
       sources,
-      entityTypes,
       statuses,
       suppliers: suppliers.map((s) => ({
         id: s.id,

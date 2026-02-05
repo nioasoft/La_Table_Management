@@ -24,7 +24,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const rawFilters = {
       source: searchParams.get("source") || undefined,
-      entityType: searchParams.get("entityType") || undefined,
+      supplierId: searchParams.get("supplierId") || undefined,
+      franchiseeId: searchParams.get("franchiseeId") || undefined,
       status: searchParams.get("status") || undefined,
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,
@@ -44,7 +45,8 @@ export async function GET(request: NextRequest) {
     // Convert Date objects to strings for the data access layer
     const filters: UnifiedFilesFilters = {
       source: validatedData.source,
-      entityType: validatedData.entityType,
+      supplierId: validatedData.supplierId,
+      franchiseeId: validatedData.franchiseeId,
       status: validatedData.status,
       startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
       endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,

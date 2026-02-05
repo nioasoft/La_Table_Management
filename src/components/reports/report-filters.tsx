@@ -149,176 +149,129 @@ export function ReportFilters({
 
   // Filter content
   const filterContent = (
-    <div className="space-y-4">
+    <div className="flex flex-wrap items-end gap-2">
       {/* Period Selector */}
       {showPeriodSelector && (
-        <div className="p-3 border rounded-lg bg-muted/30">
+        <div className="flex-shrink-0">
           <ReportPeriodSelector
             periodType={filters.periodType || ""}
             periodKey={filters.periodKey || ""}
             onChange={handlePeriodChange}
             onCustomRangeSelect={handleCustomRangeSelect}
-            showCustomRange={showDateFilters}
+            showCustomRange={false}
             layout="horizontal"
             showLabels={true}
           />
         </div>
       )}
 
-      {/* Date Presets - only show when using custom range or no period selector */}
-      {showDateFilters && showDatePresets && (!showPeriodSelector || useCustomDateRange) && (
-        <div className="flex flex-wrap gap-2">
-          {datePresets.map((preset, index) => (
-            <Button
-              key={index}
-              variant="outline"
-              size="sm"
-              onClick={() => handleDatePreset(preset)}
-              className="h-7 text-xs"
-            >
-              <Calendar className="h-3 w-3 me-1" />
-              {preset.label}
-            </Button>
-          ))}
+      {/* Brand Filter */}
+      {showBrandFilter && (
+        <div className="w-[110px]">
+          <Label htmlFor="brand" className="text-xs mb-1 block">מותג</Label>
+          <Select
+            value={filters.brandId || "all"}
+            onValueChange={(value) => onFilterChange("brandId", value === "all" ? "" : value)}
+          >
+            <SelectTrigger id="brand" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר מותג">
+              <SelectValue placeholder="כל המותגים" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              <SelectItem value="all" className="text-end">
+                כל המותגים
+              </SelectItem>
+              {brands.map((brand) => (
+                <SelectItem key={brand.id} value={brand.id} className="text-end">
+                  {brand.nameHe || brand.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
-      {/* Filter Fields */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-        {/* Date Range - show when no period selector or using custom range */}
-        {showDateFilters && (!showPeriodSelector || useCustomDateRange) && (
-          <>
-            <div className="space-y-2">
-              <Label htmlFor="startDate">מתאריך</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={filters.startDate}
-                onChange={(e) => onFilterChange("startDate", e.target.value)}
-                aria-label="תאריך התחלה"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="endDate">עד תאריך</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={filters.endDate}
-                onChange={(e) => onFilterChange("endDate", e.target.value)}
-                aria-label="תאריך סיום"
-              />
-            </div>
-          </>
-        )}
-
-        {/* Brand Filter */}
-        {showBrandFilter && (
-          <div className="space-y-2">
-            <Label htmlFor="brand">מותג</Label>
-            <Select
-              value={filters.brandId || "all"}
-              onValueChange={(value) => onFilterChange("brandId", value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="brand" dir="rtl" className="[&>span]:text-end" aria-label="בחר מותג">
-                <SelectValue placeholder="כל המותגים" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all" className="text-end">
-                  כל המותגים
+      {/* Supplier Filter */}
+      {showSupplierFilter && (
+        <div className="w-[110px]">
+          <Label htmlFor="supplier" className="text-xs mb-1 block">ספק</Label>
+          <Select
+            value={filters.supplierId || "all"}
+            onValueChange={(value) => onFilterChange("supplierId", value === "all" ? "" : value)}
+          >
+            <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר ספק">
+              <SelectValue placeholder="כל הספקים" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              <SelectItem value="all" className="text-end">
+                כל הספקים
+              </SelectItem>
+              {suppliers.map((supplier) => (
+                <SelectItem key={supplier.id} value={supplier.id} className="text-end">
+                  {supplier.name}
                 </SelectItem>
-                {brands.map((brand) => (
-                  <SelectItem key={brand.id} value={brand.id} className="text-end">
-                    {brand.nameHe || brand.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-        {/* Supplier Filter */}
-        {showSupplierFilter && (
-          <div className="space-y-2">
-            <Label htmlFor="supplier">ספק</Label>
-            <Select
-              value={filters.supplierId || "all"}
-              onValueChange={(value) => onFilterChange("supplierId", value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end" aria-label="בחר ספק">
-                <SelectValue placeholder="כל הספקים" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all" className="text-end">
-                  כל הספקים
+      {/* Franchisee Filter */}
+      {showFranchiseeFilter && (
+        <div className="w-[110px]">
+          <Label htmlFor="franchisee" className="text-xs mb-1 block">זכיין</Label>
+          <Select
+            value={filters.franchiseeId || "all"}
+            onValueChange={(value) => onFilterChange("franchiseeId", value === "all" ? "" : value)}
+          >
+            <SelectTrigger id="franchisee" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר זכיין">
+              <SelectValue placeholder="כל הזכיינים" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              <SelectItem value="all" className="text-end">
+                כל הזכיינים
+              </SelectItem>
+              {franchisees.map((franchisee) => (
+                <SelectItem key={franchisee.id} value={franchisee.id} className="text-end">
+                  {franchisee.name}
                 </SelectItem>
-                {suppliers.map((supplier) => (
-                  <SelectItem key={supplier.id} value={supplier.id} className="text-end">
-                    {supplier.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-        {/* Franchisee Filter */}
-        {showFranchiseeFilter && (
-          <div className="space-y-2">
-            <Label htmlFor="franchisee">זכיין</Label>
-            <Select
-              value={filters.franchiseeId || "all"}
-              onValueChange={(value) => onFilterChange("franchiseeId", value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="franchisee" dir="rtl" className="[&>span]:text-end" aria-label="בחר זכיין">
-                <SelectValue placeholder="כל הזכיינים" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all" className="text-end">
-                  כל הזכיינים
+      {/* Status Filter */}
+      {showStatusFilter && statusOptions.length > 0 && (
+        <div className="w-[110px]">
+          <Label htmlFor="status" className="text-xs mb-1 block">סטטוס</Label>
+          <Select
+            value={filters.status || "all"}
+            onValueChange={(value) => onFilterChange("status", value === "all" ? "" : value)}
+          >
+            <SelectTrigger id="status" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר סטטוס">
+              <SelectValue placeholder="כל הסטטוסים" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              <SelectItem value="all" className="text-end">
+                כל הסטטוסים
+              </SelectItem>
+              {statusOptions.map((status) => (
+                <SelectItem key={status.value} value={status.value} className="text-end">
+                  {status.label}
                 </SelectItem>
-                {franchisees.map((franchisee) => (
-                  <SelectItem key={franchisee.id} value={franchisee.id} className="text-end">
-                    {franchisee.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-
-        {/* Status Filter */}
-        {showStatusFilter && statusOptions.length > 0 && (
-          <div className="space-y-2">
-            <Label htmlFor="status">סטטוס</Label>
-            <Select
-              value={filters.status || "all"}
-              onValueChange={(value) => onFilterChange("status", value === "all" ? "" : value)}
-            >
-              <SelectTrigger id="status" dir="rtl" className="[&>span]:text-end" aria-label="בחר סטטוס">
-                <SelectValue placeholder="כל הסטטוסים" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                <SelectItem value="all" className="text-end">
-                  כל הסטטוסים
-                </SelectItem>
-                {statusOptions.map((status) => (
-                  <SelectItem key={status.value} value={status.value} className="text-end">
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-      </div>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex gap-2">
-        <Button onClick={onApply} disabled={isLoading} aria-label="החל סינון">
+        <Button onClick={onApply} disabled={isLoading} size="sm" className="h-9" aria-label="החל סינון">
           {isLoading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
           החל סינון
         </Button>
-        <Button variant="outline" onClick={onReset} disabled={isLoading} aria-label="איפוס סינון">
+        <Button variant="outline" onClick={onReset} disabled={isLoading} size="sm" className="h-9" aria-label="איפוס סינון">
           <X className="h-4 w-4 me-2" />
           איפוס
         </Button>
@@ -332,23 +285,22 @@ export function ReportFilters({
       <Card className={className}>
         <Collapsible open={isOpen} onOpenChange={setIsOpen}>
           <CollapsibleTrigger asChild>
-            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors pb-3 pt-4 px-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Filter className="h-4 w-4" />
                     {title}
                     {activeFilterCount > 0 && (
-                      <Badge variant="secondary" className="ml-2">
+                      <Badge variant="secondary" className="ml-2 text-xs">
                         {activeFilterCount}
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription>{description}</CardDescription>
                 </div>
                 <ChevronDown
                   className={cn(
-                    "h-5 w-5 transition-transform",
+                    "h-4 w-4 transition-transform",
                     isOpen && "rotate-180"
                   )}
                 />
@@ -356,7 +308,7 @@ export function ReportFilters({
             </CardHeader>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <CardContent>{filterContent}</CardContent>
+            <CardContent className="px-4 pb-4">{filterContent}</CardContent>
           </CollapsibleContent>
         </Collapsible>
       </Card>
@@ -366,19 +318,18 @@ export function ReportFilters({
   // Non-collapsible card
   return (
     <Card className={className}>
-      <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Filter className="h-5 w-5" />
+      <CardHeader className="pb-3 pt-4 px-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Filter className="h-4 w-4" />
           {title}
           {activeFilterCount > 0 && (
-            <Badge variant="secondary" className="ml-2">
+            <Badge variant="secondary" className="ml-2 text-xs">
               {activeFilterCount}
             </Badge>
           )}
         </CardTitle>
-        <CardDescription>{description}</CardDescription>
       </CardHeader>
-      <CardContent>{filterContent}</CardContent>
+      <CardContent className="px-4 pb-4">{filterContent}</CardContent>
     </Card>
   );
 }
