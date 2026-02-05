@@ -31,6 +31,7 @@ import { requiresCustomParser } from "@/lib/custom-parsers";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload } from "@/data-access/supplier-file-uploads";
+import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -464,6 +465,11 @@ export async function POST(
           // Get VAT rate
           const vatRate = await getCurrentVatRate();
 
+          // Load per-item VAT products for vatExempt suppliers
+          const vatProductNames = supplier.vatExempt
+            ? await getVatProductNames(supplier.id)
+            : undefined;
+
           // Process the supplier file
           const fileMapping = supplier.fileMapping as SupplierFileMapping;
           const processResult = await processSupplierFile(
@@ -472,8 +478,17 @@ export async function POST(
             supplier.vatIncluded ?? false,
             vatRate,
             supplier.code ?? undefined,
-            supplier.vatExempt ?? false
+            supplier.vatExempt ?? false,
+            vatProductNames
           );
+
+          // Sync extracted products to supplier_product table
+          if (processResult.summary.extractedProducts?.length) {
+            await syncSupplierProducts(
+              supplier.id,
+              processResult.summary.extractedProducts
+            );
+          }
 
           if (!processResult.success || processResult.data.length === 0) {
             console.error("Failed to process supplier file:", processResult.errors);

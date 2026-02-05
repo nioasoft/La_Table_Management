@@ -48,6 +48,8 @@ export interface FileProcessingResult {
     totalGrossAmount: number;
     totalNetAmount: number;
     vatAdjusted: boolean;
+    /** Product names extracted from file (for syncing to supplier_product table) */
+    extractedProducts?: string[];
   };
 }
 
@@ -555,7 +557,8 @@ export async function processSupplierFile(
   vatIncluded: boolean,
   vatRate?: number,
   supplierCode?: string,
-  vatExempt?: boolean
+  vatExempt?: boolean,
+  vatProducts?: Set<string>
 ): Promise<FileProcessingResult> {
   // First, check if supplier has a custom parser (regardless of fileMapping)
   if (supplierCode) {
@@ -564,12 +567,15 @@ export async function processSupplierFile(
 
     if (customParser) {
       // Use custom parser - it handles everything internally
-      const result = await customParser(fileBuffer, vatRate);
+      // Pass vatProducts for per-item VAT calculation (e.g., ale-ale)
+      const result = await customParser(fileBuffer, vatRate, vatProducts);
 
       // Post-process custom parser results for VAT-exempt suppliers
       // Custom parsers independently calculate gross = net * 1.18,
-      // but for exempt suppliers gross should equal net
-      if (vatExempt && result.success && result.data.length > 0) {
+      // but for exempt suppliers gross should equal net.
+      // Skip blanket post-processing when vatProducts is provided -
+      // the parser already handled per-item VAT correctly.
+      if (vatExempt && !vatProducts?.size && result.success && result.data.length > 0) {
         let totalGross = 0;
         let totalNet = 0;
         for (const row of result.data) {

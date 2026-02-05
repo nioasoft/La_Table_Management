@@ -30,14 +30,20 @@ import { createFileProcessingError } from "../file-processing-errors";
 // Column indices
 const DATE_COL = 0; // Column A
 const FRANCHISEE_COL = 1; // Column B
+const PRODUCT_NAME_COL = 3; // Column D - שם פריט
 const AMOUNT_COL = 7; // Column H
 
 /**
  * Parse עלה עלה supplier file with Windows-1255 encoding
+ *
+ * @param vatProducts - Set of product names that have VAT. When provided,
+ *   only these products get VAT added to gross. When undefined, all products
+ *   get blanket VAT calculation.
  */
 export function parseAleAleFile(
   buffer: Buffer,
-  vatRate: number = ISRAEL_VAT_RATE
+  vatRate: number = ISRAEL_VAT_RATE,
+  vatProducts?: Set<string>
 ): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
   const warnings: import("../file-processing-errors").FileProcessingError[] = [];
@@ -75,8 +81,16 @@ export function parseAleAleFile(
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Aggregate amounts by franchisee
-    const franchiseeAmounts: Map<string, { amount: number; date: string | null }> = new Map();
+    // Aggregate amounts by franchisee, tracking net and gross separately
+    // for per-item VAT calculation
+    const franchiseeAmounts: Map<string, {
+      netAmount: number;
+      grossAmount: number;
+      date: string | null;
+    }> = new Map();
+
+    // Collect unique product names for syncing to supplier_product table
+    const uniqueProducts = new Set<string>();
 
     // Start from row 2 (index 1) - skip header
     for (let i = 1; i < rawData.length; i++) {
@@ -86,6 +100,9 @@ export function parseAleAleFile(
       const franchisee = String(row[FRANCHISEE_COL] || "").trim();
       const amountStr = String(row[AMOUNT_COL] || "").trim();
       const dateStr = String(row[DATE_COL] || "").trim();
+      const productName = String(row[PRODUCT_NAME_COL] || "").trim();
+
+      if (productName) uniqueProducts.add(productName);
 
       if (!franchisee) {
         continue;
@@ -97,15 +114,26 @@ export function parseAleAleFile(
         continue;
       }
 
+      // Per-item VAT: if vatProducts is provided, only VAT-applicable products get VAT
+      // If vatProducts is undefined, all products get VAT (blanket calculation)
+      const itemNet = amount;
+      const isVatProduct = vatProducts
+        ? vatProducts.has(productName)
+        : true; // default: all products get VAT when no per-item config
+      const itemGross = isVatProduct ? amount * (1 + vatRate) : amount;
+
       // Aggregate
       const existing = franchiseeAmounts.get(franchisee);
       if (existing) {
-        franchiseeAmounts.set(franchisee, {
-          amount: existing.amount + amount,
-          date: existing.date || dateStr,
-        });
+        existing.netAmount += itemNet;
+        existing.grossAmount += itemGross;
+        if (!existing.date) existing.date = dateStr;
       } else {
-        franchiseeAmounts.set(franchisee, { amount, date: dateStr });
+        franchiseeAmounts.set(franchisee, {
+          netAmount: itemNet,
+          grossAmount: itemGross,
+          date: dateStr,
+        });
       }
     }
 
@@ -115,25 +143,24 @@ export function parseAleAleFile(
     let processedRows = 0;
     let rowNumber = 1;
 
-    for (const [franchisee, { amount, date }] of franchiseeAmounts.entries()) {
-      if (amount <= 0) {
+    for (const [franchisee, franchiseeData] of franchiseeAmounts.entries()) {
+      if (franchiseeData.netAmount <= 0) {
         warnings.push(
           createFileProcessingError("NEGATIVE_AMOUNT", {
             rowNumber,
-            details: `Skipping negative/zero amount ${amount} for "${franchisee}"`,
-            value: String(amount),
+            details: `Skipping negative/zero amount ${franchiseeData.netAmount} for "${franchisee}"`,
+            value: String(franchiseeData.netAmount),
           })
         );
-        legacyWarnings.push(`Skipping negative/zero amount ${amount} for "${franchisee}"`);
+        legacyWarnings.push(`Skipping negative/zero amount ${franchiseeData.netAmount} for "${franchisee}"`);
         continue;
       }
 
-      // Amount is NET (before VAT)
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + vatRate));
+      const netAmount = roundToTwoDecimals(franchiseeData.netAmount);
+      const grossAmount = roundToTwoDecimals(franchiseeData.grossAmount);
 
       // Parse Hebrew date (e.g., "אוקטובר 2025")
-      const parsedDate = parseHebrewDate(date);
+      const parsedDate = parseHebrewDate(franchiseeData.date);
 
       data.push({
         franchisee,
@@ -159,7 +186,7 @@ export function parseAleAleFile(
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
-    return createResult(
+    const result = createResult(
       true,
       data,
       errors,
@@ -172,6 +199,13 @@ export function parseAleAleFile(
       totalGrossAmount,
       totalNetAmount
     );
+
+    // Attach extracted product names for syncing to supplier_product table
+    if (uniqueProducts.size > 0) {
+      result.summary.extractedProducts = [...uniqueProducts];
+    }
+
+    return result;
   } catch (error) {
     errors.push(
       createFileProcessingError("SYSTEM_ERROR", {

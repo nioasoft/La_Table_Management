@@ -644,6 +644,7 @@ export const he = {
           uploadHistory: "היסטוריית העלאות",
           crossReferences: "הפניות צולבות",
           processedFiles: "קבצים מעובדים",
+          products: "פריטים ומע״מ",
         },
 
         overview: {

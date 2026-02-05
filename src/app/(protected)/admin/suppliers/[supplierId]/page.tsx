@@ -38,6 +38,7 @@ import {
   CheckCircle2,
   XCircle,
   ChevronDown,
+  Package,
 } from "lucide-react";
 import {
   Collapsible,
@@ -52,6 +53,7 @@ import type {
 } from "@/db/schema";
 import { DocumentManager } from "@/components/document-manager";
 import { SupplierFilesTab } from "@/components/suppliers/supplier-files-tab";
+import { SupplierProductsTab } from "@/components/supplier-products-tab";
 import Link from "next/link";
 import { he } from "@/lib/translations/he";
 
@@ -507,6 +509,12 @@ export default function SupplierCardPage() {
             <FileSpreadsheet className="h-4 w-4" />
             {he.admin.suppliers.detail.tabs.processedFiles}
           </TabsTrigger>
+          {supplier?.vatExempt && (
+            <TabsTrigger value="products" className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              {he.admin.suppliers.detail.tabs.products}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Overview Tab */}
@@ -1110,6 +1118,12 @@ export default function SupplierCardPage() {
         <TabsContent value="processed-files" className="space-y-6">
           <SupplierFilesTab supplierId={supplierId} supplierName={supplier.name} />
         </TabsContent>
+
+        {supplier?.vatExempt && (
+          <TabsContent value="products">
+            <SupplierProductsTab supplierId={supplierId} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

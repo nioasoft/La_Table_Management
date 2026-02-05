@@ -1197,6 +1197,44 @@ export const supplierFileBlacklistRelations = relations(supplierFileBlacklist, (
 export type SupplierFileBlacklist = typeof supplierFileBlacklist.$inferSelect;
 export type CreateSupplierFileBlacklistData = typeof supplierFileBlacklist.$inferInsert;
 
+// ============================================================================
+// SUPPLIER PRODUCT TABLE
+// ============================================================================
+
+// Tracks individual products per supplier for per-item VAT management
+// Products are auto-extracted from supplier files (e.g., ale-ale) and stored here.
+// Users can toggle vatApplicable per product to control VAT calculation.
+export const supplierProduct = pgTable(
+  "supplier_product",
+  {
+    id: text("id").primaryKey(),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => supplier.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    vatApplicable: boolean("vat_applicable").$default(() => false).notNull(),
+    lastSeenAt: timestamp("last_seen_at").$defaultFn(() => new Date()).notNull(),
+    createdAt: timestamp("created_at").$defaultFn(() => new Date()).notNull(),
+  },
+  (table) => [
+    index("idx_supplier_product_supplier").on(table.supplierId),
+    uniqueIndex("idx_supplier_product_unique").on(table.supplierId, table.normalizedName),
+  ]
+);
+
+// Supplier Product relations
+export const supplierProductRelations = relations(supplierProduct, ({ one }) => ({
+  supplier: one(supplier, {
+    fields: [supplierProduct.supplierId],
+    references: [supplier.id],
+  }),
+}));
+
+// Supplier Product types
+export type SupplierProduct = typeof supplierProduct.$inferSelect;
+export type CreateSupplierProductData = typeof supplierProduct.$inferInsert;
+
 // Type for BKMV processing result stored in JSONB
 export type BkmvProcessingResult = {
   /** Company ID from the file */
@@ -1746,6 +1784,7 @@ export const supplierRelations = relations(supplier, ({ many, one }) => ({
   commissions: many(commission),
   commissionHistory: many(supplierCommissionHistory),
   supplierBrands: many(supplierBrand),
+  products: many(supplierProduct),
   createdByUser: one(user, {
     fields: [supplier.createdBy],
     references: [user.id],

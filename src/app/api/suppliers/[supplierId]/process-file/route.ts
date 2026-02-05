@@ -28,6 +28,7 @@ import { formatDateAsLocal } from "@/lib/date-utils";
 import { calculateBatchCommissions } from "@/data-access/commissions";
 import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
+import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
 interface RouteContext {
   params: Promise<{ supplierId: string }>;
@@ -238,6 +239,11 @@ export async function POST(request: NextRequest, context: RouteContext) {
       ? parseFloat(customVatRate) / 100 // Convert percentage to decimal
       : currentVatRate;
 
+    // Load per-item VAT products for vatExempt suppliers (e.g., ale-ale)
+    const vatProductNames = supplier.vatExempt
+      ? await getVatProductNames(supplier.id)
+      : undefined;
+
     // Process the file with VAT adjustment
     // Pass supplier code for custom parser lookup
     const result = await processSupplierFile(
@@ -246,8 +252,22 @@ export async function POST(request: NextRequest, context: RouteContext) {
       supplier.vatIncluded ?? false,
       vatRate,
       supplier.code ?? undefined,
-      supplier.vatExempt ?? false
+      supplier.vatExempt ?? false,
+      vatProductNames
     );
+
+    // Sync extracted products to supplier_product table
+    if (result.summary.extractedProducts?.length) {
+      const syncResult = await syncSupplierProducts(
+        supplier.id,
+        result.summary.extractedProducts
+      );
+      if (syncResult.added.length > 0) {
+        result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+          details: `נוספו ${syncResult.added.length} פריטים חדשים. יש לבדוק סטטוס מע"מ בכרטיס ספק.`,
+        }));
+      }
+    }
 
     // Apply franchisee name matching if enabled
     let matchedData = result.data;

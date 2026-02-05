@@ -34,10 +34,11 @@ export { parseTempoFile } from "./tempo-parser";
 export { parseTrezPazosFile } from "./trez-pazos-parser";
 export { parseMitlandFile } from "./mitland-parser";
 
-// Custom parser function type - accepts buffer and optional vatRate
+// Custom parser function type - accepts buffer, optional vatRate, and optional vatProducts
 export type CustomParserFn = (
   buffer: Buffer,
-  vatRate?: number
+  vatRate?: number,
+  vatProducts?: Set<string>
 ) => Promise<import("../file-processor").FileProcessingResult>;
 
 // Registry of custom parsers by supplier code
@@ -79,9 +80,9 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
     const { parsePastaLaCasaFile } = await import("./pasta-la-casa-parser");
     return parsePastaLaCasaFile(buffer, vatRate);
   },
-  ALE_ALE: async (buffer, vatRate) => {
+  ALE_ALE: async (buffer, vatRate, vatProducts) => {
     const { parseAleAleFile } = await import("./ale-ale-parser");
-    return parseAleAleFile(buffer, vatRate);
+    return parseAleAleFile(buffer, vatRate, vatProducts);
   },
   MIZRACH_UMAARAV: async (buffer, vatRate) => {
     const { parseMizrachUmaaravFile } = await import("./mizrach-umaarav-parser");
