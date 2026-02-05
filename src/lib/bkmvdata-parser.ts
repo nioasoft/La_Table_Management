@@ -875,8 +875,9 @@ export function getAmountForPeriod(
 
   for (const [month, suppliers] of Object.entries(monthlyBreakdown)) {
     if (month >= startMonth && month <= endMonth) {
-      const match = suppliers.find(s => s.supplierId === supplierId);
-      if (match) {
+      const matches = suppliers.filter(s => s.supplierId === supplierId);
+      for (const match of matches) {
+        console.log(`[PERIOD DEBUG] month=${month} supplier=${match.supplierName} amount=${match.amount} supplierId=${match.supplierId}`);
         total += match.amount;
         hasData = true;
       }

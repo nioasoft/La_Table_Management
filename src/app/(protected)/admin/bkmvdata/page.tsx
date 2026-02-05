@@ -190,6 +190,7 @@ export default function BkmvDataPage() {
     open: boolean;
     existingFile?: DuplicateCheckResult["existingFile"];
   }>({ open: false });
+  const [lastBlobUrl, setLastBlobUrl] = useState<string | null>(null);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -335,6 +336,7 @@ export default function BkmvDataPage() {
       setFranchiseeError(null);
       setDateRange({ minDate: null, maxDate: null });
       setUploadSuccess(null);
+      setLastBlobUrl(null);
     }
   }, []);
 
@@ -373,6 +375,7 @@ export default function BkmvDataPage() {
     setFranchiseeError(null);
     setDateRange({ minDate: null, maxDate: null });
     setUploadSuccess(null);
+    setLastBlobUrl(null);
   }, []);
 
   // Generate unique filename with franchisee name, date, and random suffix
@@ -417,24 +420,31 @@ export default function BkmvDataPage() {
     setError(null);
 
     try {
-      // Step 1: Upload directly to Vercel Blob (bypasses serverless function body limit)
-      // Use unique filename to avoid "blob already exists" errors
-      const uniqueFileName = generateUniqueFileName(
-        matchedFranchisee.name,
-        filterStartDate || null,
-        selectedFile.name
-      );
-      const blob = await upload(uniqueFileName, selectedFile, {
-        access: "public",
-        handleUploadUrl: "/api/bkmvdata/admin-upload-url",
-      });
+      // Step 1: Upload directly to Vercel Blob (or reuse existing URL on forceReplace)
+      let blobUrl: string;
+      if (forceReplace && lastBlobUrl) {
+        // Reuse the blob from the first upload attempt - no need to upload again
+        blobUrl = lastBlobUrl;
+      } else {
+        const uniqueFileName = generateUniqueFileName(
+          matchedFranchisee.name,
+          filterStartDate || null,
+          selectedFile.name
+        );
+        const blob = await upload(uniqueFileName, selectedFile, {
+          access: "public",
+          handleUploadUrl: "/api/bkmvdata/admin-upload-url",
+        });
+        blobUrl = blob.url;
+        setLastBlobUrl(blobUrl);
+      }
 
       // Step 2: Process the uploaded file
       const response = await fetch("/api/bkmvdata/admin-process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          blobUrl: blob.url,
+          blobUrl,
           fileName: selectedFile.name,
           fileSize: selectedFile.size,
           franchiseeId: matchedFranchisee.id,
@@ -472,11 +482,16 @@ export default function BkmvDataPage() {
         autoApproved: data.processing.autoApproved,
       });
 
+      // Close duplicate dialog if it was open (forceReplace flow)
+      setDuplicateDialog({ open: false });
+
       // Refresh history
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "history"] });
     } catch (err) {
       console.error("Error uploading file:", err);
       setError(err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ");
+      // Close duplicate dialog so error message is visible
+      setDuplicateDialog({ open: false });
     } finally {
       setIsUploading(false);
     }
@@ -795,17 +810,24 @@ export default function BkmvDataPage() {
           </DialogHeader>
           {duplicateDialog.existingFile && (
             <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-              <p><strong>שם קובץ:</strong> {duplicateDialog.existingFile.fileName}</p>
-              <p><strong>תאריך העלאה:</strong> {new Date(duplicateDialog.existingFile.createdAt).toLocaleDateString("he-IL")}</p>
-              <p><strong>סטטוס:</strong> {getStatusBadge(duplicateDialog.existingFile.processingStatus)}</p>
+              <div><strong>שם קובץ:</strong> {duplicateDialog.existingFile.fileName}</div>
+              <div><strong>תאריך העלאה:</strong> {new Date(duplicateDialog.existingFile.createdAt).toLocaleDateString("he-IL")}</div>
+              <div><strong>סטטוס:</strong> {getStatusBadge(duplicateDialog.existingFile.processingStatus)}</div>
             </div>
           )}
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDuplicateDialog({ open: false })}>
+            <Button variant="outline" onClick={() => setDuplicateDialog({ open: false })} disabled={isUploading}>
               ביטול
             </Button>
-            <Button variant="destructive" onClick={() => handleUploadToServer(true)}>
-              החלף קובץ קיים
+            <Button variant="destructive" onClick={() => handleUploadToServer(true)} disabled={isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                  מחליף...
+                </>
+              ) : (
+                "החלף קובץ קיים"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

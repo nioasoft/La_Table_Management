@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
       storedResult
     );
 
-    // Process cross-references
+    // Process cross-references (pass pre-fetched data to avoid redundant queries)
     let crossRefResult = null;
     try {
       crossRefResult = await processFranchiseeBkmvData(
@@ -237,7 +237,11 @@ export async function POST(request: NextRequest) {
         parseResult,
         periodStartDate,
         periodEndDate,
-        user.id
+        user.id,
+        {
+          franchiseeName,
+          matchResults: matchResults,
+        }
       );
     } catch (crossRefError) {
       console.error("Error processing cross-references:", crossRefError);

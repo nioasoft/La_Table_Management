@@ -248,13 +248,14 @@ export async function createReconciliationSession(
 
   // Get franchisee BKMVDATA files that overlap with this period
   // Overlap condition: file.start <= period.end AND file.end >= period.start
-  const franchiseeFiles = await database
+  const allFranchiseeFiles = await database
     .select({
       id: uploadedFile.id,
       franchiseeId: uploadedFile.franchiseeId,
       bkmvProcessingResult: uploadedFile.bkmvProcessingResult,
       filePeriodStart: uploadedFile.periodStartDate,
       filePeriodEnd: uploadedFile.periodEndDate,
+      createdAt: uploadedFile.createdAt,
     })
     .from(uploadedFile)
     .where(
@@ -271,6 +272,19 @@ export async function createReconciliationSession(
         )
       )
     );
+
+  // Deduplicate: keep only the most recent file per franchisee.
+  // Multiple overlapping BKMV files for the same franchisee would cause
+  // double-counting of amounts.
+  const latestFileByFranchisee = new Map<string, typeof allFranchiseeFiles[number]>();
+  for (const file of allFranchiseeFiles) {
+    if (!file.franchiseeId) continue;
+    const existing = latestFileByFranchisee.get(file.franchiseeId);
+    if (!existing || (file.createdAt && existing.createdAt && file.createdAt > existing.createdAt)) {
+      latestFileByFranchisee.set(file.franchiseeId, file);
+    }
+  }
+  const franchiseeFiles = Array.from(latestFileByFranchisee.values());
 
   // Get VAT rate for the period (use period start date)
   // BKMV amounts include VAT, so we need to convert to net amounts for comparison
@@ -303,10 +317,8 @@ export async function createReconciliationSession(
       if (periodAmount !== null) {
         // Convert from gross (with VAT) to net (before VAT)
         const netAmount = roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
-        const existing = franchiseeAmounts.get(file.franchiseeId);
-        const currentAmount = existing?.amount || 0;
         franchiseeAmounts.set(file.franchiseeId, {
-          amount: currentAmount + netAmount,
+          amount: netAmount,
           fileId: file.id,
         });
         continue; // Skip cumulative fallback
@@ -322,10 +334,8 @@ export async function createReconciliationSession(
         if (match.matchedSupplierId === supplierId) {
           // Convert from gross (with VAT) to net (before VAT)
           const netAmount = roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
-          const existing = franchiseeAmounts.get(file.franchiseeId);
-          const currentAmount = existing?.amount || 0;
           franchiseeAmounts.set(file.franchiseeId, {
-            amount: currentAmount + netAmount,
+            amount: netAmount,
             fileId: file.id,
           });
         }

@@ -11,10 +11,10 @@ import {
   type UpdateCrossReferenceData,
   type Supplier,
 } from "@/db/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import type { AuditContext } from "./auditLog";
 import type { BkmvParseResult, SupplierPurchaseSummary } from "@/lib/bkmvdata-parser";
-import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
+import { matchBkmvSuppliers, type BkmvSupplierMatchingResult } from "@/lib/supplier-matcher";
 
 // ============================================================================
 // CROSS-REFERENCE TYPES
@@ -299,22 +299,33 @@ export async function createComparisonCrossReference(
   periodEndDate: string,
   threshold: number = DEFAULT_MATCH_THRESHOLD,
   commissionId?: string,
-  createdBy?: string
+  createdBy?: string,
+  supplierName?: string,
+  franchiseeName?: string
 ): Promise<CrossReference> {
   const comparison = compareAmounts(supplierAmount, franchiseeAmount, threshold);
 
-  // Get supplier and franchisee names for metadata
-  const [supplierData] = await database
-    .select({ name: supplier.name })
-    .from(supplier)
-    .where(eq(supplier.id, supplierId))
-    .limit(1);
+  // Use provided names or fetch from DB
+  let resolvedSupplierName = supplierName;
+  let resolvedFranchiseeName = franchiseeName;
 
-  const [franchiseeData] = await database
-    .select({ name: franchisee.name })
-    .from(franchisee)
-    .where(eq(franchisee.id, franchiseeId))
-    .limit(1);
+  if (!resolvedSupplierName) {
+    const [supplierData] = await database
+      .select({ name: supplier.name })
+      .from(supplier)
+      .where(eq(supplier.id, supplierId))
+      .limit(1);
+    resolvedSupplierName = supplierData?.name;
+  }
+
+  if (!resolvedFranchiseeName) {
+    const [franchiseeData] = await database
+      .select({ name: franchisee.name })
+      .from(franchisee)
+      .where(eq(franchisee.id, franchiseeId))
+      .limit(1);
+    resolvedFranchiseeName = franchiseeData?.name;
+  }
 
   const metadata: CrossReferenceComparisonMetadata = {
     supplierAmount: supplierAmount.toFixed(2),
@@ -326,8 +337,8 @@ export async function createComparisonCrossReference(
     comparisonDate: new Date().toISOString(),
     autoMatched: comparison.matchStatus === "matched",
     manualReview: comparison.matchStatus === "discrepancy",
-    supplierName: supplierData?.name,
-    franchiseeName: franchiseeData?.name,
+    supplierName: resolvedSupplierName,
+    franchiseeName: resolvedFranchiseeName,
     periodStartDate,
     periodEndDate,
     commissionIds: commissionId ? [commissionId] : [],
@@ -851,6 +862,7 @@ async function findOrCreateCrossReference(
  * @param periodStartDate - Start date of the period (YYYY-MM-DD)
  * @param periodEndDate - End date of the period (YYYY-MM-DD)
  * @param createdBy - User who initiated the processing
+ * @param options - Optional pre-fetched data to avoid redundant queries
  * @returns Processing result with statistics
  */
 export async function processFranchiseeBkmvData(
@@ -858,35 +870,45 @@ export async function processFranchiseeBkmvData(
   bkmvData: BkmvParseResult,
   periodStartDate: string,
   periodEndDate: string,
-  createdBy?: string
+  createdBy?: string,
+  options?: {
+    franchiseeName?: string;
+    matchResults?: BkmvSupplierMatchingResult[];
+  }
 ): Promise<BkmvDataProcessingResult> {
-  // Get franchisee info
-  const [franchiseeData] = await database
-    .select({ name: franchisee.name })
-    .from(franchisee)
-    .where(eq(franchisee.id, franchiseeId))
-    .limit(1);
+  // Use provided franchisee name or fetch from DB
+  let resolvedFranchiseeName = options?.franchiseeName;
+  if (!resolvedFranchiseeName) {
+    const [franchiseeData] = await database
+      .select({ name: franchisee.name })
+      .from(franchisee)
+      .where(eq(franchisee.id, franchiseeId))
+      .limit(1);
 
-  if (!franchiseeData) {
-    throw new Error(`Franchisee not found: ${franchiseeId}`);
+    if (!franchiseeData) {
+      throw new Error(`Franchisee not found: ${franchiseeId}`);
+    }
+    resolvedFranchiseeName = franchiseeData.name;
   }
 
-  // Get all suppliers for matching
-  const suppliers = await database
-    .select()
-    .from(supplier)
-    .where(eq(supplier.isActive, true)) as unknown as Supplier[];
+  // Use provided match results or compute from scratch
+  let matchingResults = options?.matchResults;
+  if (!matchingResults) {
+    const suppliers = await database
+      .select()
+      .from(supplier)
+      .where(eq(supplier.isActive, true)) as unknown as Supplier[];
 
-  // Match BKMV suppliers to system suppliers
-  const matchingResults = matchBkmvSuppliers(
-    bkmvData.supplierSummary,
-    suppliers,
-    { minConfidence: 0.6, reviewThreshold: 1.0 }
-  );
+    matchingResults = matchBkmvSuppliers(
+      bkmvData.supplierSummary,
+      suppliers,
+      { minConfidence: 0.6, reviewThreshold: 1.0 }
+    );
+  }
 
   const result: BkmvDataProcessingResult = {
     franchiseeId,
-    franchiseeName: franchiseeData.name,
+    franchiseeName: resolvedFranchiseeName,
     periodStartDate,
     periodEndDate,
     suppliersProcessed: matchingResults.length,
@@ -899,65 +921,16 @@ export async function processFranchiseeBkmvData(
     errors: [],
   };
 
-  // Process each matched supplier
+  // Separate matched from unmatched
+  const matchedEntries: Array<{ match: BkmvSupplierMatchingResult; supplierId: string; supplierName: string }> = [];
   for (const match of matchingResults) {
     if (match.matchResult.matchedSupplier) {
-      const matchedSupplier = match.matchResult.matchedSupplier;
       result.suppliersMatched++;
-
-      try {
-        // Find or create cross-reference
-        const crossRef = await findOrCreateCrossReference(
-          matchedSupplier.id,
-          franchiseeId,
-          periodStartDate,
-          periodEndDate,
-          createdBy
-        );
-
-        const isNew = !crossRef.updatedAt || crossRef.createdAt === crossRef.updatedAt;
-
-        // Update the franchisee amount
-        const metadata = crossRef.metadata as CrossReferenceComparisonMetadata;
-        const supplierAmount = parseFloat(metadata?.supplierAmount || "0");
-        const comparison = compareAmounts(supplierAmount, match.amount);
-
-        const updatedMetadata: CrossReferenceComparisonMetadata = {
-          ...metadata,
-          franchiseeAmount: match.amount.toFixed(2),
-          difference: comparison.difference.toFixed(2),
-          differencePercentage: comparison.differencePercentage,
-          matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
-          threshold: comparison.threshold,
-          autoMatched: supplierAmount > 0 && comparison.matchStatus === "matched",
-          manualReview: supplierAmount > 0 && comparison.matchStatus === "discrepancy",
-          comparisonDate: new Date().toISOString(),
-          franchiseeName: franchiseeData.name,
-          supplierName: matchedSupplier.name,
-        };
-
-        await updateCrossReference(crossRef.id, {
-          metadata: updatedMetadata,
-        });
-
-        if (isNew) {
-          result.crossReferencesCreated++;
-        } else {
-          result.crossReferencesUpdated++;
-        }
-
-        result.matchedSuppliers.push({
-          bkmvName: match.bkmvName,
-          supplierId: matchedSupplier.id,
-          supplierName: matchedSupplier.name,
-          amount: match.amount,
-          confidence: match.matchResult.confidence,
-          crossRefId: crossRef.id,
-          matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
-        });
-      } catch (error) {
-        result.errors.push(`Error processing ${match.bkmvName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
+      matchedEntries.push({
+        match,
+        supplierId: match.matchResult.matchedSupplier.id,
+        supplierName: match.matchResult.matchedSupplier.name,
+      });
     } else {
       result.suppliersUnmatched++;
       result.unmatchedSuppliers.push({
@@ -965,6 +938,138 @@ export async function processFranchiseeBkmvData(
         amount: match.amount,
         transactionCount: match.transactionCount,
       });
+    }
+  }
+
+  if (matchedEntries.length === 0) {
+    return result;
+  }
+
+  // Batch fetch ALL existing cross-references for this franchisee + all matched supplier IDs
+  const supplierIds = matchedEntries.map(e => e.supplierId);
+  const existingCrossRefs = await database
+    .select()
+    .from(crossReference)
+    .where(
+      and(
+        eq(crossReference.sourceType, "supplier"),
+        inArray(crossReference.sourceId, supplierIds),
+        eq(crossReference.targetType, "franchisee"),
+        eq(crossReference.targetId, franchiseeId),
+        eq(crossReference.referenceType, "amount_comparison")
+      )
+    );
+
+  // Index existing cross-refs by supplier ID + period for O(1) lookup
+  const existingBySupplier = new Map<string, CrossReference>();
+  for (const ref of existingCrossRefs) {
+    const metadata = ref.metadata as CrossReferenceComparisonMetadata;
+    if (
+      metadata?.periodStartDate === periodStartDate &&
+      metadata?.periodEndDate === periodEndDate
+    ) {
+      existingBySupplier.set(ref.sourceId, ref);
+    }
+  }
+
+  // Process each matched supplier - create or update cross-references
+  const toCreate: Array<{ entry: typeof matchedEntries[number]; }> = [];
+  const toUpdate: Array<{ entry: typeof matchedEntries[number]; existingRef: CrossReference }> = [];
+
+  for (const entry of matchedEntries) {
+    const existing = existingBySupplier.get(entry.supplierId);
+    if (existing) {
+      toUpdate.push({ entry, existingRef: existing });
+    } else {
+      toCreate.push({ entry });
+    }
+  }
+
+  // Batch create new cross-references
+  for (const { entry } of toCreate) {
+    try {
+      const newRef = await createComparisonCrossReference(
+        entry.supplierId,
+        franchiseeId,
+        0, // Supplier amount - to be filled when supplier report arrives
+        0, // Franchisee amount - will be updated immediately below
+        periodStartDate,
+        periodEndDate,
+        DEFAULT_MATCH_THRESHOLD,
+        undefined,
+        createdBy,
+        entry.supplierName,
+        resolvedFranchiseeName
+      );
+
+      // Now update with the franchisee amount
+      const comparison = compareAmounts(0, entry.match.amount);
+      const updatedMetadata: CrossReferenceComparisonMetadata = {
+        ...(newRef.metadata as CrossReferenceComparisonMetadata),
+        franchiseeAmount: entry.match.amount.toFixed(2),
+        difference: comparison.difference.toFixed(2),
+        differencePercentage: comparison.differencePercentage,
+        matchStatus: "pending",
+        threshold: comparison.threshold,
+        autoMatched: false,
+        manualReview: false,
+        comparisonDate: new Date().toISOString(),
+        franchiseeName: resolvedFranchiseeName,
+        supplierName: entry.supplierName,
+      };
+
+      await updateCrossReference(newRef.id, { metadata: updatedMetadata });
+
+      result.crossReferencesCreated++;
+      result.matchedSuppliers.push({
+        bkmvName: entry.match.bkmvName,
+        supplierId: entry.supplierId,
+        supplierName: entry.supplierName,
+        amount: entry.match.amount,
+        confidence: entry.match.matchResult.confidence,
+        crossRefId: newRef.id,
+        matchStatus: "pending",
+      });
+    } catch (error) {
+      result.errors.push(`Error creating cross-ref for ${entry.match.bkmvName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Batch update existing cross-references
+  for (const { entry, existingRef } of toUpdate) {
+    try {
+      const metadata = existingRef.metadata as CrossReferenceComparisonMetadata;
+      const supplierAmount = parseFloat(metadata?.supplierAmount || "0");
+      const comparison = compareAmounts(supplierAmount, entry.match.amount);
+
+      const updatedMetadata: CrossReferenceComparisonMetadata = {
+        ...metadata,
+        franchiseeAmount: entry.match.amount.toFixed(2),
+        difference: comparison.difference.toFixed(2),
+        differencePercentage: comparison.differencePercentage,
+        matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
+        threshold: comparison.threshold,
+        autoMatched: supplierAmount > 0 && comparison.matchStatus === "matched",
+        manualReview: supplierAmount > 0 && comparison.matchStatus === "discrepancy",
+        comparisonDate: new Date().toISOString(),
+        franchiseeName: resolvedFranchiseeName,
+        supplierName: entry.supplierName,
+      };
+
+      await updateCrossReference(existingRef.id, { metadata: updatedMetadata });
+
+      result.crossReferencesUpdated++;
+      result.matchedSuppliers.push({
+        bkmvName: entry.match.bkmvName,
+        supplierId: entry.supplierId,
+        supplierName: entry.supplierName,
+        amount: entry.match.amount,
+        confidence: entry.match.matchResult.confidence,
+        crossRefId: existingRef.id,
+        matchStatus: supplierAmount > 0 ? comparison.matchStatus : "pending",
+      });
+    } catch (error) {
+      result.errors.push(`Error updating cross-ref for ${entry.match.bkmvName}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
