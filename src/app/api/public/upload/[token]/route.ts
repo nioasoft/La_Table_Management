@@ -28,6 +28,8 @@ import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
+import { getPeriodsForFrequency } from "@/lib/settlement-periods";
+import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload } from "@/data-access/supplier-file-uploads";
 
 /**
@@ -518,14 +520,22 @@ export async function POST(
               .map(row => row.date)
               .filter((d): d is Date => d !== null);
 
-            let periodStartDate = formatDateAsLocal(new Date());
-            let periodEndDate = formatDateAsLocal(new Date());
+            let periodStartDate: string | null = null;
+            let periodEndDate: string | null = null;
 
             if (datesInFile.length > 0) {
               const earliest = datesInFile.reduce((min, d) => d < min ? d : min, datesInFile[0]);
               const latest = datesInFile.reduce((max, d) => d > max ? d : max, datesInFile[0]);
               periodStartDate = formatDateAsLocal(earliest);
               periodEndDate = formatDateAsLocal(latest);
+            } else {
+              // No dates in file (e.g. Nespresso) - calculate from supplier's settlement frequency
+              const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
+              const periods = getPeriodsForFrequency(frequency, new Date(), 1);
+              if (periods.length > 0) {
+                periodStartDate = formatDateAsLocal(periods[0].startDate);
+                periodEndDate = formatDateAsLocal(periods[0].endDate);
+              }
             }
 
             // Determine processing status
