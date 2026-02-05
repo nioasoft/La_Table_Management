@@ -82,14 +82,19 @@ export async function POST(request: NextRequest) {
 
     // Check for unique constraint violation
     if (error instanceof Error && error.message.includes("unique")) {
+      const isSessionUnique = error.message.includes("reconciliation_session");
       return NextResponse.json(
-        { error: "קיים כבר סשן התאמה לתקופה זו" },
+        {
+          error: isSessionUnique
+            ? "קיים כבר סשן התאמה לתקופה זו"
+            : "נמצאו שתי רשומות זהות של זכיין בקובץ הספק. נא לבדוק את התאמות השמות.",
+        },
         { status: 409 }
       );
     }
 
     return NextResponse.json(
-      { error: "שגיאה ביצירת סשן התאמה" },
+      { error: error instanceof Error ? error.message : "שגיאה ביצירת סשן התאמה" },
       { status: 500 }
     );
   }

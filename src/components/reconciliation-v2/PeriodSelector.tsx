@@ -64,7 +64,7 @@ export function PeriodSelector({
 
   return (
     <Select
-      value={value || undefined}
+      value={value ?? ""}
       onValueChange={(periodKey) => {
         const period = periods?.find((p) => p.periodKey === periodKey);
         if (period) {

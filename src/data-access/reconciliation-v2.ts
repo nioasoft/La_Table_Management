@@ -326,25 +326,17 @@ export async function createReconciliationSession(
     }
   }
 
-  // Create the session
-  const [newSession] = await database
-    .insert(reconciliationSession)
-    .values({
-      supplierId,
-      supplierFileId,
-      periodStartDate,
-      periodEndDate,
-      status: "in_progress",
-      createdBy,
-    })
-    .returning();
-
-  // Create comparisons for each franchisee match in supplier file
-  const comparisons: CreateReconciliationComparisonData[] = [];
-  let totalSupplierAmount = 0;
-  let totalFranchiseeAmount = 0;
-  let matchedCount = 0;
-  let needsReviewCount = 0;
+  // Deduplicate franchisee matches: aggregate amounts when multiple supplier entries
+  // map to the same franchisee (e.g., different aliases for the same restaurant)
+  const comparisonMap = new Map<
+    string,
+    {
+      supplierAmount: number;
+      franchiseeAmount: number;
+      supplierOriginalName: string;
+      franchiseeFileId: string | null;
+    }
+  >();
 
   for (const match of processingResult.franchiseeMatches) {
     if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
@@ -352,10 +344,44 @@ export async function createReconciliationSession(
     const supplierAmount = match.netAmount || match.grossAmount;
     const franchiseeData = franchiseeAmounts.get(match.matchedFranchiseeId);
     const franchiseeAmount = franchiseeData?.amount || 0;
-    const difference = supplierAmount - franchiseeAmount;
+
+    const existing = comparisonMap.get(match.matchedFranchiseeId);
+    if (existing) {
+      // Aggregate: add supplier amount to existing entry
+      existing.supplierAmount += supplierAmount;
+      existing.supplierOriginalName = `${existing.supplierOriginalName}, ${match.originalName}`;
+    } else {
+      comparisonMap.set(match.matchedFranchiseeId, {
+        supplierAmount,
+        franchiseeAmount,
+        supplierOriginalName: match.originalName,
+        franchiseeFileId: franchiseeData?.fileId || null,
+      });
+    }
+  }
+
+  // Build final comparisons from deduped map and compute stats
+  let totalSupplierAmount = 0;
+  let totalFranchiseeAmount = 0;
+  let matchedCount = 0;
+  let needsReviewCount = 0;
+
+  // We'll fill in sessionId inside the transaction
+  const comparisonEntries: Array<{
+    franchiseeId: string;
+    supplierAmount: number;
+    franchiseeAmount: number;
+    difference: number;
+    absoluteDifference: number;
+    supplierOriginalName: string;
+    franchiseeFileId: string | null;
+    status: ReconciliationComparisonStatus;
+  }> = [];
+
+  for (const [franchiseeId, data] of comparisonMap) {
+    const difference = data.supplierAmount - data.franchiseeAmount;
     const absoluteDifference = Math.abs(difference);
 
-    // Determine status based on threshold
     let status: ReconciliationComparisonStatus;
     if (absoluteDifference <= RECONCILIATION_THRESHOLD) {
       status = "auto_approved";
@@ -365,46 +391,74 @@ export async function createReconciliationSession(
       needsReviewCount++;
     }
 
-    comparisons.push({
-      sessionId: newSession.id,
-      franchiseeId: match.matchedFranchiseeId,
-      supplierAmount: supplierAmount.toString(),
-      franchiseeAmount: franchiseeAmount.toString(),
-      difference: difference.toString(),
-      absoluteDifference: absoluteDifference.toString(),
-      supplierOriginalName: match.originalName,
-      franchiseeFileId: franchiseeData?.fileId || null,
+    comparisonEntries.push({
+      franchiseeId,
+      supplierAmount: data.supplierAmount,
+      franchiseeAmount: data.franchiseeAmount,
+      difference,
+      absoluteDifference,
+      supplierOriginalName: data.supplierOriginalName,
+      franchiseeFileId: data.franchiseeFileId,
       status,
     });
 
-    totalSupplierAmount += supplierAmount;
-    totalFranchiseeAmount += franchiseeAmount;
+    totalSupplierAmount += data.supplierAmount;
+    totalFranchiseeAmount += data.franchiseeAmount;
   }
 
-  // Insert comparisons if any
-  if (comparisons.length > 0) {
-    await database.insert(reconciliationComparison).values(comparisons);
-  }
-
-  // Update session with statistics
   const totalDifference = totalSupplierAmount - totalFranchiseeAmount;
-  await database
-    .update(reconciliationSession)
-    .set({
-      totalFranchisees: comparisons.length,
-      matchedCount,
-      needsReviewCount,
-      approvedCount: matchedCount, // Auto-approved counts as approved
-      totalSupplierAmount: totalSupplierAmount.toString(),
-      totalFranchiseeAmount: totalFranchiseeAmount.toString(),
-      totalDifference: totalDifference.toString(),
-      updatedAt: new Date(),
-    })
-    .where(eq(reconciliationSession.id, newSession.id));
+
+  // Wrap session + comparisons + stats update in a single transaction
+  // to prevent orphaned sessions if comparison insert fails
+  const newSession = await database.transaction(async (tx) => {
+    const [session] = await tx
+      .insert(reconciliationSession)
+      .values({
+        supplierId,
+        supplierFileId,
+        periodStartDate,
+        periodEndDate,
+        status: "in_progress",
+        createdBy,
+      })
+      .returning();
+
+    if (comparisonEntries.length > 0) {
+      const comparisons: CreateReconciliationComparisonData[] = comparisonEntries.map((entry) => ({
+        sessionId: session.id,
+        franchiseeId: entry.franchiseeId,
+        supplierAmount: entry.supplierAmount.toString(),
+        franchiseeAmount: entry.franchiseeAmount.toString(),
+        difference: entry.difference.toString(),
+        absoluteDifference: entry.absoluteDifference.toString(),
+        supplierOriginalName: entry.supplierOriginalName,
+        franchiseeFileId: entry.franchiseeFileId,
+        status: entry.status,
+      }));
+
+      await tx.insert(reconciliationComparison).values(comparisons);
+    }
+
+    await tx
+      .update(reconciliationSession)
+      .set({
+        totalFranchisees: comparisonEntries.length,
+        matchedCount,
+        needsReviewCount,
+        approvedCount: matchedCount, // Auto-approved counts as approved
+        totalSupplierAmount: totalSupplierAmount.toString(),
+        totalFranchiseeAmount: totalFranchiseeAmount.toString(),
+        totalDifference: totalDifference.toString(),
+        updatedAt: new Date(),
+      })
+      .where(eq(reconciliationSession.id, session.id));
+
+    return session;
+  });
 
   return {
     ...newSession,
-    totalFranchisees: comparisons.length,
+    totalFranchisees: comparisonEntries.length,
     matchedCount,
     needsReviewCount,
     approvedCount: matchedCount,

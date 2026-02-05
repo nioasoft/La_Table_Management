@@ -31,7 +31,7 @@ export function SupplierSelector({
 
   return (
     <Select
-      value={value || undefined}
+      value={value ?? ""}
       onValueChange={onValueChange}
       disabled={disabled || isLoading}
     >

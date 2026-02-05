@@ -64,7 +64,7 @@ export default function ReconciliationV2Page() {
       router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
     } catch (error) {
       console.error("Failed to create session:", error);
-      toast.error("שגיאה ביצירת סשן התאמה");
+      toast.error(error instanceof Error ? error.message : "שגיאה ביצירת סשן התאמה");
     }
   };
 
@@ -88,7 +88,7 @@ export default function ReconciliationV2Page() {
       router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
     } catch (error) {
       console.error("Failed to delete and restart session:", error);
-      toast.error("שגיאה באיפוס הסשן");
+      toast.error(error instanceof Error ? error.message : "שגיאה באיפוס הסשן");
     }
   };
 
