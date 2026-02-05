@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -44,6 +45,20 @@ export function PeriodSelector({
   const { data: periods, isLoading, error } = useSupplierPeriods(supplierId, {
     enabled: !!supplierId,
   });
+
+  // Auto-select the latest period when periods load
+  useEffect(() => {
+    if (periods?.length && !value) {
+      const latest = periods[0];
+      onValueChange(latest.periodKey, {
+        periodStartDate: latest.periodStartDate,
+        periodEndDate: latest.periodEndDate,
+        supplierFileId: latest.supplierFileId,
+        hasExistingSession: latest.hasExistingSession,
+        existingSessionId: latest.existingSessionId,
+      });
+    }
+  }, [periods, value]);
 
   if (!supplierId) {
     return (
