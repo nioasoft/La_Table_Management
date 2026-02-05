@@ -122,6 +122,7 @@ interface SupplierFormData {
   commissionType: CommissionType;
   settlementFrequency: SettlementFrequency;
   vatIncluded: boolean;
+  vatExempt: boolean;
   isActive: boolean;
   isHidden: boolean;
   brandIds: string[];
@@ -151,6 +152,7 @@ const initialFormData: SupplierFormData = {
   commissionType: "percentage",
   settlementFrequency: "monthly",
   vatIncluded: false,
+  vatExempt: false,
   isActive: true,
   isHidden: false,
   brandIds: [],
@@ -505,6 +507,7 @@ export default function AdminSuppliersPage() {
       commissionType: supplier.commissionType || "percentage",
       settlementFrequency: supplier.settlementFrequency || "monthly",
       vatIncluded: supplier.vatIncluded || false,
+      vatExempt: supplier.vatExempt || false,
       isActive: supplier.isActive,
       isHidden: supplier.isHidden || false,
       brandIds: supplier.brands?.map((b) => b.id) || [],
@@ -846,14 +849,31 @@ export default function AdminSuppliersPage() {
                 <div className="flex items-center gap-4">
                   <div className="flex items-center space-x-2">
                     <Checkbox
+                      id="vatExempt"
+                      checked={formData.vatExempt}
+                      onCheckedChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          vatExempt: checked as boolean,
+                          vatIncluded: checked ? false : formData.vatIncluded,
+                        })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <Label htmlFor="vatExempt" className="cursor-pointer">
+                      {he.admin.suppliers.form.fields.vatExempt}
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
                       id="vatIncluded"
                       checked={formData.vatIncluded}
                       onCheckedChange={(checked) =>
                         setFormData({ ...formData, vatIncluded: checked as boolean })
                       }
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || formData.vatExempt}
                     />
-                    <Label htmlFor="vatIncluded" className="cursor-pointer">
+                    <Label htmlFor="vatIncluded" className={`cursor-pointer ${formData.vatExempt ? "text-muted-foreground" : ""}`}>
                       {he.admin.suppliers.form.fields.vatIncluded}
                     </Label>
                   </div>
@@ -1335,9 +1355,9 @@ export default function AdminSuppliersPage() {
                     </div>
                   </div>
                   {/* Row 2: Meta info */}
-                  {supplier.vatIncluded && (
+                  {(supplier.vatExempt || supplier.vatIncluded) && (
                     <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                      <span>כולל מע״מ</span>
+                      <span>{supplier.vatExempt ? "פטור ממע״מ" : "כולל מע״מ"}</span>
                     </div>
                   )}
                 </div>

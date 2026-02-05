@@ -559,6 +559,7 @@ export const he = {
           settlementSemiAnnual: "חצי שנתי",
           settlementAnnual: "שנתי",
           vatIncluded: "כולל מע״מ",
+          vatExempt: "פטור ממע״מ",
 
           taxId: "מספר עוסק",
           taxIdPlaceholder: "מספר עוסק מורשה",
@@ -594,6 +595,7 @@ export const he = {
         vat: "מע״מ:",
         vatIncluded: "כלול",
         vatNotIncluded: "לא כלול",
+        vatExempt: "פטור",
         contact: "איש קשר:",
         brands: "מותגים:",
         created: "נוצר:",
@@ -664,6 +666,7 @@ export const he = {
             vat: "מע״מ",
             vatIncluded: "כלול",
             vatNotIncluded: "לא כלול",
+            vatExempt: "פטור ממע״מ",
             paymentTerms: "תנאי תשלום",
           },
           contact: {

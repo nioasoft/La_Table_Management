@@ -471,7 +471,8 @@ export async function POST(
             fileMapping,
             supplier.vatIncluded ?? false,
             vatRate,
-            supplier.code ?? undefined
+            supplier.code ?? undefined,
+            supplier.vatExempt ?? false
           );
 
           if (!processResult.success || processResult.data.length === 0) {

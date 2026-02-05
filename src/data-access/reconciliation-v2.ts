@@ -225,6 +225,7 @@ export async function createReconciliationSession(
       id: supplier.id,
       name: supplier.name,
       code: supplier.code,
+      vatExempt: supplier.vatExempt,
     })
     .from(supplier)
     .where(eq(supplier.id, supplierId))
@@ -316,8 +317,10 @@ export async function createReconciliationSession(
       );
 
       if (periodAmount !== null) {
-        // Convert from gross (with VAT) to net (before VAT)
-        const netAmount = roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
+        // For VAT-exempt suppliers, BKMV amounts don't include VAT - use as-is
+        const netAmount = supplierData[0].vatExempt
+          ? roundToTwoDecimals(periodAmount)
+          : roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
         franchiseeAmounts.set(file.franchiseeId, {
           amount: netAmount,
           fileId: file.id,
@@ -333,8 +336,10 @@ export async function createReconciliationSession(
     if (file.filePeriodStart === periodStartDate && file.filePeriodEnd === periodEndDate) {
       for (const match of bkmvResult.supplierMatches) {
         if (match.matchedSupplierId === supplierId) {
-          // Convert from gross (with VAT) to net (before VAT)
-          const netAmount = roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
+          // For VAT-exempt suppliers, BKMV amounts don't include VAT - use as-is
+          const netAmount = supplierData[0].vatExempt
+            ? roundToTwoDecimals(match.amount)
+            : roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
           franchiseeAmounts.set(file.franchiseeId, {
             amount: netAmount,
             fileId: file.id,

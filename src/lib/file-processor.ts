@@ -54,6 +54,7 @@ export interface FileProcessingResult {
 // Configuration for VAT adjustment
 export interface VatConfig {
   vatIncluded: boolean;
+  vatExempt?: boolean;
   vatRate?: number; // Default: ISRAEL_VAT_RATE
 }
 
@@ -397,6 +398,7 @@ export function parseSupplierFile(
     // VAT configuration
     const vatRate = vatConfig.vatRate || ISRAEL_VAT_RATE;
     const vatIncluded = vatConfig.vatIncluded;
+    const vatExempt = vatConfig.vatExempt ?? false;
 
     let totalGrossAmount = 0;
     let totalNetAmount = 0;
@@ -459,7 +461,11 @@ export function parseSupplierFile(
       let grossAmount: number;
       let netAmount: number;
 
-      if (vatIncluded) {
+      if (vatExempt) {
+        // VAT-exempt supplier - gross equals net, no VAT conversion
+        grossAmount = originalAmount;
+        netAmount = originalAmount;
+      } else if (vatIncluded) {
         // Amount includes VAT - calculate net (for commission calculation)
         grossAmount = originalAmount;
         netAmount = roundToTwoDecimals(calculateNetFromGross(originalAmount, vatRate));
@@ -548,7 +554,8 @@ export async function processSupplierFile(
   fileMapping: SupplierFileMapping | null,
   vatIncluded: boolean,
   vatRate?: number,
-  supplierCode?: string
+  supplierCode?: string,
+  vatExempt?: boolean
 ): Promise<FileProcessingResult> {
   // First, check if supplier has a custom parser (regardless of fileMapping)
   if (supplierCode) {
@@ -557,7 +564,24 @@ export async function processSupplierFile(
 
     if (customParser) {
       // Use custom parser - it handles everything internally
-      return customParser(fileBuffer, vatRate);
+      const result = await customParser(fileBuffer, vatRate);
+
+      // Post-process custom parser results for VAT-exempt suppliers
+      // Custom parsers independently calculate gross = net * 1.18,
+      // but for exempt suppliers gross should equal net
+      if (vatExempt && result.success && result.data.length > 0) {
+        let totalGross = 0;
+        let totalNet = 0;
+        for (const row of result.data) {
+          row.grossAmount = row.netAmount;
+          totalGross += row.grossAmount;
+          totalNet += row.netAmount;
+        }
+        result.summary.totalGrossAmount = roundToTwoDecimals(totalGross);
+        result.summary.totalNetAmount = roundToTwoDecimals(totalNet);
+      }
+
+      return result;
     }
   }
 
@@ -585,6 +609,7 @@ export async function processSupplierFile(
 
   const vatConfig: VatConfig = {
     vatIncluded,
+    vatExempt,
     vatRate,
   };
 

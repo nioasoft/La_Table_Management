@@ -559,6 +559,7 @@ export const supplier = pgTable(
     // Settlement settings
     settlementFrequency: settlementFrequencyEnum("settlement_frequency").$default(() => "monthly"),
     vatIncluded: boolean("vat_included").$default(() => false),
+    vatExempt: boolean("vat_exempt").$default(() => false).notNull(),
     // File mapping configuration for parsing supplier reports
     fileMapping: jsonb("file_mapping").$type<SupplierFileMapping>(),
     // Commission exceptions for item-level rate overrides

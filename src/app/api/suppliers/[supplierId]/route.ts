@@ -88,6 +88,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       commissionType,
       settlementFrequency,
       vatIncluded,
+      vatExempt,
       isActive,
       brandIds,
       fileMapping,
@@ -141,6 +142,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (settlementFrequency !== undefined)
       updateData.settlementFrequency = settlementFrequency;
     if (vatIncluded !== undefined) updateData.vatIncluded = vatIncluded;
+    if (vatExempt !== undefined) updateData.vatExempt = vatExempt;
     if (isActive !== undefined) updateData.isActive = isActive;
 
     // Handle file mapping update

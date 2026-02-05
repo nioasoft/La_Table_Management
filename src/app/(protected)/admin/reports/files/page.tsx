@@ -192,6 +192,7 @@ const fileColumns: ColumnDef<UnifiedFile>[] = [
   {
     id: "entityName",
     header: "ישות",
+    accessorKey: "entityName",
     accessor: (row) => row.entityName || "-",
     cell: (row) => (
       <div className="max-w-[180px]">

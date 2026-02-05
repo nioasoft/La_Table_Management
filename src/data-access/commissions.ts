@@ -610,6 +610,7 @@ export interface PerSupplierReportData {
     commissionType: string | null;
     settlementFrequency: string | null;
     vatIncluded: boolean | null;
+    vatExempt: boolean;
   };
   summary: {
     totalFranchisees: number;
@@ -914,6 +915,7 @@ export async function getPerSupplierReportData(
       commissionType: supplier.commissionType,
       settlementFrequency: supplier.settlementFrequency,
       vatIncluded: supplier.vatIncluded,
+      vatExempt: supplier.vatExempt,
     })
     .from(supplier)
     .where(eq(supplier.id, filters.supplierId))

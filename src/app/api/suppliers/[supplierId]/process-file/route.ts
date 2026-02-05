@@ -245,7 +245,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       fileMapping,
       supplier.vatIncluded ?? false,
       vatRate,
-      supplier.code ?? undefined
+      supplier.code ?? undefined,
+      supplier.vatExempt ?? false
     );
 
     // Apply franchisee name matching if enabled
@@ -523,6 +524,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         supplierName: supplier.name,
         supplierId: supplier.id,
         vatIncluded: supplier.vatIncluded ?? false,
+        vatExempt: supplier.vatExempt ?? false,
         vatRate: vatRate * 100, // Return as percentage
         fileName: file.name,
         fileSize: file.size,

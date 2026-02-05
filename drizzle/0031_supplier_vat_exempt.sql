@@ -1,0 +1,1 @@
+ALTER TABLE "supplier" ADD COLUMN "vat_exempt" boolean DEFAULT false NOT NULL;

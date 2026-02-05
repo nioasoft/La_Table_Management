@@ -565,7 +565,7 @@ export default function SupplierCardPage() {
               </div>
               <div className="flex justify-between py-2 border-b last:border-0">
                 <span className="text-muted-foreground">מע״מ</span>
-                <span className="font-medium">{supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</span>
+                <span className="font-medium">{supplier.vatExempt ? "פטור ממע״מ" : supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</span>
               </div>
               {supplier.paymentTerms && (
                 <div className="flex justify-between py-2 border-b last:border-0">
