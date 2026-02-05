@@ -344,6 +344,22 @@ export async function createReconciliationSession(
     }
   }
 
+  // For vatExempt suppliers with per-item VAT (e.g., ale-ale):
+  // The BKMV amounts include VAT on vat_applicable products, but the supplier
+  // reports everything as net. Build a map of partial VAT per franchisee
+  // (grossAmount - netAmount) to subtract from BKMV amounts.
+  const partialVatMap = new Map<string, number>();
+  if (supplierData[0].vatExempt) {
+    for (const match of processingResult.franchiseeMatches) {
+      if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
+      const partialVat = match.grossAmount - match.netAmount;
+      if (partialVat > 0) {
+        const existing = partialVatMap.get(match.matchedFranchiseeId) || 0;
+        partialVatMap.set(match.matchedFranchiseeId, existing + partialVat);
+      }
+    }
+  }
+
   // Deduplicate franchisee matches: aggregate amounts when multiple supplier entries
   // map to the same franchisee (e.g., different aliases for the same restaurant)
   const comparisonMap = new Map<
@@ -360,13 +376,15 @@ export async function createReconciliationSession(
     if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
 
     // For vatExempt suppliers: use netAmount (raw from file, no VAT).
-    // BKMV for vatExempt suppliers already reports ~net amounts (no VAT in accounting).
     // For normal suppliers: use netAmount for comparison against BKMV net.
     const supplierAmount = supplierData[0].vatExempt
       ? match.netAmount
       : (match.netAmount || match.grossAmount);
     const franchiseeData = franchiseeAmounts.get(match.matchedFranchiseeId);
-    const franchiseeAmount = franchiseeData?.amount || 0;
+    // For vatExempt suppliers: subtract partial VAT (gross - net) from BKMV amount
+    // because BKMV includes VAT on vat_applicable products but supplier reports net
+    const partialVat = partialVatMap.get(match.matchedFranchiseeId) || 0;
+    const franchiseeAmount = (franchiseeData?.amount || 0) - partialVat;
 
     const existing = comparisonMap.get(match.matchedFranchiseeId);
     if (existing) {
