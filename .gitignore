@@ -49,5 +49,15 @@ next-env.d.ts
 # Sentry
 .env.sentry-build-plugin
 
+# AI Tools
+.agent/
+.agents/
+.claude/skills/
+.continue/
+.cursor/
+.gemini/
+.goose/
+.opencode/
+
 # Misc
 .cache
