@@ -479,7 +479,6 @@ export default function BkmvDataPage() {
       setError(err instanceof Error ? err.message : "שגיאה בהעלאת הקובץ");
     } finally {
       setIsUploading(false);
-      setDuplicateDialog({ open: false });
     }
   }, [selectedFile, parseResult, matchedFranchisee, filterStartDate, filterEndDate, queryClient]);
 
