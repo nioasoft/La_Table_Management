@@ -64,7 +64,8 @@ export async function GET(
     const frequency: SupportedFrequency = supportedFrequencies.includes(rawFrequency as SupportedFrequency)
       ? (rawFrequency as SupportedFrequency)
       : "quarterly";
-    const periods = getAvailablePeriodsForSupplier(frequency);
+    const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
+    const periods = getAvailablePeriodsForSupplier(frequency, new Date(), fiscalYearStartMonth);
 
     // Get existing files for current and previous year
     const currentYear = new Date().getFullYear();

@@ -571,6 +571,9 @@ export const supplier = pgTable(
     // Hashavshevet code - supplier's code in the Hashavshevet accounting system
     // Used for exporting commission data for import into Hashavshevet
     hashavshevetCode: text("hashavshevet_code"),
+    // Fiscal year start month (1-12) for suppliers with non-calendar fiscal years
+    // null = January (default calendar year). Example: 4 = April (Leumi Card: Apr-Mar)
+    fiscalYearStartMonth: integer("fiscal_year_start_month"),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),

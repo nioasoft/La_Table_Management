@@ -95,6 +95,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       commissionExceptions,
       bkmvAliases,
       hashavshevetCode,
+      fiscalYearStartMonth,
       // Commission change logging fields
       commissionChangeReason,
       commissionChangeNotes,
@@ -214,6 +215,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // Handle Hashavshevet code update
     if (hashavshevetCode !== undefined) {
       updateData.hashavshevetCode = hashavshevetCode?.trim() || null;
+    }
+
+    // Handle fiscal year start month update
+    if (fiscalYearStartMonth !== undefined) {
+      const month = fiscalYearStartMonth === null ? null : Number(fiscalYearStartMonth);
+      if (month !== null && (isNaN(month) || month < 1 || month > 12)) {
+        return NextResponse.json(
+          { error: "Fiscal year start month must be between 1 and 12" },
+          { status: 400 }
+        );
+      }
+      updateData.fiscalYearStartMonth = month === 1 ? null : month;
     }
 
     // Add commission change logging fields

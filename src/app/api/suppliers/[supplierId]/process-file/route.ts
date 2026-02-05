@@ -466,7 +466,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       try {
         // Get or create settlement period based on supplier's settlement frequency
         const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
-        const periods = getPeriodsForFrequency(frequency, new Date(), 1);
+        const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
+        const periods = getPeriodsForFrequency(frequency, new Date(), 1, fiscalYearStartMonth);
         const currentPeriod = periods[0];
 
         if (currentPeriod) {

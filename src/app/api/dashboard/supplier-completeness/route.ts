@@ -184,7 +184,8 @@ export async function GET(request: NextRequest) {
       const frequency: SettlementPeriodType = supportedFrequencies.includes(rawFrequency as SettlementPeriodType)
         ? (rawFrequency as SettlementPeriodType)
         : "quarterly";
-      const periods = getPeriodsForYear(frequency, year);
+      const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
+      const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
       const supplierFiles = fileMap.get(supplier.id) || new Map();
 
       // Filter to only include periods that have ended

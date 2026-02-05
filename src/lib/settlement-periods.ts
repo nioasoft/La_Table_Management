@@ -5,8 +5,11 @@
  * Periods are:
  * - Monthly: 1st of every month (for suppliers like מיטלנד, אברהמי)
  * - Quarterly: 1/1, 1/4, 1/7, 1/10 (most suppliers)
- * - Semi-annual: 1/1, 1/7 (suppliers like מחלבות גד, לאומי קארד)
- * - Annual: 1/1 (suppliers like טמפו, תנובה)
+ * - Semi-annual: 1/1, 1/7 (suppliers like מחלבות גד)
+ * - Annual: 1/1 (suppliers like טמפו, תנובה, לאומי קארד)
+ *
+ * Some suppliers have a non-calendar fiscal year (e.g., Leumi Card: April-March).
+ * The `fiscalYearStartMonth` parameter (1-12) controls the fiscal year start for annual periods.
  */
 
 import type { SettlementPeriodType } from "@/db/schema";
@@ -168,26 +171,61 @@ export function getSemiAnnualPeriods(referenceDate: Date = new Date(), count: nu
 /**
  * Get annual periods.
  * Full year (due January 1 of next year)
+ * @param fiscalYearStartMonth - 1-12, month the fiscal year starts (1=January, default)
  */
-export function getAnnualPeriods(referenceDate: Date = new Date(), count: number = 2): SettlementPeriodInfo[] {
+export function getAnnualPeriods(
+  referenceDate: Date = new Date(),
+  count: number = 2,
+  fiscalYearStartMonth: number = 1
+): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
   const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth(); // 0-indexed
+  const fyStartMonth0 = fiscalYearStartMonth - 1; // Convert to 0-indexed
 
-  for (let i = 1; i <= count; i++) {
-    const periodYear = year - i;
-    const startDate = new Date(periodYear, 0, 1);
-    const endDate = new Date(periodYear, 11, 31);
-    const dueDate = new Date(periodYear + 1, 0, 31); // January 31 of next year
+  if (fiscalYearStartMonth > 1) {
+    // Custom fiscal year (e.g., April-March for fiscalYearStartMonth=4)
+    // Determine the current fiscal year start
+    let currentFYStartYear = year;
+    if (month < fyStartMonth0) {
+      currentFYStartYear = year - 1;
+    }
 
-    periods.push({
-      type: "annual",
-      name: `FY ${periodYear}`,
-      nameHe: `שנת ${periodYear}`,
-      startDate,
-      endDate,
-      dueDate,
-      key: `${periodYear}`,
-    });
+    for (let i = 1; i <= count; i++) {
+      const fyStartYear = currentFYStartYear - i;
+      const fyEndYear = fyStartYear + 1;
+      const startDate = new Date(fyStartYear, fyStartMonth0, 1);
+      const endDate = new Date(fyEndYear, fyStartMonth0, 0); // Last day of month before start
+      const dueDate = new Date(fyEndYear, fyStartMonth0, 31); // 31 days into next FY
+
+      periods.push({
+        type: "annual",
+        name: `FY ${fyStartYear}/${String(fyEndYear).slice(2)}`,
+        nameHe: `${fyStartYear}/${String(fyEndYear).slice(2)}`,
+        startDate,
+        endDate,
+        dueDate,
+        key: `${fyStartYear}/${String(fyEndYear).slice(2)}`,
+      });
+    }
+  } else {
+    // Standard calendar year (January-December)
+    for (let i = 1; i <= count; i++) {
+      const periodYear = year - i;
+      const startDate = new Date(periodYear, 0, 1);
+      const endDate = new Date(periodYear, 11, 31);
+      const dueDate = new Date(periodYear + 1, 0, 31); // January 31 of next year
+
+      periods.push({
+        type: "annual",
+        name: `FY ${periodYear}`,
+        nameHe: `שנת ${periodYear}`,
+        startDate,
+        endDate,
+        dueDate,
+        key: `${periodYear}`,
+      });
+    }
   }
 
   return periods;
@@ -207,11 +245,33 @@ export function isPeriodDue(period: SettlementPeriodInfo, referenceDate: Date = 
 }
 
 /**
- * Get period info by key (e.g., "2025-Q4", "2025-01", "2025-H2", "2025")
+ * Get period info by key (e.g., "2025-Q4", "2025-01", "2025-H2", "2025", "2025/26")
+ * @param fiscalYearStartMonth - Required for custom fiscal year keys like "2025/26"
  */
-export function getPeriodByKey(key: string): SettlementPeriodInfo | null {
+export function getPeriodByKey(key: string, fiscalYearStartMonth: number = 1): SettlementPeriodInfo | null {
   // Parse key format
-  if (key.includes("-Q")) {
+  if (key.includes("/")) {
+    // Custom fiscal year annual: "2025/26"
+    const [startYearStr, endYearSuffix] = key.split("/");
+    const startYear = parseInt(startYearStr);
+    if (isNaN(startYear)) return null;
+
+    const fyStartMonth0 = fiscalYearStartMonth - 1; // Convert to 0-indexed
+    const endYear = startYear + 1;
+    const startDate = new Date(startYear, fyStartMonth0, 1);
+    const endDate = new Date(endYear, fyStartMonth0, 0); // Last day of month before FY start
+    const dueDate = new Date(endYear, fyStartMonth0, 31);
+
+    return {
+      type: "annual",
+      name: `FY ${startYear}/${endYearSuffix}`,
+      nameHe: `${startYear}/${endYearSuffix}`,
+      startDate,
+      endDate,
+      dueDate,
+      key,
+    };
+  } else if (key.includes("-Q")) {
     // Quarterly: "2025-Q4"
     const [yearStr, quarterStr] = key.split("-");
     const year = parseInt(yearStr);
@@ -278,11 +338,13 @@ export function getPeriodByKey(key: string): SettlementPeriodInfo | null {
 
 /**
  * Get all periods for a specific frequency
+ * @param fiscalYearStartMonth - 1-12, only affects annual periods (default: 1=January)
  */
 export function getPeriodsForFrequency(
   frequency: SettlementPeriodType,
   referenceDate: Date = new Date(),
-  count: number = 4
+  count: number = 4,
+  fiscalYearStartMonth: number = 1
 ): SettlementPeriodInfo[] {
   switch (frequency) {
     case "monthly":
@@ -292,7 +354,7 @@ export function getPeriodsForFrequency(
     case "semi_annual":
       return getSemiAnnualPeriods(referenceDate, count);
     case "annual":
-      return getAnnualPeriods(referenceDate, count);
+      return getAnnualPeriods(referenceDate, count, fiscalYearStartMonth);
     default:
       return [];
   }
@@ -301,10 +363,12 @@ export function getPeriodsForFrequency(
 /**
  * Get all periods for a specific year based on frequency.
  * Returns periods in chronological order (oldest first).
+ * @param fiscalYearStartMonth - 1-12, only affects annual periods (default: 1=January)
  */
 export function getPeriodsForYear(
   frequency: SettlementPeriodType,
-  year: number
+  year: number,
+  fiscalYearStartMonth: number = 1
 ): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
 
@@ -373,16 +437,37 @@ export function getPeriodsForYear(
       break;
 
     case "annual":
-      // 1 annual period
-      periods.push({
-        type: "annual",
-        name: `FY ${year}`,
-        nameHe: `שנת ${year}`,
-        startDate: new Date(year, 0, 1),
-        endDate: new Date(year, 11, 31),
-        dueDate: new Date(year + 1, 0, 31),
-        key: `${year}`,
-      });
+      if (fiscalYearStartMonth > 1) {
+        // Custom fiscal year: the period that ends in `year`
+        // e.g., for fiscalYearStartMonth=4 and year=2026, returns 2025/26 (Apr 2025 - Mar 2026)
+        const fyStartMonth0 = fiscalYearStartMonth - 1;
+        const startYear = year - 1;
+        const startDate = new Date(startYear, fyStartMonth0, 1);
+        const endDate = new Date(year, fyStartMonth0, 0);
+        const dueDate = new Date(year, fyStartMonth0, 31);
+        const endYearSuffix = String(year).slice(2);
+
+        periods.push({
+          type: "annual",
+          name: `FY ${startYear}/${endYearSuffix}`,
+          nameHe: `${startYear}/${endYearSuffix}`,
+          startDate,
+          endDate,
+          dueDate,
+          key: `${startYear}/${endYearSuffix}`,
+        });
+      } else {
+        // Standard calendar year
+        periods.push({
+          type: "annual",
+          name: `FY ${year}`,
+          nameHe: `שנת ${year}`,
+          startDate: new Date(year, 0, 1),
+          endDate: new Date(year, 11, 31),
+          dueDate: new Date(year + 1, 0, 31),
+          key: `${year}`,
+        });
+      }
       break;
   }
 
@@ -392,20 +477,26 @@ export function getPeriodsForYear(
 /**
  * Get available periods for a supplier (current year + last 8 periods).
  * Returns periods in reverse chronological order (newest first).
+ * @param fiscalYearStartMonth - 1-12, only affects annual periods (default: 1=January)
  */
 export function getAvailablePeriodsForSupplier(
   frequency: SettlementPeriodType,
-  referenceDate: Date = new Date()
+  referenceDate: Date = new Date(),
+  fiscalYearStartMonth: number = 1
 ): SettlementPeriodInfo[] {
   const currentYear = referenceDate.getFullYear();
-  const periods: SettlementPeriodInfo[] = [];
 
-  // Get periods for current year and previous year
-  const currentYearPeriods = getPeriodsForYear(frequency, currentYear);
-  const prevYearPeriods = getPeriodsForYear(frequency, currentYear - 1);
+  // Get periods for current year and previous years
+  // For custom fiscal years (e.g., Apr-Mar), we need an extra year back
+  // since getPeriodsForYear(2025, 4) returns 2025/26 (ending Mar 2026)
+  const yearsBack = fiscalYearStartMonth > 1 ? 3 : 2;
+  const allYearPeriods: SettlementPeriodInfo[] = [];
+  for (let i = 0; i < yearsBack; i++) {
+    allYearPeriods.push(...getPeriodsForYear(frequency, currentYear - i, fiscalYearStartMonth));
+  }
 
   // Combine and sort by end date descending
-  const allPeriods = [...currentYearPeriods, ...prevYearPeriods].sort(
+  const allPeriods = allYearPeriods.sort(
     (a, b) => b.endDate.getTime() - a.endDate.getTime()
   );
 

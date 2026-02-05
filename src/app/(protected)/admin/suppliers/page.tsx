@@ -129,6 +129,7 @@ interface SupplierFormData {
   commissionExceptions: CommissionExceptionFormData[];
   bkmvAliases: string[];
   hashavshevetCode: string;
+  fiscalYearStartMonth: number;
   // Commission change logging fields
   commissionChangeReason: string;
   commissionChangeNotes: string;
@@ -159,6 +160,7 @@ const initialFormData: SupplierFormData = {
   commissionExceptions: [],
   bkmvAliases: [],
   hashavshevetCode: "",
+  fiscalYearStartMonth: 1,
   commissionChangeReason: "",
   commissionChangeNotes: "",
   commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -514,6 +516,7 @@ export default function AdminSuppliersPage() {
       commissionExceptions: commissionExceptionsToFormData(supplier.commissionExceptions as CommissionException[] | null | undefined),
       bkmvAliases: supplier.bkmvAliases || [],
       hashavshevetCode: supplier.hashavshevetCode || "",
+      fiscalYearStartMonth: supplier.fiscalYearStartMonth ?? 1,
       commissionChangeReason: "",
       commissionChangeNotes: "",
       commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -829,7 +832,11 @@ export default function AdminSuppliersPage() {
                     <Select
                       value={formData.settlementFrequency}
                       onValueChange={(value: SettlementFrequency) =>
-                        setFormData({ ...formData, settlementFrequency: value })
+                        setFormData({
+                          ...formData,
+                          settlementFrequency: value,
+                          fiscalYearStartMonth: value === "annual" ? formData.fiscalYearStartMonth : 1,
+                        })
                       }
                       disabled={isSubmitting}
                     >
@@ -844,6 +851,40 @@ export default function AdminSuppliersPage() {
                       </SelectContent>
                     </Select>
                   </div>
+
+                  {formData.settlementFrequency === "annual" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="fiscalYearStartMonth">חודש התחלת שנת כספים</Label>
+                      <Select
+                        value={String(formData.fiscalYearStartMonth || 1)}
+                        onValueChange={(value) =>
+                          setFormData({ ...formData, fiscalYearStartMonth: parseInt(value) })
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="fiscalYearStartMonth">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">ינואר (ברירת מחדל)</SelectItem>
+                          <SelectItem value="2">פברואר</SelectItem>
+                          <SelectItem value="3">מרץ</SelectItem>
+                          <SelectItem value="4">אפריל</SelectItem>
+                          <SelectItem value="5">מאי</SelectItem>
+                          <SelectItem value="6">יוני</SelectItem>
+                          <SelectItem value="7">יולי</SelectItem>
+                          <SelectItem value="8">אוגוסט</SelectItem>
+                          <SelectItem value="9">ספטמבר</SelectItem>
+                          <SelectItem value="10">אוקטובר</SelectItem>
+                          <SelectItem value="11">נובמבר</SelectItem>
+                          <SelectItem value="12">דצמבר</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        רלוונטי לספקים עם שנת כספים שונה מינואר-דצמבר
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-4">

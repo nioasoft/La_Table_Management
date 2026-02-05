@@ -560,7 +560,8 @@ export async function POST(
             } else {
               // No dates in file (e.g. Nespresso) - calculate from supplier's settlement frequency
               const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
-              const periods = getPeriodsForFrequency(frequency, new Date(), 1);
+              const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
+              const periods = getPeriodsForFrequency(frequency, new Date(), 1, fiscalYearStartMonth);
               if (periods.length > 0) {
                 periodStartDate = formatDateAsLocal(periods[0].startDate);
                 periodEndDate = formatDateAsLocal(periods[0].endDate);

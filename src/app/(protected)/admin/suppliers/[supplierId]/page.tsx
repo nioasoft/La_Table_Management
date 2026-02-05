@@ -57,6 +57,11 @@ import { SupplierProductsTab } from "@/components/supplier-products-tab";
 import Link from "next/link";
 import { he } from "@/lib/translations/he";
 
+const HEBREW_MONTHS = [
+  "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+  "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"
+];
+
 // Extended types
 interface DocumentWithUploader extends Document {
   uploaderName?: string | null;
@@ -571,6 +576,12 @@ export default function SupplierCardPage() {
                 <span className="text-muted-foreground">תדירות התחשבנות</span>
                 <span className="font-medium">{formatSettlementFrequency(supplier.settlementFrequency)}</span>
               </div>
+              {supplier.fiscalYearStartMonth && supplier.fiscalYearStartMonth > 1 && (
+                <div className="flex justify-between py-2 border-b last:border-0">
+                  <span className="text-muted-foreground">שנת כספים</span>
+                  <span className="font-medium">{HEBREW_MONTHS[supplier.fiscalYearStartMonth - 1]} - {HEBREW_MONTHS[(supplier.fiscalYearStartMonth - 2 + 12) % 12]}</span>
+                </div>
+              )}
               <div className="flex justify-between py-2 border-b last:border-0">
                 <span className="text-muted-foreground">מע״מ</span>
                 <span className="font-medium">{supplier.vatExempt ? "פטור ממע״מ" : supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</span>
