@@ -253,6 +253,8 @@ export async function createReconciliationSession(
       id: uploadedFile.id,
       franchiseeId: uploadedFile.franchiseeId,
       bkmvProcessingResult: uploadedFile.bkmvProcessingResult,
+      filePeriodStart: uploadedFile.periodStartDate,
+      filePeriodEnd: uploadedFile.periodEndDate,
     })
     .from(uploadedFile)
     .where(
@@ -312,16 +314,21 @@ export async function createReconciliationSession(
     }
 
     // Fallback: use cumulative supplierMatches (for files without monthlyBreakdown)
-    for (const match of bkmvResult.supplierMatches) {
-      if (match.matchedSupplierId === supplierId) {
-        // Convert from gross (with VAT) to net (before VAT)
-        const netAmount = roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
-        const existing = franchiseeAmounts.get(file.franchiseeId);
-        const currentAmount = existing?.amount || 0;
-        franchiseeAmounts.set(file.franchiseeId, {
-          amount: currentAmount + netAmount,
-          fileId: file.id,
-        });
+    // GUARD: Only use cumulative totals when file period exactly matches reconciliation period.
+    // If the file covers a wider range (e.g., Jan-Dec but reconciliation is Q3 only),
+    // the cumulative total would be inflated. Skip in that case.
+    if (file.filePeriodStart === periodStartDate && file.filePeriodEnd === periodEndDate) {
+      for (const match of bkmvResult.supplierMatches) {
+        if (match.matchedSupplierId === supplierId) {
+          // Convert from gross (with VAT) to net (before VAT)
+          const netAmount = roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
+          const existing = franchiseeAmounts.get(file.franchiseeId);
+          const currentAmount = existing?.amount || 0;
+          franchiseeAmounts.set(file.franchiseeId, {
+            amount: currentAmount + netAmount,
+            fileId: file.id,
+          });
+        }
       }
     }
   }

@@ -139,6 +139,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate period length matches supplier's settlement frequency
+    if (supplier.settlementFrequency && periodStartDate && periodEndDate) {
+      const start = new Date(periodStartDate);
+      const end = new Date(periodEndDate);
+      const daySpan = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+      // Expected day ranges per frequency (with tolerance)
+      const frequencyRanges: Record<string, { min: number; max: number; label: string }> = {
+        weekly: { min: 5, max: 10, label: "שבועי" },
+        bi_weekly: { min: 11, max: 18, label: "דו-שבועי" },
+        monthly: { min: 25, max: 35, label: "חודשי" },
+        quarterly: { min: 80, max: 100, label: "רבעוני" },
+        semi_annual: { min: 170, max: 190, label: "חצי שנתי" },
+        annual: { min: 355, max: 375, label: "שנתי" },
+      };
+
+      const expected = frequencyRanges[supplier.settlementFrequency];
+      if (expected && (daySpan < expected.min || daySpan > expected.max)) {
+        return NextResponse.json(
+          {
+            error: `תקופת הקובץ (${daySpan} ימים) אינה תואמת לתדירות ההתחשבנות של הספק (${expected.label}). צפוי ${expected.min}-${expected.max} ימים.`,
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Check for existing file for this period
     const existingFile = await getSupplierFileByPeriod(
       supplierId,
