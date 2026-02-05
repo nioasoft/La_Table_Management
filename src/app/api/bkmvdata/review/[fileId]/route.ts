@@ -191,6 +191,25 @@ export async function PATCH(
     const fuzzyMatches = updatedMatches.filter(m => m.matchedSupplierId && m.confidence < 1).length;
     const unmatched = updatedMatches.filter(m => !m.matchedSupplierId).length;
 
+    // Build updated supplier ID map from all matches
+    const supplierIdMap = new Map<string, string | null>();
+    for (const match of updatedMatches) {
+      supplierIdMap.set(match.bkmvName, match.matchedSupplierId);
+    }
+
+    // Rebuild monthlyBreakdown supplier IDs to stay in sync
+    let updatedMonthlyBreakdown = processingResult.monthlyBreakdown;
+    if (updatedMonthlyBreakdown) {
+      const rebuilt: typeof updatedMonthlyBreakdown = {};
+      for (const [month, suppliers] of Object.entries(updatedMonthlyBreakdown)) {
+        rebuilt[month] = suppliers.map(entry => ({
+          ...entry,
+          supplierId: supplierIdMap.get(entry.supplierName) ?? entry.supplierId,
+        }));
+      }
+      updatedMonthlyBreakdown = rebuilt;
+    }
+
     const updatedResult: BkmvProcessingResult = {
       ...processingResult,
       supplierMatches: updatedMatches,
@@ -200,6 +219,7 @@ export async function PATCH(
         fuzzyMatches,
         unmatched,
       },
+      monthlyBreakdown: updatedMonthlyBreakdown,
     };
 
     // Update file with new processing result
