@@ -57,6 +57,27 @@
       "when": 1738764000000,
       "tag": "0031_supplier_vat_exempt",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1738850400000,
+      "tag": "0032_supplier_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1738853000000,
+      "tag": "0033_franchisee_bkmv_year",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1739008800000,
+      "tag": "0034_franchisee_revenue_account",
+      "breakpoints": true
     }
   ]
 }
