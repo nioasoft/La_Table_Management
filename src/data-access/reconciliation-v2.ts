@@ -49,6 +49,7 @@ export type SupplierWithFileInfo = {
   code: string;
   fileCount: number;
   lastFileDate: Date | null;
+  notes: string | null;
 };
 
 // Period info for a supplier
@@ -115,6 +116,7 @@ export async function getSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
       code: supplier.code,
       fileCount: sql<number>`COUNT(${supplierFileUpload.id})::int`,
       lastFileDate: sql<Date>`MAX(${supplierFileUpload.createdAt})`,
+      notes: supplier.description,
     })
     .from(supplier)
     .innerJoin(supplierFileUpload, eq(supplier.id, supplierFileUpload.supplierId))
@@ -126,7 +128,7 @@ export async function getSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
         ne(supplierFileUpload.processingStatus, "rejected")
       )
     )
-    .groupBy(supplier.id, supplier.name, supplier.code)
+    .groupBy(supplier.id, supplier.name, supplier.code, supplier.description)
     .orderBy(supplier.name);
 
   return results;

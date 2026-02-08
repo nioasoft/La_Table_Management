@@ -115,6 +115,7 @@ export interface SupplierWithFileInfo {
   code: string;
   fileCount: number;
   lastFileDate: Date | null;
+  notes: string | null;
 }
 
 // Session with details

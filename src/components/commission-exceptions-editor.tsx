@@ -57,6 +57,10 @@ export interface CommissionExceptionsEditorProps {
    * Custom class name for the container
    */
   className?: string;
+  /**
+   * Hide the header (title + description). Useful when wrapped in external Collapsible.
+   */
+  hideHeader?: boolean;
 }
 
 /**
@@ -72,6 +76,7 @@ export function CommissionExceptionsEditor({
   onChange,
   disabled = false,
   className,
+  hideHeader = false,
 }: CommissionExceptionsEditorProps) {
   const handleAddException = () => {
     onChange([
@@ -103,29 +108,49 @@ export function CommissionExceptionsEditor({
 
   return (
     <div className={cn("space-y-3", className)}>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <Label className="text-base font-medium flex items-center gap-2">
-            <Percent className="h-4 w-4" />
-            {t.title}
-          </Label>
-          <p className="text-sm text-muted-foreground mt-1">
+      {/* Header - can be hidden when wrapped in external Collapsible */}
+      {!hideHeader ? (
+        <div className="flex items-center justify-between">
+          <div>
+            <Label className="text-base font-medium flex items-center gap-2">
+              <Percent className="h-4 w-4" />
+              {t.title}
+            </Label>
+            <p className="text-sm text-muted-foreground mt-1">
+              {t.description}
+            </p>
+          </div>
+          {!disabled && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleAddException}
+            >
+              <Plus className="h-4 w-4 ml-1" />
+              {t.addButton}
+            </Button>
+          )}
+        </div>
+      ) : (
+        /* When header is hidden, show only the add button */
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-muted-foreground">
             {t.description}
           </p>
+          {!disabled && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleAddException}
+            >
+              <Plus className="h-4 w-4 ml-1" />
+              {t.addButton}
+            </Button>
+          )}
         </div>
-        {!disabled && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleAddException}
-          >
-            <Plus className="h-4 w-4 ml-1" />
-            {t.addButton}
-          </Button>
-        )}
-      </div>
+      )}
 
       {/* Exceptions List */}
       {exceptions.length === 0 ? (

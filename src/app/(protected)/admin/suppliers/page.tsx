@@ -23,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -55,6 +56,7 @@ import {
   Tags,
   Search,
   Info,
+  MessageSquare,
 } from "lucide-react";
 import type { Supplier, Brand, CommissionType, SettlementFrequency, SupplierFileMapping, Document, CommissionException } from "@/db/schema";
 import { FileMappingConfig } from "@/components/file-mapping-config";
@@ -696,6 +698,30 @@ export default function AdminSuppliersPage() {
                 </div>
               </div>
 
+              {/* Notes/Description */}
+              <Collapsible defaultOpen={!!formData.description}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  <span className="text-sm font-medium">הערות</span>
+                  {formData.description && (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  )}
+                  <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-2">
+                  <Textarea
+                    id="description"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="הערות על הספק (יוצגו גם בדף ההתאמות)"
+                    disabled={isSubmitting}
+                    dir="rtl"
+                    rows={3}
+                    className="resize-none"
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+
               {/* Contacts - Combined Collapsible */}
               <Collapsible defaultOpen={!!(formData.contactName || formData.contactEmail || formData.contactPhone || formData.secondaryContactName || formData.secondaryContactEmail || formData.secondaryContactPhone)}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
@@ -920,12 +946,27 @@ export default function AdminSuppliersPage() {
                   </div>
                 </div>
 
-                {/* Commission Exceptions */}
-                <CommissionExceptionsEditor
-                  exceptions={formData.commissionExceptions}
-                  onChange={(exceptions) => setFormData({ ...formData, commissionExceptions: exceptions })}
-                  disabled={isSubmitting}
-                />
+                {/* Commission Exceptions - Collapsible */}
+                <Collapsible defaultOpen={formData.commissionExceptions.length > 0}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                    <Percent className="h-3.5 w-3.5" />
+                    <span className="text-sm font-medium">פריטים מוחרגים</span>
+                    {formData.commissionExceptions.length > 0 && (
+                      <Badge variant="secondary" className="ms-2">
+                        {formData.commissionExceptions.length}
+                      </Badge>
+                    )}
+                    <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <CommissionExceptionsEditor
+                      exceptions={formData.commissionExceptions}
+                      onChange={(exceptions) => setFormData({ ...formData, commissionExceptions: exceptions })}
+                      disabled={isSubmitting}
+                      hideHeader
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
 
                 {/* Commission Change Log Fields (only show when editing and rate is changing) */}
                 {isCommissionRateChanging && (

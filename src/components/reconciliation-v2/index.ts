@@ -1,5 +1,6 @@
 export { StatusBadge } from "./StatusBadge";
 export { SupplierSelector } from "./SupplierSelector";
+export { SupplierNotes } from "./SupplierNotes";
 export { PeriodSelector } from "./PeriodSelector";
 export { ComparisonRow } from "./ComparisonRow";
 export { ComparisonTable } from "./ComparisonTable";

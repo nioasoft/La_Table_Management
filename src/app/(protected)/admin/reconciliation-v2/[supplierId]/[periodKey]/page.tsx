@@ -11,9 +11,11 @@ import {
   ComparisonTable,
   FileApprovalSection,
   StatusBadge,
+  SupplierNotes,
 } from "@/components/reconciliation-v2";
 import {
   useReconciliationSessionWithComparisons,
+  useReconciliationSuppliersWithFiles,
   useUpdateComparisonStatus,
   useAddToReviewQueue,
   useApproveSessionFile,
@@ -123,6 +125,10 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   const addToQueue = useAddToReviewQueue();
   const approveFile = useApproveSessionFile();
   const rejectFile = useRejectSessionFile();
+
+  // Get supplier data with notes
+  const { data: suppliers } = useReconciliationSuppliersWithFiles();
+  const currentSupplier = suppliers?.find((s) => s.id === supplierId);
 
   const handleApprove = async (comparisonId: string) => {
     try {
@@ -321,6 +327,14 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
           הפרשים עד <strong>₪{RECONCILIATION_THRESHOLD}</strong> מאושרים אוטומטית
         </span>
       </div>
+
+      {/* Supplier Notes */}
+      {currentSupplier?.notes && (
+        <SupplierNotes
+          supplierId={supplierId}
+          notes={currentSupplier.notes}
+        />
+      )}
 
       {/* Comparisons Table */}
       <Card>
