@@ -67,8 +67,12 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error fetching BKMVDATA history:", error);
+    // Log more details in development
+    if (process.env.NODE_ENV === "development") {
+      console.error("Stack trace:", error instanceof Error ? error.stack : "No stack");
+    }
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     );
   }

@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
-import { parseBkmvData, extractDateRange, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
-import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
+import { getFranchiseeByCompanyId, getFranchiseeById, getFranchiseeRevenueAccount, updateFranchiseeRevenueAccount } from "@/data-access/franchisees";
 import { generateEntityFileName } from "@/lib/storage";
 import {
   createAdminUploadedFile,
@@ -42,6 +42,8 @@ export async function POST(request: NextRequest) {
       periodStartDate: periodStartDateParam,
       periodEndDate: periodEndDateParam,
       forceReplace,
+      revenueAccountCode: userSelectedRevenueCode,
+      saveRevenueToFranchisee: shouldSaveRevenueToFranchisee,
     } = body;
 
     if (!blobUrl) {
@@ -192,6 +194,45 @@ export async function POST(request: NextRequest) {
     // Build monthly breakdown for precise period matching
     const monthlyBreakdown = buildMonthlyBreakdown(parseResult.transactions, supplierIdMap);
 
+    // Extract revenue accounts from the parsed data
+    const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
+
+    // Determine which revenue account code to use:
+    // 1. User-selected from UI (takes priority)
+    // 2. Saved on franchisee (auto-match)
+    // 3. None
+    let confirmedRevenueAccountCode: string | null = null;
+
+    if (userSelectedRevenueCode) {
+      // User explicitly selected a revenue account from the UI
+      const matchingAccount = revenueAccounts.find(a => a.accountCode === userSelectedRevenueCode);
+      if (matchingAccount) {
+        matchingAccount.isConfirmed = true;
+        confirmedRevenueAccountCode = userSelectedRevenueCode;
+
+        // Optionally save to franchisee for future auto-matching
+        if (shouldSaveRevenueToFranchisee) {
+          await updateFranchiseeRevenueAccount(franchiseeId, userSelectedRevenueCode);
+        }
+      }
+    } else {
+      // Check if franchisee has a saved revenue account code for auto-matching
+      const savedRevenueAccountCode = await getFranchiseeRevenueAccount(franchiseeId);
+      if (savedRevenueAccountCode) {
+        const matchingAccount = revenueAccounts.find(a => a.accountCode === savedRevenueAccountCode);
+        if (matchingAccount) {
+          matchingAccount.isConfirmed = true;
+          confirmedRevenueAccountCode = savedRevenueAccountCode;
+        }
+      }
+    }
+
+    // Build revenue monthly breakdown (using confirmed account if available)
+    const revenueMonthlyBreakdown = buildRevenueMonthlyBreakdown(
+      parseResult.revenueSummary,
+      confirmedRevenueAccountCode
+    );
+
     // Prepare processing result
     const storedResult: BkmvProcessingResult = {
       companyId: parseResult.companyId,
@@ -219,6 +260,9 @@ export async function POST(request: NextRequest) {
         requiresReview: r.matchResult.requiresReview,
       })),
       monthlyBreakdown,
+      revenueAccounts: revenueAccounts.length > 0 ? revenueAccounts : undefined,
+      revenueMonthlyBreakdown: Object.keys(revenueMonthlyBreakdown).length > 0 ? revenueMonthlyBreakdown : undefined,
+      confirmedRevenueAccountCode,
       processedAt: new Date().toISOString(),
     };
 

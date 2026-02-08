@@ -70,9 +70,13 @@ import {
   ExternalLink,
   Ban,
   BarChart3,
+  DollarSign,
+  Check,
 } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
-import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, getAccountSortLabels, findAccountSortByType, type BkmvParseResult, type BkmvTransaction, type AccountSortLabel } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, getAccountSortLabels, findAccountSortByType, convertRevenueSummaryToArray, type BkmvParseResult, type BkmvTransaction, type AccountSortLabel, type RevenueAccountSummary } from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
@@ -194,6 +198,10 @@ export default function BkmvDataPage() {
   }>({ open: false });
   const [lastBlobUrl, setLastBlobUrl] = useState<string | null>(null);
 
+  // Revenue account selection state
+  const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
+  const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
+
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
@@ -285,6 +293,12 @@ export default function BkmvDataPage() {
     return getAccountSortLabels(parseResult);
   }, [parseResult]);
 
+  // Get revenue accounts from parse result
+  const revenueAccounts = useMemo(() => {
+    if (!parseResult) return [];
+    return convertRevenueSummaryToArray(parseResult.revenueSummary);
+  }, [parseResult]);
+
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
     mutationFn: async ({ supplierId, bkmvAliases }: { supplierId: string; bkmvAliases: string[] }) => {
@@ -339,6 +353,7 @@ export default function BkmvDataPage() {
       setDateRange({ minDate: null, maxDate: null });
       setUploadSuccess(null);
       setLastBlobUrl(null);
+      setSelectedRevenueAccount("");
     }
   }, []);
 
@@ -378,6 +393,7 @@ export default function BkmvDataPage() {
     setDateRange({ minDate: null, maxDate: null });
     setUploadSuccess(null);
     setLastBlobUrl(null);
+    setSelectedRevenueAccount("");
   }, []);
 
   // Generate unique filename with franchisee name, date, and random suffix
@@ -453,6 +469,8 @@ export default function BkmvDataPage() {
           periodStartDate: filterStartDate || undefined,
           periodEndDate: filterEndDate || undefined,
           forceReplace,
+          revenueAccountCode: selectedRevenueAccount || undefined,
+          saveRevenueToFranchisee: selectedRevenueAccount ? saveRevenueToFranchisee : undefined,
         }),
       });
 
@@ -1081,6 +1099,113 @@ export default function BkmvDataPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Revenue Accounts Section */}
+          {revenueAccounts.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  חשבונות הכנסות שזוהו
+                </CardTitle>
+                <CardDescription>
+                  בחר את חשבון ההכנסות הראשי שמייצג את המחזור
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <RadioGroup
+                  value={selectedRevenueAccount}
+                  onValueChange={setSelectedRevenueAccount}
+                  className="space-y-4"
+                >
+                  {revenueAccounts.map((account) => {
+                    const monthlyEntries = Object.entries(account.monthlyBreakdown || {}).sort(
+                      ([a], [b]) => a.localeCompare(b)
+                    );
+                    return (
+                      <div
+                        key={account.accountCode}
+                        className={`rounded-lg border ${
+                          selectedRevenueAccount === account.accountCode
+                            ? "bg-green-50 border-green-200"
+                            : "bg-muted/30"
+                        }`}
+                      >
+                        <div className="flex items-center gap-4 p-3">
+                          <RadioGroupItem
+                            value={account.accountCode}
+                            id={`revenue-${account.accountCode}`}
+                          />
+                          <Label
+                            htmlFor={`revenue-${account.accountCode}`}
+                            className="flex-1 flex items-center justify-between cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <span className="font-mono text-lg">
+                                {formatAmount(account.totalAmount)}
+                              </span>
+                              <span className="text-sm text-muted-foreground">
+                                ({account.transactionCount} עסקאות)
+                              </span>
+                              {selectedRevenueAccount === account.accountCode && (
+                                <Badge variant="success" className="gap-1">
+                                  <Check className="h-3 w-3" />
+                                  נבחר
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="font-medium">{account.accountName}</span>
+                              <span className="text-sm text-muted-foreground">
+                                (קוד: {account.accountCode})
+                              </span>
+                            </div>
+                          </Label>
+                        </div>
+                        {/* Monthly breakdown */}
+                        {monthlyEntries.length > 0 && (
+                          <div className="border-t px-3 py-2 bg-white/50" dir="rtl">
+                            <p className="text-xs text-muted-foreground mb-2 text-right" dir="rtl">פירוט חודשי:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {monthlyEntries.map(([month, amount]) => {
+                                const [year, monthNum] = month.split("-");
+                                const monthName = new Date(
+                                  parseInt(year),
+                                  parseInt(monthNum) - 1
+                                ).toLocaleDateString("he-IL", { month: "short", year: "numeric" });
+                                return (
+                                  <div
+                                    key={month}
+                                    className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded"
+                                  >
+                                    <span className="text-muted-foreground">{monthName}:</span>
+                                    <span className="font-mono font-medium">{formatAmount(amount)}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
+
+                {matchedFranchisee && (
+                  <div className="mt-4 flex items-center gap-2">
+                    <Checkbox
+                      id="saveRevenueToFranchisee"
+                      checked={saveRevenueToFranchisee}
+                      onCheckedChange={(checked) => setSaveRevenueToFranchisee(checked === true)}
+                    />
+                    <Label htmlFor="saveRevenueToFranchisee" className="text-sm">
+                      שמור לזכיין לזיהוי אוטומטי בקבצים הבאים
+                    </Label>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Save to Server Section */}
           {matchedFranchisee && parseResult && (

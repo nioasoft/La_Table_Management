@@ -712,6 +712,8 @@ export const franchisee = pgTable(
     notes: text("notes"),
     // Hashavshevet item key - used in export for "מפתח פריט" column
     hashavshevetItemKey: text("hashavshevet_item_key"),
+    // Revenue account code from BKMVDATA - for auto-matching revenue accounts in future uploads
+    revenueAccountCode: text("revenue_account_code"),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),
@@ -1341,6 +1343,18 @@ export type BkmvProcessingResult = {
     amount: number;
     transactionCount: number;
   }>>;
+  /** Revenue accounts found in file */
+  revenueAccounts?: Array<{
+    accountCode: string;
+    accountName: string;
+    totalAmount: number;
+    transactionCount: number;
+    isConfirmed: boolean;
+  }>;
+  /** Monthly revenue breakdown - YYYY-MM -> amount */
+  revenueMonthlyBreakdown?: Record<string, number>;
+  /** Confirmed revenue account code (selected by user) */
+  confirmedRevenueAccountCode?: string | null;
   /** Timestamp of processing */
   processedAt: string;
 };

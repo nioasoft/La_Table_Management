@@ -1023,3 +1023,44 @@ export async function removeFranchiseeAlias(
 
   return updateFranchiseeAliases(franchiseeId, newAliases);
 }
+
+// ============================================================================
+// FRANCHISEE REVENUE ACCOUNT FUNCTIONS
+// ============================================================================
+
+/**
+ * Update franchisee revenue account code
+ * Used to save the confirmed revenue account from BKMVDATA for auto-matching in future uploads
+ *
+ * @param franchiseeId - The franchisee ID to update
+ * @param revenueAccountCode - The revenue account code (or null to clear)
+ * @returns Updated franchisee or null if not found
+ */
+export async function updateFranchiseeRevenueAccount(
+  franchiseeId: string,
+  revenueAccountCode: string | null
+): Promise<Franchisee | null> {
+  const results = await database
+    .update(franchisee)
+    .set({
+      revenueAccountCode,
+      updatedAt: new Date(),
+    })
+    .where(eq(franchisee.id, franchiseeId))
+    .returning() as unknown as Franchisee[];
+
+  return results[0] || null;
+}
+
+/**
+ * Get franchisee revenue account code
+ *
+ * @param franchiseeId - The franchisee ID
+ * @returns The revenue account code or null
+ */
+export async function getFranchiseeRevenueAccount(
+  franchiseeId: string
+): Promise<string | null> {
+  const result = await getFranchiseeById(franchiseeId);
+  return result?.revenueAccountCode || null;
+}

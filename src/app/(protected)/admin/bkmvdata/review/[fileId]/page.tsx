@@ -41,6 +41,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   Loader2,
   CheckCircle2,
@@ -55,6 +57,7 @@ import {
   Edit,
   Plus,
   Ban,
+  DollarSign,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
@@ -69,6 +72,14 @@ interface SupplierMatch {
   confidence: number;
   matchType: string;
   requiresReview: boolean;
+}
+
+interface RevenueAccount {
+  accountCode: string;
+  accountName: string;
+  totalAmount: number;
+  transactionCount: number;
+  isConfirmed: boolean;
 }
 
 interface FileDetails {
@@ -88,6 +99,7 @@ interface FileDetails {
     id: string;
     name: string;
     code: string;
+    revenueAccountCode: string | null;
   } | null;
   uploadLink: {
     id: string;
@@ -107,8 +119,10 @@ interface FileDetails {
     };
     processedAt: string;
     matchedFranchiseeId: string | null;
+    confirmedRevenueAccountCode: string | null;
   } | null;
   supplierMatches: SupplierMatch[];
+  revenueAccounts: RevenueAccount[];
 }
 
 export default function FileDetailsPage() {
@@ -126,6 +140,9 @@ export default function FileDetailsPage() {
   // Blacklist state
   const [blacklistingMatch, setBlacklistingMatch] = useState<SupplierMatch | null>(null);
   const [blacklistNotes, setBlacklistNotes] = useState("");
+  // Revenue account state
+  const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
+  const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -249,6 +266,25 @@ export default function FileDetailsPage() {
     },
   });
 
+  // Revenue confirmation mutation
+  const revenueConfirmMutation = useMutation({
+    mutationFn: async ({ accountCode, saveToFranchisee }: { accountCode: string; saveToFranchisee: boolean }) => {
+      const response = await fetch(`/api/bkmvdata/review/${fileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          revenueAccountCode: accountCode,
+          saveRevenueToFranchisee: saveToFranchisee,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to confirm revenue account");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+    },
+  });
+
   const handleApprove = useCallback(() => {
     reviewMutation.mutate({ action: "approve", notes: reviewNotes });
   }, [reviewMutation, reviewNotes]);
@@ -273,6 +309,14 @@ export default function FileDetailsPage() {
       notes: blacklistNotes || undefined,
     });
   }, [blacklistingMatch, blacklistNotes, blacklistMutation]);
+
+  const handleConfirmRevenue = useCallback(() => {
+    if (!selectedRevenueAccount) return;
+    revenueConfirmMutation.mutate({
+      accountCode: selectedRevenueAccount,
+      saveToFranchisee: saveRevenueToFranchisee,
+    });
+  }, [selectedRevenueAccount, saveRevenueToFranchisee, revenueConfirmMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -338,7 +382,7 @@ export default function FileDetailsPage() {
     );
   }
 
-  const { file, franchisee, processingResult, supplierMatches } = fileData;
+  const { file, franchisee, processingResult, supplierMatches, revenueAccounts } = fileData;
   const isReviewed = file.processingStatus === "approved" || file.processingStatus === "rejected";
 
   return (
@@ -495,6 +539,101 @@ export default function FileDetailsPage() {
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Revenue Account Selection */}
+      {revenueAccounts && revenueAccounts.length > 0 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              זיהוי חשבון המחזור
+            </CardTitle>
+            <CardDescription>
+              בחר את חשבון ההכנסות שמייצג את המחזור של הזכיין
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup
+              value={selectedRevenueAccount || processingResult?.confirmedRevenueAccountCode || ""}
+              onValueChange={setSelectedRevenueAccount}
+              className="space-y-3"
+            >
+              {revenueAccounts.map((account) => (
+                <div
+                  key={account.accountCode}
+                  className={`flex items-center gap-4 p-3 rounded-lg border ${
+                    account.isConfirmed ? "bg-green-50 border-green-200" : "bg-muted/30"
+                  }`}
+                >
+                  <RadioGroupItem
+                    value={account.accountCode}
+                    id={`revenue-${account.accountCode}`}
+                    disabled={isReviewed}
+                  />
+                  <Label
+                    htmlFor={`revenue-${account.accountCode}`}
+                    className="flex-1 flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-lg">
+                        {formatAmount(account.totalAmount)}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        ({account.transactionCount} עסקאות)
+                      </span>
+                      {account.isConfirmed && (
+                        <Badge variant="success" className="gap-1">
+                          <Check className="h-3 w-3" />
+                          מאושר
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium">{account.accountName}</span>
+                      <span className="text-sm text-muted-foreground">
+                        (קוד: {account.accountCode})
+                      </span>
+                    </div>
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+
+            {!isReviewed && (
+              <div className="mt-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="saveRevenueToFranchisee"
+                    checked={saveRevenueToFranchisee}
+                    onCheckedChange={(checked) => setSaveRevenueToFranchisee(checked === true)}
+                  />
+                  <Label htmlFor="saveRevenueToFranchisee" className="text-sm">
+                    שמור לקבצים הבאים של זכיין זה
+                  </Label>
+                </div>
+                <Button
+                  onClick={handleConfirmRevenue}
+                  disabled={!selectedRevenueAccount || revenueConfirmMutation.isPending}
+                  size="sm"
+                >
+                  {revenueConfirmMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                  ) : (
+                    <Check className="h-4 w-4 ms-2" />
+                  )}
+                  אשר חשבון
+                </Button>
+              </div>
+            )}
+
+            {franchisee?.revenueAccountCode && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                חשבון שמור לזכיין: <span className="font-medium">{franchisee.revenueAccountCode}</span>
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

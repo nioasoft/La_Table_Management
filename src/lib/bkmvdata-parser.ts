@@ -63,6 +63,17 @@ export interface SupplierPurchaseSummary {
 }
 
 /**
+ * Revenue account summary - aggregated by account code
+ */
+export interface RevenueAccountSummary {
+  accountCode: string;
+  accountName: string;
+  totalAmount: number;
+  transactionCount: number;
+  monthlyBreakdown: Record<string, number>; // YYYY-MM -> amount
+}
+
+/**
  * Complete parse result
  */
 export interface BkmvParseResult {
@@ -72,6 +83,7 @@ export interface BkmvParseResult {
   transactions: BkmvTransaction[];
   accounts: BkmvAccount[];
   supplierSummary: Map<string, SupplierPurchaseSummary>;
+  revenueSummary: Map<string, RevenueAccountSummary>;
   errors: string[];
   warnings: string[];
 }
@@ -233,9 +245,13 @@ function parseB110Record(line: string): BkmvAccount | null {
     // Old format: position 200 (B110_FIELDS.ACCOUNT_TYPE)
     let accountType = extractField(line, B110_FIELDS.ACCOUNT_TYPE);
 
+    // Check if accountType is valid Hebrew (not just numeric or empty)
+    // Some file formats put "0" or addresses in this field
+    const isValidAccountType = accountType && /^[א-ת\s]+$/.test(accountType) && accountType.length >= 2;
+
     // Try to extract from description in old format:
     // Pattern: 12 zeros + 3-digit sort + Hebrew account type (e.g., "000000000000200ספקים")
-    if (!accountType) {
+    if (!isValidAccountType) {
       const typeMatch = accountDescription.match(/0{12}\d{3}([א-ת\s]+)/);
       if (typeMatch && typeMatch[1]) {
         accountType = typeMatch[1].trim();
@@ -243,7 +259,7 @@ function parseB110Record(line: string): BkmvAccount | null {
     }
 
     // New format: accountType is at position 117-147
-    if (!accountType) {
+    if (!isValidAccountType && (!accountType || !/^[א-ת\s]+$/.test(accountType))) {
       const newFormatType = line.substring(117, 147).trim();
       // Filter out addresses (contain numbers) - only keep pure Hebrew type names
       // Account types are short Hebrew words like "ספקים", "עובדים", "בנק"
@@ -315,6 +331,7 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
     transactions: [],
     accounts: [],
     supplierSummary: new Map(),
+    revenueSummary: new Map(),
     errors: [],
     warnings: [],
   };
@@ -417,6 +434,9 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
   // Credit transactions to supplier accounts represent purchases
   buildSupplierSummary(result);
 
+  // Build revenue summary from transactions to revenue accounts
+  buildRevenueSummary(result);
+
   return result;
 }
 
@@ -479,6 +499,95 @@ function buildSupplierSummary(result: BkmvParseResult): void {
   }
 
   result.supplierSummary = summary;
+}
+
+/**
+ * Build revenue summary from transactions
+ *
+ * Revenue accounts are identified by accountType containing "הכנסות" in B110 records.
+ * In BKMVDATA format:
+ * - B110 records define accounts with accountKey (identifier) and accountType
+ * - B100 transactions have accountCode field that references the account
+ *
+ * We match B100 transactions where accountCode matches B110 accountKey
+ * (with leading zeros stripped for comparison).
+ *
+ * Some older formats may use counterpartyName to reference accounts - we support both.
+ */
+function buildRevenueSummary(result: BkmvParseResult): void {
+  const summary = new Map<string, RevenueAccountSummary>();
+
+  // Build a map of revenue account codes -> account info
+  // B110 accountKey is the account identifier (e.g., "5", "732", or "הכנסות")
+  const revenueAccountCodes = new Set<string>();
+  const accountCodeToInfo = new Map<string, { accountKey: string; accountName: string }>();
+
+  for (const account of result.accounts) {
+    // Check if this is a revenue account
+    if (account.accountType && account.accountType.includes('הכנסות')) {
+      const key = account.accountKey.trim();
+      if (key) {
+        revenueAccountCodes.add(key);
+        accountCodeToInfo.set(key, {
+          accountKey: key,
+          accountName: account.accountName || key,
+        });
+      }
+    }
+  }
+
+  // If no revenue accounts found, return empty
+  if (revenueAccountCodes.size === 0) {
+    result.revenueSummary = summary;
+    return;
+  }
+
+  // Aggregate transactions where accountCode matches a revenue account
+  for (const tx of result.transactions) {
+    // Normalize accountCode by removing leading zeros (e.g., "00005" -> "5")
+    const normalizedCode = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
+
+    // Check if this transaction is for a revenue account
+    let accountInfo = accountCodeToInfo.get(normalizedCode);
+
+    // Fallback: some formats use counterpartyName to reference the account
+    if (!accountInfo) {
+      const counterparty = tx.counterpartyName.trim();
+      if (revenueAccountCodes.has(counterparty)) {
+        accountInfo = accountCodeToInfo.get(counterparty);
+      }
+    }
+
+    if (!accountInfo) {
+      continue;
+    }
+
+    // Skip zero amounts
+    if (tx.amount === 0) {
+      continue;
+    }
+
+    const monthKey = formatYearMonth(tx.documentDate);
+    const accountKey = accountInfo.accountKey;
+    const accountName = accountInfo.accountName;
+
+    const existing = summary.get(accountKey);
+    if (existing) {
+      existing.totalAmount += tx.amount;
+      existing.transactionCount++;
+      existing.monthlyBreakdown[monthKey] = (existing.monthlyBreakdown[monthKey] || 0) + tx.amount;
+    } else {
+      summary.set(accountKey, {
+        accountCode: accountKey,
+        accountName: accountName,
+        totalAmount: tx.amount,
+        transactionCount: 1,
+        monthlyBreakdown: { [monthKey]: tx.amount },
+      });
+    }
+  }
+
+  result.revenueSummary = summary;
 }
 
 /**
@@ -987,4 +1096,56 @@ export function aggregateSupplierMatchesFromBreakdown(
       matchedSupplierName: null, // Name not stored in breakdown
     }))
     .sort((a, b) => b.amount - a.amount);
+}
+
+// ============================================================================
+// REVENUE ACCOUNT FUNCTIONS
+// ============================================================================
+
+/**
+ * Convert revenue summary Map to array format for storage
+ */
+export function convertRevenueSummaryToArray(
+  revenueSummary: Map<string, RevenueAccountSummary>
+): Array<{
+  accountCode: string;
+  accountName: string;
+  totalAmount: number;
+  transactionCount: number;
+  isConfirmed: boolean;
+  monthlyBreakdown: Record<string, number>;
+}> {
+  return Array.from(revenueSummary.values())
+    .map(account => ({
+      accountCode: account.accountCode,
+      accountName: account.accountName,
+      totalAmount: account.totalAmount,
+      transactionCount: account.transactionCount,
+      isConfirmed: false,
+      monthlyBreakdown: account.monthlyBreakdown,
+    }))
+    .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+}
+
+/**
+ * Build aggregated monthly revenue breakdown from all revenue accounts
+ */
+export function buildRevenueMonthlyBreakdown(
+  revenueSummary: Map<string, RevenueAccountSummary>,
+  confirmedAccountCode?: string | null
+): Record<string, number> {
+  const breakdown: Record<string, number> = {};
+
+  for (const [accountCode, account] of revenueSummary) {
+    // If a confirmed account is specified, only use that account
+    if (confirmedAccountCode && accountCode !== confirmedAccountCode) {
+      continue;
+    }
+
+    for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
+      breakdown[month] = (breakdown[month] || 0) + amount;
+    }
+  }
+
+  return breakdown;
 }
