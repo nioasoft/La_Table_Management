@@ -96,6 +96,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       bkmvAliases,
       hashavshevetCode,
       fiscalYearStartMonth,
+      franchiseeFundEnabled,
+      franchiseeFundPercentage,
       // Commission change logging fields
       commissionChangeReason,
       commissionChangeNotes,
@@ -227,6 +229,25 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         );
       }
       updateData.fiscalYearStartMonth = month === 1 ? null : month;
+    }
+
+    // Handle franchisee fund fields
+    if (franchiseeFundEnabled !== undefined) {
+      updateData.franchiseeFundEnabled = franchiseeFundEnabled;
+      // If fund is disabled, clear the percentage
+      if (!franchiseeFundEnabled) {
+        updateData.franchiseeFundPercentage = null;
+      }
+    }
+    if (franchiseeFundPercentage !== undefined && franchiseeFundEnabled) {
+      const rate = parseFloat(String(franchiseeFundPercentage));
+      if (isNaN(rate) || rate < 0 || rate > 100) {
+        return NextResponse.json(
+          { error: "Franchisee fund percentage must be between 0 and 100" },
+          { status: 400 }
+        );
+      }
+      updateData.franchiseeFundPercentage = String(rate);
     }
 
     // Add commission change logging fields

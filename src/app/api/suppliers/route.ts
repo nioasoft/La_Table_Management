@@ -84,6 +84,8 @@ export async function POST(request: NextRequest) {
       fileMapping,
       commissionExceptions,
       bkmvAliases,
+      franchiseeFundEnabled,
+      franchiseeFundPercentage,
     } = body;
 
     // Validate required fields
@@ -173,6 +175,10 @@ export async function POST(request: NextRequest) {
       fileMapping: validatedFileMapping,
       commissionExceptions: validatedCommissionExceptions,
       bkmvAliases: validatedBkmvAliases,
+      franchiseeFundEnabled: franchiseeFundEnabled ?? false,
+      franchiseeFundPercentage: franchiseeFundEnabled && franchiseeFundPercentage
+        ? String(franchiseeFundPercentage)
+        : null,
       isActive: isActive !== undefined ? isActive : true,
       createdBy: user.id,
     });

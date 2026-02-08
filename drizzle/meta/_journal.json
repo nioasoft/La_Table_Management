@@ -78,6 +78,13 @@
       "when": 1739008800000,
       "tag": "0034_franchisee_revenue_account",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1739095200000,
+      "tag": "0035_franchisee_fund",
+      "breakpoints": true
     }
   ]
 }

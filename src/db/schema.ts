@@ -574,6 +574,11 @@ export const supplier = pgTable(
     // Fiscal year start month (1-12) for suppliers with non-calendar fiscal years
     // null = January (default calendar year). Example: 4 = April (Leumi Card: Apr-Mar)
     fiscalYearStartMonth: integer("fiscal_year_start_month"),
+    // Franchisee Fund - portion of commission allocated to franchisee fund
+    // When enabled, the fund percentage is deducted from the gross amount (not commission)
+    // Example: 12% commission with 2% fund = 10% regular commission + 2% fund
+    franchiseeFundEnabled: boolean("franchisee_fund_enabled").$default(() => false).notNull(),
+    franchiseeFundPercentage: decimal("franchisee_fund_percentage", { precision: 5, scale: 2 }),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),

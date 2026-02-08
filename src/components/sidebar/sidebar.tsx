@@ -43,6 +43,7 @@ import {
   FileSpreadsheet,
   Menu,
   Archive,
+  PiggyBank,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -184,6 +185,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.hashavshevetExport,
                 href: "/admin/reports/hashavshevet",
                 icon: <FileSpreadsheet className="h-4 w-4" />,
+              },
+              {
+                label: "קרן זכיינים",
+                href: "/admin/reports/franchisee-fund",
+                icon: <PiggyBank className="h-4 w-4" />,
               },
             ],
           },

@@ -132,6 +132,8 @@ interface SupplierFormData {
   bkmvAliases: string[];
   hashavshevetCode: string;
   fiscalYearStartMonth: number;
+  franchiseeFundEnabled: boolean;
+  franchiseeFundPercentage: string;
   // Commission change logging fields
   commissionChangeReason: string;
   commissionChangeNotes: string;
@@ -163,6 +165,8 @@ const initialFormData: SupplierFormData = {
   bkmvAliases: [],
   hashavshevetCode: "",
   fiscalYearStartMonth: 1,
+  franchiseeFundEnabled: false,
+  franchiseeFundPercentage: "",
   commissionChangeReason: "",
   commissionChangeNotes: "",
   commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -519,6 +523,8 @@ export default function AdminSuppliersPage() {
       bkmvAliases: supplier.bkmvAliases || [],
       hashavshevetCode: supplier.hashavshevetCode || "",
       fiscalYearStartMonth: supplier.fiscalYearStartMonth ?? 1,
+      franchiseeFundEnabled: supplier.franchiseeFundEnabled || false,
+      franchiseeFundPercentage: supplier.franchiseeFundPercentage || "",
       commissionChangeReason: "",
       commissionChangeNotes: "",
       commissionEffectiveDate: formatDateAsLocal(new Date()),
@@ -944,6 +950,45 @@ export default function AdminSuppliersPage() {
                       {he.admin.suppliers.form.fields.vatIncluded}
                     </Label>
                   </div>
+                </div>
+
+                {/* Franchisee Fund */}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="franchiseeFundEnabled"
+                      checked={formData.franchiseeFundEnabled}
+                      onCheckedChange={(checked) =>
+                        setFormData({
+                          ...formData,
+                          franchiseeFundEnabled: checked as boolean,
+                          franchiseeFundPercentage: checked ? formData.franchiseeFundPercentage : "",
+                        })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <Label htmlFor="franchiseeFundEnabled" className="cursor-pointer">
+                      קרן זכיינים
+                    </Label>
+                  </div>
+                  {formData.franchiseeFundEnabled && (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        max="100"
+                        value={formData.franchiseeFundPercentage}
+                        onChange={(e) =>
+                          setFormData({ ...formData, franchiseeFundPercentage: e.target.value })
+                        }
+                        disabled={isSubmitting}
+                        className="w-24"
+                        placeholder="אחוז"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Commission Exceptions - Collapsible */}

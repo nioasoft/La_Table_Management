@@ -26,6 +26,7 @@ import {
   Store,
   Tag,
   FileSpreadsheet,
+  PiggyBank,
 } from "lucide-react";
 
 // Report card data
@@ -110,6 +111,14 @@ const reportCards: ReportCardData[] = [
     icon: <FileSpreadsheet className="h-6 w-6" />,
     status: "active",
     color: "text-teal-600 dark:text-teal-400",
+  },
+  {
+    title: "דוח קרן זכיינים",
+    description: "פיצול עמלות בין עמלה רגילה לקרן זכיינים - לפי ספק, זכיין ורבעון.",
+    href: "/admin/reports/franchisee-fund",
+    icon: <PiggyBank className="h-6 w-6" />,
+    status: "active",
+    color: "text-amber-600 dark:text-amber-400",
   },
 ];
 
