@@ -3,7 +3,8 @@ import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
 import { parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
-import { getFranchiseeByCompanyId, getFranchiseeById, getFranchiseeRevenueAccount, updateFranchiseeRevenueAccount } from "@/data-access/franchisees";
+import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
+import { getFranchiseeRevenueCodesList, setFranchiseeRevenueCodes } from "@/data-access/franchisee-revenue-codes";
 import { generateEntityFileName } from "@/lib/storage";
 import {
   createAdminUploadedFile,
@@ -42,9 +43,19 @@ export async function POST(request: NextRequest) {
       periodStartDate: periodStartDateParam,
       periodEndDate: periodEndDateParam,
       forceReplace,
-      revenueAccountCode: userSelectedRevenueCode,
+      revenueAccountCodes: userSelectedRevenueCodes,
       saveRevenueToFranchisee: shouldSaveRevenueToFranchisee,
-    } = body;
+    } = body as {
+      blobUrl: string;
+      fileName?: string;
+      fileSize?: number;
+      franchiseeId?: string;
+      periodStartDate?: string;
+      periodEndDate?: string;
+      forceReplace?: boolean;
+      revenueAccountCodes?: string[];
+      saveRevenueToFranchisee?: boolean;
+    };
 
     if (!blobUrl) {
       return NextResponse.json(
@@ -197,40 +208,51 @@ export async function POST(request: NextRequest) {
     // Extract revenue accounts from the parsed data
     const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
 
-    // Determine which revenue account code to use:
+    // Determine which revenue account codes to use:
     // 1. User-selected from UI (takes priority)
     // 2. Saved on franchisee (auto-match)
     // 3. None
-    let confirmedRevenueAccountCode: string | null = null;
+    let confirmedRevenueAccountCodes: string[] = [];
 
-    if (userSelectedRevenueCode) {
-      // User explicitly selected a revenue account from the UI
-      const matchingAccount = revenueAccounts.find(a => a.accountCode === userSelectedRevenueCode);
-      if (matchingAccount) {
-        matchingAccount.isConfirmed = true;
-        confirmedRevenueAccountCode = userSelectedRevenueCode;
-
-        // Optionally save to franchisee for future auto-matching
-        if (shouldSaveRevenueToFranchisee) {
-          await updateFranchiseeRevenueAccount(franchiseeId, userSelectedRevenueCode);
-        }
-      }
-    } else {
-      // Check if franchisee has a saved revenue account code for auto-matching
-      const savedRevenueAccountCode = await getFranchiseeRevenueAccount(franchiseeId);
-      if (savedRevenueAccountCode) {
-        const matchingAccount = revenueAccounts.find(a => a.accountCode === savedRevenueAccountCode);
+    if (userSelectedRevenueCodes && userSelectedRevenueCodes.length > 0) {
+      // User explicitly selected revenue accounts from the UI
+      for (const code of userSelectedRevenueCodes) {
+        const matchingAccount = revenueAccounts.find(a => a.accountCode === code);
         if (matchingAccount) {
           matchingAccount.isConfirmed = true;
-          confirmedRevenueAccountCode = savedRevenueAccountCode;
+          confirmedRevenueAccountCodes.push(code);
+        }
+      }
+
+      // Optionally save to franchisee for future auto-matching
+      if (shouldSaveRevenueToFranchisee && confirmedRevenueAccountCodes.length > 0) {
+        const codesToSave = confirmedRevenueAccountCodes.map(code => {
+          const account = revenueAccounts.find(a => a.accountCode === code);
+          return {
+            accountCode: code,
+            accountName: account?.accountName || null,
+          };
+        });
+        await setFranchiseeRevenueCodes(franchiseeId, codesToSave, user.id);
+      }
+    } else {
+      // Check if franchisee has saved revenue account codes for auto-matching
+      const savedRevenueCodes = await getFranchiseeRevenueCodesList(franchiseeId);
+      if (savedRevenueCodes.length > 0) {
+        for (const savedCode of savedRevenueCodes) {
+          const matchingAccount = revenueAccounts.find(a => a.accountCode === savedCode);
+          if (matchingAccount) {
+            matchingAccount.isConfirmed = true;
+            confirmedRevenueAccountCodes.push(savedCode);
+          }
         }
       }
     }
 
-    // Build revenue monthly breakdown (using confirmed account if available)
+    // Build revenue monthly breakdown (using confirmed accounts if available)
     const revenueMonthlyBreakdown = buildRevenueMonthlyBreakdown(
       parseResult.revenueSummary,
-      confirmedRevenueAccountCode
+      confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : null
     );
 
     // Prepare processing result
@@ -262,7 +284,9 @@ export async function POST(request: NextRequest) {
       monthlyBreakdown,
       revenueAccounts: revenueAccounts.length > 0 ? revenueAccounts : undefined,
       revenueMonthlyBreakdown: Object.keys(revenueMonthlyBreakdown).length > 0 ? revenueMonthlyBreakdown : undefined,
-      confirmedRevenueAccountCode,
+      // Support both new array format and legacy single code (for backward compatibility)
+      confirmedRevenueAccountCodes: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : undefined,
+      confirmedRevenueAccountCode: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes[0] : null,
       processedAt: new Date().toISOString(),
     };
 

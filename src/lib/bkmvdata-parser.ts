@@ -1128,17 +1128,23 @@ export function convertRevenueSummaryToArray(
 }
 
 /**
- * Build aggregated monthly revenue breakdown from all revenue accounts
+ * Build aggregated monthly revenue breakdown from revenue accounts
+ * @param confirmedAccountCodes - Array of account codes to include (or single code for backward compatibility)
  */
 export function buildRevenueMonthlyBreakdown(
   revenueSummary: Map<string, RevenueAccountSummary>,
-  confirmedAccountCode?: string | null
+  confirmedAccountCodes?: string[] | string | null
 ): Record<string, number> {
   const breakdown: Record<string, number> = {};
 
+  // Normalize to Set for efficient lookups
+  const confirmedCodes: Set<string> | null = confirmedAccountCodes
+    ? new Set(Array.isArray(confirmedAccountCodes) ? confirmedAccountCodes : [confirmedAccountCodes])
+    : null;
+
   for (const [accountCode, account] of revenueSummary) {
-    // If a confirmed account is specified, only use that account
-    if (confirmedAccountCode && accountCode !== confirmedAccountCode) {
+    // If confirmed accounts are specified, only use those accounts
+    if (confirmedCodes && !confirmedCodes.has(accountCode)) {
       continue;
     }
 

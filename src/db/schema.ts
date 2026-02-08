@@ -1123,6 +1123,55 @@ export type CreateFranchiseeBkmvYearData =
   typeof franchiseeBkmvYear.$inferInsert;
 
 // ============================================================================
+// FRANCHISEE REVENUE CODE - Multiple revenue account codes per franchisee
+// ============================================================================
+
+export const franchiseeRevenueCode = pgTable(
+  "franchisee_revenue_code",
+  {
+    id: text("id").primaryKey(),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    accountCode: text("account_code").notNull(),
+    accountName: text("account_name"),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    uniqueIndex("idx_franchisee_revenue_code_unique").on(
+      table.franchiseeId,
+      table.accountCode
+    ),
+    index("idx_franchisee_revenue_code_franchisee").on(table.franchiseeId),
+  ]
+);
+
+// Franchisee Revenue Code relations
+export const franchiseeRevenueCodeRelations = relations(
+  franchiseeRevenueCode,
+  ({ one }) => ({
+    franchisee: one(franchisee, {
+      fields: [franchiseeRevenueCode.franchiseeId],
+      references: [franchisee.id],
+    }),
+    creator: one(user, {
+      fields: [franchiseeRevenueCode.createdBy],
+      references: [user.id],
+    }),
+  })
+);
+
+// Franchisee Revenue Code types
+export type FranchiseeRevenueCode = typeof franchiseeRevenueCode.$inferSelect;
+export type CreateFranchiseeRevenueCodeData =
+  typeof franchiseeRevenueCode.$inferInsert;
+
+// ============================================================================
 // SUPPLIER FILE PROCESSING RESULT TYPE
 // ============================================================================
 
@@ -1358,7 +1407,9 @@ export type BkmvProcessingResult = {
   }>;
   /** Monthly revenue breakdown - YYYY-MM -> amount */
   revenueMonthlyBreakdown?: Record<string, number>;
-  /** Confirmed revenue account code (selected by user) */
+  /** Confirmed revenue account codes (selected by user) - new multi-select format */
+  confirmedRevenueAccountCodes?: string[];
+  /** Confirmed revenue account code (legacy - kept for backward compatibility) */
   confirmedRevenueAccountCode?: string | null;
   /** Timestamp of processing */
   processedAt: string;
@@ -1906,6 +1957,7 @@ export const franchiseeRelations = relations(franchisee, ({ one, many }) => ({
   statusHistory: many(franchiseeStatusHistory),
   reminders: many(franchiseeReminder),
   importantDates: many(franchiseeImportantDate),
+  revenueCodes: many(franchiseeRevenueCode),
   createdByUser: one(user, {
     fields: [franchisee.createdBy],
     references: [user.id],

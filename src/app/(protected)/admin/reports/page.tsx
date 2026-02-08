@@ -120,6 +120,14 @@ const reportCards: ReportCardData[] = [
     status: "active",
     color: "text-amber-600 dark:text-amber-400",
   },
+  {
+    title: "נתוני הכנסות זכיינים",
+    description: "צפייה בסיכומי הכנסות מקבצי BKMVDATA - לפי זכיין ותקופה עם פירוט חודשי.",
+    href: "/admin/reports/revenue-data",
+    icon: <TrendingUp className="h-6 w-6" />,
+    status: "active",
+    color: "text-green-600 dark:text-green-400",
+  },
 ];
 
 export default function ReportsHubPage() {
