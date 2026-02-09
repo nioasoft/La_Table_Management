@@ -32,7 +32,6 @@ import {
   Loader2,
   Coins,
   PiggyBank,
-  Building2,
   Calendar,
   AlertCircle,
   Download,
@@ -86,14 +85,12 @@ interface FranchiseeFundReport {
   brandName: string | null;
   year: number;
   quarter: 1 | 2 | 3 | 4;
-  periodStartDate: string;
-  periodEndDate: string;
+  isYearlyData: boolean;
   suppliers: FranchiseeFundSupplierRow[];
   franchisees: FranchiseeFundFranchiseeColumn[];
   grandTotals: {
     totalCommissions: number;
     totalFund: number;
-    totalGrossAmount: number;
   };
   generatedAt: string;
 }
@@ -426,7 +423,7 @@ export default function FranchiseeFundReportPage() {
       {hasData && !isLoading && (
         <>
           {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardContent className="flex items-center gap-4 py-6">
                 <div className="rounded-lg bg-primary/10 p-3">
@@ -454,28 +451,17 @@ export default function FranchiseeFundReportPage() {
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardContent className="flex items-center gap-4 py-6">
-                <div className="rounded-lg bg-muted p-3">
-                  <Building2 className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">סה״כ מכירות</p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(report.grandTotals.totalGrossAmount)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Period Info */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>
-              תקופה: {report.periodStartDate} עד {report.periodEndDate}
-            </span>
+            <span>שנה: {report.year}</span>
+            {report.isYearlyData && (
+              <Badge variant="secondary" className="text-xs">
+                נתונים שנתיים
+              </Badge>
+            )}
             {report.brandName && (
               <>
                 <span>•</span>

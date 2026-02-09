@@ -80,7 +80,6 @@ export async function GET(request: NextRequest) {
       ]),
       "סה״כ עמלה",
       "סה״כ קרן",
-      "סה״כ מכירות",
     ];
 
     // Data rows
@@ -109,7 +108,6 @@ export async function GET(request: NextRequest) {
       // Add totals
       row.push(Math.round(supplier.totals.regularCommission * 100) / 100);
       row.push(Math.round(supplier.totals.fundAmount * 100) / 100);
-      row.push(Math.round(supplier.totals.grossAmount * 100) / 100);
 
       rows.push(row);
     }
@@ -129,7 +127,6 @@ export async function GET(request: NextRequest) {
 
     totalsRow.push(Math.round(report.grandTotals.totalCommissions * 100) / 100);
     totalsRow.push(Math.round(report.grandTotals.totalFund * 100) / 100);
-    totalsRow.push(Math.round(report.grandTotals.totalGrossAmount * 100) / 100);
 
     rows.push(totalsRow);
 
@@ -155,7 +152,6 @@ export async function GET(request: NextRequest) {
     // Totals columns
     colWidths.push({ wch: 15 }); // Total commission
     colWidths.push({ wch: 12 }); // Total fund
-    colWidths.push({ wch: 15 }); // Total gross
 
     ws["!cols"] = colWidths;
 

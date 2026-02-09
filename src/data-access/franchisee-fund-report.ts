@@ -1,12 +1,12 @@
 import { database } from "@/db";
 import {
-  commission,
   supplier,
   franchisee,
   brand,
   supplierBrand,
+  franchiseeBkmvYear,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
+import { eq, and, inArray, sql } from "drizzle-orm";
 
 // ============================================================================
 // TYPES
@@ -14,7 +14,7 @@ import { eq, and, gte, lte, inArray, sql } from "drizzle-orm";
 
 export interface FranchiseeFundReportFilters {
   year: number;
-  quarter: 1 | 2 | 3 | 4;
+  quarter: 1 | 2 | 3 | 4; // Kept for UI compatibility, but data is yearly
   brandId?: string;
 }
 
@@ -53,41 +53,26 @@ export interface FranchiseeFundReport {
   brandName: string | null;
   year: number;
   quarter: 1 | 2 | 3 | 4;
-  periodStartDate: string;
-  periodEndDate: string;
+  isYearlyData: boolean; // Flag to indicate data is for the full year
   suppliers: FranchiseeFundSupplierRow[];
   franchisees: FranchiseeFundFranchiseeColumn[];
   grandTotals: {
     totalCommissions: number;
     totalFund: number;
-    totalGrossAmount: number;
   };
   generatedAt: string;
 }
 
 // ============================================================================
-// UTILITY FUNCTIONS
+// TYPES FOR BKMV DATA
 // ============================================================================
 
-/**
- * Get the date range for a calendar quarter
- */
-export function getQuarterDateRange(year: number, quarter: 1 | 2 | 3 | 4): { startDate: string; endDate: string } {
-  const quarterStartMonth = (quarter - 1) * 3; // 0, 3, 6, 9
-  const startDate = new Date(year, quarterStartMonth, 1);
-  const endDate = new Date(year, quarterStartMonth + 3, 0); // Last day of the quarter
-
-  const formatDate = (date: Date) => {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-
-  return {
-    startDate: formatDate(startDate),
-    endDate: formatDate(endDate),
-  };
+interface SupplierMatchEntry {
+  bkmvName: string;
+  amount: number;
+  transactionCount: number;
+  matchedSupplierId: string | null;
+  matchedSupplierName: string | null;
 }
 
 // ============================================================================
@@ -97,12 +82,14 @@ export function getQuarterDateRange(year: number, quarter: 1 | 2 | 3 | 4): { sta
 /**
  * Get franchisee fund report data
  * Shows commission breakdown by supplier and franchisee for suppliers with franchisee fund enabled
+ *
+ * Data source: franchisee_bkmv_year table (yearly BKMV data aggregations)
+ * Note: Data is yearly, not quarterly. Quarter filter is kept for UI compatibility.
  */
 export async function getFranchiseeFundReport(
   filters: FranchiseeFundReportFilters
 ): Promise<FranchiseeFundReport> {
   const { year, quarter, brandId } = filters;
-  const { startDate, endDate } = getQuarterDateRange(year, quarter);
 
   // Get brand info if filtering by brand
   let brandInfo: { id: string; nameHe: string } | null = null;
@@ -118,7 +105,6 @@ export async function getFranchiseeFundReport(
   }
 
   // Get suppliers with franchisee fund enabled
-  // Also filter by brand if provided
   let fundSuppliersQuery = database
     .select({
       id: supplier.id,
@@ -154,56 +140,46 @@ export async function getFranchiseeFundReport(
       brandName: brandInfo?.nameHe || null,
       year,
       quarter,
-      periodStartDate: startDate,
-      periodEndDate: endDate,
+      isYearlyData: true,
       suppliers: [],
       franchisees: [],
       grandTotals: {
         totalCommissions: 0,
         totalFund: 0,
-        totalGrossAmount: 0,
       },
       generatedAt: new Date().toISOString(),
     };
   }
 
-  const supplierIds = fundSuppliers.map(s => s.id);
-
-  // Build commission query conditions
-  const commissionConditions = [
-    inArray(commission.supplierId, supplierIds),
-    gte(commission.periodStartDate, startDate),
-    lte(commission.periodEndDate, endDate),
-  ];
-
-  // Get all commissions for these suppliers in the period
-  // Join with franchisee to get brand info
-  let commissionsQuery = database
-    .select({
-      supplierId: commission.supplierId,
-      franchiseeId: commission.franchiseeId,
-      franchiseeName: franchisee.name,
-      franchiseeCode: franchisee.code,
-      brandId: franchisee.brandId,
-      grossAmount: commission.grossAmount,
-      commissionAmount: commission.commissionAmount,
-      commissionRate: commission.commissionRate,
-    })
-    .from(commission)
-    .innerJoin(franchisee, eq(commission.franchiseeId, franchisee.id));
-
-  // Add brand filter if provided
-  if (brandId) {
-    commissionConditions.push(eq(franchisee.brandId, brandId));
-  }
-
-  const commissions = await commissionsQuery.where(and(...commissionConditions));
-
-  // Build the report data structures
+  // Create a map of supplier IDs for quick lookup
+  const fundSupplierIds = new Set(fundSuppliers.map(s => s.id));
   const supplierMap = new Map<string, typeof fundSuppliers[0]>();
   for (const s of fundSuppliers) {
     supplierMap.set(s.id, s);
   }
+
+  // Build query conditions for franchisee_bkmv_year
+  const bkmvConditions = [eq(franchiseeBkmvYear.year, year)];
+
+  // Get all BKMV year records for the specified year
+  // Join with franchisee to get brand info and filter if needed
+  let bkmvQuery = database
+    .select({
+      franchiseeId: franchiseeBkmvYear.franchiseeId,
+      franchiseeName: franchisee.name,
+      franchiseeCode: franchisee.code,
+      brandId: franchisee.brandId,
+      supplierMatches: franchiseeBkmvYear.supplierMatches,
+    })
+    .from(franchiseeBkmvYear)
+    .innerJoin(franchisee, eq(franchiseeBkmvYear.franchiseeId, franchisee.id));
+
+  // Add brand filter if provided
+  if (brandId) {
+    bkmvConditions.push(eq(franchisee.brandId, brandId));
+  }
+
+  const bkmvRecords = await bkmvQuery.where(and(...bkmvConditions));
 
   // Track franchisees
   const franchiseeMap = new Map<string, {
@@ -217,75 +193,88 @@ export async function getFranchiseeFundReport(
   // Build supplier rows
   const supplierRowsMap = new Map<string, FranchiseeFundSupplierRow>();
 
-  for (const c of commissions) {
-    const supplierData = supplierMap.get(c.supplierId);
-    if (!supplierData) continue;
+  // Process each BKMV year record
+  for (const record of bkmvRecords) {
+    const supplierMatches = record.supplierMatches as SupplierMatchEntry[] | null;
+    if (!supplierMatches || !Array.isArray(supplierMatches)) continue;
 
-    const totalCommissionRate = Number(supplierData.defaultCommissionRate || 0);
-    const fundRate = Number(supplierData.franchiseeFundPercentage || 0);
-    const grossAmount = Number(c.grossAmount || 0);
-    const totalCommission = Number(c.commissionAmount || 0);
+    // Process each supplier match entry
+    for (const match of supplierMatches) {
+      // Skip entries without a matched supplier or non-fund suppliers
+      if (!match.matchedSupplierId) continue;
+      if (!fundSupplierIds.has(match.matchedSupplierId)) continue;
 
-    // Calculate fund portion: fund% of grossAmount
-    // Fund is calculated as a portion of the gross amount, not the commission
-    const fundAmount = (grossAmount * fundRate) / 100;
-    const regularCommission = totalCommission - fundAmount;
+      const supplierData = supplierMap.get(match.matchedSupplierId);
+      if (!supplierData) continue;
 
-    // Initialize or get supplier row
-    if (!supplierRowsMap.has(c.supplierId)) {
-      supplierRowsMap.set(c.supplierId, {
-        supplierId: c.supplierId,
-        supplierName: supplierData.name,
-        supplierCode: supplierData.code,
-        totalCommissionRate,
-        fundRate,
-        cells: {},
-        totals: {
+      const totalCommissionRate = Number(supplierData.defaultCommissionRate || 0);
+      const fundRate = Number(supplierData.franchiseeFundPercentage || 0);
+      const grossAmount = Number(match.amount || 0);
+
+      // Calculate commission and fund amounts
+      // totalCommission = grossAmount × defaultCommissionRate / 100
+      // fundAmount = grossAmount × fundRate / 100
+      // regularCommission = totalCommission - fundAmount
+      const totalCommission = (grossAmount * totalCommissionRate) / 100;
+      const fundAmount = (grossAmount * fundRate) / 100;
+      const regularCommission = totalCommission - fundAmount;
+
+      // Initialize or get supplier row
+      if (!supplierRowsMap.has(match.matchedSupplierId)) {
+        supplierRowsMap.set(match.matchedSupplierId, {
+          supplierId: match.matchedSupplierId,
+          supplierName: supplierData.name,
+          supplierCode: supplierData.code,
+          totalCommissionRate,
+          fundRate,
+          cells: {},
+          totals: {
+            grossAmount: 0,
+            totalCommission: 0,
+            regularCommission: 0,
+            fundAmount: 0,
+          },
+        });
+      }
+
+      const supplierRow = supplierRowsMap.get(match.matchedSupplierId)!;
+
+      // Initialize or update cell
+      if (!supplierRow.cells[record.franchiseeId]) {
+        supplierRow.cells[record.franchiseeId] = {
           grossAmount: 0,
           totalCommission: 0,
           regularCommission: 0,
           fundAmount: 0,
-        },
-      });
+        };
+      }
+
+      const cell = supplierRow.cells[record.franchiseeId];
+      cell.grossAmount += grossAmount;
+      cell.totalCommission += totalCommission;
+      cell.regularCommission += regularCommission;
+      cell.fundAmount += fundAmount;
+
+      // Update supplier totals
+      supplierRow.totals.grossAmount += grossAmount;
+      supplierRow.totals.totalCommission += totalCommission;
+      supplierRow.totals.regularCommission += regularCommission;
+      supplierRow.totals.fundAmount += fundAmount;
+
+      // Track franchisee
+      if (!franchiseeMap.has(record.franchiseeId)) {
+        franchiseeMap.set(record.franchiseeId, {
+          id: record.franchiseeId,
+          name: record.franchiseeName,
+          code: record.franchiseeCode,
+          totalCommissions: 0,
+          totalFund: 0,
+        });
+      }
+      const fData = franchiseeMap.get(record.franchiseeId)!;
+      fData.totalCommissions += regularCommission;
+      fData.totalFund += fundAmount;
     }
-
-    const supplierRow = supplierRowsMap.get(c.supplierId)!;
-
-    // Initialize or update cell
-    if (!supplierRow.cells[c.franchiseeId]) {
-      supplierRow.cells[c.franchiseeId] = {
-        grossAmount: 0,
-        totalCommission: 0,
-        regularCommission: 0,
-        fundAmount: 0,
-      };
-    }
-
-    const cell = supplierRow.cells[c.franchiseeId];
-    cell.grossAmount += grossAmount;
-    cell.totalCommission += totalCommission;
-    cell.regularCommission += regularCommission;
-    cell.fundAmount += fundAmount;
-
-    // Update supplier totals
-    supplierRow.totals.grossAmount += grossAmount;
-    supplierRow.totals.totalCommission += totalCommission;
-    supplierRow.totals.regularCommission += regularCommission;
-    supplierRow.totals.fundAmount += fundAmount;
-
-    // Track franchisee
-    if (!franchiseeMap.has(c.franchiseeId)) {
-      franchiseeMap.set(c.franchiseeId, {
-        id: c.franchiseeId,
-        name: c.franchiseeName,
-        code: c.franchiseeCode,
-        totalCommissions: 0,
-        totalFund: 0,
-      });
-    }
-    const fData = franchiseeMap.get(c.franchiseeId)!;
-    fData.totalCommissions += regularCommission;
-    fData.totalFund += fundAmount;
   }
 
   // Convert to arrays
@@ -306,7 +295,6 @@ export async function getFranchiseeFundReport(
   const grandTotals = {
     totalCommissions: supplierRows.reduce((sum, s) => sum + s.totals.regularCommission, 0),
     totalFund: supplierRows.reduce((sum, s) => sum + s.totals.fundAmount, 0),
-    totalGrossAmount: supplierRows.reduce((sum, s) => sum + s.totals.grossAmount, 0),
   };
 
   return {
@@ -314,8 +302,7 @@ export async function getFranchiseeFundReport(
     brandName: brandInfo?.nameHe || null,
     year,
     quarter,
-    periodStartDate: startDate,
-    periodEndDate: endDate,
+    isYearlyData: true,
     suppliers: supplierRows,
     franchisees: franchiseeColumns,
     grandTotals,
