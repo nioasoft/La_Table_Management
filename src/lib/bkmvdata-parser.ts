@@ -10,7 +10,7 @@
  * - B110: Account master records
  * - Z900: Footer record
  *
- * File encoding: ISO-8859-8 (Hebrew)
+ * File encoding: ISO-8859-8 (Hebrew), CP862 (DOS Hebrew), or Windows-1255
  */
 
 import * as iconv from 'iconv-lite';
@@ -37,6 +37,7 @@ export interface BkmvTransaction {
   reference: string;         // Reference code (positions 100-106)
   accountSort: string;       // Account sort/classification from B110
   rawLine: string;           // Original line for debugging
+  resolvedAccountKey: string; // B110 accountKey that matched this transaction's counterparty
 }
 
 /**
@@ -199,6 +200,7 @@ function parseB100Record(line: string, lineNum: number): BkmvTransaction | null 
       ),
       reference: extractField(line, B100_FIELDS.REFERENCE),
       rawLine: line,
+      resolvedAccountKey: '',
     };
   } catch (error) {
     console.error(`Error parsing B100 record at line ${lineNum}:`, error);
@@ -249,6 +251,15 @@ function parseB110Record(line: string): BkmvAccount | null {
       }
     }
 
+    // Format 3: sort code between name and type text (e.g., "מע"מ עיסקאות  9490  זכאים אח")
+    // The sort code appears as a 2-4 digit number flanked by spaces, followed by Hebrew type text
+    if (!accountSort) {
+      const middleMatch = accountDescription.match(/\s+(\d{2,4})\s+[א-ת]/);
+      if (middleMatch && middleMatch[1]) {
+        accountSort = middleMatch[1];
+      }
+    }
+
     // Extract the 5-digit account code from accountKey
     // B100 accountCode is at positions 27-31, which is within B110 accountKey at offset 5
     // accountKey is 15 chars (positions 22-36), accountCode is 5 chars (positions 27-31)
@@ -269,6 +280,23 @@ function parseB110Record(line: string): BkmvAccount | null {
       const typeMatch = accountDescription.match(/0{12}\d{3}([א-ת\s]+)/);
       if (typeMatch && typeMatch[1]) {
         accountType = typeMatch[1].trim();
+      }
+    }
+
+    // Try middle format: extract type text AFTER the sort code in the description
+    // Read a wider range (positions 67-160) to avoid truncation at field boundaries
+    // Example: "מע"מ עיסקאות  9490  זכאים אחרים ויתרות זכות"
+    if (!isValidAccountType && (!accountType || !/^[א-ת\s"']+$/.test(accountType) || accountType.length < 2)) {
+      if (accountSort && line.length > 117) {
+        const wideText = line.substring(67, Math.min(line.length, 160)).trim();
+        const sortIdx = wideText.indexOf(accountSort);
+        if (sortIdx >= 0) {
+          const afterSort = wideText.substring(sortIdx + accountSort.length).trim();
+          const hebrewMatch = afterSort.match(/^([א-ת][א-ת\s"'׳]{1,40})/);
+          if (hebrewMatch && hebrewMatch[1].trim().length >= 2) {
+            accountType = hebrewMatch[1].trim();
+          }
+        }
       }
     }
 
@@ -321,12 +349,49 @@ function parseA100Record(line: string): { companyId: string; version: string } |
 }
 
 /**
- * Decode buffer from ISO-8859-8 to UTF-8
+ * Count Hebrew characters (Unicode range) in a string.
+ * Used for encoding detection.
+ */
+function countHebrew(text: string): number {
+  let count = 0;
+  const limit = Math.min(text.length, 10000);
+  for (let i = 0; i < limit; i++) {
+    const code = text.charCodeAt(i);
+    if (code >= 0x05D0 && code <= 0x05EA) count++;
+  }
+  return count;
+}
+
+/**
+ * Decode buffer from Hebrew encoding to UTF-8.
+ * Auto-detects between ISO-8859-8, CP862 (DOS Hebrew), and Windows-1255.
  */
 export function decodeBuffer(buffer: Buffer): string {
-  // Try iconv-lite if available, otherwise use built-in decoder
   try {
-    return iconv.decode(buffer, 'ISO-8859-8');
+    // Try ISO-8859-8 first (most common for BKMV files)
+    const iso = iconv.decode(buffer, 'ISO-8859-8');
+    const isoCount = countHebrew(iso);
+    if (isoCount > 50) {
+      return iso; // Clearly correct encoding
+    }
+
+    // Try CP862 (DOS Hebrew) - used by some older accounting software
+    const cp862 = iconv.decode(buffer, 'CP862');
+    const cp862Count = countHebrew(cp862);
+
+    // Try Windows-1255
+    const win1255 = iconv.decode(buffer, 'windows-1255');
+    const win1255Count = countHebrew(win1255);
+
+    // Pick the encoding that produced the most Hebrew characters
+    if (cp862Count > isoCount && cp862Count >= win1255Count) {
+      return cp862;
+    }
+    if (win1255Count > isoCount) {
+      return win1255;
+    }
+
+    return iso; // Default to ISO-8859-8
   } catch {
     // Fallback: try to decode as UTF-8 or Latin-1
     const decoder = new TextDecoder('iso-8859-8');
@@ -394,6 +459,13 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
         break;
       }
 
+      case 'C10':
+      case 'D11':
+      case 'D12': {
+        // Document detail / additional account data records - skip silently
+        break;
+      }
+
       default: {
         // Unknown record type
         if (line.trim()) {
@@ -436,6 +508,9 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
 
     // Get account sort from B110
     tx.accountSort = accountKeyToSort.get(accountKey) || '';
+
+    // Store the resolved accountKey for later use in buildAllAccountsSummary
+    tx.resolvedAccountKey = accountKeyToName.has(accountKey) ? accountKey : '';
 
     // Always try to resolve the counterparty name from B110 for the full name
     const resolvedName = accountKeyToName.get(accountKey);
@@ -1159,31 +1234,56 @@ export function autoClassifyAccount(accountType: string): AccountCategory {
   if (!accountType) return 'uncategorized';
 
   const t = accountType.trim();
+  if (t.length === 0) return 'uncategorized';
 
   // Supplier patterns
-  if (t.includes('ספק') || t.includes('נותני שרות') || t.includes('נותני שירות')) {
+  if (
+    t.includes('ספק') ||           // ספקים, ספקים בישראל
+    t.includes('נותני שרות') ||     // נותני שרות אחרים
+    t.includes('נותני שירות') ||    // נותני שירותים
+    t.includes('שירותים') ||        // שירותים מקצועיים, י שירותים אחרים (truncated)
+    t.includes('ירותים')            // truncated שירותים
+  ) {
     return 'supplier';
   }
 
   // Revenue patterns
-  if (t.includes('הכנסות') || t.includes('מכירות')) {
+  if (
+    t.includes('הכנסות') ||         // הכנסות, הכנסות אחרות, הכנסות מסעדה
+    t.includes('מכירות')            // מכירות סחורה
+  ) {
     return 'revenue';
   }
 
-  // Employee patterns
-  if (t.includes('עובד') || t.includes('שכר עבודה') || t.includes('הוצאות שכר')) {
+  // Employee patterns (BEFORE expense - "הוצאות שכר" should match employee, not expense)
+  if (
+    t.includes('עובד') ||           // עובדים, עובדים חייבים, בגין עובדים
+    t.includes('שכר עבודה') ||      // שכר עבודה, שכר עבודה הנהלה
+    t.includes('הוצאות שכר') ||     // הוצאות שכר
+    t.includes('שכע') ||            // שכע בעלים, שכע ברמן, שכע מלצר, שכע מטבח, שכע פקידה
+    t.includes('לשכר') ||           // ונלוות לשכר (truncated עבודה ונלוות לשכר)
+    t.includes('עתודה לפיצוי') ||   // עתודה לפיצויים
+    t.includes('עתודות בגין') ||    // עתודות בגין עובדים
+    t.includes('דות בגין')          // truncated עתודות בגין
+  ) {
     return 'employee';
   }
 
-  // Expense patterns
+  // Expense patterns - includes generic "הוצאות" catch-all
   if (
-    t.includes('קניות') ||
-    t.includes('הוצאות הנהלה') ||
-    t.includes('הוצאות אחזקה') ||
-    t.includes('הוצאות מימון') ||
-    t.includes('הוצאות הפעלה') ||
-    t.includes('שכ"ד') ||
-    t.includes('שכ\'ד')
+    t.includes('קניות') ||          // קניות, קניות כלים
+    t.includes('הוצאות') ||         // הוצאות הנהלה, הוצאות אחזקה, הוצאות מימון, הוצאות הפעלה, הוצאות משרד, הוצאות פרסום
+    t.includes('וצאות מימון') ||    // truncated הוצאות מימון
+    t.includes('ת הנהלה') ||        // truncated הוצאות הנהלה וכלליות
+    t.includes('שכ"ד') ||           // שכ"ד (rent)
+    t.includes('שכ\'ד') ||
+    t.includes('שכר דירה') ||       // שכר דירה
+    t.includes('ביטוח') ||          // ביטוחים, ביטוח עסק
+    t.includes('משרדיות') ||        // משרדיות ואחרות (truncated)
+    t.includes('תקשורת') ||         // תקשורת ומחשוב
+    t.includes('פרסום') ||          // ות פרסום ושיווק (truncated)
+    t.includes('מיסים ואגרות') ||   // מיסים ואגרות
+    t.includes('ליחויות והובלות')   // ליחויות והובלות (truncated שליחויות)
   ) {
     return 'expense';
   }
@@ -1391,6 +1491,27 @@ export function buildAllAccountsSummary(
     info = accountKeyToInfo.get(counterparty);
     if (info) {
       addToSummary(info.accountKey, info, tx);
+      continue;
+    }
+
+    // Strategy 3: use resolvedAccountKey from parseBkmvData
+    // This handles old-format files where counterpartyName was resolved to full name
+    // but the original short key (e.g., "NST") is preserved in resolvedAccountKey
+    if (tx.resolvedAccountKey) {
+      info = accountKeyToInfo.get(tx.resolvedAccountKey);
+      if (info) {
+        addToSummary(info.accountKey, info, tx);
+        continue;
+      }
+    }
+
+    // Strategy 4: match B100 accountCode WITH leading zeros → B110 accountKey
+    // Some files have accountKeys like "00213" that match accountCode exactly
+    if (tx.accountCode !== normalizedCode) {
+      info = accountKeyToInfo.get(tx.accountCode);
+      if (info) {
+        addToSummary(info.accountKey, info, tx);
+      }
     }
   }
 
