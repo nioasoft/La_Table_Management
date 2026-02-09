@@ -187,6 +187,7 @@ export default function BkmvDataPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"all" | "matched" | "unmatched" | "review">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [accountSearchQuery, setAccountSearchQuery] = useState("");
   const [matchedFranchisee, setMatchedFranchisee] = useState<FranchiseeWithBrand | null>(null);
   const [franchiseeError, setFranchiseeError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ minDate: Date | null; maxDate: Date | null }>({ minDate: null, maxDate: null });
@@ -380,8 +381,17 @@ export default function BkmvDataPage() {
         accounts.push(account);
       }
     }
-    return accounts.sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
-  }, [classifiedAccounts, activeCategory]);
+    // Apply search filter for non-supplier account tabs
+    const query = accountSearchQuery.toLowerCase().trim();
+    const filtered = query
+      ? accounts.filter((a) =>
+          (a.accountName && a.accountName.toLowerCase().includes(query)) ||
+          (a.accountCode && a.accountCode.toLowerCase().includes(query)) ||
+          (a.accountType && a.accountType.toLowerCase().includes(query))
+        )
+      : accounts;
+    return filtered.sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+  }, [classifiedAccounts, activeCategory, accountSearchQuery]);
 
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
@@ -1418,7 +1428,7 @@ export default function BkmvDataPage() {
                 return (
                   <button
                     key={cat}
-                    onClick={() => setActiveCategory(cat)}
+                    onClick={() => { setActiveCategory(cat); setAccountSearchQuery(""); }}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${colorMap[cat]}`}
                   >
                     {CATEGORY_LABELS[cat]} ({count})
@@ -1431,10 +1441,23 @@ export default function BkmvDataPage() {
             {activeCategory === 'uncategorized' && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">חשבונות לא מסווגים</CardTitle>
-                  <CardDescription>
-                    סווג חשבונות לקטגוריה המתאימה
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">חשבונות לא מסווגים</CardTitle>
+                      <CardDescription>
+                        סווג חשבונות לקטגוריה המתאימה
+                      </CardDescription>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="חיפוש חשבון..."
+                        value={accountSearchQuery}
+                        onChange={(e) => setAccountSearchQuery(e.target.value)}
+                        className="ps-9 w-64"
+                      />
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border">
@@ -1779,6 +1802,16 @@ export default function BkmvDataPage() {
                         בחר חשבונות הכנסות ושמור לזכיין
                       </CardDescription>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          placeholder="חיפוש חשבון..."
+                          value={accountSearchQuery}
+                          onChange={(e) => setAccountSearchQuery(e.target.value)}
+                          className="ps-9 w-64"
+                        />
+                      </div>
                     {matchedFranchisee && selectedRevenueAccounts.size > 0 && (
                       <Button
                         onClick={handleSaveRevenueAccounts}
@@ -1792,6 +1825,7 @@ export default function BkmvDataPage() {
                         שמור כקודי הכנסה ({selectedRevenueAccounts.size})
                       </Button>
                     )}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1877,7 +1911,18 @@ export default function BkmvDataPage() {
             {activeCategory === 'employee' && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">חשבונות עובדים</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">חשבונות עובדים</CardTitle>
+                    <div className="relative">
+                      <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="חיפוש חשבון..."
+                        value={accountSearchQuery}
+                        onChange={(e) => setAccountSearchQuery(e.target.value)}
+                        className="ps-9 w-64"
+                      />
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border">
@@ -1932,7 +1977,18 @@ export default function BkmvDataPage() {
             {activeCategory === 'expense' && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">חשבונות הוצאות</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">חשבונות הוצאות</CardTitle>
+                    <div className="relative">
+                      <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="חיפוש חשבון..."
+                        value={accountSearchQuery}
+                        onChange={(e) => setAccountSearchQuery(e.target.value)}
+                        className="ps-9 w-64"
+                      />
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="rounded-md border">

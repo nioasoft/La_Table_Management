@@ -4,11 +4,9 @@ import {
   franchisee,
   brand,
   supplierFileUpload,
-  uploadedFile,
   type SupplierFileProcessingResult,
-  type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, inArray, gte, lte, or, isNotNull, sql } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, or } from "drizzle-orm";
 
 // ============================================================================
 // TYPES
@@ -25,15 +23,15 @@ export interface CommissionRevenueRow {
   name: string;
   code: string;
   brandName: string;
-  totalRevenue: number;
+  totalPurchases: number;
   totalCommissions: number;
-  commissionPercentage: number | null; // null when revenue is 0 but commissions exist
+  commissionPercentage: number | null; // null when purchases is 0 but commissions exist
 }
 
 export interface CommissionRevenueReport {
   rows: CommissionRevenueRow[];
   summary: {
-    totalRevenue: number;
+    totalPurchases: number;
     totalCommissions: number;
     avgPercent: number;
     count: number;
@@ -95,16 +93,16 @@ function getDateRange(
 // ============================================================================
 
 /**
- * Get commission-to-revenue ratio report
+ * Get commission-to-purchases ratio report
  *
- * Revenue: from uploaded_file.bkmvProcessingResult.revenueMonthlyBreakdown
- * Commissions: from supplier_file_upload.processingResult.franchiseeMatches
+ * Purchases: from supplier_file_upload.processingResult.franchiseeMatches (netAmount totals)
+ * Commissions: from supplier_file_upload.processingResult.franchiseeMatches (calculated commissions)
  */
 export async function getCommissionRevenueReport(
   filters: CommissionRevenueReportFilters
 ): Promise<CommissionRevenueReport> {
   const { year, quarter, brandId } = filters;
-  const { startDate, endDate, months } = getDateRange(year, quarter);
+  const { startDate, endDate } = getDateRange(year, quarter);
 
   // Get brand info if filtering
   let brandInfo: { id: string; nameHe: string } | null = null;
@@ -119,54 +117,7 @@ export async function getCommissionRevenueReport(
     }
   }
 
-  // ---- REVENUE: Get BKMV files with revenue data for the period ----
-  const bkmvFiles = await database
-    .select({
-      fileId: uploadedFile.id,
-      franchiseeId: uploadedFile.franchiseeId,
-      processingResult: uploadedFile.bkmvProcessingResult,
-      createdAt: uploadedFile.createdAt,
-    })
-    .from(uploadedFile)
-    .where(
-      and(
-        isNotNull(uploadedFile.bkmvProcessingResult),
-        isNotNull(uploadedFile.franchiseeId),
-        gte(uploadedFile.periodStartDate, `${year}-01-01`),
-        lte(uploadedFile.periodStartDate, `${year}-12-31`)
-      )
-    )
-    .orderBy(sql`${uploadedFile.createdAt} DESC`);
-
-  // Aggregate revenue by franchiseeId - for duplicates, take latest file per franchisee
-  const revenueMap = new Map<string, number>();
-  const seenFranchisees = new Set<string>();
-
-  for (const file of bkmvFiles) {
-    const fId = file.franchiseeId;
-    if (!fId) continue;
-
-    // Skip if we already processed a newer file for this franchisee
-    if (seenFranchisees.has(fId)) continue;
-    seenFranchisees.add(fId);
-
-    const result = file.processingResult as BkmvProcessingResult | null;
-    if (!result?.revenueMonthlyBreakdown) continue;
-
-    let revenue = 0;
-    for (const month of months) {
-      const amount = result.revenueMonthlyBreakdown[month];
-      if (typeof amount === "number") {
-        revenue += amount;
-      }
-    }
-
-    if (revenue > 0) {
-      revenueMap.set(fId, revenue);
-    }
-  }
-
-  // ---- COMMISSIONS: Get all supplier file uploads for the period ----
+  // ---- SUPPLIER FILES: Get all supplier file uploads for the period ----
   // Get all active non-hidden suppliers
   const activeSuppliers = await database
     .select({
@@ -212,8 +163,9 @@ export async function getCommissionRevenueReport(
       )
     );
 
-  // Aggregate commissions by franchiseeId
+  // Aggregate commissions and purchases by franchiseeId
   const commissionMap = new Map<string, number>();
+  const purchasesMap = new Map<string, number>();
 
   for (const file of fileRecords) {
     const result = file.processingResult as SupplierFileProcessingResult | null;
@@ -226,6 +178,11 @@ export async function getCommissionRevenueReport(
     for (const match of result.franchiseeMatches) {
       if (!match.matchedFranchiseeId) continue;
       if (match.matchType === "blacklisted") continue;
+
+      // Aggregate purchases (netAmount)
+      const purchaseAmount = match.netAmount || 0;
+      const prevPurchases = purchasesMap.get(match.matchedFranchiseeId) || 0;
+      purchasesMap.set(match.matchedFranchiseeId, prevPurchases + purchaseAmount);
 
       // Calculate commission using the same logic as supplier-file-reports
       const matchAny = match as Record<string, unknown>;
@@ -245,9 +202,9 @@ export async function getCommissionRevenueReport(
     }
   }
 
-  // ---- JOIN: Merge revenue and commission maps ----
+  // ---- JOIN: Merge purchases and commission maps ----
   const allFranchiseeIds = new Set<string>([
-    ...revenueMap.keys(),
+    ...purchasesMap.keys(),
     ...commissionMap.keys(),
   ]);
 
@@ -287,18 +244,18 @@ export async function getCommissionRevenueReport(
     // Apply brand filter
     if (brandId && f.brandId !== brandId) continue;
 
-    const revenue = revenueMap.get(f.id) || 0;
+    const purchases = purchasesMap.get(f.id) || 0;
     const commissions = commissionMap.get(f.id) || 0;
 
     // Skip franchisees with no data at all
-    if (revenue === 0 && commissions === 0) continue;
+    if (purchases === 0 && commissions === 0) continue;
 
     let commissionPercentage: number | null;
-    if (revenue > 0) {
+    if (purchases > 0) {
       commissionPercentage =
-        Math.round((commissions / revenue) * 100 * 100) / 100;
+        Math.round((commissions / purchases) * 100 * 100) / 100;
     } else {
-      // Has commissions but no revenue
+      // Has commissions but no purchases
       commissionPercentage = null;
     }
 
@@ -307,7 +264,7 @@ export async function getCommissionRevenueReport(
       name: f.name,
       code: f.code,
       brandName: f.brandId ? brandNames.get(f.brandId) || "" : "",
-      totalRevenue: Math.round(revenue * 100) / 100,
+      totalPurchases: Math.round(purchases * 100) / 100,
       totalCommissions: Math.round(commissions * 100) / 100,
       commissionPercentage,
     });
@@ -317,17 +274,17 @@ export async function getCommissionRevenueReport(
   rows.sort((a, b) => a.name.localeCompare(b.name, "he"));
 
   // Compute summary
-  const totalRevenue = rows.reduce((sum, r) => sum + r.totalRevenue, 0);
+  const totalPurchases = rows.reduce((sum, r) => sum + r.totalPurchases, 0);
   const totalCommissions = rows.reduce((sum, r) => sum + r.totalCommissions, 0);
-  const rowsWithRevenue = rows.filter((r) => r.totalRevenue > 0);
+  const rowsWithPurchases = rows.filter((r) => r.totalPurchases > 0);
   const avgPercent =
-    rowsWithRevenue.length > 0
+    rowsWithPurchases.length > 0
       ? Math.round(
-          (rowsWithRevenue.reduce(
+          (rowsWithPurchases.reduce(
             (sum, r) => sum + (r.commissionPercentage || 0),
             0
           ) /
-            rowsWithRevenue.length) *
+            rowsWithPurchases.length) *
             100
         ) / 100
       : 0;
@@ -335,7 +292,7 @@ export async function getCommissionRevenueReport(
   return {
     rows,
     summary: {
-      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalPurchases: Math.round(totalPurchases * 100) / 100,
       totalCommissions: Math.round(totalCommissions * 100) / 100,
       avgPercent,
       count: rows.length,
@@ -357,7 +314,7 @@ function emptyReport(
   return {
     rows: [],
     summary: {
-      totalRevenue: 0,
+      totalPurchases: 0,
       totalCommissions: 0,
       avgPercent: 0,
       count: 0,

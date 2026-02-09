@@ -56,7 +56,7 @@ interface CommissionRevenueRow {
   name: string;
   code: string;
   brandName: string;
-  totalRevenue: number;
+  totalPurchases: number;
   totalCommissions: number;
   commissionPercentage: number | null;
 }
@@ -64,7 +64,7 @@ interface CommissionRevenueRow {
 interface CommissionRevenueReport {
   rows: CommissionRevenueRow[];
   summary: {
-    totalRevenue: number;
+    totalPurchases: number;
     totalCommissions: number;
     avgPercent: number;
     count: number;
@@ -263,9 +263,9 @@ export default function CommissionRevenuePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">דוח אחוז עמלות ממחזור</h1>
+          <h1 className="text-2xl font-bold">דוח אחוז עמלות מרכישות</h1>
           <p className="text-muted-foreground">
-            השוואת הכנסות זכיינים מול סה״כ עמלות - אחוז עמלות מסך המחזור
+            השוואת רכישות זכיינים מול סה״כ עמלות
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -400,7 +400,7 @@ export default function CommissionRevenuePage() {
             <div className="text-center">
               <p className="font-medium">אין נתונים לתקופה שנבחרה</p>
               <p className="text-sm text-muted-foreground">
-                לא נמצאו נתוני הכנסות או עמלות בתקופה שנבחרה
+                לא נמצאו נתוני רכישות או עמלות בתקופה שנבחרה
               </p>
             </div>
           </CardContent>
@@ -418,9 +418,9 @@ export default function CommissionRevenuePage() {
                   <TrendingUp className="h-6 w-6 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">סה״כ מחזור</p>
+                  <p className="text-sm text-muted-foreground">סה״כ רכישות</p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(report.summary.totalRevenue)}
+                    {formatCurrency(report.summary.totalPurchases)}
                   </p>
                 </div>
               </CardContent>
@@ -478,7 +478,7 @@ export default function CommissionRevenuePage() {
             <CardHeader>
               <CardTitle>פירוט לפי זכיין</CardTitle>
               <CardDescription>
-                מחזור הכנסות, עמלות ואחוז עמלות מסך המחזור
+                רכישות, עמלות ואחוז עמלות מסך הרכישות
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -488,7 +488,7 @@ export default function CommissionRevenuePage() {
                     <TableHead>שם זכיין</TableHead>
                     <TableHead>קוד</TableHead>
                     <TableHead>מותג</TableHead>
-                    <TableHead className="text-start">מחזור (₪)</TableHead>
+                    <TableHead className="text-start">רכישות (₪)</TableHead>
                     <TableHead className="text-start">עמלות (₪)</TableHead>
                     <TableHead className="text-start">אחוז (%)</TableHead>
                   </TableRow>
@@ -500,8 +500,8 @@ export default function CommissionRevenuePage() {
                       <TableCell>{row.code}</TableCell>
                       <TableCell>{row.brandName}</TableCell>
                       <TableCell className="text-start">
-                        {row.totalRevenue > 0
-                          ? formatCurrency(row.totalRevenue)
+                        {row.totalPurchases > 0
+                          ? formatCurrency(row.totalPurchases)
                           : "-"}
                       </TableCell>
                       <TableCell className="text-start">
@@ -521,14 +521,14 @@ export default function CommissionRevenuePage() {
                     <TableCell />
                     <TableCell />
                     <TableCell className="text-start">
-                      {formatCurrency(report.summary.totalRevenue)}
+                      {formatCurrency(report.summary.totalPurchases)}
                     </TableCell>
                     <TableCell className="text-start">
                       {formatCurrency(report.summary.totalCommissions)}
                     </TableCell>
                     <TableCell className="text-start">
-                      {report.summary.totalRevenue > 0
-                        ? `${Math.round((report.summary.totalCommissions / report.summary.totalRevenue) * 100 * 100) / 100}%`
+                      {report.summary.totalPurchases > 0
+                        ? `${Math.round((report.summary.totalCommissions / report.summary.totalPurchases) * 100 * 100) / 100}%`
                         : "N/A"}
                     </TableCell>
                   </TableRow>

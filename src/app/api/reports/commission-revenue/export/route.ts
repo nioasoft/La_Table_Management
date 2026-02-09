@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       "שם זכיין",
       "קוד",
       "מותג",
-      "מחזור (₪)",
+      "רכישות (₪)",
       "עמלות (₪)",
       "אחוז (%)",
     ];
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
         row.name,
         row.code,
         row.brandName,
-        Math.round(row.totalRevenue * 100) / 100,
+        Math.round(row.totalPurchases * 100) / 100,
         Math.round(row.totalCommissions * 100) / 100,
         row.commissionPercentage !== null
           ? Math.round(row.commissionPercentage * 100) / 100
@@ -98,9 +98,9 @@ export async function GET(request: NextRequest) {
 
     // Totals row
     const overallPercent =
-      report.summary.totalRevenue > 0
+      report.summary.totalPurchases > 0
         ? Math.round(
-            (report.summary.totalCommissions / report.summary.totalRevenue) *
+            (report.summary.totalCommissions / report.summary.totalPurchases) *
               100 *
               100
           ) / 100
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       "סה״כ",
       "",
       "",
-      Math.round(report.summary.totalRevenue * 100) / 100,
+      Math.round(report.summary.totalPurchases * 100) / 100,
       Math.round(report.summary.totalCommissions * 100) / 100,
       overallPercent,
     ]);
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
       { wch: 25 }, // Name
       { wch: 10 }, // Code
       { wch: 15 }, // Brand
-      { wch: 18 }, // Revenue
+      { wch: 18 }, // Purchases
       { wch: 18 }, // Commissions
       { wch: 12 }, // Percentage
     ];

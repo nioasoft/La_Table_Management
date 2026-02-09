@@ -613,7 +613,7 @@ function buildRevenueSummary(result: BkmvParseResult): void {
 
   for (const account of result.accounts) {
     // Check if this is a revenue account
-    if (account.accountType && account.accountType.includes('הכנסות')) {
+    if (account.accountType && (account.accountType.includes('הכנסות') || account.accountType.includes('מכירות'))) {
       const key = account.accountKey.trim();
       if (key) {
         revenueAccountCodes.add(key);
