@@ -9,7 +9,6 @@ import {
   updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
 import { getFranchiseeById, updateFranchiseeRevenueAccount } from "@/data-access/franchisees";
-import { buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { getSupplierById, updateSupplier } from "@/data-access/suppliers";
 import type { BkmvProcessingResult } from "@/db/schema";
 
@@ -332,16 +331,21 @@ async function handleRevenueConfirmation(
       isConfirmed: account.accountCode === revenueAccountCode,
     }));
 
-    // Rebuild monthly breakdown using only the confirmed account
-    // We need to rebuild from the original account data
-    // Since we only have the aggregated data, we'll use the stored monthly breakdown from the matching account
+    // Build revenueMonthlyBreakdown from the confirmed account's monthlyBreakdown
     let revenueMonthlyBreakdown: Record<string, number> | undefined;
     if (revenueAccountCode && processingResult.revenueAccounts) {
-      // Find the account and use its monthly breakdown
-      // Note: The revenueAccounts in processingResult don't have monthlyBreakdown,
-      // but we can recalculate by looking at all revenue values if needed
-      // For now, we'll keep the existing breakdown or clear it
-      revenueMonthlyBreakdown = processingResult.revenueMonthlyBreakdown;
+      const breakdown: Record<string, number> = {};
+      for (const account of processingResult.revenueAccounts) {
+        if (account.accountCode !== revenueAccountCode) continue;
+        if (account.monthlyBreakdown) {
+          for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
+            breakdown[month] = (breakdown[month] || 0) + amount;
+          }
+        }
+      }
+      if (Object.keys(breakdown).length > 0) {
+        revenueMonthlyBreakdown = breakdown;
+      }
     }
 
     const updatedResult: BkmvProcessingResult = {

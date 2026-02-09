@@ -27,6 +27,7 @@ import {
   Tag,
   FileSpreadsheet,
   PiggyBank,
+  Percent,
 } from "lucide-react";
 
 // Report card data
@@ -119,6 +120,14 @@ const reportCards: ReportCardData[] = [
     icon: <PiggyBank className="h-6 w-6" />,
     status: "active",
     color: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    title: "אחוז עמלות ממחזור",
+    description: "השוואת הכנסות זכיינים מול סה״כ עמלות - אחוז עמלות מסך המחזור",
+    href: "/admin/reports/commission-revenue",
+    icon: <Percent className="h-6 w-6" />,
+    status: "active",
+    color: "text-violet-600 dark:text-violet-400",
   },
   {
     title: "נתוני הכנסות זכיינים",

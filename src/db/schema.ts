@@ -1465,6 +1465,7 @@ export type BkmvProcessingResult = {
     totalAmount: number;
     transactionCount: number;
     isConfirmed: boolean;
+    monthlyBreakdown?: Record<string, number>;
   }>;
   /** Monthly revenue breakdown - YYYY-MM -> amount */
   revenueMonthlyBreakdown?: Record<string, number>;

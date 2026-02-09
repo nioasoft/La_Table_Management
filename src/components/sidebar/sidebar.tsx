@@ -191,6 +191,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/reports/franchisee-fund",
                 icon: <PiggyBank className="h-4 w-4" />,
               },
+              {
+                label: "אחוז עמלות ממחזור",
+                href: "/admin/reports/commission-revenue",
+                icon: <Percent className="h-4 w-4" />,
+              },
             ],
           },
           {
