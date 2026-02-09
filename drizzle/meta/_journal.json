@@ -92,6 +92,13 @@
       "when": 1739181600000,
       "tag": "0036_franchisee_revenue_codes",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1739268000000,
+      "tag": "0037_franchisee_account_classification",
+      "breakpoints": true
     }
   ]
 }

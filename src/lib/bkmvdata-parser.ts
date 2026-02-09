@@ -1113,6 +1113,185 @@ export function aggregateSupplierMatchesFromBreakdown(
 }
 
 // ============================================================================
+// ACCOUNT CLASSIFICATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Account category for B110 accounts
+ */
+export type AccountCategory = 'supplier' | 'revenue' | 'employee' | 'expense' | 'uncategorized';
+
+/**
+ * Hebrew labels for account categories
+ */
+export const CATEGORY_LABELS: Record<AccountCategory, string> = {
+  supplier: 'ספקים',
+  revenue: 'הכנסות',
+  employee: 'עובדים',
+  expense: 'הוצאות',
+  uncategorized: 'לא מסווג',
+};
+
+/**
+ * All category values in display order
+ */
+export const CATEGORY_ORDER: AccountCategory[] = [
+  'uncategorized',
+  'supplier',
+  'revenue',
+  'employee',
+  'expense',
+];
+
+/**
+ * Classified account - extends AllAccountSummary with classification info
+ */
+export interface ClassifiedAccount extends AllAccountSummary {
+  category: AccountCategory;
+  classificationSource: 'saved' | 'auto' | 'default';
+}
+
+/**
+ * Auto-classify an account based on its accountType text from B110 records.
+ * Uses contains-based pattern matching on the Hebrew accountType string.
+ */
+export function autoClassifyAccount(accountType: string): AccountCategory {
+  if (!accountType) return 'uncategorized';
+
+  const t = accountType.trim();
+
+  // Supplier patterns
+  if (t.includes('ספק') || t.includes('נותני שרות') || t.includes('נותני שירות')) {
+    return 'supplier';
+  }
+
+  // Revenue patterns
+  if (t.includes('הכנסות') || t.includes('מכירות')) {
+    return 'revenue';
+  }
+
+  // Employee patterns
+  if (t.includes('עובד') || t.includes('שכר עבודה') || t.includes('הוצאות שכר')) {
+    return 'employee';
+  }
+
+  // Expense patterns
+  if (
+    t.includes('קניות') ||
+    t.includes('הוצאות הנהלה') ||
+    t.includes('הוצאות אחזקה') ||
+    t.includes('הוצאות מימון') ||
+    t.includes('הוצאות הפעלה') ||
+    t.includes('שכ"ד') ||
+    t.includes('שכ\'ד')
+  ) {
+    return 'expense';
+  }
+
+  return 'uncategorized';
+}
+
+/**
+ * Classify all accounts from a BKMV parse result.
+ * Merges saved DB classifications (highest priority) with auto-classifications.
+ *
+ * @param allAccountsSummary - The full accounts summary from buildAllAccountsSummary()
+ * @param savedClassifications - Optional saved classifications from DB (Map<accountKey, category>)
+ * @returns Map of accountKey → ClassifiedAccount
+ */
+export function classifyAccounts(
+  allAccountsSummary: Map<string, AllAccountSummary>,
+  savedClassifications?: Map<string, AccountCategory>
+): Map<string, ClassifiedAccount> {
+  const result = new Map<string, ClassifiedAccount>();
+
+  for (const [key, account] of allAccountsSummary) {
+    // Check saved classification first (highest priority)
+    const savedCategory = savedClassifications?.get(key);
+    if (savedCategory) {
+      result.set(key, {
+        ...account,
+        category: savedCategory,
+        classificationSource: 'saved',
+      });
+      continue;
+    }
+
+    // Auto-classify from accountType
+    const autoCategory = autoClassifyAccount(account.accountType);
+    result.set(key, {
+      ...account,
+      category: autoCategory,
+      classificationSource: autoCategory === 'uncategorized' ? 'default' : 'auto',
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Filter supplier summary by account classification category.
+ * Collects all accountSort codes belonging to the target category from classifiedAccounts,
+ * then filters supplierSummary entries whose transactions have those sort codes.
+ *
+ * This is functionally equivalent to filterSuppliersByAccountSort but uses a set of
+ * sort codes derived from the classification instead of a single sort code.
+ */
+export function filterSuppliersByClassification(
+  supplierSummary: Map<string, SupplierPurchaseSummary>,
+  classifiedAccounts: Map<string, ClassifiedAccount>,
+  category: AccountCategory
+): Map<string, SupplierPurchaseSummary> {
+  // Collect all accountSort codes for the target category
+  const targetSortCodes = new Set<string>();
+  for (const account of classifiedAccounts.values()) {
+    if (account.category === category && account.accountSort) {
+      targetSortCodes.add(account.accountSort);
+    }
+  }
+
+  // If no sort codes found for this category, return empty
+  if (targetSortCodes.size === 0) {
+    return new Map();
+  }
+
+  // Filter supplier summary by those sort codes
+  const filtered = new Map<string, SupplierPurchaseSummary>();
+  for (const [key, summary] of supplierSummary.entries()) {
+    const hasMatchingSort = summary.transactions.some(
+      tx => targetSortCodes.has(tx.accountSort)
+    );
+    if (hasMatchingSort) {
+      filtered.set(key, summary);
+    }
+  }
+
+  return filtered;
+}
+
+/**
+ * Get category counts from classified accounts.
+ * Returns a Record mapping each category to its account count.
+ */
+export function getCategoryCounts(
+  classifiedAccounts: Map<string, ClassifiedAccount>
+): Record<AccountCategory, number> {
+  const counts: Record<AccountCategory, number> = {
+    supplier: 0,
+    revenue: 0,
+    employee: 0,
+    expense: 0,
+    uncategorized: 0,
+  };
+
+  for (const account of classifiedAccounts.values()) {
+    counts[account.category]++;
+  }
+
+  return counts;
+}
+
+// ============================================================================
 // REVENUE ACCOUNT FUNCTIONS
 // ============================================================================
 

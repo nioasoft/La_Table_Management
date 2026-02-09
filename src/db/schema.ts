@@ -1172,6 +1172,67 @@ export type CreateFranchiseeRevenueCodeData =
   typeof franchiseeRevenueCode.$inferInsert;
 
 // ============================================================================
+// FRANCHISEE ACCOUNT CLASSIFICATION TABLE
+// ============================================================================
+
+// Account classification categories
+export type AccountCategory = 'supplier' | 'revenue' | 'employee' | 'expense' | 'uncategorized';
+
+// Franchisee Account Classification table
+export const franchiseeAccountClassification = pgTable(
+  "franchisee_account_classification",
+  {
+    id: text("id").primaryKey(),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    accountKey: text("account_key").notNull(),
+    accountName: text("account_name"),
+    category: text("category").$type<AccountCategory>().notNull(),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    uniqueIndex("idx_franchisee_account_classification_unique").on(
+      table.franchiseeId,
+      table.accountKey
+    ),
+    index("idx_franchisee_account_classification_franchisee").on(table.franchiseeId),
+    index("idx_franchisee_account_classification_category").on(
+      table.franchiseeId,
+      table.category
+    ),
+  ]
+);
+
+// Franchisee Account Classification relations
+export const franchiseeAccountClassificationRelations = relations(
+  franchiseeAccountClassification,
+  ({ one }) => ({
+    franchisee: one(franchisee, {
+      fields: [franchiseeAccountClassification.franchiseeId],
+      references: [franchisee.id],
+    }),
+    creator: one(user, {
+      fields: [franchiseeAccountClassification.createdBy],
+      references: [user.id],
+    }),
+  })
+);
+
+// Franchisee Account Classification types
+export type FranchiseeAccountClassification = typeof franchiseeAccountClassification.$inferSelect;
+export type CreateFranchiseeAccountClassificationData =
+  typeof franchiseeAccountClassification.$inferInsert;
+
+// ============================================================================
 // SUPPLIER FILE PROCESSING RESULT TYPE
 // ============================================================================
 

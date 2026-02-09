@@ -73,10 +73,23 @@ import {
   DollarSign,
   Check,
 } from "lucide-react";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Supplier, Franchisee, SettlementPeriod } from "@/db/schema";
-import { parseBkmvData, formatAmount, getSupplierSummaryForPeriod, getUniqueAccountSorts, filterSuppliersByAccountSort, getUniqueReferences, filterSuppliersByReference, getAccountSortLabels, findAccountSortByType, convertRevenueSummaryToArray, type BkmvParseResult, type BkmvTransaction, type AccountSortLabel, type RevenueAccountSummary } from "@/lib/bkmvdata-parser";
+import type { Supplier, Franchisee } from "@/db/schema";
+import {
+  parseBkmvData,
+  formatAmount,
+  getSupplierSummaryForPeriod,
+  filterSuppliersByClassification,
+  buildAllAccountsSummary,
+  classifyAccounts,
+  getCategoryCounts,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  type BkmvParseResult,
+  type BkmvTransaction,
+  type AccountCategory,
+  type ClassifiedAccount,
+} from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
@@ -183,8 +196,9 @@ export default function BkmvDataPage() {
   const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [isDateFiltered, setIsDateFiltered] = useState(false);
 
-  // Account sort filter state
-  const [filterAccountSort, setFilterAccountSort] = useState<string>("200"); // Default to 200 (suppliers)
+  // Classification state
+  const [classifiedAccounts, setClassifiedAccounts] = useState<Map<string, ClassifiedAccount>>(new Map());
+  const [activeCategory, setActiveCategory] = useState<AccountCategory>('uncategorized');
 
   // History and upload state
   const [activeTab, setActiveTab] = useState<string>("upload");
@@ -198,9 +212,75 @@ export default function BkmvDataPage() {
   }>({ open: false });
   const [lastBlobUrl, setLastBlobUrl] = useState<string | null>(null);
 
-  // Revenue account selection state
-  const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
-  const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
+  // Revenue accounts selected in revenue tab (for saving)
+  const [selectedRevenueAccounts, setSelectedRevenueAccounts] = useState<Set<string>>(new Set());
+  // Classification save mutation
+  const classifyMutation = useMutation({
+    mutationFn: async ({
+      franchiseeId,
+      accountKey,
+      category,
+      accountName,
+    }: {
+      franchiseeId: string;
+      accountKey: string;
+      category: AccountCategory;
+      accountName?: string;
+    }) => {
+      const response = await fetch(
+        `/api/franchisees/${franchiseeId}/account-classifications`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountKey, category, accountName }),
+        }
+      );
+      if (!response.ok) throw new Error("Failed to save classification");
+      return response.json();
+    },
+  });
+
+  const reclassifyMutation = useMutation({
+    mutationFn: async ({
+      franchiseeId,
+      accountKey,
+    }: {
+      franchiseeId: string;
+      accountKey: string;
+    }) => {
+      const response = await fetch(
+        `/api/franchisees/${franchiseeId}/account-classifications`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountKey }),
+        }
+      );
+      if (!response.ok) throw new Error("Failed to remove classification");
+      return response.json();
+    },
+  });
+
+  const bulkClassifyMutation = useMutation({
+    mutationFn: async ({
+      franchiseeId,
+      items,
+    }: {
+      franchiseeId: string;
+      items: Array<{ accountKey: string; category: AccountCategory; accountName?: string }>;
+    }) => {
+      const response = await fetch(
+        `/api/franchisees/${franchiseeId}/account-classifications`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items }),
+        }
+      );
+      if (!response.ok) throw new Error("Failed to save classifications");
+      return response.json();
+    },
+  });
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -287,17 +367,21 @@ export default function BkmvDataPage() {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [franchisees]);
 
-  // Get account sort labels for dropdown (includes type names like "ספקים")
-  const accountSortLabels = useMemo((): AccountSortLabel[] => {
-    if (!parseResult) return [];
-    return getAccountSortLabels(parseResult);
-  }, [parseResult]);
+  // Category counts from classified accounts
+  const categoryCounts = useMemo(() => {
+    return getCategoryCounts(classifiedAccounts);
+  }, [classifiedAccounts]);
 
-  // Get revenue accounts from parse result
-  const revenueAccounts = useMemo(() => {
-    if (!parseResult) return [];
-    return convertRevenueSummaryToArray(parseResult.revenueSummary);
-  }, [parseResult]);
+  // Accounts filtered by active category (for display)
+  const categoryAccounts = useMemo(() => {
+    const accounts: ClassifiedAccount[] = [];
+    for (const account of classifiedAccounts.values()) {
+      if (account.category === activeCategory) {
+        accounts.push(account);
+      }
+    }
+    return accounts.sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+  }, [classifiedAccounts, activeCategory]);
 
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
@@ -353,7 +437,9 @@ export default function BkmvDataPage() {
       setDateRange({ minDate: null, maxDate: null });
       setUploadSuccess(null);
       setLastBlobUrl(null);
-      setSelectedRevenueAccount("");
+      setClassifiedAccounts(new Map());
+      setActiveCategory('uncategorized');
+      setSelectedRevenueAccounts(new Set());
     }
   }, []);
 
@@ -393,7 +479,9 @@ export default function BkmvDataPage() {
     setDateRange({ minDate: null, maxDate: null });
     setUploadSuccess(null);
     setLastBlobUrl(null);
-    setSelectedRevenueAccount("");
+    setClassifiedAccounts(new Map());
+    setActiveCategory('uncategorized');
+    setSelectedRevenueAccounts(new Set());
   }, []);
 
   // Generate unique filename with franchisee name, date, and random suffix
@@ -469,8 +557,6 @@ export default function BkmvDataPage() {
           periodStartDate: filterStartDate || undefined,
           periodEndDate: filterEndDate || undefined,
           forceReplace,
-          revenueAccountCode: selectedRevenueAccount || undefined,
-          saveRevenueToFranchisee: selectedRevenueAccount ? saveRevenueToFranchisee : undefined,
         }),
       });
 
@@ -539,16 +625,35 @@ export default function BkmvDataPage() {
         setFilterStartDate(formatDateAsLocal(range.minDate));
         setFilterEndDate(formatDateAsLocal(range.maxDate));
       }
-      setIsDateFiltered(false); // Reset filter state for new file
+      setIsDateFiltered(false);
 
-      // Auto-match franchisee by company ID
+      // Auto-match franchisee by company ID and load saved classifications
+      let savedMap: Map<string, AccountCategory> | undefined;
+      let matchedFranchiseeResult: FranchiseeWithBrand | null = null;
+
       if (result.companyId) {
         try {
           const franchiseeResponse = await fetch(`/api/franchisees?companyId=${encodeURIComponent(result.companyId)}`);
           if (franchiseeResponse.ok) {
             const data = await franchiseeResponse.json();
             if (data.found && data.franchisee) {
+              matchedFranchiseeResult = data.franchisee;
               setMatchedFranchisee(data.franchisee);
+
+              // Load saved classifications for this franchisee
+              try {
+                const classResponse = await fetch(
+                  `/api/franchisees/${data.franchisee.id}/account-classifications?format=map`
+                );
+                if (classResponse.ok) {
+                  const classData = await classResponse.json();
+                  if (classData.map && Object.keys(classData.map).length > 0) {
+                    savedMap = new Map(Object.entries(classData.map)) as Map<string, AccountCategory>;
+                  }
+                }
+              } catch {
+                // Non-critical - continue without saved classifications
+              }
             } else {
               setFranchiseeError(`לא נמצא זכיין עם ח.פ ${result.companyId}`);
             }
@@ -561,34 +666,24 @@ export default function BkmvDataPage() {
         setFranchiseeError("מספר חברה (ח.פ) לא נמצא בקובץ");
       }
 
-      // Smart default for account sort filter:
-      // 1. If "200" exists, use it (old format)
-      // 2. Otherwise, find the sort code for "ספקים" (suppliers)
-      // 3. Fallback to "all" if nothing matches
-      const sortLabels = getAccountSortLabels(result);
-      const availableSorts = sortLabels.map(l => l.sort);
-      let defaultAccountSort = 'all';
+      // Build all accounts summary and classify
+      const allAccounts = buildAllAccountsSummary(result);
+      const classified = classifyAccounts(allAccounts, savedMap);
+      setClassifiedAccounts(classified);
 
-      if (availableSorts.includes('200')) {
-        defaultAccountSort = '200';
-      } else {
-        // Find supplier sort code by looking for "ספקים" label
-        const supplierSort = findAccountSortByType(result, 'ספקים');
-        if (supplierSort) {
-          defaultAccountSort = supplierSort;
-        }
-      }
-      setFilterAccountSort(defaultAccountSort);
+      // Default to uncategorized tab if there are uncategorized accounts, otherwise suppliers
+      const counts = getCategoryCounts(classified);
+      setActiveCategory(counts.uncategorized > 0 ? 'uncategorized' : 'supplier');
 
-      // Apply account sort filter before matching
-      let summaryToUse = result.supplierSummary;
-      if (defaultAccountSort !== 'all') {
-        summaryToUse = filterSuppliersByAccountSort(summaryToUse, defaultAccountSort);
-      }
+      // Filter supplier summary by classification and match
+      const supplierFiltered = filterSuppliersByClassification(
+        result.supplierSummary,
+        classified,
+        'supplier'
+      );
 
-      // Match against suppliers
       const matches = matchBkmvSuppliers(
-        summaryToUse,
+        supplierFiltered,
         suppliers,
         { minConfidence: 0.6, reviewThreshold: 0.85 },
         blacklistedNames
@@ -632,118 +727,203 @@ export default function BkmvDataPage() {
     }
   }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames]);
 
+  // Helper to re-run supplier matching with current classification and date filters
+  const reRunSupplierMatching = useCallback((
+    result: BkmvParseResult,
+    classified: Map<string, ClassifiedAccount>,
+    currentBlacklist: Set<string>,
+    currentSuppliers: Supplier[],
+    dateFiltered: boolean,
+    startDate?: string,
+    endDate?: string,
+  ) => {
+    let summaryToUse = result.supplierSummary;
+    if (dateFiltered && startDate && endDate) {
+      const [sY, sM, sD] = startDate.split('-').map(Number);
+      const [eY, eM, eD] = endDate.split('-').map(Number);
+      summaryToUse = getSupplierSummaryForPeriod(
+        result,
+        new Date(sY, sM - 1, sD),
+        new Date(eY, eM - 1, eD)
+      );
+    }
+
+    const supplierFiltered = filterSuppliersByClassification(summaryToUse, classified, 'supplier');
+
+    return matchBkmvSuppliers(
+      supplierFiltered,
+      currentSuppliers,
+      { minConfidence: 0.6, reviewThreshold: 0.85 },
+      currentBlacklist
+    );
+  }, []);
+
   // Handle date filter
   const handleDateFilter = useCallback(() => {
     if (!parseResult || !filterStartDate || !filterEndDate) return;
 
-    // Parse dates in local time (same as BKMV parser) to avoid timezone issues
-    const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
-    const startDate = new Date(startYear, startMonth - 1, startDay);
-
-    const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
-    const endDate = new Date(endYear, endMonth - 1, endDay);
-
-    // Get filtered supplier summary for the date range
-    let filteredSummary = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
-
-    // Apply account sort filter if not "all"
-    if (filterAccountSort !== 'all') {
-      filteredSummary = filterSuppliersByAccountSort(filteredSummary, filterAccountSort);
-    }
-
-    // Re-run matching with filtered summary
-    const matches = matchBkmvSuppliers(
-      filteredSummary,
-      suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 },
-      blacklistedNames
+    const matches = reRunSupplierMatching(
+      parseResult, classifiedAccounts, blacklistedNames, suppliers,
+      true, filterStartDate, filterEndDate
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, filterAccountSort, suppliers, blacklistedNames]);
+  }, [parseResult, filterStartDate, filterEndDate, classifiedAccounts, suppliers, blacklistedNames, reRunSupplierMatching]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
     if (!parseResult) return;
 
-    // Get the summary to use (apply account sort filter if needed)
-    let summaryToUse = parseResult.supplierSummary;
-    if (filterAccountSort !== 'all') {
-      summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
-    }
-
-    // Re-run matching with original full summary
-    const matches = matchBkmvSuppliers(
-      summaryToUse,
-      suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 },
-      blacklistedNames
+    const matches = reRunSupplierMatching(
+      parseResult, classifiedAccounts, blacklistedNames, suppliers, false
     );
     setMatchingResults(matches);
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames, filterAccountSort]);
+  }, [parseResult, suppliers, blacklistedNames, classifiedAccounts, reRunSupplierMatching]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
-    if (!parseResult || suppliers.length === 0) return;
+    if (!parseResult || suppliers.length === 0 || classifiedAccounts.size === 0) return;
 
-    // Re-run matching with current blacklist
-    let summaryToUse = parseResult.supplierSummary;
-    if (isDateFiltered && filterStartDate && filterEndDate) {
-      const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
-      const startDate = new Date(startYear, startMonth - 1, startDay);
-      const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
-      const endDate = new Date(endYear, endMonth - 1, endDay);
-      summaryToUse = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
-    }
-
-    // Apply account sort filter if not "all"
-    if (filterAccountSort !== 'all') {
-      summaryToUse = filterSuppliersByAccountSort(summaryToUse, filterAccountSort);
-    }
-
-    const matches = matchBkmvSuppliers(
-      summaryToUse,
-      suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 },
-      blacklistedNames
+    const matches = reRunSupplierMatching(
+      parseResult, classifiedAccounts, blacklistedNames, suppliers,
+      isDateFiltered, filterStartDate, filterEndDate
     );
     setMatchingResults(matches);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blacklistedNames]); // Only re-run when blacklist changes
+  }, [blacklistedNames]);
 
-  // Handle account sort filter change
-  const handleAccountSortFilterChange = useCallback((accountSort: string) => {
-    if (!parseResult) return;
+  // Handle quick-classify action (from uncategorized tab)
+  const handleQuickClassify = useCallback(async (
+    accountKey: string,
+    category: AccountCategory,
+    accountName?: string
+  ) => {
+    if (!matchedFranchisee) return;
 
-    setFilterAccountSort(accountSort);
+    // Optimistic update
+    setClassifiedAccounts(prev => {
+      const next = new Map(prev);
+      const existing = next.get(accountKey);
+      if (existing) {
+        next.set(accountKey, { ...existing, category, classificationSource: 'saved' });
+      }
+      return next;
+    });
 
-    // Get the summary to use
-    let summaryToUse = parseResult.supplierSummary;
-    if (isDateFiltered && filterStartDate && filterEndDate) {
-      const [startYear, startMonth, startDay] = filterStartDate.split('-').map(Number);
-      const startDate = new Date(startYear, startMonth - 1, startDay);
-      const [endYear, endMonth, endDay] = filterEndDate.split('-').map(Number);
-      const endDate = new Date(endYear, endMonth - 1, endDay);
-      summaryToUse = getSupplierSummaryForPeriod(parseResult, startDate, endDate);
+    // Save to DB
+    try {
+      await classifyMutation.mutateAsync({
+        franchiseeId: matchedFranchisee.id,
+        accountKey,
+        category,
+        accountName,
+      });
+    } catch {
+      // Revert on error - reload from scratch
+      setError("שגיאה בשמירת הסיווג");
     }
 
-    // Apply account sort filter
-    if (accountSort !== 'all') {
-      summaryToUse = filterSuppliersByAccountSort(summaryToUse, accountSort);
+    // Re-run supplier matching if classification changed
+    if (parseResult && category === 'supplier') {
+      // Need updated classifiedAccounts - use the optimistic state
+      setTimeout(() => {
+        setClassifiedAccounts(currentClassified => {
+          const matches = reRunSupplierMatching(
+            parseResult, currentClassified, blacklistedNames, suppliers,
+            isDateFiltered, filterStartDate, filterEndDate
+          );
+          setMatchingResults(matches);
+          return currentClassified;
+        });
+      }, 0);
+    }
+  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching]);
+
+  // Handle reclassify (move back to auto-detection / uncategorized)
+  const handleReclassify = useCallback(async (accountKey: string) => {
+    if (!matchedFranchisee || !parseResult) return;
+
+    // Find the auto-classification for this account
+    const allAccounts = buildAllAccountsSummary(parseResult);
+    const accountInfo = allAccounts.get(accountKey);
+    const autoCategory = accountInfo ? (await import("@/lib/bkmvdata-parser")).autoClassifyAccount(accountInfo.accountType) : 'uncategorized';
+
+    // Optimistic update - revert to auto
+    setClassifiedAccounts(prev => {
+      const next = new Map(prev);
+      const existing = next.get(accountKey);
+      if (existing) {
+        next.set(accountKey, {
+          ...existing,
+          category: autoCategory as AccountCategory,
+          classificationSource: autoCategory === 'uncategorized' ? 'default' : 'auto',
+        });
+      }
+      return next;
+    });
+
+    // Remove from DB
+    try {
+      await reclassifyMutation.mutateAsync({
+        franchiseeId: matchedFranchisee.id,
+        accountKey,
+      });
+    } catch {
+      setError("שגיאה בהסרת הסיווג");
     }
 
-    // Re-run matching
-    const matches = matchBkmvSuppliers(
-      summaryToUse,
-      suppliers,
-      { minConfidence: 0.6, reviewThreshold: 0.85 },
-      blacklistedNames
-    );
-    setMatchingResults(matches);
-  }, [parseResult, isDateFiltered, filterStartDate, filterEndDate, suppliers, blacklistedNames]);
+    // Re-run supplier matching
+    setTimeout(() => {
+      setClassifiedAccounts(currentClassified => {
+        const matches = reRunSupplierMatching(
+          parseResult, currentClassified, blacklistedNames, suppliers,
+          isDateFiltered, filterStartDate, filterEndDate
+        );
+        setMatchingResults(matches);
+        return currentClassified;
+      });
+    }, 0);
+  }, [matchedFranchisee, parseResult, reclassifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching]);
+
+  // Handle saving selected revenue accounts
+  const handleSaveRevenueAccounts = useCallback(async () => {
+    if (!matchedFranchisee || selectedRevenueAccounts.size === 0) return;
+
+    const items = Array.from(selectedRevenueAccounts).map(accountKey => {
+      const account = classifiedAccounts.get(accountKey);
+      return {
+        accountKey,
+        category: 'revenue' as AccountCategory,
+        accountName: account?.accountName,
+      };
+    });
+
+    try {
+      await bulkClassifyMutation.mutateAsync({
+        franchiseeId: matchedFranchisee.id,
+        items,
+      });
+
+      // Update local state
+      setClassifiedAccounts(prev => {
+        const next = new Map(prev);
+        for (const item of items) {
+          const existing = next.get(item.accountKey);
+          if (existing) {
+            next.set(item.accountKey, { ...existing, category: 'revenue', classificationSource: 'saved' });
+          }
+        }
+        return next;
+      });
+
+      setSelectedRevenueAccounts(new Set());
+    } catch {
+      setError("שגיאה בשמירת קודי הכנסה");
+    }
+  }, [matchedFranchisee, selectedRevenueAccounts, classifiedAccounts, bulkClassifyMutation]);
 
   // Filter and search results
   const filteredResults = useMemo(() => {
@@ -776,17 +956,6 @@ export default function BkmvDataPage() {
     unmatched: matchingResults.filter(r => !r.matchResult.matchedSupplier).length,
     totalAmount: matchingResults.reduce((sum, r) => sum + r.amount, 0),
   }), [matchingResults]);
-
-  // Get account sort for a result
-  const getResultAccountSort = useCallback((result: typeof matchingResults[0]): string => {
-    if (!parseResult) return 'unknown';
-    for (const summary of parseResult.supplierSummary.values()) {
-      if (summary.supplierName === result.bkmvName) {
-        return summary.transactions[0]?.accountSort || 'unknown';
-      }
-    }
-    return 'unknown';
-  }, [parseResult]);
 
   if (isPending) {
     return (
@@ -1100,113 +1269,6 @@ export default function BkmvDataPage() {
             </Card>
           </div>
 
-          {/* Revenue Accounts Section */}
-          {revenueAccounts.length > 0 && (
-            <Card className="mb-6">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  חשבונות הכנסות שזוהו
-                </CardTitle>
-                <CardDescription>
-                  בחר את חשבון ההכנסות הראשי שמייצג את המחזור
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <RadioGroup
-                  value={selectedRevenueAccount}
-                  onValueChange={setSelectedRevenueAccount}
-                  className="space-y-4"
-                >
-                  {revenueAccounts.map((account) => {
-                    const monthlyEntries = Object.entries(account.monthlyBreakdown || {}).sort(
-                      ([a], [b]) => a.localeCompare(b)
-                    );
-                    return (
-                      <div
-                        key={account.accountCode}
-                        className={`rounded-lg border ${
-                          selectedRevenueAccount === account.accountCode
-                            ? "bg-green-50 border-green-200"
-                            : "bg-muted/30"
-                        }`}
-                      >
-                        <div className="flex items-center gap-4 p-3">
-                          <RadioGroupItem
-                            value={account.accountCode}
-                            id={`revenue-${account.accountCode}`}
-                          />
-                          <Label
-                            htmlFor={`revenue-${account.accountCode}`}
-                            className="flex-1 flex items-center justify-between cursor-pointer"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="font-medium">{account.accountName}</span>
-                              <span className="text-sm text-muted-foreground">
-                                (קוד: {account.accountCode})
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono text-lg">
-                                {formatAmount(account.totalAmount)}
-                              </span>
-                              <span className="text-sm text-muted-foreground">
-                                ({account.transactionCount} עסקאות)
-                              </span>
-                              {selectedRevenueAccount === account.accountCode && (
-                                <Badge variant="success" className="gap-1">
-                                  <Check className="h-3 w-3" />
-                                  נבחר
-                                </Badge>
-                              )}
-                            </div>
-                          </Label>
-                        </div>
-                        {/* Monthly breakdown */}
-                        {monthlyEntries.length > 0 && (
-                          <div className="border-t px-3 py-2 bg-white/50">
-                            <p className="text-xs text-muted-foreground mb-2">פירוט חודשי:</p>
-                            <div className="flex flex-wrap gap-2">
-                              {monthlyEntries.map(([month, amount]) => {
-                                const [year, monthNum] = month.split("-");
-                                const monthName = new Date(
-                                  parseInt(year),
-                                  parseInt(monthNum) - 1
-                                ).toLocaleDateString("he-IL", { month: "short", year: "numeric" });
-                                return (
-                                  <div
-                                    key={month}
-                                    className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded"
-                                  >
-                                    <span className="text-muted-foreground">{monthName}:</span>
-                                    <span className="font-mono font-medium">{formatAmount(amount)}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </RadioGroup>
-
-                {matchedFranchisee && (
-                  <div className="mt-4 flex items-center gap-2">
-                    <Checkbox
-                      id="saveRevenueToFranchisee"
-                      checked={saveRevenueToFranchisee}
-                      onCheckedChange={(checked) => setSaveRevenueToFranchisee(checked === true)}
-                    />
-                    <Label htmlFor="saveRevenueToFranchisee" className="text-sm">
-                      שמור לזכיין לזיהוי אוטומטי בקבצים הבאים
-                    </Label>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {/* Save to Server Section */}
           {matchedFranchisee && parseResult && (
             <Card className={uploadSuccess ? "border-green-500/50 bg-green-50/30" : ""}>
@@ -1288,20 +1350,15 @@ export default function BkmvDataPage() {
           )}
 
           {/* Date Filter */}
-          <Card className={`mb-6 ${isDateFiltered || filterAccountSort !== 'all' ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
+          <Card className={`mb-6 ${isDateFiltered ? "border-blue-500/50 bg-blue-50/30" : ""}`}>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Filter className="h-5 w-5" />
-                סינון
-                {(isDateFiltered || filterAccountSort !== 'all') && (
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                    מסונן
-                  </Badge>
+                סינון תקופה
+                {isDateFiltered && (
+                  <Badge variant="secondary" className="bg-blue-100 text-blue-700">מסונן</Badge>
                 )}
               </CardTitle>
-              <CardDescription>
-                סנן את הסכומים לפי תקופה או מיון חשבון
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-end gap-4">
@@ -1325,358 +1382,607 @@ export default function BkmvDataPage() {
                     className="w-[160px]"
                   />
                 </div>
-                <Button
-                  onClick={handleDateFilter}
-                  disabled={!filterStartDate || !filterEndDate}
-                  variant="default"
-                >
+                <Button onClick={handleDateFilter} disabled={!filterStartDate || !filterEndDate} variant="default">
                   <Filter className="h-4 w-4 ms-2" />
-                  סנן תאריכים
+                  סנן
                 </Button>
                 {isDateFiltered && (
-                  <Button
-                    onClick={handleClearDateFilter}
-                    variant="outline"
-                  >
+                  <Button onClick={handleClearDateFilter} variant="outline">
                     <X className="h-4 w-4 ms-2" />
-                    נקה תאריכים
+                    נקה
                   </Button>
                 )}
-                <div className="w-px h-8 bg-border mx-2" />
-                <div className="space-y-2">
-                  <Label htmlFor="filterAccountSort">מיון חשבון</Label>
-                  <Select
-                    value={filterAccountSort}
-                    onValueChange={handleAccountSortFilterChange}
-                  >
-                    <SelectTrigger className="w-[180px]" id="filterAccountSort">
-                      <SelectValue placeholder="בחר מיון" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      <SelectItem value="all">הכל</SelectItem>
-                      {accountSortLabels.map(({ sort, label, count }) => (
-                        <SelectItem key={sort} value={sort}>
-                          {sort} - {label} ({count})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                {(isDateFiltered || filterAccountSort !== 'all') && (
+                {isDateFiltered && (
                   <div className="text-sm text-blue-700 flex items-center gap-2 me-auto">
                     <Calendar className="h-4 w-4" />
-                    {(() => {
-                      const selectedLabel = accountSortLabels.find(l => l.sort === filterAccountSort);
-                      const sortDisplayText = selectedLabel
-                        ? `${selectedLabel.sort} - ${selectedLabel.label}`
-                        : filterAccountSort;
-
-                      if (isDateFiltered && filterAccountSort !== 'all') {
-                        return (
-                          <>
-                            מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
-                            {' '}עבור מיון חשבון: {sortDisplayText}
-                          </>
-                        );
-                      }
-                      if (isDateFiltered && filterAccountSort === 'all') {
-                        return (
-                          <>מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}</>
-                        );
-                      }
-                      if (!isDateFiltered && filterAccountSort !== 'all') {
-                        return (
-                          <>מציג נתונים עבור מיון חשבון: {sortDisplayText}</>
-                        );
-                      }
-                      return null;
-                    })()}
+                    מציג נתונים מ-{new Date(filterStartDate).toLocaleDateString('he-IL')} עד {new Date(filterEndDate).toLocaleDateString('he-IL')}
                   </div>
                 )}
               </div>
             </CardContent>
           </Card>
 
-          {/* Matching Stats */}
-          <div className="grid gap-4 md:grid-cols-5 mb-6">
-            <Card
-              className={`cursor-pointer transition-colors ${filterStatus === "all" ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/50"}`}
-              onClick={() => setFilterStatus("all")}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">סה״כ ספקים</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.total}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatAmount(stats.totalAmount)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card
-              className={`cursor-pointer transition-colors ${filterStatus === "matched" ? "border-green-500 ring-1 ring-green-500" : "hover:border-muted-foreground/50"}`}
-              onClick={() => setFilterStatus("matched")}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  תואמים
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{stats.matched}</div>
-              </CardContent>
-            </Card>
-            <Card
-              className={`cursor-pointer transition-colors ${filterStatus === "review" ? "border-amber-500 ring-1 ring-amber-500" : "hover:border-muted-foreground/50"}`}
-              onClick={() => setFilterStatus("review")}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  לבדיקה
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-amber-600">{stats.review}</div>
-              </CardContent>
-            </Card>
-            <Card
-              className={`cursor-pointer transition-colors ${filterStatus === "unmatched" ? "border-red-500 ring-1 ring-red-500" : "hover:border-muted-foreground/50"}`}
-              onClick={() => setFilterStatus("unmatched")}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-red-500" />
-                  לא תואמים
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-red-600">{stats.unmatched}</div>
-              </CardContent>
-            </Card>
-            <Card className="bg-muted/30">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">אחוז התאמה</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {stats.total > 0 ? Math.round(((stats.matched + stats.review) / stats.total) * 100) : 0}%
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Results Table */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>ספקים שזוהו בקובץ</CardTitle>
-                  <CardDescription>
-                    לחץ על &quot;הוסף כשם חלופי&quot; כדי לשמור את ההתאמה לעתיד
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="חיפוש ספק..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="ps-9 w-64"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleProcessFile}
-                    disabled={isProcessing}
+          {/* Category Tabs */}
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-2 mb-4">
+              {CATEGORY_ORDER.map((cat) => {
+                const isActive = activeCategory === cat;
+                const count = categoryCounts[cat];
+                const colorMap: Record<AccountCategory, string> = {
+                  uncategorized: isActive ? 'bg-gray-200 text-gray-900 ring-1 ring-gray-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                  supplier: isActive ? 'bg-blue-200 text-blue-900 ring-1 ring-blue-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100',
+                  revenue: isActive ? 'bg-green-200 text-green-900 ring-1 ring-green-400' : 'bg-green-50 text-green-600 hover:bg-green-100',
+                  employee: isActive ? 'bg-purple-200 text-purple-900 ring-1 ring-purple-400' : 'bg-purple-50 text-purple-600 hover:bg-purple-100',
+                  expense: isActive ? 'bg-orange-200 text-orange-900 ring-1 ring-orange-400' : 'bg-orange-50 text-orange-600 hover:bg-orange-100',
+                };
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${colorMap[cat]}`}
                   >
-                    <RefreshCw className={`h-4 w-4 ms-2 ${isProcessing ? 'animate-spin' : ''}`} />
-                    רענן
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-right">שם במבנה אחיד</TableHead>
-                      <TableHead className="text-right">מיון חשבון</TableHead>
-                      <TableHead className="text-right">סכום</TableHead>
-                      <TableHead className="text-right">לפני מע״מ</TableHead>
-                      <TableHead className="text-right">עסקאות</TableHead>
-                      <TableHead className="text-right">התאמה לספק</TableHead>
-                      <TableHead className="text-right">ביטחון</TableHead>
-                      <TableHead className="text-right">פעולות</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredResults.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
-                          {matchingResults.length === 0 ? "לא נמצאו ספקים בקובץ" : "לא נמצאו תוצאות מתאימות לסינון"}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredResults.map((result, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{result.bkmvName}</TableCell>
-                          <TableCell className="font-mono text-sm text-muted-foreground">{getResultAccountSort(result)}</TableCell>
-                          <TableCell className="font-mono">{formatAmount(result.amount)}</TableCell>
-                          <TableCell className="font-mono text-muted-foreground">{formatAmount(result.amount / 1.18)}</TableCell>
-                          <TableCell>{result.transactionCount}</TableCell>
-                          <TableCell>
-                            {result.matchResult.matchedSupplier ? (
-                              <div className="flex items-center gap-2">
-                                <span>{result.matchResult.matchedSupplier.name}</span>
-                                <Badge variant="outline" className="text-xs">
-                                  {result.matchResult.matchedSupplier.code}
-                                </Badge>
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">לא נמצאה התאמה</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {result.matchResult.matchedSupplier ? (
-                              <Badge
-                                variant={
-                                  result.matchResult.confidence >= 0.85
-                                    ? "success"
-                                    : result.matchResult.confidence >= 0.7
-                                    ? "warning"
-                                    : "destructive"
-                                }
-                              >
-                                {Math.round(result.matchResult.confidence * 100)}%
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline">-</Badge>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            {result.matchResult.matchedSupplier && result.matchResult.matchType.startsWith("fuzzy") && (
-                              <div className="flex flex-wrap items-center gap-2 justify-end">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    handleAddAlias(
-                                      result.matchResult.matchedSupplier!.id,
-                                      result.bkmvName
-                                    )
-                                  }
-                                  disabled={updateSupplierMutation.isPending}
-                                >
-                                  <Plus className="h-4 w-4 ms-1" />
-                                  אשר והוסף כינוי
-                                </Button>
-                                <Select
-                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
-                                >
-                                  <SelectTrigger className="w-[140px]">
-                                    <SelectValue placeholder="בחר אחר" />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-[300px]">
-                                    {sortedSuppliers
-                                      .filter(s => s.id !== result.matchResult.matchedSupplier?.id)
-                                      .map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                          {s.name} ({s.code})
-                                        </SelectItem>
-                                      ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-muted-foreground hover:text-destructive"
-                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
-                                  disabled={addToBlacklistMutation.isPending}
-                                >
-                                  <Ban className="h-4 w-4 ms-1" />
-                                  לא רלוונטי
-                                </Button>
-                              </div>
-                            )}
-                            {result.matchResult.matchType.startsWith("exact") && (
-                              <Badge variant="success" className="gap-1">
-                                <CheckCircle2 className="h-3 w-3" />
-                                התאמה מדויקת
-                              </Badge>
-                            )}
-                            {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length > 0 && (
-                              <div className="flex flex-wrap items-center gap-2 justify-end">
-                                <Select
-                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
-                                >
-                                  <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder="בחר ספק ידנית" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {result.matchResult.alternatives.map((alt) => (
-                                      <SelectItem key={alt.supplier.id} value={alt.supplier.id}>
-                                        {alt.supplier.name} ({Math.round(alt.confidence * 100)}%)
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-muted-foreground hover:text-destructive"
-                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
-                                  disabled={addToBlacklistMutation.isPending}
-                                >
-                                  <Ban className="h-4 w-4 ms-1" />
-                                  לא רלוונטי
-                                </Button>
-                              </div>
-                            )}
-                            {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length === 0 && (
-                              <div className="flex flex-wrap items-center gap-2 justify-end">
-                                <Select
-                                  onValueChange={(value) => handleAddAlias(value, result.bkmvName)}
-                                >
-                                  <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder="בחר ספק מהרשימה" />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-[300px]">
-                                    {sortedSuppliers.map((s) => (
-                                      <SelectItem key={s.id} value={s.id}>
-                                        <span className="flex items-center gap-2">
-                                          <span>{s.name}</span>
-                                          <span className="text-xs text-muted-foreground">({s.code})</span>
-                                        </span>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-muted-foreground hover:text-destructive"
-                                  onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
-                                  disabled={addToBlacklistMutation.isPending}
-                                >
-                                  <Ban className="h-4 w-4 ms-1" />
-                                  לא רלוונטי
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
+                    {CATEGORY_LABELS[cat]} ({count})
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ==================== UNCATEGORIZED TAB ==================== */}
+            {activeCategory === 'uncategorized' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">חשבונות לא מסווגים</CardTitle>
+                  <CardDescription>
+                    סווג חשבונות לקטגוריה המתאימה
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">שם חשבון</TableHead>
+                          <TableHead className="text-right">קוד</TableHead>
+                          <TableHead className="text-right">סוג (מקובץ)</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">סיווג</TableHead>
                         </TableRow>
-                      ))
+                      </TableHeader>
+                      <TableBody>
+                        {categoryAccounts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                              אין חשבונות לא מסווגים
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          categoryAccounts.map((account) => (
+                            <TableRow key={account.accountCode}>
+                              <TableCell className="font-medium">{account.accountName}</TableCell>
+                              <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
+                              <TableCell className="text-sm text-muted-foreground">{account.accountType || '-'}</TableCell>
+                              <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
+                              <TableCell>{account.transactionCount}</TableCell>
+                              <TableCell>
+                                <div className="flex flex-wrap gap-1">
+                                  {(['supplier', 'revenue', 'employee', 'expense'] as AccountCategory[]).map((cat) => (
+                                    <button
+                                      key={cat}
+                                      onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
+                                      disabled={classifyMutation.isPending}
+                                      className={`
+                                        px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
+                                        ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
+                                        ${cat === 'revenue' ? 'bg-green-50 text-green-700 hover:bg-green-200' : ''}
+                                        ${cat === 'employee' ? 'bg-purple-50 text-purple-700 hover:bg-purple-200' : ''}
+                                        ${cat === 'expense' ? 'bg-orange-50 text-orange-700 hover:bg-orange-200' : ''}
+                                      `}
+                                    >
+                                      {CATEGORY_LABELS[cat]}
+                                    </button>
+                                  ))}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ==================== SUPPLIER TAB ==================== */}
+            {activeCategory === 'supplier' && (
+              <>
+                {/* Matching Stats */}
+                <div className="grid gap-4 md:grid-cols-5 mb-6">
+                  <Card
+                    className={`cursor-pointer transition-colors ${filterStatus === "all" ? "border-primary ring-1 ring-primary" : "hover:border-muted-foreground/50"}`}
+                    onClick={() => setFilterStatus("all")}
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">סה״כ ספקים</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{stats.total}</div>
+                      <p className="text-xs text-muted-foreground mt-1">{formatAmount(stats.totalAmount)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card
+                    className={`cursor-pointer transition-colors ${filterStatus === "matched" ? "border-green-500 ring-1 ring-green-500" : "hover:border-muted-foreground/50"}`}
+                    onClick={() => setFilterStatus("matched")}
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-500" />
+                        תואמים
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">{stats.matched}</div>
+                    </CardContent>
+                  </Card>
+                  <Card
+                    className={`cursor-pointer transition-colors ${filterStatus === "review" ? "border-amber-500 ring-1 ring-amber-500" : "hover:border-muted-foreground/50"}`}
+                    onClick={() => setFilterStatus("review")}
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        לבדיקה
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-amber-600">{stats.review}</div>
+                    </CardContent>
+                  </Card>
+                  <Card
+                    className={`cursor-pointer transition-colors ${filterStatus === "unmatched" ? "border-red-500 ring-1 ring-red-500" : "hover:border-muted-foreground/50"}`}
+                    onClick={() => setFilterStatus("unmatched")}
+                  >
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        לא תואמים
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">{stats.unmatched}</div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-muted/30">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">אחוז התאמה</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {stats.total > 0 ? Math.round(((stats.matched + stats.review) / stats.total) * 100) : 0}%
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Results Table */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>ספקים שזוהו בקובץ</CardTitle>
+                        <CardDescription>
+                          לחץ על &quot;הוסף כשם חלופי&quot; כדי לשמור את ההתאמה לעתיד
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="relative">
+                          <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            placeholder="חיפוש ספק..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="ps-9 w-64"
+                          />
+                        </div>
+                        <Button variant="outline" size="sm" onClick={handleProcessFile} disabled={isProcessing}>
+                          <RefreshCw className={`h-4 w-4 ms-2 ${isProcessing ? 'animate-spin' : ''}`} />
+                          רענן
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-right">שם במבנה אחיד</TableHead>
+                            <TableHead className="text-right">סכום</TableHead>
+                            <TableHead className="text-right">לפני מע״מ</TableHead>
+                            <TableHead className="text-right">עסקאות</TableHead>
+                            <TableHead className="text-right">התאמה לספק</TableHead>
+                            <TableHead className="text-right">ביטחון</TableHead>
+                            <TableHead className="text-right">פעולות</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredResults.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                {matchingResults.length === 0 ? "לא נמצאו ספקים בקובץ" : "לא נמצאו תוצאות מתאימות לסינון"}
+                              </TableCell>
+                            </TableRow>
+                          ) : (
+                            filteredResults.map((result, index) => (
+                              <TableRow key={index}>
+                                <TableCell className="font-medium">{result.bkmvName}</TableCell>
+                                <TableCell className="font-mono">{formatAmount(result.amount)}</TableCell>
+                                <TableCell className="font-mono text-muted-foreground">{formatAmount(result.amount / 1.18)}</TableCell>
+                                <TableCell>{result.transactionCount}</TableCell>
+                                <TableCell>
+                                  {result.matchResult.matchedSupplier ? (
+                                    <div className="flex items-center gap-2">
+                                      <span>{result.matchResult.matchedSupplier.name}</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {result.matchResult.matchedSupplier.code}
+                                      </Badge>
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted-foreground">לא נמצאה התאמה</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {result.matchResult.matchedSupplier ? (
+                                    <Badge
+                                      variant={
+                                        result.matchResult.confidence >= 0.85
+                                          ? "success"
+                                          : result.matchResult.confidence >= 0.7
+                                          ? "warning"
+                                          : "destructive"
+                                      }
+                                    >
+                                      {Math.round(result.matchResult.confidence * 100)}%
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline">-</Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {result.matchResult.matchedSupplier && result.matchResult.matchType.startsWith("fuzzy") && (
+                                    <div className="flex flex-wrap items-center gap-2 justify-end">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() =>
+                                          handleAddAlias(
+                                            result.matchResult.matchedSupplier!.id,
+                                            result.bkmvName
+                                          )
+                                        }
+                                        disabled={updateSupplierMutation.isPending}
+                                      >
+                                        <Plus className="h-4 w-4 ms-1" />
+                                        אשר והוסף כינוי
+                                      </Button>
+                                      <Select onValueChange={(value) => handleAddAlias(value, result.bkmvName)}>
+                                        <SelectTrigger className="w-[140px]">
+                                          <SelectValue placeholder="בחר אחר" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                          {sortedSuppliers
+                                            .filter(s => s.id !== result.matchResult.matchedSupplier?.id)
+                                            .map((s) => (
+                                              <SelectItem key={s.id} value={s.id}>
+                                                {s.name} ({s.code})
+                                              </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-muted-foreground hover:text-destructive"
+                                        onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                        disabled={addToBlacklistMutation.isPending}
+                                      >
+                                        <Ban className="h-4 w-4 ms-1" />
+                                        לא רלוונטי
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {result.matchResult.matchType.startsWith("exact") && (
+                                    <Badge variant="success" className="gap-1">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      התאמה מדויקת
+                                    </Badge>
+                                  )}
+                                  {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length > 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 justify-end">
+                                      <Select onValueChange={(value) => handleAddAlias(value, result.bkmvName)}>
+                                        <SelectTrigger className="w-[180px]">
+                                          <SelectValue placeholder="בחר ספק ידנית" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {result.matchResult.alternatives.map((alt) => (
+                                            <SelectItem key={alt.supplier.id} value={alt.supplier.id}>
+                                              {alt.supplier.name} ({Math.round(alt.confidence * 100)}%)
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-muted-foreground hover:text-destructive"
+                                        onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                        disabled={addToBlacklistMutation.isPending}
+                                      >
+                                        <Ban className="h-4 w-4 ms-1" />
+                                        לא רלוונטי
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {!result.matchResult.matchedSupplier && result.matchResult.alternatives.length === 0 && (
+                                    <div className="flex flex-wrap items-center gap-2 justify-end">
+                                      <Select onValueChange={(value) => handleAddAlias(value, result.bkmvName)}>
+                                        <SelectTrigger className="w-[180px]">
+                                          <SelectValue placeholder="בחר ספק מהרשימה" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-[300px]">
+                                          {sortedSuppliers.map((s) => (
+                                            <SelectItem key={s.id} value={s.id}>
+                                              <span className="flex items-center gap-2">
+                                                <span>{s.name}</span>
+                                                <span className="text-xs text-muted-foreground">({s.code})</span>
+                                              </span>
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="text-muted-foreground hover:text-destructive"
+                                        onClick={() => addToBlacklistMutation.mutate(result.bkmvName)}
+                                        disabled={addToBlacklistMutation.isPending}
+                                      >
+                                        <Ban className="h-4 w-4 ms-1" />
+                                        לא רלוונטי
+                                      </Button>
+                                    </div>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+
+            {/* ==================== REVENUE TAB ==================== */}
+            {activeCategory === 'revenue' && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        חשבונות הכנסות
+                      </CardTitle>
+                      <CardDescription>
+                        בחר חשבונות הכנסות ושמור לזכיין
+                      </CardDescription>
+                    </div>
+                    {matchedFranchisee && selectedRevenueAccounts.size > 0 && (
+                      <Button
+                        onClick={handleSaveRevenueAccounts}
+                        disabled={bulkClassifyMutation.isPending}
+                      >
+                        {bulkClassifyMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                        ) : (
+                          <Check className="h-4 w-4 ms-2" />
+                        )}
+                        שמור כקודי הכנסה ({selectedRevenueAccounts.size})
+                      </Button>
                     )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {matchedFranchisee && <TableHead className="w-10"></TableHead>}
+                          <TableHead className="text-right">שם חשבון</TableHead>
+                          <TableHead className="text-right">קוד</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">מקור</TableHead>
+                          <TableHead className="text-right">פעולות</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {categoryAccounts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={matchedFranchisee ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                              אין חשבונות הכנסות
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          categoryAccounts.map((account) => {
+                            const monthlyEntries = Object.entries(account.monthlyBreakdown || {}).sort(([a], [b]) => a.localeCompare(b));
+                            return (
+                              <TableRow key={account.accountCode}>
+                                {matchedFranchisee && (
+                                  <TableCell>
+                                    <Checkbox
+                                      checked={selectedRevenueAccounts.has(account.accountCode)}
+                                      onCheckedChange={(checked) => {
+                                        setSelectedRevenueAccounts(prev => {
+                                          const next = new Set(prev);
+                                          if (checked) next.add(account.accountCode);
+                                          else next.delete(account.accountCode);
+                                          return next;
+                                        });
+                                      }}
+                                    />
+                                  </TableCell>
+                                )}
+                                <TableCell className="font-medium">{account.accountName}</TableCell>
+                                <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
+                                <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
+                                <TableCell>{account.transactionCount}</TableCell>
+                                <TableCell>
+                                  {account.classificationSource === 'saved' ? (
+                                    <Badge variant="success" className="gap-1">
+                                      <Check className="h-3 w-3" />
+                                      שמור
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline">אוטומטי</Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {account.classificationSource === 'saved' && (
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-muted-foreground hover:text-destructive"
+                                      onClick={() => handleReclassify(account.accountCode)}
+                                      disabled={reclassifyMutation.isPending}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ==================== EMPLOYEE TAB ==================== */}
+            {activeCategory === 'employee' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">חשבונות עובדים</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">שם חשבון</TableHead>
+                          <TableHead className="text-right">קוד</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">פעולות</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {categoryAccounts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                              אין חשבונות עובדים
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          categoryAccounts.map((account) => (
+                            <TableRow key={account.accountCode}>
+                              <TableCell className="font-medium">{account.accountName}</TableCell>
+                              <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
+                              <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
+                              <TableCell>{account.transactionCount}</TableCell>
+                              <TableCell>
+                                {account.classificationSource === 'saved' && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => handleReclassify(account.accountCode)}
+                                    disabled={reclassifyMutation.isPending}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ==================== EXPENSE TAB ==================== */}
+            {activeCategory === 'expense' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">חשבונות הוצאות</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">שם חשבון</TableHead>
+                          <TableHead className="text-right">קוד</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">פעולות</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {categoryAccounts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                              אין חשבונות הוצאות
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          categoryAccounts.map((account) => (
+                            <TableRow key={account.accountCode}>
+                              <TableCell className="font-medium">{account.accountName}</TableCell>
+                              <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
+                              <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
+                              <TableCell>{account.transactionCount}</TableCell>
+                              <TableCell>
+                                {account.classificationSource === 'saved' && (
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => handleReclassify(account.accountCode)}
+                                    disabled={reclassifyMutation.isPending}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </>
       )}
         </TabsContent>
