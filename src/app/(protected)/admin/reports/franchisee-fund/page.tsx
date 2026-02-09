@@ -475,7 +475,7 @@ export default function FranchiseeFundReportPage() {
             <CardHeader>
               <CardTitle>פירוט לפי ספק וזכיין</CardTitle>
               <CardDescription>
-                כל תא מציג: עמלה רגילה / קרן זכיינים
+                כל תא מציג: עמלה כוללת / קרן זכיינים
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -539,7 +539,7 @@ export default function FranchiseeFundReportPage() {
                           >
                             <div className="text-xs">
                               <div>
-                                {formatCurrency(cell.regularCommission)}
+                                {formatCurrency(cell.totalCommission)}
                               </div>
                               <div className="text-amber-600">
                                 {formatCurrency(cell.fundAmount)}
@@ -551,7 +551,7 @@ export default function FranchiseeFundReportPage() {
                       <TableCell className="text-center">
                         <div className="text-xs font-medium">
                           <div>
-                            {formatCurrency(supplier.totals.regularCommission)}
+                            {formatCurrency(supplier.totals.totalCommission)}
                           </div>
                           <div className="text-amber-600">
                             {formatCurrency(supplier.totals.fundAmount)}

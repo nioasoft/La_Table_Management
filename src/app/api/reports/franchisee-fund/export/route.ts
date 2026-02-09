@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
       for (const f of report.franchisees) {
         const cell = supplier.cells[f.franchiseeId];
         if (cell) {
-          row.push(Math.round(cell.regularCommission * 100) / 100);
+          row.push(Math.round(cell.totalCommission * 100) / 100);
           row.push(Math.round(cell.fundAmount * 100) / 100);
         } else {
           row.push(0);
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Add totals
-      row.push(Math.round(supplier.totals.regularCommission * 100) / 100);
+      row.push(Math.round(supplier.totals.totalCommission * 100) / 100);
       row.push(Math.round(supplier.totals.fundAmount * 100) / 100);
 
       rows.push(row);

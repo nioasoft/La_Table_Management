@@ -272,7 +272,7 @@ export async function getFranchiseeFundReport(
         });
       }
       const fData = franchiseeMap.get(record.franchiseeId)!;
-      fData.totalCommissions += regularCommission;
+      fData.totalCommissions += totalCommission;
       fData.totalFund += fundAmount;
     }
   }
@@ -293,7 +293,7 @@ export async function getFranchiseeFundReport(
 
   // Calculate grand totals
   const grandTotals = {
-    totalCommissions: supplierRows.reduce((sum, s) => sum + s.totals.regularCommission, 0),
+    totalCommissions: supplierRows.reduce((sum, s) => sum + s.totals.totalCommission, 0),
     totalFund: supplierRows.reduce((sum, s) => sum + s.totals.fundAmount, 0),
   };
 
