@@ -74,6 +74,20 @@ export interface RevenueAccountSummary {
 }
 
 /**
+ * All-account summary - aggregated by account code from B110 records
+ * Extends RevenueAccountSummary with account classification fields
+ */
+export interface AllAccountSummary {
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  accountSort: string;
+  totalAmount: number;
+  transactionCount: number;
+  monthlyBreakdown: Record<string, number>; // YYYY-MM -> amount
+}
+
+/**
  * Complete parse result
  */
 export interface BkmvParseResult {
@@ -1119,6 +1133,112 @@ export function convertRevenueSummaryToArray(
     .map(account => ({
       accountCode: account.accountCode,
       accountName: account.accountName,
+      totalAmount: account.totalAmount,
+      transactionCount: account.transactionCount,
+      isConfirmed: false,
+      monthlyBreakdown: account.monthlyBreakdown,
+    }))
+    .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
+}
+
+/**
+ * Build summary for ALL B110 accounts (not just revenue-tagged ones).
+ * Each account includes: accountCode, accountName, accountType, accountSort,
+ * totalAmount (from B100 transactions), transactionCount, monthlyBreakdown.
+ *
+ * Matches B100 transactions to B110 accounts via two strategies:
+ * 1. B100 accountCode (normalized) → B110 accountKey (for numeric-key files)
+ * 2. B100 counterpartyName → B110 accountKey (fallback for text-key files)
+ *
+ * This mirrors the dual-matching approach used by buildRevenueSummary().
+ */
+export function buildAllAccountsSummary(
+  result: BkmvParseResult
+): Map<string, AllAccountSummary> {
+  const summary = new Map<string, AllAccountSummary>();
+
+  // Build lookup map from B110 accountKey (trimmed) → account info
+  type AccountInfo = { accountKey: string; accountName: string; accountType: string; accountSort: string };
+  const accountKeyToInfo = new Map<string, AccountInfo>();
+
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!key) continue;
+
+    accountKeyToInfo.set(key, {
+      accountKey: key,
+      accountName: account.accountName || key,
+      accountType: account.accountType || '',
+      accountSort: account.accountSort || '',
+    });
+  }
+
+  // Helper to add a transaction to the summary
+  function addToSummary(groupKey: string, info: AccountInfo, tx: BkmvTransaction) {
+    const monthKey = formatYearMonth(tx.documentDate);
+    const existing = summary.get(groupKey);
+    if (existing) {
+      existing.totalAmount += tx.amount;
+      existing.transactionCount++;
+      existing.monthlyBreakdown[monthKey] =
+        (existing.monthlyBreakdown[monthKey] || 0) + tx.amount;
+    } else {
+      summary.set(groupKey, {
+        accountCode: groupKey,
+        accountName: info.accountName,
+        accountType: info.accountType,
+        accountSort: info.accountSort,
+        totalAmount: tx.amount,
+        transactionCount: 1,
+        monthlyBreakdown: { [monthKey]: tx.amount },
+      });
+    }
+  }
+
+  // Match each B100 transaction to a B110 account
+  for (const tx of result.transactions) {
+    if (tx.amount === 0) continue;
+
+    // Strategy 1: match B100 accountCode (normalized) → B110 accountKey
+    const normalizedCode = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
+    let info = accountKeyToInfo.get(normalizedCode);
+    if (info) {
+      addToSummary(info.accountKey, info, tx);
+      continue;
+    }
+
+    // Strategy 2: match B100 counterpartyName → B110 accountKey
+    const counterparty = tx.counterpartyName.trim();
+    info = accountKeyToInfo.get(counterparty);
+    if (info) {
+      addToSummary(info.accountKey, info, tx);
+    }
+  }
+
+  return summary;
+}
+
+/**
+ * Convert all-accounts summary Map to sorted array for UI display
+ */
+export function convertAllAccountsSummaryToArray(
+  allAccountsSummary: Map<string, AllAccountSummary>
+): Array<{
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  accountSort: string;
+  totalAmount: number;
+  transactionCount: number;
+  isConfirmed: boolean;
+  monthlyBreakdown: Record<string, number>;
+}> {
+  return Array.from(allAccountsSummary.values())
+    .map((account) => ({
+      accountCode: account.accountCode,
+      accountName: account.accountName,
+      accountType: account.accountType,
+      accountSort: account.accountSort,
       totalAmount: account.totalAmount,
       transactionCount: account.transactionCount,
       isConfirmed: false,

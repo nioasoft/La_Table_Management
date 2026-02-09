@@ -52,6 +52,8 @@ import {
   Send,
   BellOff,
   ExternalLink,
+  Coins,
+  X,
 } from "lucide-react";
 import type { FranchiseeStatus, Document, FranchiseeReminderType, ReminderStatus, Contact } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
@@ -207,6 +209,12 @@ export function FranchiseeDetailCard({
   const [isLoadingPurchases, setIsLoadingPurchases] = useState(false);
   const [purchasesLoaded, setPurchasesLoaded] = useState(false);
 
+  // Revenue codes state
+  const [revenueCodes, setRevenueCodes] = useState<Array<{ accountCode: string; accountName: string | null }>>([]);
+  const [isLoadingRevenueCodes, setIsLoadingRevenueCodes] = useState(false);
+  const [revenueCodesLoaded, setRevenueCodesLoaded] = useState(false);
+  const [removingRevenueCode, setRemovingRevenueCode] = useState<string | null>(null);
+
   // Reset state when dialog closes or franchisee changes
   useEffect(() => {
     if (!isOpen) {
@@ -220,6 +228,8 @@ export function FranchiseeDetailCard({
       setPurchaseSummary(null);
       setPurchasesBySupplier([]);
       setPurchasesLoaded(false);
+      setRevenueCodes([]);
+      setRevenueCodesLoaded(false);
     }
   }, [isOpen, franchisee.id]);
 
@@ -298,11 +308,50 @@ export function FranchiseeDetailCard({
     }
   }, [franchisee.id, purchasesLoaded]);
 
+  // Fetch revenue codes when overview tab is shown
+  const fetchRevenueCodes = useCallback(async () => {
+    if (revenueCodesLoaded) return;
+
+    try {
+      setIsLoadingRevenueCodes(true);
+      const response = await fetch(`/api/franchisees/${franchisee.id}/revenue-codes?details=true`);
+      if (!response.ok) throw new Error("Failed to fetch revenue codes");
+      const data = await response.json();
+      setRevenueCodes(data.details || []);
+      setRevenueCodesLoaded(true);
+    } catch (error) {
+      console.error("Error fetching revenue codes:", error);
+    } finally {
+      setIsLoadingRevenueCodes(false);
+    }
+  }, [franchisee.id, revenueCodesLoaded]);
+
+  // Remove a revenue code
+  const handleRemoveRevenueCode = useCallback(async (accountCode: string) => {
+    setRemovingRevenueCode(accountCode);
+    try {
+      const response = await fetch(`/api/franchisees/${franchisee.id}/revenue-codes`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountCode }),
+      });
+      if (!response.ok) throw new Error("Failed to remove revenue code");
+      setRevenueCodes((prev) => prev.filter((c) => c.accountCode !== accountCode));
+    } catch (error) {
+      console.error("Error removing revenue code:", error);
+    } finally {
+      setRemovingRevenueCode(null);
+    }
+  }, [franchisee.id]);
+
   // Load data when tab changes
   useEffect(() => {
     if (!isOpen) return;
 
     switch (activeTab) {
+      case "overview":
+        fetchRevenueCodes();
+        break;
       case "documents":
         fetchDocuments();
         break;
@@ -316,7 +365,7 @@ export function FranchiseeDetailCard({
         fetchPurchaseHistory();
         break;
     }
-  }, [activeTab, isOpen, fetchDocuments, fetchStatusHistory, fetchReminders, fetchPurchaseHistory]);
+  }, [activeTab, isOpen, fetchRevenueCodes, fetchDocuments, fetchStatusHistory, fetchReminders, fetchPurchaseHistory]);
 
   const handleDocumentsChange = (newDocuments: DocumentWithUploader[]) => {
     setDocuments(newDocuments);
@@ -487,6 +536,56 @@ export function FranchiseeDetailCard({
                   </CardContent>
                 </Card>
               )}
+
+              {/* Revenue Codes */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Coins className="h-4 w-4" />
+                    חשבונות הכנסות מזוהים
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {isLoadingRevenueCodes ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      טוען...
+                    </div>
+                  ) : revenueCodes.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">לא הוגדרו חשבונות הכנסות</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {revenueCodes.map((code) => (
+                        <Badge
+                          key={code.accountCode}
+                          variant="outline"
+                          className="gap-1.5 pe-1"
+                        >
+                          <span className="font-mono">{code.accountCode}</span>
+                          {code.accountName && (
+                            <span className="text-muted-foreground">- {code.accountName}</span>
+                          )}
+                          {(userRole === "super_user" || userRole === "admin") && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 ms-1 hover:bg-destructive/20 hover:text-destructive rounded-full"
+                              onClick={() => handleRemoveRevenueCode(code.accountCode)}
+                              disabled={removingRevenueCode === code.accountCode}
+                            >
+                              {removingRevenueCode === code.accountCode ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3" />
+                              )}
+                            </Button>
+                          )}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
 
               {/* Important Dates */}
               <Card>

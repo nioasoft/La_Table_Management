@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Coins, Check, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Coins, Check, ChevronDown, ChevronUp, Loader2, EyeOff } from "lucide-react";
 import { formatAmount } from "@/lib/bkmvdata-parser";
 
 /**
@@ -22,6 +22,8 @@ import { formatAmount } from "@/lib/bkmvdata-parser";
 export interface RevenueAccount {
   accountCode: string;
   accountName: string;
+  accountType: string;
+  accountSort: string;
   totalAmount: number;
   transactionCount: number;
   isConfirmed: boolean;
@@ -44,9 +46,17 @@ interface RevenueMatchingModalProps {
   isSaving?: boolean;
 }
 
+/** Color for account type badge */
+function getAccountTypeBadgeVariant(accountType: string): "default" | "secondary" | "outline" | "destructive" {
+  if (accountType.includes('הכנסות')) return 'default';
+  if (accountType.includes('בנק')) return 'secondary';
+  if (accountType.includes('קופה')) return 'secondary';
+  return 'outline';
+}
+
 /**
  * Modal for selecting revenue accounts from BKMVDATA file
- * Supports multi-select with checkbox and option to save to franchisee
+ * Shows ALL B110 accounts, filtering out supplier-type and already-saved accounts
  */
 export function RevenueMatchingModal({
   open,
@@ -66,17 +76,40 @@ export function RevenueMatchingModal({
     new Set()
   );
 
-  // Initialize selected codes when modal opens or saved codes change
+  // Filter accounts: hide supplier-type and already-saved
+  const { visibleAccounts, hiddenCount, hiddenSupplierCount, hiddenSavedCount } = useMemo(() => {
+    const savedSet = new Set(savedRevenueCodes);
+    let supplierHidden = 0;
+    let savedHidden = 0;
+
+    const visible = revenueAccounts.filter((account) => {
+      // Hide supplier-type accounts
+      if (account.accountType.includes('ספקים')) {
+        supplierHidden++;
+        return false;
+      }
+      // Hide already-saved revenue codes
+      if (savedSet.has(account.accountCode)) {
+        savedHidden++;
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      visibleAccounts: visible,
+      hiddenCount: supplierHidden + savedHidden,
+      hiddenSupplierCount: supplierHidden,
+      hiddenSavedCount: savedHidden,
+    };
+  }, [revenueAccounts, savedRevenueCodes]);
+
+  // Initialize selected codes when modal opens
   useEffect(() => {
     if (open) {
-      // Pre-select accounts that match saved codes
-      const savedSet = new Set(savedRevenueCodes);
-      const matching = revenueAccounts
-        .filter((a) => savedSet.has(a.accountCode))
-        .map((a) => a.accountCode);
-      setSelectedCodes(new Set(matching));
+      setSelectedCodes(new Set());
     }
-  }, [open, savedRevenueCodes, revenueAccounts]);
+  }, [open]);
 
   // Toggle account selection
   const toggleAccount = (accountCode: string) => {
@@ -104,19 +137,18 @@ export function RevenueMatchingModal({
     });
   };
 
-  // Handle save
+  // Handle save - merge selected with existing saved codes
   const handleSave = async () => {
-    await onSave(Array.from(selectedCodes), saveToFranchisee);
+    // Combine new selections with existing saved codes
+    const allCodes = [...new Set([...savedRevenueCodes, ...selectedCodes])];
+    await onSave(allCodes, saveToFranchisee);
     onOpenChange(false);
   };
 
   // Calculate total of selected accounts
-  const selectedTotal = revenueAccounts
+  const selectedTotal = visibleAccounts
     .filter((a) => selectedCodes.has(a.accountCode))
     .reduce((sum, a) => sum + a.totalAmount, 0);
-
-  // Check if account is from saved codes
-  const isSavedCode = (code: string) => savedRevenueCodes.includes(code);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -127,17 +159,32 @@ export function RevenueMatchingModal({
             התאמות הכנסות
           </DialogTitle>
           <DialogDescription>
-            בחר את החשבונות שמייצגים הכנסות מזון/משקאות
+            בחר חשבונות הכנסות מכל החשבונות במבנה האחיד
           </DialogDescription>
         </DialogHeader>
 
+        {/* Hidden accounts info */}
+        {hiddenCount > 0 && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+            <EyeOff className="h-3.5 w-3.5" />
+            <span>
+              {visibleAccounts.length} חשבונות מוצגים
+              ({hiddenCount} מוסתרים
+              {hiddenSupplierCount > 0 && ` - ${hiddenSupplierCount} ספקים`}
+              {hiddenSavedCount > 0 && ` - ${hiddenSavedCount} שמורים`})
+            </span>
+          </div>
+        )}
+
         <div className="space-y-3 py-4">
-          {revenueAccounts.length === 0 ? (
+          {visibleAccounts.length === 0 ? (
             <p className="text-center text-muted-foreground py-6">
-              לא נמצאו חשבונות הכנסות בקובץ
+              {revenueAccounts.length === 0
+                ? "לא נמצאו חשבונות בקובץ"
+                : "כל החשבונות כבר שמורים או שייכים לספקים"}
             </p>
           ) : (
-            revenueAccounts.map((account) => {
+            visibleAccounts.map((account) => {
               const isSelected = selectedCodes.has(account.accountCode);
               const isExpanded = expandedAccounts.has(account.accountCode);
               const monthlyEntries = Object.entries(
@@ -176,13 +223,13 @@ export function RevenueMatchingModal({
                             נבחר
                           </Badge>
                         )}
-                        {isSavedCode(account.accountCode) && (
-                          <Badge variant="outline" className="text-blue-600 border-blue-300">
-                            שמור
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {account.accountType && (
+                          <Badge variant={getAccountTypeBadgeVariant(account.accountType)} className="text-xs">
+                            {account.accountType}
                           </Badge>
                         )}
-                      </div>
-                      <div className="flex items-center gap-3">
                         <span className="font-medium">{account.accountName}</span>
                         <span className="text-sm text-muted-foreground">
                           (קוד: {account.accountCode})
@@ -287,9 +334,9 @@ export function RevenueMatchingModal({
           >
             ביטול
           </Button>
-          <Button onClick={handleSave} disabled={isSaving}>
+          <Button onClick={handleSave} disabled={isSaving || selectedCodes.size === 0}>
             {isSaving && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
-            שמור
+            שמור ({selectedCodes.size})
           </Button>
         </DialogFooter>
       </DialogContent>
