@@ -85,7 +85,6 @@ interface FranchiseeFundReport {
   brandName: string | null;
   year: number;
   quarter: 1 | 2 | 3 | 4;
-  isYearlyData: boolean;
   suppliers: FranchiseeFundSupplierRow[];
   franchisees: FranchiseeFundFranchiseeColumn[];
   grandTotals: {
@@ -456,12 +455,9 @@ export default function FranchiseeFundReportPage() {
           {/* Period Info */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Calendar className="h-4 w-4" />
-            <span>שנה: {report.year}</span>
-            {report.isYearlyData && (
-              <Badge variant="secondary" className="text-xs">
-                נתונים שנתיים
-              </Badge>
-            )}
+            <span>
+              שנה: {report.year} | רבעון: Q{report.quarter}
+            </span>
             {report.brandName && (
               <>
                 <span>•</span>
