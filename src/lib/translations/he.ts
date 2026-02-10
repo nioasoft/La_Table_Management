@@ -2785,11 +2785,14 @@ export const he = {
     },
 
     fileUpload: {
-      dragHere: "גרור קובץ לכאן",
-      orClick: "או לחץ לבחירת קובץ",
+      dragHere: "גרור קבצים לכאן",
+      orClick: "או לחץ לבחירת קבצים",
       removeFile: "הסר קובץ",
       uploading: "מעלה...",
-      uploadButton: "העלה קובץ",
+      uploadButton: "העלה קבצים",
+      uploadButtonSingle: "העלה קובץ",
+      uploadProgress: "מעלה קובץ {current} מתוך {total}...",
+      tooManyFiles: "ניתן להעלות עוד {remaining} קבצים בלבד",
     },
 
     email: {
@@ -2802,6 +2805,13 @@ export const he = {
       invalidFileType: "סוג קובץ לא מורשה",
       fileTooLarge: "גודל הקובץ חורג מהמקסימום ({maxSize})",
       uploadFailed: "שגיאה בהעלאת הקובץ",
+    },
+
+    duplicate: {
+      title: "קובץ כפול",
+      message: "קיים כבר קובץ עבור אותו זכיין ותקופה ({fileName}). האם לדרוס?",
+      replace: "דרוס קובץ קיים",
+      cancel: "ביטול",
     },
 
     entityTypes: {

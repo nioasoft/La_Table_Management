@@ -30,7 +30,7 @@ import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
-import { createSupplierFileUpload } from "@/data-access/supplier-file-uploads";
+import { createSupplierFileUpload, findDuplicateSupplierFiles, reviewSupplierFile } from "@/data-access/supplier-file-uploads";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
 /**
@@ -133,6 +133,7 @@ export async function POST(
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const uploaderEmail = formData.get("email") as string | null;
+    const replaceFileId = formData.get("replaceFileId") as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -633,12 +634,73 @@ export async function POST(
               processedAt: new Date().toISOString(),
             };
 
+            // Check for duplicate files (same supplier + period + franchisee)
+            const matchedFranchiseeIds = storedResult.franchiseeMatches
+              .filter(m => m.matchedFranchiseeId)
+              .map(m => m.matchedFranchiseeId!);
+
+            if (periodStartDate && periodEndDate && matchedFranchiseeIds.length > 0) {
+              const duplicates = await findDuplicateSupplierFiles(
+                supplier.id,
+                periodStartDate,
+                periodEndDate,
+                matchedFranchiseeIds
+              );
+
+              if (duplicates.length > 0 && !replaceFileId) {
+                // Duplicate found and user hasn't confirmed replacement - return 409
+                return NextResponse.json(
+                  {
+                    error: "קיים כבר קובץ עבור אותו זכיין ותקופה",
+                    code: "DUPLICATE_FILE",
+                    duplicate: {
+                      existingFileId: duplicates[0].fileId,
+                      existingFileName: duplicates[0].originalFileName,
+                      overlappingFranchiseeIds: duplicates[0].overlappingFranchiseeIds,
+                    },
+                    // Return the uploaded file info so client can re-submit with replaceFileId
+                    file: {
+                      id: uploadedFileRecord.id,
+                      fileName: uploadedFileRecord.originalFileName,
+                      fileSize: uploadedFileRecord.fileSize,
+                      mimeType: uploadedFileRecord.mimeType,
+                    },
+                    filesRemaining: link.maxFiles - newFilesCount,
+                  },
+                  { status: 409 }
+                );
+              }
+
+              // If replaceFileId is provided, mark old record(s) as rejected
+              if (replaceFileId) {
+                await reviewSupplierFile(
+                  replaceFileId,
+                  "reject",
+                  "system",
+                  "הוחלף בקובץ חדש"
+                );
+              }
+            }
+
+            // Build a descriptive file name using franchisee IDs and period
+            const franchiseeIdLabel = processResult.data
+              .map(row => row.franchiseeId)
+              .filter(Boolean)
+              .join("_") || "unknown";
+            const periodLabel = periodStartDate?.substring(0, 7) ?? "no-date";
+            const customSupplierFileName = generateEntityFileName(
+              `${supplier.name}_${franchiseeIdLabel}_${periodLabel}`,
+              periodStartDate ?? formatDateAsLocal(new Date()),
+              file.name
+            );
+
             // Create supplier_file_upload record
             const supplierFileRecord = await createSupplierFileUpload({
               supplierId: supplier.id,
               originalFileName: file.name,
               fileUrl: uploadResult.url,
               fileSize: uploadResult.fileSize,
+              filePath: customSupplierFileName,
               processingStatus,
               processingResult: storedResult,
               periodStartDate,

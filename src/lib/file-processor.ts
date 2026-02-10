@@ -21,6 +21,8 @@ export const ISRAEL_VAT_RATE = DEFAULT_VAT_RATE;
 // Parsed row data from supplier files
 export interface ParsedRowData {
   franchisee: string;
+  /** External business identifier (e.g. מספר עוסק) for file naming and duplicate detection */
+  franchiseeId?: string;
   date: Date | null;
   grossAmount: number;
   netAmount: number; // Amount before VAT (for commission calculation)

@@ -595,6 +595,74 @@ export async function getSupplierFileByPeriod(
 }
 
 /**
+ * Find existing supplier files that overlap with the given period and contain
+ * any of the specified matched franchisee IDs.
+ * Used for duplicate detection when uploading per-franchisee files.
+ *
+ * @returns Array of existing files with the overlapping franchisee IDs
+ */
+export async function findDuplicateSupplierFiles(
+  supplierId: string,
+  periodStartDate: string,
+  periodEndDate: string,
+  matchedFranchiseeIds: string[]
+): Promise<Array<{ fileId: string; originalFileName: string; overlappingFranchiseeIds: string[]; createdAt: Date }>> {
+  if (matchedFranchiseeIds.length === 0) return [];
+
+  // Get all non-rejected files for this supplier that overlap with the period
+  const results = await database
+    .select({
+      id: supplierFileUpload.id,
+      originalFileName: supplierFileUpload.originalFileName,
+      processingResult: supplierFileUpload.processingResult,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
+    })
+    .from(supplierFileUpload)
+    .where(
+      and(
+        eq(supplierFileUpload.supplierId, supplierId),
+        ne(supplierFileUpload.processingStatus, "rejected"),
+        // Check for period overlap: existing.start <= new.end AND existing.end >= new.start
+        lte(supplierFileUpload.periodStartDate, periodEndDate),
+        gte(supplierFileUpload.periodEndDate, periodStartDate)
+      )
+    )
+    .orderBy(desc(supplierFileUpload.createdAt));
+
+  const duplicates: Array<{
+    fileId: string;
+    originalFileName: string;
+    overlappingFranchiseeIds: string[];
+    createdAt: Date;
+  }> = [];
+
+  const matchedSet = new Set(matchedFranchiseeIds);
+
+  for (const file of results) {
+    if (!file.processingResult) continue;
+
+    const result = file.processingResult as SupplierFileProcessingResult;
+    const overlapping = result.franchiseeMatches
+      ?.filter((m) => m.matchedFranchiseeId && matchedSet.has(m.matchedFranchiseeId))
+      .map((m) => m.matchedFranchiseeId!)
+      ?? [];
+
+    if (overlapping.length > 0) {
+      duplicates.push({
+        fileId: file.id,
+        originalFileName: file.originalFileName,
+        overlappingFranchiseeIds: overlapping,
+        createdAt: file.createdAt,
+      });
+    }
+  }
+
+  return duplicates;
+}
+
+/**
  * Get all supplier file uploads for a specific supplier within a year.
  * Returns files with their periods for completeness tracking.
  */

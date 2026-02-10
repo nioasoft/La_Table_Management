@@ -88,11 +88,17 @@ export default function PublicUploadPage({
   const [status, setStatus] = useState<PageStatus>("loading");
   const [uploadLinkInfo, setUploadLinkInfo] = useState<UploadLinkInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploaderEmail, setUploaderEmail] = useState<string>("");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [filesRemaining, setFilesRemaining] = useState(0);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null);
+  const [duplicateInfo, setDuplicateInfo] = useState<{
+    file: File;
+    existingFileId: string;
+    existingFileName: string;
+  } | null>(null);
 
   // Fetch upload link info
   useEffect(() => {
@@ -120,28 +126,63 @@ export default function PublicUploadPage({
     fetchUploadLink();
   }, [token]);
 
-  // Handle file selection
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file && uploadLinkInfo) {
+  // Validate and add files to selection
+  const addFiles = useCallback(
+    (newFiles: FileList | File[]) => {
+      if (!uploadLinkInfo) return;
+
+      const filesToAdd: File[] = [];
+      const maxAllowed = filesRemaining - selectedFiles.length;
+
+      for (let i = 0; i < newFiles.length && filesToAdd.length < maxAllowed; i++) {
+        const file = newFiles[i];
+
         // Validate file type
         if (!uploadLinkInfo.allowedFileTypes.includes(file.type)) {
           setErrorMessage(he.upload.errors.invalidFileType);
-          return;
+          continue;
         }
         // Validate file size
         if (file.size > uploadLinkInfo.maxFileSize) {
           setErrorMessage(
             he.upload.errors.fileTooLarge.replace("{maxSize}", formatFileSize(uploadLinkInfo.maxFileSize))
           );
-          return;
+          continue;
         }
+        // Avoid duplicates
+        const isDuplicate = selectedFiles.some(
+          (f) => f.name === file.name && f.size === file.size
+        );
+        if (isDuplicate) continue;
+
+        filesToAdd.push(file);
+      }
+
+      if (newFiles.length > maxAllowed + filesToAdd.length) {
+        setErrorMessage(
+          he.upload.fileUpload.tooManyFiles.replace("{remaining}", String(maxAllowed))
+        );
+      }
+
+      if (filesToAdd.length > 0) {
         setErrorMessage("");
-        setSelectedFile(file);
+        setSelectedFiles((prev) => [...prev, ...filesToAdd]);
       }
     },
-    [uploadLinkInfo]
+    [uploadLinkInfo, filesRemaining, selectedFiles]
+  );
+
+  // Handle file selection via input
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files;
+      if (files && files.length > 0) {
+        addFiles(files);
+      }
+      // Reset input so the same files can be re-selected
+      e.target.value = "";
+    },
+    [addFiles]
   );
 
   // Handle drag events
@@ -160,75 +201,148 @@ export default function PublicUploadPage({
       e.preventDefault();
       setIsDragging(false);
 
-      const file = e.dataTransfer.files?.[0];
-      if (file && uploadLinkInfo) {
-        // Validate file type
-        if (!uploadLinkInfo.allowedFileTypes.includes(file.type)) {
-          setErrorMessage(he.upload.errors.invalidFileType);
-          return;
-        }
-        // Validate file size
-        if (file.size > uploadLinkInfo.maxFileSize) {
-          setErrorMessage(
-            he.upload.errors.fileTooLarge.replace("{maxSize}", formatFileSize(uploadLinkInfo.maxFileSize))
-          );
-          return;
-        }
-        setErrorMessage("");
-        setSelectedFile(file);
+      const files = e.dataTransfer.files;
+      if (files && files.length > 0) {
+        addFiles(files);
       }
     },
-    [uploadLinkInfo]
+    [addFiles]
   );
 
-  // Handle file upload
+  // Upload a single file, optionally replacing an existing one
+  const uploadSingleFile = async (
+    file: File,
+    replaceFileId?: string
+  ): Promise<{ success: boolean; duplicate?: { existingFileId: string; existingFileName: string }; error?: string }> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (uploaderEmail) {
+      formData.append("email", uploaderEmail);
+    }
+    if (replaceFileId) {
+      formData.append("replaceFileId", replaceFileId);
+    }
+
+    const response = await fetch(`/api/public/upload/${token}`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (response.status === 409 && data.code === "DUPLICATE_FILE") {
+      // File uploaded to storage, but duplicate detected - ask user to confirm
+      return {
+        success: false,
+        duplicate: {
+          existingFileId: data.duplicate.existingFileId,
+          existingFileName: data.duplicate.existingFileName,
+        },
+      };
+    }
+
+    if (!response.ok) {
+      return { success: false, error: data.error || he.upload.errors.uploadFailed };
+    }
+
+    // Success
+    setUploadedFiles((prev) => [...prev, data.file]);
+    setFilesRemaining(data.filesRemaining);
+    return { success: true };
+  };
+
+  // Handle file upload - uploads files sequentially
   const handleUpload = async () => {
-    if (!selectedFile || !uploadLinkInfo) return;
+    if (selectedFiles.length === 0 || !uploadLinkInfo) return;
 
     setStatus("uploading");
     setErrorMessage("");
+    setDuplicateInfo(null);
+    setUploadProgress({ current: 0, total: selectedFiles.length });
 
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      if (uploaderEmail) {
-        formData.append("email", uploaderEmail);
+    const failedFiles: string[] = [];
+    const remainingFiles: File[] = [];
+
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
+      setUploadProgress({ current: i + 1, total: selectedFiles.length });
+
+      try {
+        const result = await uploadSingleFile(file);
+
+        if (result.duplicate) {
+          // Pause and ask user about this duplicate
+          setUploadProgress(null);
+          setDuplicateInfo({
+            file,
+            existingFileId: result.duplicate.existingFileId,
+            existingFileName: result.duplicate.existingFileName,
+          });
+          // Keep remaining files for after the duplicate is resolved
+          remainingFiles.push(...selectedFiles.slice(i + 1));
+          setSelectedFiles(remainingFiles);
+          setStatus("ready");
+          return;
+        }
+
+        if (result.error) {
+          failedFiles.push(`${file.name}: ${result.error}`);
+        }
+      } catch (error) {
+        console.error("Error uploading file:", error);
+        failedFiles.push(`${file.name}: ${he.upload.errors.uploadFailed}`);
       }
+    }
 
-      const response = await fetch(`/api/public/upload/${token}`, {
-        method: "POST",
-        body: formData,
-      });
+    setSelectedFiles([]);
+    setUploadProgress(null);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setErrorMessage(data.error || he.upload.errors.uploadFailed);
-        setStatus("ready");
-        return;
-      }
-
-      // Add to uploaded files list
-      setUploadedFiles((prev) => [...prev, data.file]);
-      setFilesRemaining(data.filesRemaining);
-      setSelectedFile(null);
-
-      // If no more files can be uploaded, show success
-      if (data.filesRemaining <= 0) {
-        setStatus("success");
-      } else {
-        setStatus("ready");
-      }
-    } catch (error) {
-      console.error("Error uploading file:", error);
-      setErrorMessage(he.upload.errors.uploadFailed);
+    if (failedFiles.length > 0) {
+      setErrorMessage(failedFiles.join("\n"));
+      setStatus("ready");
+    } else if (filesRemaining <= 0) {
+      setStatus("success");
+    } else {
       setStatus("ready");
     }
   };
 
-  // Remove selected file
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
+  // Handle duplicate replacement confirmation
+  const handleDuplicateReplace = async () => {
+    if (!duplicateInfo) return;
+
+    setStatus("uploading");
+    setErrorMessage("");
+    const { file, existingFileId } = duplicateInfo;
+    setDuplicateInfo(null);
+
+    try {
+      const result = await uploadSingleFile(file, existingFileId);
+      if (result.error) {
+        setErrorMessage(`${file.name}: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error replacing file:", error);
+      setErrorMessage(`${file.name}: ${he.upload.errors.uploadFailed}`);
+    }
+
+    setStatus("ready");
+
+    // Continue uploading remaining files if any
+    if (selectedFiles.length > 0) {
+      // Use setTimeout to let state settle before continuing
+      setTimeout(() => handleUpload(), 100);
+    }
+  };
+
+  // Cancel duplicate replacement
+  const handleDuplicateCancel = () => {
+    setDuplicateInfo(null);
+  };
+
+  // Remove a specific selected file
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
     setErrorMessage("");
   };
 
@@ -352,10 +466,43 @@ export default function PublicUploadPage({
           {/* Error message */}
           {errorMessage && (
             <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-              <p className="text-sm text-destructive flex items-center gap-2">
-                <AlertCircle className="h-4 w-4" />
+              <p className="text-sm text-destructive flex items-center gap-2 whitespace-pre-line">
+                <AlertCircle className="h-4 w-4 shrink-0" />
                 {errorMessage}
               </p>
+            </div>
+          )}
+
+          {/* Duplicate file confirmation */}
+          {duplicateInfo && (
+            <div className="rounded-lg border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                    {he.upload.duplicate.title}
+                  </p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                    {he.upload.duplicate.message.replace("{fileName}", duplicateInfo.existingFileName)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDuplicateCancel}
+                >
+                  {he.upload.duplicate.cancel}
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleDuplicateReplace}
+                >
+                  {he.upload.duplicate.replace}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -385,30 +532,52 @@ export default function PublicUploadPage({
                 className={`
                   relative rounded-lg border-2 border-dashed p-8 transition-colors
                   ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25"}
-                  ${selectedFile ? "bg-muted/50" : ""}
+                  ${selectedFiles.length > 0 ? "bg-muted/50" : ""}
                 `}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
               >
-                {selectedFile ? (
-                  <div className="flex flex-col items-center gap-3">
-                    <FileIcon className="h-12 w-12 text-primary" />
-                    <div className="text-center">
-                      <p className="font-medium">{selectedFile.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatFileSize(selectedFile.size)}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleRemoveFile}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <X className="h-4 w-4 ml-1" />
-                      {he.upload.fileUpload.removeFile}
-                    </Button>
+                {selectedFiles.length > 0 ? (
+                  <div className="space-y-3">
+                    {selectedFiles.map((file, index) => (
+                      <div
+                        key={`${file.name}-${file.size}`}
+                        className="flex items-center gap-2 p-2 bg-background rounded-md border"
+                      >
+                        <FileIcon className="h-5 w-5 text-primary shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{file.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatFileSize(file.size)}
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
+                          onClick={() => handleRemoveFile(index)}
+                          disabled={status === "uploading"}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {/* Allow adding more files if there are remaining slots */}
+                    {selectedFiles.length < filesRemaining && (
+                      <label className="flex items-center justify-center gap-2 p-2 rounded-md border border-dashed cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:border-foreground/25 transition-colors">
+                        <CloudUpload className="h-4 w-4" />
+                        <span>{he.upload.fileUpload.orClick}</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={handleFileChange}
+                          accept={uploadLinkInfo?.allowedFileTypes.join(",")}
+                          disabled={status === "uploading"}
+                          multiple
+                        />
+                      </label>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-3 text-center">
@@ -423,6 +592,7 @@ export default function PublicUploadPage({
                       onChange={handleFileChange}
                       accept={uploadLinkInfo?.allowedFileTypes.join(",")}
                       disabled={status === "uploading"}
+                      multiple
                     />
                   </div>
                 )}
@@ -450,17 +620,21 @@ export default function PublicUploadPage({
                 className="w-full"
                 size="lg"
                 onClick={handleUpload}
-                disabled={!selectedFile || status === "uploading"}
+                disabled={selectedFiles.length === 0 || status === "uploading"}
               >
-                {status === "uploading" ? (
+                {status === "uploading" && uploadProgress ? (
                   <>
                     <Loader2 className="h-5 w-5 ml-2 animate-spin" />
-                    {he.upload.fileUpload.uploading}
+                    {he.upload.fileUpload.uploadProgress
+                      .replace("{current}", String(uploadProgress.current))
+                      .replace("{total}", String(uploadProgress.total))}
                   </>
                 ) : (
                   <>
                     <Upload className="h-5 w-5 ml-2" />
-                    {he.upload.fileUpload.uploadButton}
+                    {selectedFiles.length === 1
+                      ? he.upload.fileUpload.uploadButtonSingle
+                      : `${he.upload.fileUpload.uploadButton} (${selectedFiles.length})`}
                   </>
                 )}
               </Button>
