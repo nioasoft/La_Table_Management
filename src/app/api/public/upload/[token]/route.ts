@@ -640,7 +640,14 @@ export async function POST(
 
             // Check for duplicate files (same supplier + period + franchisee)
             const matchedFranchiseeIds = storedResult.franchiseeMatches
-              .filter(m => m.matchedFranchiseeId)
+              .filter(m => {
+                if (!m.matchedFranchiseeId) return false;
+                if (typeof m.matchedFranchiseeId === 'string' && m.matchedFranchiseeId.trim() === '') {
+                  console.warn(`[Upload Route] Filtering out empty string matchedFranchiseeId for originalName: ${m.originalName}`);
+                  return false;
+                }
+                return true;
+              })
               .map(m => m.matchedFranchiseeId!);
 
             console.log("[Upload Route] Checking for duplicates:", {

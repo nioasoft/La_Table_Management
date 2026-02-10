@@ -32,6 +32,7 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
+import { normalizeBusinessId } from "@/lib/business-id-utils";
 
 // Column indices
 const STATUS_COL = 0; // Column A
@@ -102,7 +103,9 @@ function parseSingleXlsx(
     }
 
     // Get business ID as franchisee identifier
-    const businessId = String(row[BUSINESS_ID_COL] || "").trim();
+    // Normalize to handle format variations (e.g., "123456789-0" -> "123456789")
+    const rawBusinessId = String(row[BUSINESS_ID_COL] || "").trim();
+    const businessId = normalizeBusinessId(rawBusinessId);
     if (!businessId) continue;
 
     // Parse amount before VAT (column O)

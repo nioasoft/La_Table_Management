@@ -658,7 +658,14 @@ export async function findDuplicateSupplierFiles(
     const result = file.processingResult as SupplierFileProcessingResult;
     const existingFranchiseeIds = result.franchiseeMatches
       ?.map((m) => m.matchedFranchiseeId)
-      .filter((id): id is string => id != null) ?? [];
+      .filter((id): id is string => {
+        if (id == null) return false;
+        if (typeof id === 'string' && id.trim() === '') {
+          console.warn(`[findDuplicateSupplierFiles] File ${file.id} has empty string matchedFranchiseeId`);
+          return false;
+        }
+        return true;
+      }) ?? [];
 
     console.log(`[findDuplicateSupplierFiles] File ${file.originalFileName} (${file.id}):`, {
       existingFranchiseeIds,

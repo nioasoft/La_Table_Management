@@ -1,5 +1,6 @@
 import { database } from "@/db";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { normalizeBusinessId } from "@/lib/business-id-utils";
 import {
   franchisee,
   franchiseeStatusHistory,
@@ -942,13 +943,19 @@ export async function matchFranchiseeNamesFromFile<
     .orderBy(desc(franchisee.createdAt)) as Franchisee[];
 
   // Create lookup map for companyId matching (e.g., מספר עוסק from supplier files)
+  // Use normalized business IDs as keys to handle format variations (e.g., "123456789-0" vs "123456789")
   const companyIdMap = new Map<string, Franchisee>();
 
   for (const f of allFranchisees) {
     if (f.companyId) {
-      companyIdMap.set(f.companyId.trim(), f);
+      const normalizedId = normalizeBusinessId(f.companyId);
+      if (normalizedId) {
+        companyIdMap.set(normalizedId, f);
+      }
     }
   }
+
+  console.log(`[matchFranchiseeNamesFromFile] Built companyIdMap with ${companyIdMap.size} normalized business IDs`);
 
   // Import and use the matchParsedFileData function
   const { matchParsedFileData, matchFranchiseeName } = await import("@/lib/franchisee-matcher");
@@ -961,25 +968,31 @@ export async function matchFranchiseeNamesFromFile<
 
     // First, try to match by franchiseeId (business ID / מספר עוסק) if available
     if (row.franchiseeId) {
-      const businessId = row.franchiseeId.trim();
+      const normalizedBusinessId = normalizeBusinessId(row.franchiseeId);
 
-      // Check companyId map for exact match
-      const companyMatch = companyIdMap.get(businessId);
-      if (companyMatch) {
-        matchResult = {
-          originalName: row.franchisee,
-          matchedFranchisee: companyMatch,
-          confidence: 1,
-          matchType: "exact_code",
-          matchedOn: `companyId:${businessId}`,
-          requiresReview: false,
-          alternatives: [],
-        };
+      if (normalizedBusinessId) {
+        // Check companyId map for match using normalized ID
+        const companyMatch = companyIdMap.get(normalizedBusinessId);
+        if (companyMatch) {
+          console.log(`[matchFranchiseeNamesFromFile] Matched by business ID: "${row.franchiseeId}" -> normalized "${normalizedBusinessId}" -> franchisee "${companyMatch.name}"`);
+          matchResult = {
+            originalName: row.franchisee,
+            matchedFranchisee: companyMatch,
+            confidence: 1,
+            matchType: "exact_code",
+            matchedOn: `companyId:${normalizedBusinessId}`,
+            requiresReview: false,
+            alternatives: [],
+          };
+        } else {
+          console.log(`[matchFranchiseeNamesFromFile] No match for business ID: "${row.franchiseeId}" (normalized: "${normalizedBusinessId}")`);
+        }
       }
     }
 
     // If no franchiseeId match, fall back to name matching
     if (!matchResult) {
+      console.log(`[matchFranchiseeNamesFromFile] Falling back to name matching for: "${row.franchisee}"`);
       matchResult = matchFranchiseeName(row.franchisee, allFranchisees, config);
     }
 
