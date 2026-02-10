@@ -609,6 +609,13 @@ export async function findDuplicateSupplierFiles(
 ): Promise<Array<{ fileId: string; originalFileName: string; overlappingFranchiseeIds: string[]; createdAt: Date }>> {
   if (matchedFranchiseeIds.length === 0) return [];
 
+  console.log("[findDuplicateSupplierFiles] Checking for duplicates:", {
+    supplierId,
+    periodStartDate,
+    periodEndDate,
+    matchedFranchiseeIds,
+  });
+
   // Get all non-rejected files for this supplier that overlap with the period
   const results = await database
     .select({
@@ -631,6 +638,8 @@ export async function findDuplicateSupplierFiles(
     )
     .orderBy(desc(supplierFileUpload.createdAt));
 
+  console.log(`[findDuplicateSupplierFiles] Found ${results.length} existing files with overlapping periods`);
+
   const duplicates: Array<{
     fileId: string;
     originalFileName: string;
@@ -641,15 +650,28 @@ export async function findDuplicateSupplierFiles(
   const matchedSet = new Set(matchedFranchiseeIds);
 
   for (const file of results) {
-    if (!file.processingResult) continue;
+    if (!file.processingResult) {
+      console.log(`[findDuplicateSupplierFiles] File ${file.id} has no processingResult, skipping`);
+      continue;
+    }
 
     const result = file.processingResult as SupplierFileProcessingResult;
+    const existingFranchiseeIds = result.franchiseeMatches
+      ?.map((m) => m.matchedFranchiseeId)
+      .filter((id): id is string => id != null) ?? [];
+
+    console.log(`[findDuplicateSupplierFiles] File ${file.originalFileName} (${file.id}):`, {
+      existingFranchiseeIds,
+      newFranchiseeIds: matchedFranchiseeIds,
+    });
+
     const overlapping = result.franchiseeMatches
       ?.filter((m) => m.matchedFranchiseeId && matchedSet.has(m.matchedFranchiseeId))
       .map((m) => m.matchedFranchiseeId!)
       ?? [];
 
     if (overlapping.length > 0) {
+      console.log(`[findDuplicateSupplierFiles] DUPLICATE FOUND: ${file.originalFileName} overlaps on franchisee IDs:`, overlapping);
       duplicates.push({
         fileId: file.id,
         originalFileName: file.originalFileName,
@@ -658,6 +680,8 @@ export async function findDuplicateSupplierFiles(
       });
     }
   }
+
+  console.log(`[findDuplicateSupplierFiles] Total duplicates found: ${duplicates.length}`);
 
   return duplicates;
 }

@@ -641,6 +641,20 @@ export async function POST(
               .filter(m => m.matchedFranchiseeId)
               .map(m => m.matchedFranchiseeId!);
 
+            console.log("[Upload Route] Checking for duplicates:", {
+              supplierId: supplier.id,
+              periodStartDate,
+              periodEndDate,
+              matchedFranchiseeIds,
+              franchiseeMatches: storedResult.franchiseeMatches.map(m => ({
+                originalName: m.originalName,
+                matchedFranchiseeId: m.matchedFranchiseeId,
+                matchedFranchiseeName: m.matchedFranchiseeName,
+                matchType: m.matchType,
+              })),
+              replaceFileId,
+            });
+
             if (periodStartDate && periodEndDate && matchedFranchiseeIds.length > 0) {
               const duplicates = await findDuplicateSupplierFiles(
                 supplier.id,
@@ -649,16 +663,38 @@ export async function POST(
                 matchedFranchiseeIds
               );
 
+              console.log("[Upload Route] Duplicate check result:", {
+                duplicatesFound: duplicates.length,
+                duplicates: duplicates.map(d => ({
+                  fileId: d.fileId,
+                  fileName: d.originalFileName,
+                  overlappingFranchiseeIds: d.overlappingFranchiseeIds,
+                })),
+              });
+
               if (duplicates.length > 0 && !replaceFileId) {
                 // Duplicate found and user hasn't confirmed replacement - return 409
+                console.log("[Upload Route] Returning 409 DUPLICATE_FILE error");
+
+                // Get the overlapping franchisee names for better error message
+                const overlappingMatches = storedResult.franchiseeMatches
+                  .filter(m => m.matchedFranchiseeId && duplicates[0].overlappingFranchiseeIds.includes(m.matchedFranchiseeId));
+
+                const franchiseeNames = overlappingMatches
+                  .map(m => m.matchedFranchiseeName || m.originalName)
+                  .filter(Boolean);
+
                 return NextResponse.json(
                   {
-                    error: "קיים כבר קובץ עבור אותו זכיין ותקופה",
+                    error: franchiseeNames.length > 0
+                      ? `קיים כבר קובץ עבור ${franchiseeNames.join(", ")} בתקופה זו`
+                      : "קיים כבר קובץ עבור אותו זכיין ותקופה",
                     code: "DUPLICATE_FILE",
                     duplicate: {
                       existingFileId: duplicates[0].fileId,
                       existingFileName: duplicates[0].originalFileName,
                       overlappingFranchiseeIds: duplicates[0].overlappingFranchiseeIds,
+                      overlappingFranchiseeNames: franchiseeNames,
                     },
                     // Return the uploaded file info so client can re-submit with replaceFileId
                     file: {
@@ -675,6 +711,7 @@ export async function POST(
 
               // If replaceFileId is provided, mark old record(s) as rejected
               if (replaceFileId) {
+                console.log("[Upload Route] Replacing file:", replaceFileId);
                 await reviewSupplierFile(
                   replaceFileId,
                   "reject",
@@ -682,6 +719,12 @@ export async function POST(
                   "הוחלף בקובץ חדש"
                 );
               }
+            } else {
+              console.log("[Upload Route] Skipping duplicate check - missing data:", {
+                hasPeriodStartDate: !!periodStartDate,
+                hasPeriodEndDate: !!periodEndDate,
+                matchedFranchiseeIdsCount: matchedFranchiseeIds.length,
+              });
             }
 
             // Build a descriptive file name using franchisee IDs and period
