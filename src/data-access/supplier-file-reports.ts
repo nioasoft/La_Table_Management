@@ -14,7 +14,7 @@ import {
   franchisee,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, sql, desc, gte, lte, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, lte, inArray } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 // ============================================================================
@@ -178,15 +178,29 @@ export function getStatusLabel(status: string): string {
 export async function getSupplierFilesReport(
   filters: SupplierFilesFilters = {}
 ): Promise<SupplierFilesReport> {
-  // Build conditions array
+  // Build conditions array - all applied in a single .where(and(...)) to avoid overwriting
   const conditions: ReturnType<typeof eq>[] = [];
 
+  // Use overlap logic: show files whose period overlaps with the filter range
+  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
+  if (filters.startDate) {
+    conditions.push(gte(supplierFileUpload.periodEndDate, filters.startDate));
+  }
+  if (filters.endDate) {
+    conditions.push(lte(supplierFileUpload.periodStartDate, filters.endDate));
+  }
+  if (filters.supplierId) {
+    conditions.push(eq(supplierFileUpload.supplierId, filters.supplierId));
+  }
   if (filters.status) {
     conditions.push(eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected"));
   }
 
-  // Get all supplier files with related data
-  const filesQuery = database
+  // Note: Brand filtering is done at franchisee-match level, not supplier level.
+  // This allows filtering by "שונות" brand which contains franchisees like "דון פדרו"
+  // that appear in supplier files but aren't supplier-brand associations.
+
+  const rawFiles = await database
     .select({
       // File data
       id: supplierFileUpload.id,
@@ -212,42 +226,9 @@ export async function getSupplierFilesReport(
     })
     .from(supplierFileUpload)
     .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
-    .leftJoin(user, eq(supplierFileUpload.createdBy, user.id));
-
-  // Apply date filters using raw SQL
-  let finalQuery = filesQuery;
-
-  // Use overlap logic: show files whose period overlaps with the filter range
-  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
-  if (filters.startDate) {
-    finalQuery = finalQuery.where(
-      sql`${supplierFileUpload.periodEndDate} >= ${filters.startDate}`
-    ) as typeof filesQuery;
-  }
-
-  if (filters.endDate) {
-    finalQuery = finalQuery.where(
-      sql`${supplierFileUpload.periodStartDate} <= ${filters.endDate}`
-    ) as typeof filesQuery;
-  }
-
-  if (filters.supplierId) {
-    finalQuery = finalQuery.where(
-      eq(supplierFileUpload.supplierId, filters.supplierId)
-    ) as typeof filesQuery;
-  }
-
-  if (filters.status) {
-    finalQuery = finalQuery.where(
-      eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
-    ) as typeof filesQuery;
-  }
-
-  // Note: Brand filtering is done at franchisee-match level, not supplier level.
-  // This allows filtering by "שונות" brand which contains franchisees like "דון פדרו"
-  // that appear in supplier files but aren't supplier-brand associations.
-
-  const rawFiles = await finalQuery.orderBy(desc(supplierFileUpload.createdAt));
+    .leftJoin(user, eq(supplierFileUpload.createdBy, user.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(supplierFileUpload.createdAt));
 
   // Deduplicate: keep only the latest file per supplier
   const supplierLatestFile = new Map<string, typeof rawFiles[0]>();
