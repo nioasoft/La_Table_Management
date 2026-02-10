@@ -613,7 +613,7 @@ function buildRevenueSummary(result: BkmvParseResult): void {
 
   for (const account of result.accounts) {
     // Check if this is a revenue account
-    if (account.accountType && (account.accountType.includes('הכנסות') || account.accountType.includes('מכירות'))) {
+    if (account.accountType && (account.accountType.includes('הכנסות') || (account.accountType.includes('מכירות') && !account.accountType.includes('עלות מכירות')))) {
       const key = account.accountKey.trim();
       if (key) {
         revenueAccountCodes.add(key);
@@ -1245,6 +1245,11 @@ export function autoClassifyAccount(accountType: string): AccountCategory {
     t.includes('ירותים')            // truncated שירותים
   ) {
     return 'supplier';
+  }
+
+  // COGS (cost of goods sold) - must come BEFORE revenue since "עלות מכירות" contains "מכירות"
+  if (t.includes('עלות מכירות')) {
+    return 'expense';
   }
 
   // Revenue patterns
