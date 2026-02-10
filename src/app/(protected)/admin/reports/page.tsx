@@ -122,8 +122,8 @@ const reportCards: ReportCardData[] = [
     color: "text-amber-600 dark:text-amber-400",
   },
   {
-    title: "אחוז עמלות ממחזור",
-    description: "השוואת הכנסות זכיינים מול סה״כ עמלות - אחוז עמלות מסך המחזור",
+    title: "אחוז קניות ממחזור",
+    description: "השוואת קניות מספקים מול מחזור זכיינים - אחוז קניות מסך המחזור",
     href: "/admin/reports/commission-revenue",
     icon: <Percent className="h-6 w-6" />,
     status: "active",

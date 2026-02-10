@@ -76,9 +76,9 @@ export async function GET(request: NextRequest) {
       "שם זכיין",
       "קוד",
       "מותג",
-      "רכישות (₪)",
-      "עמלות (₪)",
-      "אחוז (%)",
+      "מחזור (₪)",
+      "קניות מספקים (₪)",
+      "אחוז קניות (%)",
     ];
 
     const rows: (string | number)[][] = [];
@@ -88,19 +88,19 @@ export async function GET(request: NextRequest) {
         row.name,
         row.code,
         row.brandName,
-        Math.round(row.totalPurchases * 100) / 100,
-        Math.round(row.totalCommissions * 100) / 100,
-        row.commissionPercentage !== null
-          ? Math.round(row.commissionPercentage * 100) / 100
+        Math.round(row.totalRevenue * 100) / 100,
+        Math.round(row.totalSupplierPurchases * 100) / 100,
+        row.supplierPurchasesPercentage !== null
+          ? Math.round(row.supplierPurchasesPercentage * 100) / 100
           : "N/A",
       ]);
     }
 
     // Totals row
     const overallPercent =
-      report.summary.totalPurchases > 0
+      report.summary.totalRevenue > 0
         ? Math.round(
-            (report.summary.totalCommissions / report.summary.totalPurchases) *
+            (report.summary.totalSupplierPurchases / report.summary.totalRevenue) *
               100 *
               100
           ) / 100
@@ -110,8 +110,8 @@ export async function GET(request: NextRequest) {
       "סה״כ",
       "",
       "",
-      Math.round(report.summary.totalPurchases * 100) / 100,
-      Math.round(report.summary.totalCommissions * 100) / 100,
+      Math.round(report.summary.totalRevenue * 100) / 100,
+      Math.round(report.summary.totalSupplierPurchases * 100) / 100,
       overallPercent,
     ]);
 
@@ -134,7 +134,7 @@ export async function GET(request: NextRequest) {
     ws["!dir"] = "rtl";
 
     const quarterLabel = quarter === "annual" ? "שנתי" : `Q${quarter}`;
-    XLSX.utils.book_append_sheet(wb, ws, `אחוז עמלות ${quarterLabel}`);
+    XLSX.utils.book_append_sheet(wb, ws, `אחוז קניות ${quarterLabel}`);
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 

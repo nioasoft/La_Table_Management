@@ -4,9 +4,11 @@ import {
   franchisee,
   brand,
   supplierFileUpload,
+  uploadedFile,
   type SupplierFileProcessingResult,
+  type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, inArray, gte, lte, or } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, or, isNotNull } from "drizzle-orm";
 
 // ============================================================================
 // TYPES
@@ -23,16 +25,16 @@ export interface CommissionRevenueRow {
   name: string;
   code: string;
   brandName: string;
-  totalPurchases: number;
-  totalCommissions: number;
-  commissionPercentage: number | null; // null when purchases is 0 but commissions exist
+  totalRevenue: number; // Revenue from BKMV files (turnover)
+  totalSupplierPurchases: number; // Purchases from supplier files
+  supplierPurchasesPercentage: number | null; // null when revenue is 0
 }
 
 export interface CommissionRevenueReport {
   rows: CommissionRevenueRow[];
   summary: {
-    totalPurchases: number;
-    totalCommissions: number;
+    totalRevenue: number;
+    totalSupplierPurchases: number;
     avgPercent: number;
     count: number;
   };
@@ -93,16 +95,16 @@ function getDateRange(
 // ============================================================================
 
 /**
- * Get commission-to-purchases ratio report
+ * Get supplier purchases-to-revenue ratio report
  *
- * Purchases: from supplier_file_upload.processingResult.franchiseeMatches (netAmount totals)
- * Commissions: from supplier_file_upload.processingResult.franchiseeMatches (calculated commissions)
+ * Revenue (turnover): from uploaded_file.bkmvProcessingResult.revenueMonthlyBreakdown
+ * Supplier Purchases: from supplier_file_upload.processingResult.franchiseeMatches (netAmount totals)
  */
 export async function getCommissionRevenueReport(
   filters: CommissionRevenueReportFilters
 ): Promise<CommissionRevenueReport> {
   const { year, quarter, brandId } = filters;
-  const { startDate, endDate } = getDateRange(year, quarter);
+  const { startDate, endDate, months } = getDateRange(year, quarter);
 
   // Get brand info if filtering
   let brandInfo: { id: string; nameHe: string } | null = null;
@@ -114,6 +116,37 @@ export async function getCommissionRevenueReport(
       .limit(1);
     if (brandResult.length > 0) {
       brandInfo = brandResult[0];
+    }
+  }
+
+  // ---- BKMV FILES: Get revenue data from uploaded BKMV files ----
+  const bkmvFiles = await database
+    .select({
+      franchiseeId: uploadedFile.franchiseeId,
+      processingResult: uploadedFile.bkmvProcessingResult,
+    })
+    .from(uploadedFile)
+    .where(
+      and(
+        isNotNull(uploadedFile.bkmvProcessingResult),
+        isNotNull(uploadedFile.franchiseeId),
+        lte(uploadedFile.periodStartDate, endDate),
+        gte(uploadedFile.periodEndDate, startDate)
+      )
+    );
+
+  // Aggregate revenue by franchiseeId from BKMV files
+  const revenueMap = new Map<string, number>();
+  for (const file of bkmvFiles) {
+    const result = file.processingResult as BkmvProcessingResult | null;
+    if (!result?.revenueMonthlyBreakdown) continue;
+
+    for (const [month, amount] of Object.entries(result.revenueMonthlyBreakdown)) {
+      // Only include months within the requested period
+      if (months.includes(month)) {
+        const prev = revenueMap.get(file.franchiseeId!) || 0;
+        revenueMap.set(file.franchiseeId!, prev + (amount as number));
+      }
     }
   }
 
@@ -129,7 +162,7 @@ export async function getCommissionRevenueReport(
     .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
 
   const supplierIds = activeSuppliers.map((s) => s.id);
-  if (supplierIds.length === 0) {
+  if (supplierIds.length === 0 && revenueMap.size === 0) {
     return emptyReport(year, quarter, brandId, brandInfo);
   }
 
@@ -145,35 +178,33 @@ export async function getCommissionRevenueReport(
   }
 
   // Query supplier file uploads overlapping the period
-  const fileRecords = await database
-    .select({
-      supplierId: supplierFileUpload.supplierId,
-      processingResult: supplierFileUpload.processingResult,
-    })
-    .from(supplierFileUpload)
-    .where(
-      and(
-        inArray(supplierFileUpload.supplierId, supplierIds),
-        or(
-          eq(supplierFileUpload.processingStatus, "auto_approved"),
-          eq(supplierFileUpload.processingStatus, "approved")
-        ),
-        lte(supplierFileUpload.periodStartDate, endDate),
-        gte(supplierFileUpload.periodEndDate, startDate)
-      )
-    );
+  const fileRecords =
+    supplierIds.length > 0
+      ? await database
+          .select({
+            supplierId: supplierFileUpload.supplierId,
+            processingResult: supplierFileUpload.processingResult,
+          })
+          .from(supplierFileUpload)
+          .where(
+            and(
+              inArray(supplierFileUpload.supplierId, supplierIds),
+              or(
+                eq(supplierFileUpload.processingStatus, "auto_approved"),
+                eq(supplierFileUpload.processingStatus, "approved")
+              ),
+              lte(supplierFileUpload.periodStartDate, endDate),
+              gte(supplierFileUpload.periodEndDate, startDate)
+            )
+          )
+      : [];
 
-  // Aggregate commissions and purchases by franchiseeId
-  const commissionMap = new Map<string, number>();
+  // Aggregate purchases by franchiseeId from supplier files
   const purchasesMap = new Map<string, number>();
 
   for (const file of fileRecords) {
     const result = file.processingResult as SupplierFileProcessingResult | null;
     if (!result?.franchiseeMatches) continue;
-
-    const supplierInfo = supplierRateMap.get(file.supplierId);
-    const commissionRate = supplierInfo?.rate || 0;
-    const commissionType = supplierInfo?.type;
 
     for (const match of result.franchiseeMatches) {
       if (!match.matchedFranchiseeId) continue;
@@ -183,29 +214,13 @@ export async function getCommissionRevenueReport(
       const purchaseAmount = match.netAmount || 0;
       const prevPurchases = purchasesMap.get(match.matchedFranchiseeId) || 0;
       purchasesMap.set(match.matchedFranchiseeId, prevPurchases + purchaseAmount);
-
-      // Calculate commission using the same logic as supplier-file-reports
-      const matchAny = match as Record<string, unknown>;
-      let matchCommission = 0;
-      if (
-        typeof matchAny.preCalculatedCommission === "number" &&
-        matchAny.preCalculatedCommission > 0
-      ) {
-        matchCommission = matchAny.preCalculatedCommission;
-      } else if (commissionRate && commissionType === "percentage") {
-        matchCommission = (match.netAmount || 0) * (commissionRate / 100);
-      }
-      matchCommission = Math.trunc(matchCommission * 100) / 100;
-
-      const prev = commissionMap.get(match.matchedFranchiseeId) || 0;
-      commissionMap.set(match.matchedFranchiseeId, prev + matchCommission);
     }
   }
 
-  // ---- JOIN: Merge purchases and commission maps ----
+  // ---- JOIN: Merge revenue and purchases maps ----
   const allFranchiseeIds = new Set<string>([
+    ...revenueMap.keys(),
     ...purchasesMap.keys(),
-    ...commissionMap.keys(),
   ]);
 
   if (allFranchiseeIds.size === 0) {
@@ -244,19 +259,19 @@ export async function getCommissionRevenueReport(
     // Apply brand filter
     if (brandId && f.brandId !== brandId) continue;
 
-    const purchases = purchasesMap.get(f.id) || 0;
-    const commissions = commissionMap.get(f.id) || 0;
+    const revenue = revenueMap.get(f.id) || 0;
+    const supplierPurchases = purchasesMap.get(f.id) || 0;
 
     // Skip franchisees with no data at all
-    if (purchases === 0 && commissions === 0) continue;
+    if (revenue === 0 && supplierPurchases === 0) continue;
 
-    let commissionPercentage: number | null;
-    if (purchases > 0) {
-      commissionPercentage =
-        Math.round((commissions / purchases) * 100 * 100) / 100;
+    let supplierPurchasesPercentage: number | null;
+    if (revenue > 0) {
+      supplierPurchasesPercentage =
+        Math.round((supplierPurchases / revenue) * 100 * 100) / 100;
     } else {
-      // Has commissions but no purchases
-      commissionPercentage = null;
+      // Has supplier purchases but no revenue data
+      supplierPurchasesPercentage = null;
     }
 
     rows.push({
@@ -264,9 +279,9 @@ export async function getCommissionRevenueReport(
       name: f.name,
       code: f.code,
       brandName: f.brandId ? brandNames.get(f.brandId) || "" : "",
-      totalPurchases: Math.round(purchases * 100) / 100,
-      totalCommissions: Math.round(commissions * 100) / 100,
-      commissionPercentage,
+      totalRevenue: Math.round(revenue * 100) / 100,
+      totalSupplierPurchases: Math.round(supplierPurchases * 100) / 100,
+      supplierPurchasesPercentage,
     });
   }
 
@@ -274,17 +289,20 @@ export async function getCommissionRevenueReport(
   rows.sort((a, b) => a.name.localeCompare(b.name, "he"));
 
   // Compute summary
-  const totalPurchases = rows.reduce((sum, r) => sum + r.totalPurchases, 0);
-  const totalCommissions = rows.reduce((sum, r) => sum + r.totalCommissions, 0);
-  const rowsWithPurchases = rows.filter((r) => r.totalPurchases > 0);
+  const totalRevenue = rows.reduce((sum, r) => sum + r.totalRevenue, 0);
+  const totalSupplierPurchases = rows.reduce(
+    (sum, r) => sum + r.totalSupplierPurchases,
+    0
+  );
+  const rowsWithRevenue = rows.filter((r) => r.totalRevenue > 0);
   const avgPercent =
-    rowsWithPurchases.length > 0
+    rowsWithRevenue.length > 0
       ? Math.round(
-          (rowsWithPurchases.reduce(
-            (sum, r) => sum + (r.commissionPercentage || 0),
+          (rowsWithRevenue.reduce(
+            (sum, r) => sum + (r.supplierPurchasesPercentage || 0),
             0
           ) /
-            rowsWithPurchases.length) *
+            rowsWithRevenue.length) *
             100
         ) / 100
       : 0;
@@ -292,8 +310,8 @@ export async function getCommissionRevenueReport(
   return {
     rows,
     summary: {
-      totalPurchases: Math.round(totalPurchases * 100) / 100,
-      totalCommissions: Math.round(totalCommissions * 100) / 100,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      totalSupplierPurchases: Math.round(totalSupplierPurchases * 100) / 100,
       avgPercent,
       count: rows.length,
     },
@@ -314,8 +332,8 @@ function emptyReport(
   return {
     rows: [],
     summary: {
-      totalPurchases: 0,
-      totalCommissions: 0,
+      totalRevenue: 0,
+      totalSupplierPurchases: 0,
       avgPercent: 0,
       count: 0,
     },
