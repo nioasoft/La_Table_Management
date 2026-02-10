@@ -6,6 +6,7 @@ import {
   getUploadedFilesCount,
   markUploadLinkAsUsed,
   updateUploadedFileProcessingStatus,
+  deleteUploadedFile,
 } from "@/data-access/uploadLinks";
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
@@ -13,6 +14,7 @@ import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile, getFranchiseeRe
 import type { BkmvProcessingResult, SupplierFileMapping, SupplierFileProcessingResult } from "@/db/schema";
 import {
   uploadDocument,
+  deleteDocumentFile,
   generateEntityFileName,
   isAllowedFileType,
   isFileSizeValid,
@@ -684,6 +686,17 @@ export async function POST(
                   .map(m => m.matchedFranchiseeName || m.originalName)
                   .filter(Boolean);
 
+                // Clean up: delete the uploaded file from storage to avoid orphans
+                console.log("[Upload Route] Cleaning up uploaded file due to duplicate detection:", uploadedFileRecord.id);
+                try {
+                  await deleteDocumentFile(uploadResult.url);
+                  await deleteUploadedFile(uploadedFileRecord.id);
+                  console.log("[Upload Route] Successfully cleaned up uploaded file");
+                } catch (cleanupError) {
+                  console.error("[Upload Route] Failed to clean up uploaded file:", cleanupError);
+                  // Continue with the error response even if cleanup fails
+                }
+
                 return NextResponse.json(
                   {
                     error: franchiseeNames.length > 0
@@ -696,14 +709,7 @@ export async function POST(
                       overlappingFranchiseeIds: duplicates[0].overlappingFranchiseeIds,
                       overlappingFranchiseeNames: franchiseeNames,
                     },
-                    // Return the uploaded file info so client can re-submit with replaceFileId
-                    file: {
-                      id: uploadedFileRecord.id,
-                      fileName: uploadedFileRecord.originalFileName,
-                      fileSize: uploadedFileRecord.fileSize,
-                      mimeType: uploadedFileRecord.mimeType,
-                    },
-                    filesRemaining: link.maxFiles - newFilesCount,
+                    filesRemaining: link.maxFiles - currentFilesCount, // Return to original count since we deleted the file
                   },
                   { status: 409 }
                 );

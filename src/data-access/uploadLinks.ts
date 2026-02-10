@@ -358,6 +358,22 @@ export async function getUploadedFileById(
 }
 
 /**
+ * Delete an uploaded file record by ID
+ * Used for cleanup when file processing fails or duplicate is detected
+ */
+export async function deleteUploadedFile(fileId: string): Promise<boolean> {
+  try {
+    await database
+      .delete(uploadedFile)
+      .where(eq(uploadedFile.id, fileId));
+    return true;
+  } catch (error) {
+    console.error("Error deleting uploaded file record:", error);
+    return false;
+  }
+}
+
+/**
  * Get uploaded files for an upload link
  */
 export async function getUploadedFilesByLinkId(
