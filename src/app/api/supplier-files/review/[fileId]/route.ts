@@ -46,7 +46,7 @@ export async function GET(
       matchedFranchiseeName: string | null;
       matchedFranchiseeCode: string | null;
       confidence: number;
-      matchType: string;
+      matchType: "none" | "exact" | "exact_code" | "fuzzy" | "manual" | "blacklisted";
       requiresReview: boolean;
     }> = [];
 
@@ -54,12 +54,22 @@ export async function GET(
       enrichedMatches = await Promise.all(
         file.processingResult.franchiseeMatches.map(async (match) => {
           let franchiseeCode: string | null = null;
+          let displayName = match.originalName;
+
           if (match.matchedFranchiseeId) {
             const franchisee = await getFranchiseeById(match.matchedFranchiseeId);
             franchiseeCode = franchisee?.code || null;
+
+            // If matched by companyId/taxId (exact_code), use the franchisee name from system
+            // instead of the raw name from the file (which may be an address or supplier-specific name)
+            if (match.matchType === "exact_code" && franchisee) {
+              displayName = franchisee.name;
+            }
           }
+
           return {
             ...match,
+            originalName: displayName,
             matchedFranchiseeCode: franchiseeCode,
           };
         })

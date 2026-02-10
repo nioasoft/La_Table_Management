@@ -1260,7 +1260,7 @@ export interface SupplierFileProcessingResult {
     matchedFranchiseeId: string | null;
     matchedFranchiseeName: string | null;
     confidence: number;
-    matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none";
+    matchType: "exact" | "exact_code" | "fuzzy" | "manual" | "blacklisted" | "none";
     requiresReview: boolean;
     preCalculatedCommission?: number;
   }>;

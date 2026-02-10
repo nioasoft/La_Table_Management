@@ -922,12 +922,15 @@ export async function matchMultipleFranchiseeNames(
  * Match franchisee names from supplier file parsed data
  * Returns the original data augmented with match results
  *
- * @param parsedData - Array of parsed rows with franchisee field
+ * For rows with franchiseeId (e.g., מספר עוסק from supplier files like דגי הקיבוצים),
+ * attempts to match by companyId or taxId first before falling back to name matching.
+ *
+ * @param parsedData - Array of parsed rows with franchisee field and optional franchiseeId
  * @param config - Optional matcher configuration
  * @returns Augmented data with match results
  */
 export async function matchFranchiseeNamesFromFile<
-  T extends { franchisee: string }
+  T extends { franchisee: string; franchiseeId?: string }
 >(
   parsedData: T[],
   config?: Partial<MatcherConfig>
@@ -938,9 +941,55 @@ export async function matchFranchiseeNamesFromFile<
     .from(franchisee)
     .orderBy(desc(franchisee.createdAt)) as Franchisee[];
 
+  // Create lookup map for companyId matching (e.g., מספר עוסק from supplier files)
+  const companyIdMap = new Map<string, Franchisee>();
+
+  for (const f of allFranchisees) {
+    if (f.companyId) {
+      companyIdMap.set(f.companyId.trim(), f);
+    }
+  }
+
   // Import and use the matchParsedFileData function
-  const { matchParsedFileData } = await import("@/lib/franchisee-matcher");
-  return matchParsedFileData(parsedData, allFranchisees, config);
+  const { matchParsedFileData, matchFranchiseeName } = await import("@/lib/franchisee-matcher");
+
+  // Process each row - try franchiseeId matching first, then fall back to name matching
+  const results: Array<T & { matchResult: FranchiseeMatchResult }> = [];
+
+  for (const row of parsedData) {
+    let matchResult: FranchiseeMatchResult | null = null;
+
+    // First, try to match by franchiseeId (business ID / מספר עוסק) if available
+    if (row.franchiseeId) {
+      const businessId = row.franchiseeId.trim();
+
+      // Check companyId map for exact match
+      const companyMatch = companyIdMap.get(businessId);
+      if (companyMatch) {
+        matchResult = {
+          originalName: row.franchisee,
+          matchedFranchisee: companyMatch,
+          confidence: 1,
+          matchType: "exact_code",
+          matchedOn: `companyId:${businessId}`,
+          requiresReview: false,
+          alternatives: [],
+        };
+      }
+    }
+
+    // If no franchiseeId match, fall back to name matching
+    if (!matchResult) {
+      matchResult = matchFranchiseeName(row.franchisee, allFranchisees, config);
+    }
+
+    results.push({
+      ...row,
+      matchResult,
+    });
+  }
+
+  return results;
 }
 
 /**

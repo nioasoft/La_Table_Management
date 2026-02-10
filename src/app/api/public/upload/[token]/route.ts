@@ -599,8 +599,10 @@ export async function POST(
             const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
             // Determine match type for each result
-            const getMatchType = (r: typeof matchedResults[0]): "exact" | "fuzzy" | "manual" | "blacklisted" | "none" => {
+            const getMatchType = (r: typeof matchedResults[0]): "exact" | "exact_code" | "fuzzy" | "manual" | "blacklisted" | "none" => {
               if (!r.matchResult.matchedFranchisee) return "none";
+              // Check if this was matched by companyId/taxId (exact_code)
+              if (r.matchResult.matchType === "exact_code") return "exact_code";
               if (r.matchResult.confidence === 1) return "exact";
               return "fuzzy";
             };
