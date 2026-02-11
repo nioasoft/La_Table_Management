@@ -7,6 +7,7 @@ import {
   createSupplierFileUpload,
   getSupplierFileUploads,
   getSupplierFileByPeriod,
+  findDuplicateSupplierFiles,
   reviewSupplierFile,
 } from "@/data-access/supplier-file-uploads";
 import { getSupplierById } from "@/data-access/suppliers";
@@ -167,36 +168,90 @@ export async function POST(request: NextRequest) {
     }
 
     // Check for existing file for this period
-    const existingFile = await getSupplierFileByPeriod(
-      supplierId,
-      new Date(periodStartDate),
-      new Date(periodEndDate)
-    );
+    const isMultiFile = (supplier.fileMapping?.maxUploadFiles ?? 1) > 1;
+    let replacedFileId: string | undefined;
 
-    if (existingFile) {
-      // If not in overwrite mode, return conflict error
-      if (!overwrite) {
-        return NextResponse.json(
-          {
-            error: "קיים כבר קובץ לתקופה זו",
-            existingFile: {
-              id: existingFile.id,
-              fileName: existingFile.originalFileName,
-              status: existingFile.processingStatus,
-              uploadedAt: existingFile.createdAt,
+    if (isMultiFile) {
+      // Multi-file supplier: per-franchisee duplicate detection
+      const typedResult = processingResult as SupplierFileProcessingResult;
+      const matchedFranchiseeIds = (typedResult.franchiseeMatches ?? [])
+        .map((m) => m.matchedFranchiseeId)
+        .filter((id): id is string => !!id && id.trim() !== "");
+
+      if (matchedFranchiseeIds.length > 0) {
+        const duplicates = await findDuplicateSupplierFiles(
+          supplierId,
+          periodStartDate,
+          periodEndDate,
+          matchedFranchiseeIds
+        );
+
+        if (duplicates.length > 0 && !overwrite) {
+          // Find the overlapping franchisee names from the new file's processing result
+          const overlappingIds = new Set(duplicates.flatMap((d) => d.overlappingFranchiseeIds));
+          const overlappingNames = (typedResult.franchiseeMatches ?? [])
+            .filter((m) => m.matchedFranchiseeId && overlappingIds.has(m.matchedFranchiseeId))
+            .map((m) => m.matchedFranchiseeName || m.originalName)
+            .filter((name, idx, arr) => arr.indexOf(name) === idx);
+
+          return NextResponse.json(
+            {
+              error: "קיים כבר קובץ עבור זכיינים אלו בתקופה זו",
+              existingFile: {
+                id: duplicates[0].fileId,
+                fileName: duplicates[0].originalFileName,
+                status: "exists",
+                uploadedAt: duplicates[0].createdAt,
+              },
+              overlappingFranchiseeNames: overlappingNames,
             },
-          },
-          { status: 409 }
+            { status: 409 }
+          );
+        }
+
+        if (overwrite && duplicates.length > 0) {
+          // Reject only the specific overlapping file
+          replacedFileId = duplicates[0].fileId;
+          await reviewSupplierFile(
+            duplicates[0].fileId,
+            "reject",
+            user.id,
+            "הוחלף על ידי קובץ חדש (זכיינים חופפים)"
+          );
+        }
+      }
+    } else {
+      // Single-file supplier: existing behavior
+      const existingFile = await getSupplierFileByPeriod(
+        supplierId,
+        new Date(periodStartDate),
+        new Date(periodEndDate)
+      );
+
+      if (existingFile) {
+        if (!overwrite) {
+          return NextResponse.json(
+            {
+              error: "קיים כבר קובץ לתקופה זו",
+              existingFile: {
+                id: existingFile.id,
+                fileName: existingFile.originalFileName,
+                status: existingFile.processingStatus,
+                uploadedAt: existingFile.createdAt,
+              },
+            },
+            { status: 409 }
+          );
+        }
+
+        replacedFileId = existingFile.id;
+        await reviewSupplierFile(
+          existingFile.id,
+          "reject",
+          user.id,
+          "הוחלף על ידי קובץ חדש"
         );
       }
-
-      // In overwrite mode, reject the existing file
-      await reviewSupplierFile(
-        existingFile.id,
-        "reject",
-        user.id,
-        "הוחלף על ידי קובץ חדש"
-      );
     }
 
     // Determine the processing status based on match results
@@ -237,7 +292,7 @@ export async function POST(request: NextRequest) {
         processingStatus === "auto_approved"
           ? "הקובץ אושר אוטומטית - כל הזכיינים מותאמים"
           : "הקובץ נוסף לתור הבדיקה",
-      replacedFile: overwrite && existingFile ? existingFile.id : undefined,
+      replacedFile: replacedFileId,
     });
   } catch (error) {
     console.error("Error creating supplier file upload:", error);

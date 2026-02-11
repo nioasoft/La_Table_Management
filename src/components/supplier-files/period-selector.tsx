@@ -100,8 +100,14 @@ export function PeriodSelector({
   const handleSelect = (periodKey: string) => {
     const selectedPeriod = periods.find((p) => p.key === periodKey);
 
-    // If the period has an existing file, notify the parent
-    if (selectedPeriod?.hasFile && selectedPeriod?.existingFile && onPeriodWithExistingFile) {
+    // For multi-file suppliers, don't show overwrite dialog on period select
+    // (duplicate detection happens per-franchisee at upload time)
+    if (
+      selectedPeriod?.hasFile &&
+      selectedPeriod?.existingFile &&
+      !selectedPeriod?.isMultiFile &&
+      onPeriodWithExistingFile
+    ) {
       onPeriodWithExistingFile(selectedPeriod);
     }
 
@@ -140,7 +146,13 @@ export function PeriodSelector({
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span>{selectedPeriod.nameHe}</span>
-                {selectedPeriod.hasFile && getStatusBadge(selectedPeriod.existingFile?.status || "")}
+                {selectedPeriod.isMultiFile && selectedPeriod.fileCount && selectedPeriod.fileCount > 0 ? (
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedPeriod.fileCount} קבצים
+                  </Badge>
+                ) : (
+                  selectedPeriod.hasFile && getStatusBadge(selectedPeriod.existingFile?.status || "")
+                )}
               </div>
             )}
           </SelectValue>
@@ -154,7 +166,20 @@ export function PeriodSelector({
                   <span>{period.nameHe}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {period.hasFile ? (
+                  {period.isMultiFile ? (
+                    period.fileCount && period.fileCount > 0 ? (
+                      <>
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <Badge variant="secondary" className="text-xs">
+                          {period.fileCount} קבצים
+                        </Badge>
+                      </>
+                    ) : (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                        חסר
+                      </Badge>
+                    )
+                  ) : period.hasFile ? (
                     <>
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       {getStatusBadge(period.existingFile?.status || "")}
@@ -178,14 +203,21 @@ export function PeriodSelector({
             <span>טווח תאריכים:</span>
             <span className="font-medium">{formatPeriodRange(selectedPeriod)}</span>
           </div>
-          {selectedPeriod.hasFile && selectedPeriod.existingFile && (
+          {selectedPeriod.isMultiFile && selectedPeriod.fileCount && selectedPeriod.fileCount > 0 ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <FileText className="h-4 w-4" />
+              <span>
+                הועלו {selectedPeriod.fileCount} קבצים לתקופה זו
+              </span>
+            </div>
+          ) : selectedPeriod.hasFile && selectedPeriod.existingFile && !selectedPeriod.isMultiFile ? (
             <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
               <AlertCircle className="h-4 w-4" />
               <span>
                 קיים קובץ לתקופה זו: {selectedPeriod.existingFile.fileName}
               </span>
             </div>
-          )}
+          ) : null}
         </div>
       )}
     </div>

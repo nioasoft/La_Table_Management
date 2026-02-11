@@ -23,6 +23,8 @@ export interface PeriodWithStatus extends SettlementPeriodInfo {
     status: string;
     uploadedAt: Date;
   } | null;
+  fileCount?: number;
+  isMultiFile?: boolean;
 }
 
 export interface SupplierPeriodsResponse {
@@ -75,9 +77,11 @@ export async function GET(
     ]);
 
     const allFiles = [...currentYearFiles, ...prevYearFiles];
+    const isMultiFile = (supplier.fileMapping?.maxUploadFiles ?? 1) > 1;
 
-    // Build a map of period key to existing file
+    // Build a map of period key to existing file(s)
     const filesByPeriod = new Map<string, SupplierFileUploadWithSupplier>();
+    const fileCountByPeriod = new Map<string, number>();
     for (const file of allFiles) {
       if (file.periodStartDate && file.periodEndDate) {
         // Skip rejected files - they shouldn't show as "existing"
@@ -95,7 +99,10 @@ export async function GET(
         );
 
         if (matchingPeriod) {
-          // Only keep the most recent file for each period
+          // Count all non-rejected files per period
+          fileCountByPeriod.set(matchingPeriod.key, (fileCountByPeriod.get(matchingPeriod.key) ?? 0) + 1);
+
+          // Only keep the most recent file for each period (for overwrite dialog if needed)
           const existing = filesByPeriod.get(matchingPeriod.key);
           if (!existing || new Date(file.createdAt) > new Date(existing.createdAt)) {
             filesByPeriod.set(matchingPeriod.key, file);
@@ -107,9 +114,10 @@ export async function GET(
     // Enhance periods with file status
     const periodsWithStatus: PeriodWithStatus[] = periods.map((period) => {
       const existingFile = filesByPeriod.get(period.key);
+      const fileCount = fileCountByPeriod.get(period.key) ?? 0;
       return {
         ...period,
-        hasFile: !!existingFile,
+        hasFile: fileCount > 0,
         existingFile: existingFile
           ? {
               id: existingFile.id,
@@ -118,6 +126,8 @@ export async function GET(
               uploadedAt: existingFile.createdAt,
             }
           : null,
+        fileCount,
+        isMultiFile,
       };
     });
 

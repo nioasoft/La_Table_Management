@@ -21,6 +21,7 @@ interface OverwriteConfirmDialogProps {
   period: PeriodWithStatus | null;
   onConfirm: () => void;
   onCancel: () => void;
+  overlappingFranchiseeNames?: string[];
 }
 
 // Helper to get status label in Hebrew
@@ -54,6 +55,7 @@ export function OverwriteConfirmDialog({
   period,
   onConfirm,
   onCancel,
+  overlappingFranchiseeNames,
 }: OverwriteConfirmDialogProps) {
   // Don't render anything if not open
   if (!open) return null;
@@ -72,12 +74,16 @@ export function OverwriteConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2 text-right">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            קיים קובץ לתקופה זו
+            {overlappingFranchiseeNames?.length
+              ? "קיים קובץ עבור זכיינים אלו"
+              : "קיים קובץ לתקופה זו"}
           </AlertDialogTitle>
           <AlertDialogDescription asChild>
             <div className="space-y-4 text-right">
               <p>
-                כבר קיים קובץ עבור {period.nameHe}. האם ברצונך להחליף אותו?
+                {overlappingFranchiseeNames?.length
+                  ? `קיים כבר קובץ עבור ${overlappingFranchiseeNames.join(", ")} בתקופה ${period.nameHe}. האם ברצונך להחליף אותו?`
+                  : `כבר קיים קובץ עבור ${period.nameHe}. האם ברצונך להחליף אותו?`}
               </p>
 
               {/* Existing File Info Card */}

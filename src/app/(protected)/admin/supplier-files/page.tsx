@@ -193,6 +193,9 @@ export default function SupplierFilesPage() {
   const [savedFileId, setSavedFileId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Multi-file overwrite state
+  const [overlappingFranchiseeNames, setOverlappingFranchiseeNames] = useState<string[]>([]);
+
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
 
@@ -300,6 +303,7 @@ export default function SupplierFilesPage() {
   const handleOverwriteCancel = useCallback(() => {
     setPeriodWithExistingFile(null);
     setShowOverwriteDialog(false);
+    setOverlappingFranchiseeNames([]);
   }, []);
 
   // Add alias mutation
@@ -412,6 +416,8 @@ export default function SupplierFilesPage() {
         const error = await response.json();
         // Handle conflict error (409) - file already exists
         if (response.status === 409 && error.existingFile) {
+          // Store overlapping franchisee names if provided (multi-file suppliers)
+          setOverlappingFranchiseeNames(error.overlappingFranchiseeNames ?? []);
           // Show overwrite dialog with existing file info
           setPeriodWithExistingFile({
             type: period.type,
@@ -440,6 +446,7 @@ export default function SupplierFilesPage() {
 
       // Reset overwrite state
       setPeriodWithExistingFile(null);
+      setOverlappingFranchiseeNames([]);
 
       // Invalidate queries to update the review count and history
       queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
@@ -1325,6 +1332,7 @@ export default function SupplierFilesPage() {
         period={periodWithExistingFile}
         onConfirm={handleOverwriteConfirm}
         onCancel={handleOverwriteCancel}
+        overlappingFranchiseeNames={overlappingFranchiseeNames}
       />
     </div>
   );
