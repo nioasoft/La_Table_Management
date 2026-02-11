@@ -264,6 +264,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
       if (syncResult.added.length > 0) {
         result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+          message: `נוספו ${syncResult.added.length} פריטים חדשים. יש לבדוק סטטוס מע"מ בכרטיס ספק.`,
           details: `נוספו ${syncResult.added.length} פריטים חדשים. יש לבדוק סטטוס מע"מ בכרטיס ספק.`,
         }));
       }
@@ -451,6 +452,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       storageUploadFailed = true;
       // Add warning about storage failure
       result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+        message: 'הקובץ עובד בהצלחה אך השמירה לאחסון נכשלה. ניתן לנסות שוב.',
         details: 'הקובץ עובד בהצלחה אך השמירה לאחסון נכשלה. ניתן לנסות שוב.',
       }));
     }
@@ -522,6 +524,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
               // Add warning if some commissions failed
               if (commissionsResult.totalFailed > 0) {
                 result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+                  message: `נוצרו ${commissionsResult.totalCreated} עמלות, ${commissionsResult.totalFailed} נכשלו`,
                   details: `נוצרו ${commissionsResult.totalCreated} עמלות, ${commissionsResult.totalFailed} נכשלו`,
                 }));
               }
@@ -531,6 +534,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       } catch (commissionError) {
         console.error("Failed to auto-create commissions:", commissionError);
         result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+          message: 'הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה',
           details: 'הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה',
         }));
       }

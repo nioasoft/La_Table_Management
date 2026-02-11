@@ -155,8 +155,8 @@ interface ProcessingResult {
     unmatchedNames: string[];
   };
   processingStatus: string;
-  errors: Array<{ code: string; message: string; rowNumber?: number }>;
-  warnings: Array<{ code: string; message: string; rowNumber?: number }>;
+  errors: Array<{ code: string; message: string; details?: string; rowNumber?: number }>;
+  warnings: Array<{ code: string; message: string; details?: string; rowNumber?: number }>;
   // File URL from Blob Storage (if upload succeeded)
   fileUrl?: string;
   storedFileName?: string;
@@ -1069,7 +1069,7 @@ export default function SupplierFilesPage() {
                           <div className="mt-2 rounded-lg border border-destructive/50 bg-destructive/5 p-3">
                             <ul className="list-disc list-inside text-xs text-destructive space-y-0.5">
                               {processingResult.errors.map((err, i) => (
-                                <li key={i}>{err.message}</li>
+                                <li key={i}>{err.details || err.message}</li>
                               ))}
                             </ul>
                           </div>
@@ -1092,7 +1092,7 @@ export default function SupplierFilesPage() {
                           <div className="mt-2 rounded-lg border border-yellow-500/50 bg-yellow-50/50 p-3">
                             <ul className="list-disc list-inside text-xs text-yellow-700 space-y-0.5">
                               {processingResult.warnings.map((warn, i) => (
-                                <li key={i}>{warn.message}</li>
+                                <li key={i}>{warn.details || warn.message}</li>
                               ))}
                             </ul>
                           </div>

@@ -357,7 +357,7 @@ export function createCustomError(
  * Format a file processing error for display to users
  */
 export function formatErrorForDisplay(error: FileProcessingError): string {
-  let message = error.message;
+  let message = error.details || error.message;
 
   if (error.rowNumber) {
     message = `Row ${error.rowNumber}: ${message}`;
