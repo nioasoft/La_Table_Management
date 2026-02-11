@@ -703,6 +703,17 @@ export async function getAllCommissionHistory(): Promise<
 // ============================================================================
 
 /**
+ * Get the max upload files allowed for a supplier based on its file mapping config.
+ * Returns fileMapping.maxUploadFiles if configured, otherwise defaults to 1.
+ */
+export async function getSupplierMaxUploadFiles(
+  supplierId: string
+): Promise<number> {
+  const fileMapping = await getSupplierFileMapping(supplierId);
+  return fileMapping?.maxUploadFiles ?? 1;
+}
+
+/**
  * Get file mapping configuration for a supplier
  */
 export async function getSupplierFileMapping(

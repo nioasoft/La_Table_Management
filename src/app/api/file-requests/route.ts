@@ -8,6 +8,7 @@ import {
   getFileRequests,
   type GetFileRequestsOptions,
 } from "@/data-access/fileRequests";
+import { getSupplierMaxUploadFiles } from "@/data-access/suppliers";
 import type { FileRequestStatus } from "@/db/schema";
 import type { UploadLinkEntityType } from "@/data-access/uploadLinks";
 
@@ -158,6 +159,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Resolve maxFiles from supplier config for multi-file suppliers
+    const maxFiles = entityType === "supplier"
+      ? await getSupplierMaxUploadFiles(entityId)
+      : 1;
+
     // Create the file request
     const fileRequest = await createFileRequest({
       entityType: entityType as UploadLinkEntityType,
@@ -170,6 +176,7 @@ export async function POST(request: NextRequest) {
       scheduledFor: scheduledDate,
       dueDate,
       expiryDays,
+      maxFiles,
       sendImmediately: sendImmediately === true,
       metadata,
       createdBy: user.id,

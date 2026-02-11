@@ -30,8 +30,11 @@ export function normalizeBusinessId(id: string | null | undefined): string | nul
   const trimmed = id.trim();
   if (trimmed === '') return null;
 
-  // Remove all non-digit characters (dashes, spaces, etc.)
-  const digitsOnly = trimmed.replace(/\D/g, '');
+  // Strip check digit: everything after the first dash (e.g., "123456789-0" → "123456789")
+  const withoutCheckDigit = trimmed.split('-')[0];
+
+  // Remove all non-digit characters (spaces, etc.)
+  const digitsOnly = withoutCheckDigit.replace(/\D/g, '');
   if (digitsOnly.length === 0) return null;
 
   // Remove leading zeros, but keep at least one digit

@@ -658,6 +658,7 @@ export type SupplierFileMapping = {
   skipKeywords?: string[]; // Keywords to skip rows (e.g., 'פיקדון', 'deposit')
   sheetName?: string; // Optional: specific sheet name to read
   customParser?: boolean; // If true, use custom parser from custom-parsers module
+  maxUploadFiles?: number; // Max files per upload link (default 1, >1 for suppliers who send one file per franchisee)
 };
 
 // Franchisees table - Franchise operators/owners

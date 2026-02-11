@@ -49,6 +49,7 @@ export interface CreateFileRequestOptions {
   scheduledFor?: Date;
   dueDate?: string;
   expiryDays?: number;
+  maxFiles?: number;
   metadata?: Record<string, unknown>;
   createdBy?: string;
   sendImmediately?: boolean;
@@ -194,6 +195,7 @@ export async function createFileRequest(
     scheduledFor,
     dueDate,
     expiryDays = UPLOAD_LINK_DEFAULT_EXPIRY_DAYS,
+    maxFiles,
     metadata,
     createdBy,
     sendImmediately = false,
@@ -212,6 +214,7 @@ export async function createFileRequest(
     entityId,
     name: `File Request: ${documentType}`,
     description: description || `Request for ${documentType}`,
+    maxFiles: maxFiles ?? 1,
     expiryDays,
     createdBy,
   });

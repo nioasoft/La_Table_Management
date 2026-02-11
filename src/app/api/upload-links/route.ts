@@ -11,6 +11,7 @@ import {
   type UploadLinkEntityType,
   type UploadLinkPeriodInfo,
 } from "@/data-access/uploadLinks";
+import { getSupplierMaxUploadFiles } from "@/data-access/suppliers";
 import type { UploadLinkStatus } from "@/db/schema";
 
 /**
@@ -147,11 +148,14 @@ export async function POST(request: NextRequest) {
     let uploadLink;
 
     if (entityType === "supplier") {
+      // Resolve maxFiles from supplier config (for multi-file suppliers like דגי הקיבוצים)
+      const supplierMaxFiles = maxFiles ?? await getSupplierMaxUploadFiles(entityId);
       uploadLink = await generateSupplierUploadLink(entityId, {
         name,
         description,
         allowedFileTypes,
         maxFileSize,
+        maxFiles: supplierMaxFiles,
         expiryDays,
         periodInfo,
         createdBy: user.id,

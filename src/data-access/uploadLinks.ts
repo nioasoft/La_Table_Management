@@ -498,7 +498,7 @@ export function calculateExpiryDate(days: number = UPLOAD_LINK_DEFAULT_EXPIRY_DA
  * Generate a secure upload link for a supplier with period information
  * - Uses UUID v4 token
  * - 14-day expiry by default
- * - Single use (maxFiles: 1)
+ * - Configurable maxFiles (defaults to 1, multi-file for suppliers like דגי הקיבוצים)
  */
 export async function generateSupplierUploadLink(
   supplierId: string,
@@ -507,16 +507,18 @@ export async function generateSupplierUploadLink(
     description?: string;
     allowedFileTypes?: string;
     maxFileSize?: number;
+    maxFiles?: number;
     expiryDays?: number;
     periodInfo?: UploadLinkPeriodInfo;
     createdBy?: string;
   }
 ): Promise<GeneratedUploadLink> {
+  const { maxFiles = 1, ...rest } = options;
   return generateSecureUploadLink({
     entityType: "supplier",
     entityId: supplierId,
-    ...options,
-    maxFiles: 1, // Single use
+    ...rest,
+    maxFiles,
   });
 }
 
@@ -524,7 +526,7 @@ export async function generateSupplierUploadLink(
  * Generate a secure upload link for a franchisee with period information
  * - Uses UUID v4 token
  * - 14-day expiry by default
- * - Single use (maxFiles: 1)
+ * - Single use by default (maxFiles: 1)
  */
 export async function generateFranchiseeUploadLink(
   franchiseeId: string,
@@ -533,16 +535,18 @@ export async function generateFranchiseeUploadLink(
     description?: string;
     allowedFileTypes?: string;
     maxFileSize?: number;
+    maxFiles?: number;
     expiryDays?: number;
     periodInfo?: UploadLinkPeriodInfo;
     createdBy?: string;
   }
 ): Promise<GeneratedUploadLink> {
+  const { maxFiles = 1, ...rest } = options;
   return generateSecureUploadLink({
     entityType: "franchisee",
     entityId: franchiseeId,
-    ...options,
-    maxFiles: 1, // Single use
+    ...rest,
+    maxFiles,
   });
 }
 

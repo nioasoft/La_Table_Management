@@ -235,6 +235,9 @@ async function processFrequency(
         continue;
       }
 
+      // Resolve maxFiles from supplier file mapping config
+      const maxFiles = supplierData.fileMapping?.maxUploadFiles ?? 1;
+
       // Create and send file request
       await createFileRequest({
         entityType: "supplier",
@@ -245,6 +248,7 @@ async function processFrequency(
         recipientName: supplierData.contactName || supplierData.name,
         emailTemplateId: emailTemplateId || undefined,
         dueDate,
+        maxFiles,
         sendImmediately: true,
         metadata: {
           settlementFrequency: frequency,
