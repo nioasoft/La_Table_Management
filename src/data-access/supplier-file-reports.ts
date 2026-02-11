@@ -13,6 +13,7 @@ import {
   user,
   franchisee,
   type SupplierFileProcessingResult,
+  type SupplierFileMapping,
 } from "@/db/schema";
 import { eq, and, desc, gte, lte, inArray } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
@@ -221,6 +222,7 @@ export async function getSupplierFilesReport(
       supplierCode: supplier.code,
       commissionRate: supplier.defaultCommissionRate,
       commissionType: supplier.commissionType,
+      fileMapping: supplier.fileMapping,
       // User data
       uploadedByName: user.name,
     })
@@ -230,15 +232,95 @@ export async function getSupplierFilesReport(
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(supplierFileUpload.createdAt));
 
-  // Deduplicate: keep only the latest file per supplier
-  const supplierLatestFile = new Map<string, typeof rawFiles[0]>();
+  // Deduplicate and merge:
+  // - Single-file suppliers: keep only the latest file per supplier+period
+  // - Multi-file suppliers (e.g. דגי הקיבוצים): merge all files for same supplier+period into one entry
+  const dedupMap = new Map<string, typeof rawFiles[0]>();
+  // For multi-file suppliers, collect all files per supplier+period to merge later
+  const multiFileBuckets = new Map<string, typeof rawFiles>();
   for (const file of rawFiles) {
-    const existing = supplierLatestFile.get(file.supplierId);
-    if (!existing || file.createdAt > existing.createdAt) {
-      supplierLatestFile.set(file.supplierId, file);
+    const fm = file.fileMapping as SupplierFileMapping | null;
+    const isMultiFile = (fm?.maxUploadFiles ?? 1) > 1;
+    const dedupKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
+
+    if (isMultiFile) {
+      // Only merge approved/auto_approved files for multi-file suppliers
+      if (file.processingStatus === "approved" || file.processingStatus === "auto_approved") {
+        const bucket = multiFileBuckets.get(dedupKey) ?? [];
+        bucket.push(file);
+        multiFileBuckets.set(dedupKey, bucket);
+      }
+    } else {
+      const existing = dedupMap.get(dedupKey);
+      if (!existing || file.createdAt > existing.createdAt) {
+        dedupMap.set(dedupKey, file);
+      }
     }
   }
-  const dedupedFiles = Array.from(supplierLatestFile.values());
+
+  // Merge multi-file buckets: combine all files per supplier+period into a single virtual file
+  for (const [key, bucket] of multiFileBuckets.entries()) {
+    if (bucket.length === 0) continue;
+    // Use the latest file as the base for metadata
+    const latest = bucket.reduce((a, b) => (a.createdAt > b.createdAt ? a : b));
+
+    // Merge processing results across all files
+    let mergedTotalGross = 0;
+    let mergedTotalNet = 0;
+    let mergedProcessedRows = 0;
+    let mergedSkippedRows = 0;
+    let mergedTotalRows = 0;
+    const mergedFranchiseeMatches: NonNullable<SupplierFileProcessingResult["franchiseeMatches"]> = [];
+    let mergedVatAdjusted = false;
+
+    for (const file of bucket) {
+      const pr = file.processingResult as SupplierFileProcessingResult | null;
+      if (!pr) continue;
+      mergedTotalGross += pr.totalGrossAmount || 0;
+      mergedTotalNet += pr.totalNetAmount || 0;
+      mergedProcessedRows += pr.processedRows || 0;
+      mergedSkippedRows += pr.skippedRows || 0;
+      mergedTotalRows += pr.totalRows || 0;
+      if (pr.vatAdjusted) mergedVatAdjusted = true;
+      if (pr.franchiseeMatches) {
+        mergedFranchiseeMatches.push(...pr.franchiseeMatches);
+      }
+    }
+
+    // Build merged match stats
+    const mergedMatchStats = {
+      total: mergedFranchiseeMatches.length,
+      exactMatches: mergedFranchiseeMatches.filter((m) => m.matchType === "exact" || m.matchType === "manual").length,
+      fuzzyMatches: mergedFranchiseeMatches.filter((m) => m.matchType === "fuzzy").length,
+      unmatched: mergedFranchiseeMatches.filter((m) => m.matchType === "none").length,
+      blacklisted: mergedFranchiseeMatches.filter((m) => m.matchType === "blacklisted").length,
+    };
+
+    const mergedResult: SupplierFileProcessingResult = {
+      totalRows: mergedTotalRows,
+      processedRows: mergedProcessedRows,
+      skippedRows: mergedSkippedRows,
+      totalGrossAmount: mergedTotalGross,
+      totalNetAmount: mergedTotalNet,
+      vatAdjusted: mergedVatAdjusted,
+      matchStats: mergedMatchStats,
+      franchiseeMatches: mergedFranchiseeMatches,
+      processedAt: latest.createdAt.toISOString(),
+    };
+
+    // Create merged virtual file entry using latest file as base
+    const mergedFile = {
+      ...latest,
+      originalFileName: `${bucket.length} קבצים מאוחדים`,
+      fileUrl: null, // Can't download a merged virtual file
+      fileSize: bucket.reduce((sum, f) => sum + (f.fileSize ?? 0), 0),
+      processingResult: mergedResult,
+    };
+
+    dedupMap.set(key, mergedFile);
+  }
+
+  const dedupedFiles = Array.from(dedupMap.values());
 
   // Load franchisee data with brand names for display and filtering
   const franchiseesData = await database
@@ -650,6 +732,7 @@ export async function getFranchiseeBreakdownReport(
       supplierName: supplier.name,
       commissionRate: supplier.defaultCommissionRate,
       commissionType: supplier.commissionType,
+      fileMapping: supplier.fileMapping,
     })
     .from(supplierFileUpload)
     .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
@@ -729,23 +812,25 @@ export async function getFranchiseeBreakdownReport(
         franchiseeDataMap.set(match.matchedFranchiseeId, franchiseeData);
       }
 
-      // Add supplier entry - group by supplier only, keep only the LATEST file per supplier
+      // Add supplier entry - group by supplier
+      const fm = file.fileMapping as SupplierFileMapping | null;
+      const isMultiFileSupplier = (fm?.maxUploadFiles ?? 1) > 1;
       const supplierKey = file.supplierId;
       const existingSupplier = franchiseeData.suppliers.get(supplierKey);
 
       if (existingSupplier) {
-        // Same file - aggregate amounts (same franchisee listed twice in one file)
-        if (existingSupplier.fileId === file.id) {
+        if (isMultiFileSupplier || existingSupplier.fileId === file.id) {
+          // Multi-file supplier: aggregate across files
+          // Same file: aggregate amounts (same franchisee listed twice in one file)
           existingSupplier.grossAmount += match.grossAmount || 0;
           existingSupplier.netAmount += match.netAmount || 0;
           existingSupplier.commission += matchCommission;
           continue;
         }
-        // Different file - keep only the newer one
+        // Single-file supplier, different file: keep only the newer one
         if (file.createdAt <= existingSupplier.createdAt) {
-          continue; // Skip - we already have a newer file
+          continue;
         }
-        // This file is newer - will replace below
       }
 
       franchiseeData.suppliers.set(supplierKey, {
