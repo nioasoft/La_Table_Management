@@ -545,6 +545,19 @@ export default function HashavshevetExportPage() {
           <div className="space-y-2">
             <Label className="text-sm font-medium">רשת *</Label>
             <div className="flex flex-wrap gap-3">
+              <div className="flex items-center space-x-2 space-x-reverse">
+                <input
+                  type="radio"
+                  id="brand-all"
+                  name="brand-selection"
+                  checked={selectedBrandId === ""}
+                  onChange={() => setSelectedBrandId("")}
+                  className="h-4 w-4 text-primary border-border focus:ring-primary"
+                />
+                <Label htmlFor="brand-all" className="cursor-pointer text-sm font-medium">
+                  כל הרשתות
+                </Label>
+              </div>
               {brands.map((brand) => (
                 <div key={brand.id} className="flex items-center space-x-2 space-x-reverse">
                   <input
@@ -561,11 +574,6 @@ export default function HashavshevetExportPage() {
                 </div>
               ))}
             </div>
-            {!selectedBrandId && (
-              <p className="text-sm text-muted-foreground">
-                יש לבחור רשת לפני הייצוא
-              </p>
-            )}
           </div>
 
           {/* Supplier Selection */}
@@ -698,7 +706,7 @@ export default function HashavshevetExportPage() {
                         min="1"
                       />
                     </div>
-                    <Button onClick={handleExport} disabled={isExporting || !selectedBrandId} size="lg">
+                    <Button onClick={handleExport} disabled={isExporting} size="lg">
                       {isExporting ? (
                         <Loader2 className="h-4 w-4 me-2 animate-spin" />
                       ) : (

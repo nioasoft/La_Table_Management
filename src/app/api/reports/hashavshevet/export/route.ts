@@ -303,7 +303,7 @@ export async function GET(request: NextRequest) {
         filename = `hashavshevet_export.xlsx`;
       }
     } else {
-      filename = `hashavshevet_export.xlsx`;
+      filename = `עמלות כל הרשתות.xlsx`;
     }
 
     // Return Excel file
