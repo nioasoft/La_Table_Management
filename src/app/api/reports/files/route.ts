@@ -52,6 +52,15 @@ export async function GET(request: NextRequest) {
       endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
     };
 
+    // Auto-infer source when filtering by entity:
+    // supplier files belong to suppliers, uploaded files belong to franchisees
+    if (filters.supplierId && !filters.source) {
+      filters.source = "supplier";
+    }
+    if (filters.franchiseeId && !filters.source) {
+      filters.source = "uploaded";
+    }
+
     // Get report data and filter options in parallel
     const [report, filterOptions] = await Promise.all([
       getUnifiedFilesReport(filters),

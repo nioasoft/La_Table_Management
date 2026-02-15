@@ -6,9 +6,11 @@ import { ActionSection } from "../shared/action-section";
 import { ActionItemRow } from "../shared/action-item-row";
 import { usePeriodStatus } from "@/queries/dashboard";
 import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
+import { useDashboardPeriod } from "../dashboard-period-context";
 
 export function PendingApprovals() {
-  const { data, isLoading } = usePeriodStatus();
+  const { startDate, endDate } = useDashboardPeriod();
+  const { data, isLoading } = usePeriodStatus(startDate, endDate);
   const periodStatus = (data?.data as PeriodStatusResponse) ?? null;
 
   const approvalAction = periodStatus?.pendingActions?.items?.find(

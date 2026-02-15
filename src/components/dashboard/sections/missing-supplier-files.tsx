@@ -7,6 +7,7 @@ import { ActionItemRow } from "../shared/action-item-row";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { useSupplierCompleteness } from "@/queries/dashboard";
 import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-completeness/route";
+import { useDashboardPeriod } from "../dashboard-period-context";
 
 const MAX_PREVIEW = 5;
 
@@ -35,7 +36,8 @@ function SupplierRow({
 }
 
 export function MissingSupplierFiles() {
-  const { data, isLoading } = useSupplierCompleteness();
+  const { year } = useDashboardPeriod();
+  const { data, isLoading } = useSupplierCompleteness(year);
   const response = data as SupplierCompletenessResponse | undefined;
 
   const missingSuppliers =

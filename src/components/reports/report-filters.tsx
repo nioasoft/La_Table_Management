@@ -85,6 +85,8 @@ export interface ReportFiltersProps {
   title?: string;
   /** Description for the filter card */
   description?: string;
+  /** Disable individual filter dropdowns (e.g. until a period is selected) */
+  disabledFilters?: Partial<Record<'supplier' | 'franchisee' | 'brand' | 'status', boolean>>;
   /** Additional class name */
   className?: string;
 }
@@ -114,6 +116,7 @@ export function ReportFilters({
   activeFilterCount = 0,
   collapsible = false,
   defaultCollapsed = false,
+  disabledFilters = {},
   title = "סינון",
   description = "סנן את הדוח לפי תאריכים, מותג, ספק או סטטוס",
   className,
@@ -172,6 +175,7 @@ export function ReportFilters({
           <Select
             value={filters.brandId || "all"}
             onValueChange={(value) => onFilterChange("brandId", value === "all" ? "" : value)}
+            disabled={disabledFilters.brand}
           >
             <SelectTrigger id="brand" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר מותג">
               <SelectValue placeholder="כל המותגים" />
@@ -197,6 +201,7 @@ export function ReportFilters({
           <Select
             value={filters.supplierId || "all"}
             onValueChange={(value) => onFilterChange("supplierId", value === "all" ? "" : value)}
+            disabled={disabledFilters.supplier}
           >
             <SelectTrigger id="supplier" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר ספק">
               <SelectValue placeholder="כל הספקים" />
@@ -222,6 +227,7 @@ export function ReportFilters({
           <Select
             value={filters.franchiseeId || "all"}
             onValueChange={(value) => onFilterChange("franchiseeId", value === "all" ? "" : value)}
+            disabled={disabledFilters.franchisee}
           >
             <SelectTrigger id="franchisee" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר זכיין">
               <SelectValue placeholder="כל הזכיינים" />
@@ -247,6 +253,7 @@ export function ReportFilters({
           <Select
             value={filters.status || "all"}
             onValueChange={(value) => onFilterChange("status", value === "all" ? "" : value)}
+            disabled={disabledFilters.status}
           >
             <SelectTrigger id="status" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר סטטוס">
               <SelectValue placeholder="כל הסטטוסים" />

@@ -16,7 +16,7 @@ import {
   user,
   brand,
 } from "@/db/schema";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, and, type SQL } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
 
 // ============================================================================
@@ -128,22 +128,6 @@ export async function getUnifiedFilesReport(
 ): Promise<UnifiedFilesReport> {
   const files: UnifiedFile[] = [];
 
-  // Build date conditions for SQL
-  const buildDateCondition = (
-    dateField: typeof supplierFileUpload.periodStartDate | typeof uploadedFile.periodStartDate,
-    startDate?: string,
-    endDate?: string
-  ) => {
-    const conditions = [];
-    if (startDate) {
-      conditions.push(sql`${dateField} >= ${startDate}`);
-    }
-    if (endDate) {
-      conditions.push(sql`${dateField} <= ${endDate}`);
-    }
-    return conditions;
-  };
-
   // Query supplier files if not filtered to uploaded only
   if (!filters.source || filters.source === "supplier") {
     let supplierQuery = database
@@ -166,30 +150,24 @@ export async function getUnifiedFilesReport(
       .leftJoin(user, eq(supplierFileUpload.createdBy, user.id))
       .$dynamic();
 
-    // Apply supplier filter
+    // Build all filter conditions, then apply once (multiple .where() calls overwrite each other)
+    const supplierConditions: SQL[] = [];
     if (filters.supplierId) {
-      supplierQuery = supplierQuery.where(
-        eq(supplierFileUpload.supplierId, filters.supplierId)
-      );
+      supplierConditions.push(eq(supplierFileUpload.supplierId, filters.supplierId));
     }
-
-    // Apply status filter
     if (filters.status) {
-      supplierQuery = supplierQuery.where(
+      supplierConditions.push(
         eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
       );
     }
-
-    // Apply date filters
     if (filters.startDate) {
-      supplierQuery = supplierQuery.where(
-        sql`${supplierFileUpload.periodStartDate} >= ${filters.startDate}`
-      );
+      supplierConditions.push(sql`${supplierFileUpload.periodStartDate} >= ${filters.startDate}`);
     }
     if (filters.endDate) {
-      supplierQuery = supplierQuery.where(
-        sql`${supplierFileUpload.periodEndDate} <= ${filters.endDate}`
-      );
+      supplierConditions.push(sql`${supplierFileUpload.periodEndDate} <= ${filters.endDate}`);
+    }
+    if (supplierConditions.length > 0) {
+      supplierQuery = supplierQuery.where(and(...supplierConditions));
     }
 
     const supplierFiles = await supplierQuery.orderBy(desc(supplierFileUpload.createdAt));
@@ -238,30 +216,24 @@ export async function getUnifiedFilesReport(
       .leftJoin(uploadLink, eq(uploadedFile.uploadLinkId, uploadLink.id))
       .$dynamic();
 
-    // Apply franchisee filter
+    // Build all filter conditions, then apply once (multiple .where() calls overwrite each other)
+    const uploadedConditions: SQL[] = [];
     if (filters.franchiseeId) {
-      uploadedQuery = uploadedQuery.where(
-        eq(uploadedFile.franchiseeId, filters.franchiseeId)
-      );
+      uploadedConditions.push(eq(uploadedFile.franchiseeId, filters.franchiseeId));
     }
-
-    // Apply status filter
     if (filters.status) {
-      uploadedQuery = uploadedQuery.where(
+      uploadedConditions.push(
         eq(uploadedFile.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")
       );
     }
-
-    // Apply date filters
     if (filters.startDate) {
-      uploadedQuery = uploadedQuery.where(
-        sql`${uploadedFile.periodStartDate} >= ${filters.startDate}`
-      );
+      uploadedConditions.push(sql`${uploadedFile.periodStartDate} >= ${filters.startDate}`);
     }
     if (filters.endDate) {
-      uploadedQuery = uploadedQuery.where(
-        sql`${uploadedFile.periodEndDate} <= ${filters.endDate}`
-      );
+      uploadedConditions.push(sql`${uploadedFile.periodEndDate} <= ${filters.endDate}`);
+    }
+    if (uploadedConditions.length > 0) {
+      uploadedQuery = uploadedQuery.where(and(...uploadedConditions));
     }
 
     const uploadedFiles = await uploadedQuery.orderBy(desc(uploadedFile.createdAt));

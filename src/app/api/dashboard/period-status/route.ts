@@ -5,43 +5,17 @@ import {
 } from "@/lib/api-middleware";
 import { database } from "@/db";
 import {
-  settlementPeriod,
-  commission,
   crossReference,
   fileRequest,
-  franchisee,
-  supplier,
+  supplierFileUpload,
 } from "@/db/schema";
-import { eq, and, gte, lte, sql, desc, or, inArray } from "drizzle-orm";
+import { eq, and, gte, sql, or } from "drizzle-orm";
 import type { CrossReferenceComparisonMetadata } from "@/data-access/crossReferences";
-import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Response type for period status dashboard widget
  */
 export type PeriodStatusResponse = {
-  currentPeriod: {
-    id: string;
-    name: string;
-    startDate: string;
-    endDate: string;
-    status: string;
-    daysRemaining: number;
-    daysElapsed: number;
-    totalDays: number;
-    progressPercentage: number;
-  } | null;
-  reportStatus: {
-    suppliersTotal: number;
-    suppliersReceived: number;
-    suppliersMissing: number;
-    franchiseesTotal: number;
-    franchiseesReceived: number;
-    franchiseesMissing: number;
-    overallPercentage: number;
-    missingSupplierDetails: Array<{ id: string; name: string }>;
-    missingFranchiseeDetails: Array<{ id: string; name: string }>;
-  };
   crossReferenceStatus: {
     total: number;
     matched: number;
@@ -60,74 +34,68 @@ export type PeriodStatusResponse = {
   pendingActions: {
     total: number;
     items: Array<{
-      type: "discrepancy" | "approval" | "missing_report" | "expiring_link";
+      type: "discrepancy" | "approval" | "expiring_link";
       count: number;
       priority: "high" | "medium" | "low";
       description: string;
     }>;
   };
-  workflowProgress: {
-    currentStep: string;
-    steps: Array<{
-      name: string;
-      status: "completed" | "current" | "pending";
-      count: number;
-    }>;
-  };
 };
 
 /**
+ * Check whether two date ranges overlap.
+ * Ranges are inclusive: [startA, endA] overlaps [startB, endB]
+ * iff startA <= endB AND endA >= startB.
+ */
+function periodsOverlap(
+  startA: string,
+  endA: string,
+  startB: string,
+  endB: string
+): boolean {
+  return startA <= endB && endA >= startB;
+}
+
+/**
  * GET /api/dashboard/period-status
- * Returns comprehensive period status for the dashboard widget
+ * Returns cross-reference status and pending actions for the dashboard.
+ *
+ * Optional query params:
+ * - periodStart (YYYY-MM-DD): filter cross-references whose period overlaps
+ * - periodEnd   (YYYY-MM-DD): filter cross-references whose period overlaps
+ *
+ * When both are provided, only cross-references with metadata period dates
+ * overlapping the given range are included. Otherwise, ALL active cross-references
+ * are returned (backward compatible).
  */
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    // Calculate current period dates (current month)
+    const { searchParams } = new URL(request.url);
+    const periodStart = searchParams.get("periodStart");
+    const periodEnd = searchParams.get("periodEnd");
+    const filterByPeriod = Boolean(periodStart && periodEnd);
+
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const currentMonthStartStr = formatDateAsLocal(currentMonthStart);
-    const currentMonthEndStr = formatDateAsLocal(currentMonthEnd);
+    const currentYear = now.getFullYear();
+    const currentMonthStart = new Date(currentYear, now.getMonth(), 1);
 
     // Fetch all data in parallel
-    const [
-      currentPeriodResult,
-      allSuppliers,
-      allFranchisees,
-      fileRequests,
-      crossReferences,
-      settlementStats,
-      commissionsWithUploads,
-    ] = await Promise.all([
-      // Get current/most recent open settlement period
+    const [crossReferences, fileRequests, needsReviewCount] = await Promise.all([
+      // Get ALL active cross-references
       database
         .select()
-        .from(settlementPeriod)
+        .from(crossReference)
         .where(
-          or(
-            eq(settlementPeriod.status, "open"),
-            eq(settlementPeriod.status, "processing")
+          and(
+            eq(crossReference.referenceType, "amount_comparison"),
+            eq(crossReference.isActive, true)
           )
-        )
-        .orderBy(desc(settlementPeriod.periodStartDate))
-        .limit(1),
+        ),
 
-      // Get all active suppliers (suppliers use isActive boolean, not status enum)
-      database
-        .select({ id: supplier.id, name: supplier.name })
-        .from(supplier)
-        .where(eq(supplier.isActive, true)),
-
-      // Get all active franchisees
-      database
-        .select({ id: franchisee.id, name: franchisee.name })
-        .from(franchisee)
-        .where(eq(franchisee.status, "active")),
-
-      // Get file requests for current period
+      // Get recent file requests
       database
         .select()
         .from(fileRequest)
@@ -142,139 +110,30 @@ export async function GET(request: NextRequest) {
           )
         ),
 
-      // Get cross-references for amount comparison
+      // Count supplier files pending review
       database
-        .select()
-        .from(crossReference)
-        .where(
-          and(
-            eq(crossReference.referenceType, "amount_comparison"),
-            eq(crossReference.isActive, true)
-          )
-        ),
-
-      // Get settlement workflow counts by status
-      database
-        .select({
-          status: settlementPeriod.status,
-          count: sql<number>`count(*)::int`,
-        })
-        .from(settlementPeriod)
-        .groupBy(settlementPeriod.status),
-
-      // Get commissions for current period (indicates reports received)
-      database
-        .select({
-          supplierId: commission.supplierId,
-          franchiseeId: commission.franchiseeId,
-        })
-        .from(commission)
-        .where(
-          and(
-            gte(commission.periodStartDate, currentMonthStartStr),
-            lte(commission.periodEndDate, currentMonthEndStr)
-          )
-        ),
+        .select({ count: sql<number>`count(*)::int` })
+        .from(supplierFileUpload)
+        .where(eq(supplierFileUpload.processingStatus, "needs_review")),
     ]);
 
-    // Process current period
-    let currentPeriod: PeriodStatusResponse["currentPeriod"] = null;
-    if (currentPeriodResult.length > 0) {
-      const period = currentPeriodResult[0];
-      const startDate = new Date(period.periodStartDate);
-      const endDate = new Date(period.periodEndDate);
-      const totalDays = Math.ceil(
-        (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      const daysElapsed = Math.max(
-        0,
-        Math.ceil(
-          (now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
-        )
-      );
-      const daysRemaining = Math.max(
-        0,
-        Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-      );
-      const progressPercentage = Math.min(
-        100,
-        Math.round((daysElapsed / totalDays) * 100)
-      );
-
-      currentPeriod = {
-        id: period.id,
-        name: period.name,
-        startDate: period.periodStartDate,
-        endDate: period.periodEndDate,
-        status: period.status,
-        daysRemaining,
-        daysElapsed,
-        totalDays,
-        progressPercentage,
-      };
-    }
-
-    // Calculate report status
-    const suppliersTotal = allSuppliers.length;
-    const franchiseesTotal = allFranchisees.length;
-
-    // Find suppliers/franchisees who have submitted reports (commissions exist)
-    const suppliersWithReports = new Set(
-      commissionsWithUploads.map((c) => c.supplierId)
-    );
-    const franchiseesWithReports = new Set(
-      commissionsWithUploads.map((c) => c.franchiseeId)
-    );
-
-    const suppliersReceived = suppliersWithReports.size;
-    const franchiseesReceived = franchiseesWithReports.size;
-    const suppliersMissing = Math.max(0, suppliersTotal - suppliersReceived);
-    const franchiseesMissing = Math.max(
-      0,
-      franchiseesTotal - franchiseesReceived
-    );
-
-    const totalReports = suppliersTotal + franchiseesTotal;
-    const receivedReports = suppliersReceived + franchiseesReceived;
-    const overallPercentage =
-      totalReports > 0 ? Math.round((receivedReports / totalReports) * 100) : 0;
-
-    // Filter suppliers/franchisees who are missing reports
-    const missingSupplierDetails = allSuppliers
-      .filter((s) => !suppliersWithReports.has(s.id))
-      .map((s) => ({ id: s.id, name: s.name }));
-
-    const missingFranchiseeDetails = allFranchisees
-      .filter((f) => !franchiseesWithReports.has(f.id))
-      .map((f) => ({ id: f.id, name: f.name }));
-
-    const reportStatus: PeriodStatusResponse["reportStatus"] = {
-      suppliersTotal,
-      suppliersReceived,
-      suppliersMissing,
-      franchiseesTotal,
-      franchiseesReceived,
-      franchiseesMissing,
-      overallPercentage,
-      missingSupplierDetails,
-      missingFranchiseeDetails,
-    };
+    // Filter cross-references by period if requested
+    const filteredCrossRefs = filterByPeriod
+      ? crossReferences.filter((cr) => {
+          const metadata = cr.metadata as CrossReferenceComparisonMetadata;
+          const crStart = metadata?.periodStartDate;
+          const crEnd = metadata?.periodEndDate;
+          if (!crStart || !crEnd) return false;
+          return periodsOverlap(crStart, crEnd, periodStart!, periodEnd!);
+        })
+      : crossReferences;
 
     // Process cross-reference status
-    // Filter cross-references for current period
-    const currentPeriodCrossRefs = crossReferences.filter((cr) => {
-      const metadata = cr.metadata as CrossReferenceComparisonMetadata;
-      return (
-        metadata?.periodStartDate === currentMonthStartStr &&
-        metadata?.periodEndDate === currentMonthEndStr
-      );
-    });
-
     let matched = 0;
     let discrepancies = 0;
     let pending = 0;
 
-    for (const cr of currentPeriodCrossRefs) {
+    for (const cr of filteredCrossRefs) {
       const metadata = cr.metadata as CrossReferenceComparisonMetadata;
       const status = metadata?.matchStatus || "pending";
       if (status === "matched") {
@@ -286,12 +145,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const totalCrossRefs = currentPeriodCrossRefs.length;
+    const totalCrossRefs = filteredCrossRefs.length;
     const matchedPercentage =
       totalCrossRefs > 0 ? Math.round((matched / totalCrossRefs) * 100) : 0;
 
     // Extract top 10 discrepancy details
-    const discrepancyDetails = currentPeriodCrossRefs
+    const discrepancyDetails = filteredCrossRefs
       .filter((cr) => {
         const metadata = cr.metadata as CrossReferenceComparisonMetadata;
         return metadata?.matchStatus === "discrepancy";
@@ -328,30 +187,18 @@ export async function GET(request: NextRequest) {
         type: "discrepancy",
         count: discrepancies,
         priority: "high",
-        description: `${discrepancies} discrepancies require review`,
+        description: `${discrepancies} פערים דורשים בדיקה`,
       });
     }
 
-    // Pending approvals (high priority)
-    const pendingApprovalCount =
-      settlementStats.find((s) => s.status === "pending_approval")?.count || 0;
-    if (pendingApprovalCount > 0) {
+    // Files pending review (high priority)
+    const pendingReview = needsReviewCount[0]?.count || 0;
+    if (pendingReview > 0) {
       pendingActionItems.push({
         type: "approval",
-        count: pendingApprovalCount,
+        count: pendingReview,
         priority: "high",
-        description: `${pendingApprovalCount} settlements awaiting approval`,
-      });
-    }
-
-    // Missing reports (medium priority)
-    const missingReportsCount = suppliersMissing + franchiseesMissing;
-    if (missingReportsCount > 0) {
-      pendingActionItems.push({
-        type: "missing_report",
-        count: missingReportsCount,
-        priority: "medium",
-        description: `${missingReportsCount} reports not yet received`,
+        description: `${pendingReview} קבצים ממתינים לבדיקה`,
       });
     }
 
@@ -370,7 +217,7 @@ export async function GET(request: NextRequest) {
         type: "expiring_link",
         count: expiringLinks,
         priority: "low",
-        description: `${expiringLinks} upload links expiring soon`,
+        description: `${expiringLinks} קישורי העלאה עומדים לפוג`,
       });
     }
 
@@ -382,99 +229,9 @@ export async function GET(request: NextRequest) {
       }),
     };
 
-    // Calculate workflow progress
-    const workflowSteps: PeriodStatusResponse["workflowProgress"]["steps"] = [];
-    let currentStep = "open";
-
-    // Map settlement stats to workflow steps
-    const openCount =
-      (settlementStats.find((s) => s.status === "open")?.count || 0) +
-      (settlementStats.find((s) => s.status === "draft")?.count || 0);
-    const processingCount =
-      (settlementStats.find((s) => s.status === "processing")?.count || 0) +
-      (settlementStats.find((s) => s.status === "pending")?.count || 0);
-    const pendingApproval = pendingApprovalCount;
-    const approvedCount =
-      settlementStats.find((s) => s.status === "approved")?.count || 0;
-    const invoicedCount =
-      (settlementStats.find((s) => s.status === "invoiced")?.count || 0) +
-      (settlementStats.find((s) => s.status === "completed")?.count || 0);
-
-    // Determine current step based on where most activity is
-    if (pendingApproval > 0) {
-      currentStep = "pending_approval";
-    } else if (processingCount > 0) {
-      currentStep = "processing";
-    } else if (approvedCount > 0 && invoicedCount === 0) {
-      currentStep = "approved";
-    } else if (invoicedCount > 0) {
-      currentStep = "invoiced";
-    }
-
-    workflowSteps.push({
-      name: "open",
-      status:
-        currentStep === "open"
-          ? "current"
-          : openCount > 0 ||
-              processingCount > 0 ||
-              pendingApproval > 0 ||
-              approvedCount > 0
-            ? "completed"
-            : "pending",
-      count: openCount,
-    });
-
-    workflowSteps.push({
-      name: "processing",
-      status:
-        currentStep === "processing"
-          ? "current"
-          : processingCount > 0 || pendingApproval > 0 || approvedCount > 0
-            ? "completed"
-            : "pending",
-      count: processingCount,
-    });
-
-    workflowSteps.push({
-      name: "pending_approval",
-      status:
-        currentStep === "pending_approval"
-          ? "current"
-          : approvedCount > 0 || invoicedCount > 0
-            ? "completed"
-            : "pending",
-      count: pendingApproval,
-    });
-
-    workflowSteps.push({
-      name: "approved",
-      status:
-        currentStep === "approved"
-          ? "current"
-          : invoicedCount > 0
-            ? "completed"
-            : "pending",
-      count: approvedCount,
-    });
-
-    workflowSteps.push({
-      name: "invoiced",
-      status: currentStep === "invoiced" ? "current" : "pending",
-      count: invoicedCount,
-    });
-
-    const workflowProgress: PeriodStatusResponse["workflowProgress"] = {
-      currentStep,
-      steps: workflowSteps,
-    };
-
     const response: PeriodStatusResponse = {
-      currentPeriod,
-      reportStatus,
       crossReferenceStatus,
       pendingActions,
-      workflowProgress,
     };
 
     return NextResponse.json({ data: response });

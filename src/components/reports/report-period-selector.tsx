@@ -41,6 +41,8 @@ export interface ReportPeriodSelectorProps {
   layout?: "horizontal" | "vertical";
   /** Show labels */
   showLabels?: boolean;
+  /** Include the current (in-progress) period in the dropdown */
+  includeCurrent?: boolean;
 }
 
 // Period type options
@@ -65,12 +67,13 @@ export function ReportPeriodSelector({
   disabled = false,
   layout = "horizontal",
   showLabels = true,
+  includeCurrent = false,
 }: ReportPeriodSelectorProps) {
   // Get available periods based on selected type
   const availablePeriods = useMemo((): SettlementPeriodInfo[] => {
     if (!periodType) return [];
-    return getPeriodsForFrequency(periodType, new Date(), periodsCount);
-  }, [periodType, periodsCount]);
+    return getPeriodsForFrequency(periodType, new Date(), periodsCount, 1, includeCurrent);
+  }, [periodType, periodsCount, includeCurrent]);
 
   // Handle period type change
   const handleTypeChange = (newType: string) => {
@@ -83,7 +86,7 @@ export function ReportPeriodSelector({
 
     const type = newType as SettlementPeriodType;
     // Get the most recent period for this type
-    const periods = getPeriodsForFrequency(type, new Date(), 1);
+    const periods = getPeriodsForFrequency(type, new Date(), 1, 1, includeCurrent);
     const defaultPeriod = periods[0];
 
     onChange(type, defaultPeriod?.key || "");

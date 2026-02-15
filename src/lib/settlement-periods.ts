@@ -50,12 +50,12 @@ export function getOpenPeriods(referenceDate: Date = new Date()): SettlementPeri
  * Get monthly periods. Called on the 1st of every month.
  * Returns the previous month's period.
  */
-export function getMonthlyPeriods(referenceDate: Date = new Date(), count: number = 3): SettlementPeriodInfo[] {
+export function getMonthlyPeriods(referenceDate: Date = new Date(), count: number = 3, includeCurrent: boolean = false): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
 
-  for (let i = 1; i <= count; i++) {
+  for (let i = includeCurrent ? 0 : 1; i <= count; i++) {
     const periodMonth = month - i;
     const periodYear = periodMonth < 0 ? year - 1 : year;
     const adjustedMonth = periodMonth < 0 ? 12 + periodMonth : periodMonth;
@@ -85,7 +85,7 @@ export function getMonthlyPeriods(referenceDate: Date = new Date(), count: numbe
  * Q3: Jul-Sep (due October 1)
  * Q4: Oct-Dec (due January 1)
  */
-export function getQuarterlyPeriods(referenceDate: Date = new Date(), count: number = 2): SettlementPeriodInfo[] {
+export function getQuarterlyPeriods(referenceDate: Date = new Date(), count: number = 2, includeCurrent: boolean = false): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
@@ -93,7 +93,7 @@ export function getQuarterlyPeriods(referenceDate: Date = new Date(), count: num
   // Calculate current quarter (0-3)
   const currentQuarter = Math.floor(month / 3);
 
-  for (let i = 1; i <= count; i++) {
+  for (let i = includeCurrent ? 0 : 1; i <= count; i++) {
     let quarter = currentQuarter - i;
     let periodYear = year;
 
@@ -129,7 +129,7 @@ export function getQuarterlyPeriods(referenceDate: Date = new Date(), count: num
  * H1: Jan-Jun (due July 1)
  * H2: Jul-Dec (due January 1)
  */
-export function getSemiAnnualPeriods(referenceDate: Date = new Date(), count: number = 2): SettlementPeriodInfo[] {
+export function getSemiAnnualPeriods(referenceDate: Date = new Date(), count: number = 2, includeCurrent: boolean = false): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
@@ -137,7 +137,7 @@ export function getSemiAnnualPeriods(referenceDate: Date = new Date(), count: nu
   // Current half (0 or 1)
   const currentHalf = month < 6 ? 0 : 1;
 
-  for (let i = 1; i <= count; i++) {
+  for (let i = includeCurrent ? 0 : 1; i <= count; i++) {
     let half = currentHalf - i;
     let periodYear = year;
 
@@ -176,7 +176,8 @@ export function getSemiAnnualPeriods(referenceDate: Date = new Date(), count: nu
 export function getAnnualPeriods(
   referenceDate: Date = new Date(),
   count: number = 2,
-  fiscalYearStartMonth: number = 1
+  fiscalYearStartMonth: number = 1,
+  includeCurrent: boolean = false
 ): SettlementPeriodInfo[] {
   const periods: SettlementPeriodInfo[] = [];
   const year = referenceDate.getFullYear();
@@ -191,7 +192,7 @@ export function getAnnualPeriods(
       currentFYStartYear = year - 1;
     }
 
-    for (let i = 1; i <= count; i++) {
+    for (let i = includeCurrent ? 0 : 1; i <= count; i++) {
       const fyStartYear = currentFYStartYear - i;
       const fyEndYear = fyStartYear + 1;
       const startDate = new Date(fyStartYear, fyStartMonth0, 1);
@@ -210,7 +211,7 @@ export function getAnnualPeriods(
     }
   } else {
     // Standard calendar year (January-December)
-    for (let i = 1; i <= count; i++) {
+    for (let i = includeCurrent ? 0 : 1; i <= count; i++) {
       const periodYear = year - i;
       const startDate = new Date(periodYear, 0, 1);
       const endDate = new Date(periodYear, 11, 31);
@@ -344,17 +345,18 @@ export function getPeriodsForFrequency(
   frequency: SettlementPeriodType,
   referenceDate: Date = new Date(),
   count: number = 4,
-  fiscalYearStartMonth: number = 1
+  fiscalYearStartMonth: number = 1,
+  includeCurrent: boolean = false
 ): SettlementPeriodInfo[] {
   switch (frequency) {
     case "monthly":
-      return getMonthlyPeriods(referenceDate, count);
+      return getMonthlyPeriods(referenceDate, count, includeCurrent);
     case "quarterly":
-      return getQuarterlyPeriods(referenceDate, count);
+      return getQuarterlyPeriods(referenceDate, count, includeCurrent);
     case "semi_annual":
-      return getSemiAnnualPeriods(referenceDate, count);
+      return getSemiAnnualPeriods(referenceDate, count, includeCurrent);
     case "annual":
-      return getAnnualPeriods(referenceDate, count, fiscalYearStartMonth);
+      return getAnnualPeriods(referenceDate, count, fiscalYearStartMonth, includeCurrent);
     default:
       return [];
   }

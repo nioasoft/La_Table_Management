@@ -2,25 +2,29 @@
 
 import { FileText, CheckCircle2, Clock, TrendingUp } from "lucide-react";
 import { MetricCard } from "../shared/metric-card";
+import {
+  useSupplierCompleteness,
+  usePeriodStatus,
+  useCommissionSettlementStatus,
+} from "@/queries/dashboard";
 import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
+import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-completeness/route";
+import { useDashboardPeriod } from "../dashboard-period-context";
 
-interface QuickMetricsRowProps {
-  periodStatus: PeriodStatusResponse | null;
-  commissionStatus: {
-    commissionSummary?: {
-      totalAmount?: number;
-      pendingCount?: number;
-      approvedCount?: number;
-      paidCount?: number;
-    };
-  } | null;
-}
+export function QuickMetricsRow() {
+  const { year, startDate, endDate } = useDashboardPeriod();
+  const { data: supplierData } = useSupplierCompleteness(year);
+  const { data: periodStatusData } = usePeriodStatus(startDate, endDate);
+  const { data: commissionStatusData } = useCommissionSettlementStatus();
 
-export function QuickMetricsRow({
-  periodStatus,
-  commissionStatus,
-}: QuickMetricsRowProps) {
-  const reportPct = periodStatus?.reportStatus?.overallPercentage || 0;
+  const supplierCompleteness = supplierData as SupplierCompletenessResponse | undefined;
+  const periodStatus = (periodStatusData?.data as PeriodStatusResponse) ?? null;
+  const commissionStatus = commissionStatusData?.data ?? null;
+
+  const reportPct = supplierCompleteness?.summary?.completionPercentage || 0;
+  const received = supplierCompleteness?.summary?.received || 0;
+  const totalExpected = supplierCompleteness?.summary?.totalExpectedFiles || 0;
+
   const matchPct = periodStatus?.crossReferenceStatus?.matchedPercentage || 0;
   const pendingApproval =
     periodStatus?.pendingActions?.items?.find((i) => i.type === "approval")
@@ -60,7 +64,7 @@ export function QuickMetricsRow({
       <MetricCard
         label="דוחות שהתקבלו"
         value={`${reportPct}%`}
-        subtitle={`${periodStatus?.reportStatus?.suppliersReceived || 0}/${periodStatus?.reportStatus?.suppliersTotal || 0} ספקים · ${periodStatus?.reportStatus?.franchiseesReceived || 0}/${periodStatus?.reportStatus?.franchiseesTotal || 0} זכיינים`}
+        subtitle={`${received}/${totalExpected} ספקים שלחו קבצים`}
         icon={<FileText className="h-5 w-5" />}
         colorClass={reportColorClass}
         accentColor={reportAccent as "green" | "amber" | "neutral"}

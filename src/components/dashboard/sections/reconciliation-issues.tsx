@@ -7,11 +7,13 @@ import { ActionItemRow } from "../shared/action-item-row";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { usePeriodStatus } from "@/queries/dashboard";
 import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
+import { useDashboardPeriod } from "../dashboard-period-context";
 
 const MAX_PREVIEW = 5;
 
 export function ReconciliationIssues() {
-  const { data, isLoading } = usePeriodStatus();
+  const { startDate, endDate } = useDashboardPeriod();
+  const { data, isLoading } = usePeriodStatus(startDate, endDate);
   const periodStatus = (data?.data as PeriodStatusResponse) ?? null;
 
   const discrepancyDetails =

@@ -22,11 +22,16 @@ export function useDashboardStats() {
   });
 }
 
-export function usePeriodStatus() {
+export function usePeriodStatus(periodStart?: string, periodEnd?: string) {
   return useQuery({
-    queryKey: dashboardKeys.periodStatus(),
+    queryKey: [...dashboardKeys.periodStatus(), periodStart, periodEnd],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/period-status");
+      const params = new URLSearchParams();
+      if (periodStart) params.set("periodStart", periodStart);
+      if (periodEnd) params.set("periodEnd", periodEnd);
+      const qs = params.toString();
+      const url = `/api/dashboard/period-status${qs ? `?${qs}` : ""}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch period status");
       return res.json();
     },

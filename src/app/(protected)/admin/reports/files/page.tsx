@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +38,7 @@ import {
   type ColumnDef,
   type SummaryCardData,
 } from "@/components/reports";
-import { useReportFilters } from "@/hooks/use-report-filters";
+import { useReportFilters, type ReportFilters as ReportFiltersType } from "@/hooks/use-report-filters";
 import type { StatusOption } from "@/components/reports/report-filters";
 import { formatDateHe, formatNumber } from "@/lib/report-utils";
 import { toast } from "sonner";
@@ -338,6 +338,18 @@ export default function FilesReportPage() {
     setOptions,
   } = useReportFilters();
 
+  // Mutual exclusion: selecting a supplier clears franchisee and vice versa
+  const handleFilterChange = useCallback(<K extends keyof ReportFiltersType>(key: K, value: ReportFiltersType[K]) => {
+    if (key === "supplierId" && value) {
+      updateFilter("franchiseeId", "");
+    } else if (key === "franchiseeId" && value) {
+      updateFilter("supplierId", "");
+    }
+    updateFilter(key, value);
+  }, [updateFilter]);
+
+  const hasPeriod = !!filters.periodKey;
+
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
@@ -367,13 +379,23 @@ export default function FilesReportPage() {
     return params.toString();
   }, [buildQueryString, activeTab]);
 
-  // Fetch report
+  // AbortController to cancel stale requests
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Fetch report — cancels any in-flight request to prevent race conditions
   const fetchReport = useCallback(async () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setIsLoading(true);
     setError(null);
     try {
       const queryString = buildApiQueryString();
-      const response = await fetch(`/api/reports/files${queryString ? `?${queryString}` : ""}`);
+      const response = await fetch(
+        `/api/reports/files${queryString ? `?${queryString}` : ""}`,
+        { signal: controller.signal }
+      );
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch report");
@@ -390,20 +412,26 @@ export default function FilesReportPage() {
         });
       }
     } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch report";
       setError(errorMessage);
       toast.error("שגיאה בטעינת הנתונים. נסה שוב.");
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
     }
   }, [buildApiQueryString, setOptions]);
 
-  // Initial load
+  // Initial load — only once when session is available (NOT on every filter change)
+  const initialLoadDone = useRef(false);
   useEffect(() => {
-    if (session && (userRole === "super_user" || userRole === "admin")) {
+    if (!initialLoadDone.current && session && (userRole === "super_user" || userRole === "admin")) {
+      initialLoadDone.current = true;
       fetchReport();
     }
-  }, [session, userRole, fetchReport]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, userRole]);
 
   // Filter files for tabs
   const supplierFiles = report?.files.filter((f) => f.source === "supplier") || [];
@@ -475,7 +503,7 @@ export default function FilesReportPage() {
       {/* Shared Filters Component */}
       <ReportFilters
         filters={filters}
-        onFilterChange={updateFilter}
+        onFilterChange={handleFilterChange}
         onPeriodChange={updatePeriod}
         onApply={fetchReport}
         onReset={resetFilters}
@@ -491,6 +519,10 @@ export default function FilesReportPage() {
         showDatePresets={false}
         isLoading={isLoading}
         activeFilterCount={activeFilterCount}
+        disabledFilters={{
+          supplier: !hasPeriod || !!filters.franchiseeId,
+          franchisee: !hasPeriod || !!filters.supplierId,
+        }}
         description="סנן לפי ספק, זכיין, סטטוס או תקופה"
       />
 

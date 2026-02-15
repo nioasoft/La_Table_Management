@@ -4,8 +4,8 @@ import Link from "next/link";
 import { UserX } from "lucide-react";
 import { ActionSection } from "../shared/action-section";
 import { CollapsibleContent } from "@/components/ui/collapsible";
-import { usePeriodStatus } from "@/queries/dashboard";
-import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
+import { useUploadStatus } from "@/queries/dashboard";
+import type { UploadStatusResponse } from "@/app/api/dashboard/upload-status/route";
 
 const MAX_PREVIEW = 24; // 6 rows of 4
 
@@ -23,11 +23,12 @@ function FranchiseeChip({ name }: { name: string }) {
 }
 
 export function MissingFranchiseeFiles() {
-  const { data, isLoading } = usePeriodStatus();
-  const periodStatus = (data?.data as PeriodStatusResponse) ?? null;
+  const { data, isLoading } = useUploadStatus();
+  const uploadStatus = data as UploadStatusResponse | undefined;
 
-  const missingFranchisees =
-    periodStatus?.reportStatus?.missingFranchiseeDetails || [];
+  const missingFranchisees = (uploadStatus?.franchisees ?? []).filter(
+    (f) => !f.hasUploaded
+  );
 
   const previewItems = missingFranchisees.slice(0, MAX_PREVIEW);
   const expandedItems = missingFranchisees.slice(MAX_PREVIEW);
