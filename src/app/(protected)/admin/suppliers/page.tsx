@@ -937,19 +937,6 @@ export default function AdminSuppliersPage() {
                       {he.admin.suppliers.form.fields.vatExempt}
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="vatIncluded"
-                      checked={formData.vatIncluded}
-                      onCheckedChange={(checked) =>
-                        setFormData({ ...formData, vatIncluded: checked as boolean })
-                      }
-                      disabled={isSubmitting || formData.vatExempt}
-                    />
-                    <Label htmlFor="vatIncluded" className={`cursor-pointer ${formData.vatExempt ? "text-muted-foreground" : ""}`}>
-                      {he.admin.suppliers.form.fields.vatIncluded}
-                    </Label>
-                  </div>
                 </div>
 
                 {/* Franchisee Fund */}
@@ -992,7 +979,7 @@ export default function AdminSuppliersPage() {
                 </div>
 
                 {/* Commission Exceptions - Collapsible */}
-                <Collapsible defaultOpen={formData.commissionExceptions.length > 0}>
+                <Collapsible defaultOpen={false}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                     <Percent className="h-3.5 w-3.5" />
                     <span className="text-sm font-medium">פריטים מוחרגים</span>
@@ -1154,7 +1141,7 @@ export default function AdminSuppliersPage() {
               )}
 
               {/* BKMV Aliases - Collapsible */}
-              <Collapsible defaultOpen={formData.bkmvAliases.length > 0}>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors">
                   <Tags className="h-4 w-4" />
                   <span className="text-base font-semibold">{he.admin.suppliers.form.sections.bkmvAliases}</span>

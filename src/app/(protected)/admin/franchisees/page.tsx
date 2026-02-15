@@ -1762,27 +1762,13 @@ function FranchiseeCard({
             {franchisee.brand && (
               <Badge variant="outline" className="text-xs px-1.5 py-0">{franchisee.brand.nameHe}</Badge>
             )}
-            {franchisee.aliases && franchisee.aliases.length > 0 && (
-              franchisee.aliases.slice(0, 3).map((alias, idx) => (
-                <Badge
-                  key={`${alias}-${idx}`}
-                  variant="outline"
-                  className="text-xs px-1.5 py-0 text-muted-foreground"
-                >
-                  {alias}
-                </Badge>
-              ))
+            {franchisee.city && (
+              <span className="text-xs text-muted-foreground">{franchisee.city}</span>
             )}
-            {franchisee.aliases && franchisee.aliases.length > 3 && (
-              <span className="text-xs text-muted-foreground">+{franchisee.aliases.length - 3}</span>
+            {franchisee.primaryContactName && (
+              <span className="text-xs text-muted-foreground">{franchisee.primaryContactName}</span>
             )}
           </div>
-          {(franchisee.city || franchisee.primaryContactName) && (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              {franchisee.city && <span>{franchisee.city}</span>}
-              {franchisee.primaryContactName && <span>{franchisee.primaryContactName}</span>}
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-1">
