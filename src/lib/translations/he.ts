@@ -3214,6 +3214,7 @@ export const he = {
       reports: "דוחות",
       settings: "הגדרות",
       archive: "ארכיון",
+      files: "קבצים",
     },
 
     // Sub-navigation items

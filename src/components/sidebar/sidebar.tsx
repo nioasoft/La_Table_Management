@@ -79,6 +79,7 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
     "dataManagement",
     "settings",
     "reports",
+    "files",
   ]);
 
   const isSuperUserOrAdmin = userRole === "super_user" || userRole === "admin";
@@ -143,6 +144,12 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/franchisees",
                 icon: <Building2 className="h-4 w-4" />,
               },
+            ],
+          },
+          {
+            label: he.sidebar.navigation.files,
+            icon: <Files className="h-5 w-5" />,
+            children: [
               {
                 label: he.sidebar.subNavigation.bkmvdata,
                 href: "/admin/bkmvdata",
@@ -192,7 +199,7 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 icon: <PiggyBank className="h-4 w-4" />,
               },
               {
-                label: "אחוז עמלות ממחזור",
+                label: "אחוז קניות ממחזור",
                 href: "/admin/reports/commission-revenue",
                 icon: <Percent className="h-4 w-4" />,
               },
