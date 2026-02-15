@@ -530,12 +530,6 @@ export default function SupplierCardPage() {
               <CardTitle className="text-base">מידע כללי</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-1">
-              {supplier.companyId && (
-                <div className="flex justify-between py-2 border-b last:border-0">
-                  <span className="text-muted-foreground">מספר חברה</span>
-                  <span className="font-medium" dir="ltr">{supplier.companyId}</span>
-                </div>
-              )}
               {supplier.address && (
                 <div className="flex justify-between py-2 border-b last:border-0">
                   <span className="text-muted-foreground">כתובת</span>

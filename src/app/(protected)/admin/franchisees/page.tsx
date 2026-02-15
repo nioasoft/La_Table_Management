@@ -146,7 +146,6 @@ interface FranchiseeFormData {
   name: string;
   code: string;
   aliases: string[];
-  companyId: string;
   address: string;
   city: string;
   state: string;
@@ -172,7 +171,6 @@ const initialFormData: FranchiseeFormData = {
   name: "",
   code: "",
   aliases: [],
-  companyId: "",
   address: "",
   city: "",
   state: "",
@@ -468,7 +466,6 @@ export default function AdminFranchiseesPage() {
       name: franchisee.name,
       code: franchisee.code,
       aliases: franchisee.aliases || [],
-      companyId: franchisee.companyId || "",
       address: franchisee.address || "",
       city: franchisee.city || "",
       state: franchisee.state || "",
@@ -847,9 +844,9 @@ export default function AdminFranchiseesPage() {
                   <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="brandId">{he.admin.franchisees.form.fields.brand} *</Label>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="brandId" className="text-xs">{he.admin.franchisees.form.fields.brand} *</Label>
                     <Select
                       value={formData.brandId}
                       onValueChange={(value) =>
@@ -857,7 +854,7 @@ export default function AdminFranchiseesPage() {
                       }
                       disabled={isSubmitting}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8">
                         <SelectValue placeholder={he.admin.franchisees.form.fields.brandPlaceholder} />
                       </SelectTrigger>
                       <SelectContent>
@@ -870,8 +867,8 @@ export default function AdminFranchiseesPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="name">{he.admin.franchisees.form.fields.name} *</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="name" className="text-xs">{he.admin.franchisees.form.fields.name} *</Label>
                     <Input
                       id="name"
                       value={formData.name}
@@ -882,11 +879,12 @@ export default function AdminFranchiseesPage() {
                       disabled={isSubmitting}
                       required
                       dir="rtl"
+                      className="h-8"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="code">{he.admin.franchisees.form.fields.code} *</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="code" className="text-xs">{he.admin.franchisees.form.fields.code} *</Label>
                     <Input
                       id="code"
                       value={formData.code}
@@ -899,24 +897,12 @@ export default function AdminFranchiseesPage() {
                       placeholder={he.admin.franchisees.form.fields.codePlaceholder}
                       disabled={isSubmitting}
                       required
+                      className="h-8"
                     />
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="companyId">{he.admin.franchisees.form.fields.companyId}</Label>
-                    <Input
-                      id="companyId"
-                      value={formData.companyId}
-                      onChange={(e) =>
-                        setFormData({ ...formData, companyId: e.target.value })
-                      }
-                      placeholder={he.admin.franchisees.form.fields.companyIdPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="status">{he.admin.franchisees.form.fields.status}</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="status" className="text-xs">{he.admin.franchisees.form.fields.status}</Label>
                     <Select
                       value={formData.status}
                       onValueChange={(value: FranchiseeStatus) =>
@@ -924,7 +910,7 @@ export default function AdminFranchiseesPage() {
                       }
                       disabled={isSubmitting}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-8">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -937,8 +923,8 @@ export default function AdminFranchiseesPage() {
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="hashavshevetItemKey">{he.admin.franchisees.form.fields.hashavshevetItemKey}</Label>
+                  <div className="space-y-1">
+                    <Label htmlFor="hashavshevetItemKey" className="text-xs">{he.admin.franchisees.form.fields.hashavshevetItemKey}</Label>
                     <Input
                       id="hashavshevetItemKey"
                       value={formData.hashavshevetItemKey}
@@ -948,6 +934,7 @@ export default function AdminFranchiseesPage() {
                       placeholder={he.admin.franchisees.form.fields.hashavshevetItemKeyPlaceholder}
                       disabled={isSubmitting}
                       dir="rtl"
+                      className="h-8"
                     />
                   </div>
 

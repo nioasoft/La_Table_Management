@@ -530,8 +530,6 @@ export const he = {
           codePlaceholder: "לדוגמה: SUP001",
           name: "שם",
           namePlaceholder: "שם הספק",
-          companyId: "מספר חברה",
-          companyIdPlaceholder: "מספר רישום חברה",
           address: "כתובת",
           addressPlaceholder: "כתובת מלאה",
           description: "הערות",
@@ -590,7 +588,6 @@ export const he = {
 
       card: {
         code: "קוד:",
-        companyId: "מספר חברה:",
         settlement: "התחשבנות:",
         vat: "מע״מ:",
         vatIncluded: "כלול",
@@ -650,7 +647,6 @@ export const he = {
         overview: {
           basicInfo: {
             title: "מידע בסיסי",
-            companyId: "מספר חברה",
             taxId: "מספר עוסק",
             address: "כתובת",
             description: "תיאור",
@@ -842,8 +838,6 @@ export const he = {
           namePlaceholder: "שם הזכיין",
           code: "קוד",
           codePlaceholder: "לדוגמה: FR001",
-          companyId: "מספר חברה",
-          companyIdPlaceholder: "מספר רישום חברה",
           status: "סטטוס",
 
           streetAddress: "כתובת רחוב",
@@ -896,7 +890,6 @@ export const he = {
 
       card: {
         code: "קוד:",
-        companyId: "מספר חברה:",
         aliases: "כינויים:",
         address: "כתובת",
         primaryContact: "איש קשר ראשי",

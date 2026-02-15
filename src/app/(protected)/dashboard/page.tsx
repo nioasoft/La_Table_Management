@@ -2,7 +2,7 @@
 
 import { authClient } from "@/lib/auth-client";
 import type { UserRole } from "@/db/schema";
-import { MinimalDashboard } from "@/components/minimal-dashboard";
+import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 import { he } from "@/lib/translations";
 
 export default function DashboardPage() {
@@ -29,7 +29,7 @@ export default function DashboardPage() {
       </div>
 
       {isSuperUserOrAdmin ? (
-        <MinimalDashboard userRole={userRole} />
+        <AdminDashboard userRole={userRole} />
       ) : (
         // Franchisee owner view - simple placeholder for now
         <div className="rounded-lg border bg-muted/50 p-8 text-center">

@@ -7,6 +7,7 @@ export const dashboardKeys = {
   uploadStatus: () => [...dashboardKeys.all, "uploadStatus"] as const,
   commissionSettlement: () => [...dashboardKeys.all, "commissionSettlement"] as const,
   upcomingReminders: () => [...dashboardKeys.all, "upcomingReminders"] as const,
+  supplierCompleteness: () => [...dashboardKeys.all, "supplierCompleteness"] as const,
 };
 
 export function useDashboardStats() {
@@ -54,7 +55,7 @@ export function useCommissionSettlementStatus() {
   });
 }
 
-export function useUpcomingReminders(daysAhead = 30, limit = 5) {
+export function useUpcomingReminders(daysAhead = 30, limit = 10) {
   return useQuery({
     queryKey: [...dashboardKeys.upcomingReminders(), daysAhead, limit],
     queryFn: async () => {
@@ -62,5 +63,18 @@ export function useUpcomingReminders(daysAhead = 30, limit = 5) {
       if (!res.ok) throw new Error("Failed to fetch upcoming reminders");
       return res.json();
     },
+  });
+}
+
+export function useSupplierCompleteness(year?: number) {
+  const currentYear = year || new Date().getFullYear();
+  return useQuery({
+    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/dashboard/supplier-completeness?year=${currentYear}`);
+      if (!res.ok) throw new Error("Failed to fetch supplier completeness");
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
   });
 }

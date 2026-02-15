@@ -110,7 +110,6 @@ type SupplierWithBrands = Supplier & {
 interface SupplierFormData {
   code: string;
   name: string;
-  companyId: string;
   description: string;
   contactName: string;
   contactEmail: string;
@@ -143,7 +142,6 @@ interface SupplierFormData {
 const initialFormData: SupplierFormData = {
   code: "",
   name: "",
-  companyId: "",
   description: "",
   contactName: "",
   contactEmail: "",
@@ -502,7 +500,6 @@ export default function AdminSuppliersPage() {
     setFormData({
       code: supplier.code,
       name: supplier.name,
-      companyId: supplier.companyId || "",
       description: supplier.description || "",
       contactName: supplier.contactName || "",
       contactEmail: supplier.contactEmail || "",
@@ -679,17 +676,6 @@ export default function AdminSuppliersPage() {
                     disabled={isSubmitting}
                     required
                     dir="rtl"
-                    className="h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="companyId" className="text-xs">{he.admin.suppliers.form.fields.companyId}</Label>
-                  <Input
-                    id="companyId"
-                    value={formData.companyId}
-                    onChange={(e) => setFormData({ ...formData, companyId: e.target.value })}
-                    placeholder={he.admin.suppliers.form.fields.companyIdPlaceholder}
-                    disabled={isSubmitting}
                     className="h-8"
                   />
                 </div>

@@ -536,7 +536,6 @@ export function FranchiseeDetailCard({
           </DialogTitle>
           <DialogDescription>
             קוד: {franchisee.code}
-            {franchisee.companyId && ` | מספר חברה: ${franchisee.companyId}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -612,10 +611,6 @@ export function FranchiseeDetailCard({
                     <Badge variant={statusVariants[franchisee.status]}>
                       {statusLabels[franchisee.status]}
                     </Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">מספר חברה</p>
-                    <p className="font-medium">{franchisee.companyId || "—"}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">פעיל</p>

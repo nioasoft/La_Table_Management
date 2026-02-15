@@ -39,6 +39,8 @@ export type PeriodStatusResponse = {
     franchiseesReceived: number;
     franchiseesMissing: number;
     overallPercentage: number;
+    missingSupplierDetails: Array<{ id: string; name: string }>;
+    missingFranchiseeDetails: Array<{ id: string; name: string }>;
   };
   crossReferenceStatus: {
     total: number;
@@ -46,6 +48,14 @@ export type PeriodStatusResponse = {
     discrepancies: number;
     pending: number;
     matchedPercentage: number;
+    discrepancyDetails: Array<{
+      crossRefId: string;
+      supplierName: string;
+      franchiseeName: string;
+      supplierAmount: number;
+      franchiseeAmount: number;
+      difference: number;
+    }>;
   };
   pendingActions: {
     total: number;
@@ -229,6 +239,15 @@ export async function GET(request: NextRequest) {
     const overallPercentage =
       totalReports > 0 ? Math.round((receivedReports / totalReports) * 100) : 0;
 
+    // Filter suppliers/franchisees who are missing reports
+    const missingSupplierDetails = allSuppliers
+      .filter((s) => !suppliersWithReports.has(s.id))
+      .map((s) => ({ id: s.id, name: s.name }));
+
+    const missingFranchiseeDetails = allFranchisees
+      .filter((f) => !franchiseesWithReports.has(f.id))
+      .map((f) => ({ id: f.id, name: f.name }));
+
     const reportStatus: PeriodStatusResponse["reportStatus"] = {
       suppliersTotal,
       suppliersReceived,
@@ -237,6 +256,8 @@ export async function GET(request: NextRequest) {
       franchiseesReceived,
       franchiseesMissing,
       overallPercentage,
+      missingSupplierDetails,
+      missingFranchiseeDetails,
     };
 
     // Process cross-reference status
@@ -269,12 +290,32 @@ export async function GET(request: NextRequest) {
     const matchedPercentage =
       totalCrossRefs > 0 ? Math.round((matched / totalCrossRefs) * 100) : 0;
 
+    // Extract top 10 discrepancy details
+    const discrepancyDetails = currentPeriodCrossRefs
+      .filter((cr) => {
+        const metadata = cr.metadata as CrossReferenceComparisonMetadata;
+        return metadata?.matchStatus === "discrepancy";
+      })
+      .slice(0, 10)
+      .map((cr) => {
+        const metadata = cr.metadata as CrossReferenceComparisonMetadata;
+        return {
+          crossRefId: cr.id,
+          supplierName: metadata?.supplierName || "לא ידוע",
+          franchiseeName: metadata?.franchiseeName || "לא ידוע",
+          supplierAmount: parseFloat(metadata?.supplierAmount || "0"),
+          franchiseeAmount: parseFloat(metadata?.franchiseeAmount || "0"),
+          difference: parseFloat(metadata?.difference || "0"),
+        };
+      });
+
     const crossReferenceStatus: PeriodStatusResponse["crossReferenceStatus"] = {
       total: totalCrossRefs,
       matched,
       discrepancies,
       pending,
       matchedPercentage,
+      discrepancyDetails,
     };
 
     // Calculate pending actions

@@ -61,7 +61,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       name,
       code,
       aliases,
-      companyId,
       address,
       city,
       state,
@@ -131,9 +130,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (brandId !== undefined) updateData.brandId = brandId;
     if (name !== undefined) updateData.name = name;
-    if (code !== undefined) updateData.code = code;
+    if (code !== undefined) {
+      updateData.code = code;
+      updateData.companyId = /^\d+$/.test(code) ? code : null;
+    }
     if (aliases !== undefined) updateData.aliases = aliases;
-    if (companyId !== undefined) updateData.companyId = companyId;
     if (address !== undefined) updateData.address = address;
     if (city !== undefined) updateData.city = city;
     if (state !== undefined) updateData.state = state;
