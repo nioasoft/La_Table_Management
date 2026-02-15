@@ -409,20 +409,54 @@ export default function SupplierCardPage() {
 
   return (
     <div className="container mx-auto p-4 md:p-6 max-w-6xl">
-      {/* Header - Minimal */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/suppliers">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div className="flex items-start gap-3">
+          <Link href="/admin/suppliers" className="mt-1">
             <Button variant="ghost" size="sm">
               <ArrowRight className="h-4 w-4 ms-2" />
               {he.admin.suppliers.detail.backToSuppliers}
             </Button>
           </Link>
-          <div className="h-6 w-px bg-border" />
-          <h1 className="text-xl md:text-2xl font-bold">{supplier.name}</h1>
-          <Badge variant={supplier.isActive ? "success" : "secondary"}>
-            {supplier.isActive ? he.common.active : he.common.inactive}
-          </Badge>
+          <div className="h-12 w-px bg-border mt-1" />
+          <div>
+            <div className="flex items-center gap-3">
+              <Truck className="h-5 w-5 text-muted-foreground" />
+              <h1 className="text-xl md:text-2xl font-bold">{supplier.name}</h1>
+              <Badge variant={supplier.isActive ? "success" : "secondary"}>
+                {supplier.isActive ? he.common.active : he.common.inactive}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5 ms-8">קוד: {supplier.code}</p>
+            <div className="flex items-center gap-2 text-sm mt-1 ms-8">
+              {supplier.contactName ? (
+                <>
+                  <User className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-medium">{supplier.contactName}</span>
+                  {supplier.contactEmail && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <a href={`mailto:${supplier.contactEmail}`} className="text-muted-foreground hover:text-primary flex items-center gap-1" dir="ltr">
+                        <Mail className="h-3 w-3" />
+                        {supplier.contactEmail}
+                      </a>
+                    </>
+                  )}
+                  {supplier.contactPhone && (
+                    <>
+                      <span className="text-muted-foreground">•</span>
+                      <a href={`tel:${supplier.contactPhone}`} className="text-muted-foreground hover:text-primary flex items-center gap-1" dir="ltr">
+                        <Phone className="h-3 w-3" />
+                        {supplier.contactPhone}
+                      </a>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">לא הוגדר איש קשר ראשי</span>
+              )}
+            </div>
+          </div>
         </div>
         <Link href={`/admin/suppliers?edit=${supplier.id}`}>
           <Button>
@@ -524,27 +558,100 @@ export default function SupplierCardPage() {
 
         {/* Overview Tab */}
         <TabsContent value="overview" className="space-y-4">
-          {/* מידע כללי */}
+          {/* מידע כללי + אנשי קשר */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">מידע כללי</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                מידע כללי
+              </CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-1">
-              {supplier.address && (
-                <div className="flex justify-between py-2 border-b last:border-0">
-                  <span className="text-muted-foreground">כתובת</span>
-                  <span className="font-medium text-end max-w-[60%]">{supplier.address}</span>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                {supplier.address && (
+                  <div>
+                    <p className="text-muted-foreground">כתובת</p>
+                    <p className="font-medium">{supplier.address}</p>
+                  </div>
+                )}
+                {supplier.description && (
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground">הערות</p>
+                    <p className="font-medium">{supplier.description}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-muted-foreground">תאריך יצירה</p>
+                  <p className="font-medium">{new Date(supplier.createdAt).toLocaleDateString("he-IL")}</p>
                 </div>
-              )}
-              {supplier.description && (
-                <div className="flex flex-col gap-1 py-2 border-b last:border-0">
-                  <span className="text-muted-foreground">הערות</span>
-                  <span className="text-sm">{supplier.description}</span>
-                </div>
-              )}
-              <div className="flex justify-between py-2 border-b last:border-0">
-                <span className="text-muted-foreground">תאריך יצירה</span>
-                <span className="font-medium">{new Date(supplier.createdAt).toLocaleDateString("he-IL")}</span>
+              </div>
+
+              {/* אנשי קשר */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium flex items-center gap-2 mb-3">
+                  <Users className="h-4 w-4" />
+                  אנשי קשר
+                </p>
+                {!supplier.contactName && !supplier.secondaryContactName ? (
+                  <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
+                ) : (
+                  <div className="space-y-3">
+                    {supplier.contactName && (
+                      <div className="flex items-start gap-3">
+                        <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                          <User className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-sm">{supplier.contactName}</p>
+                            <Badge variant="secondary" className="text-xs">ראשי</Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-0.5">
+                            {supplier.contactEmail && (
+                              <a href={`mailto:${supplier.contactEmail}`} className="hover:text-primary flex items-center gap-1" dir="ltr">
+                                <Mail className="h-3 w-3" />
+                                {supplier.contactEmail}
+                              </a>
+                            )}
+                            {supplier.contactPhone && (
+                              <a href={`tel:${supplier.contactPhone}`} className="hover:text-primary flex items-center gap-1" dir="ltr">
+                                <Phone className="h-3 w-3" />
+                                {supplier.contactPhone}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {supplier.secondaryContactName && (
+                      <div className="flex items-start gap-3">
+                        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center shrink-0">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-sm">{supplier.secondaryContactName}</p>
+                            <Badge variant="outline" className="text-xs">משני</Badge>
+                          </div>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-0.5">
+                            {supplier.secondaryContactEmail && (
+                              <a href={`mailto:${supplier.secondaryContactEmail}`} className="hover:text-primary flex items-center gap-1" dir="ltr">
+                                <Mail className="h-3 w-3" />
+                                {supplier.secondaryContactEmail}
+                              </a>
+                            )}
+                            {supplier.secondaryContactPhone && (
+                              <a href={`tel:${supplier.secondaryContactPhone}`} className="hover:text-primary flex items-center gap-1" dir="ltr">
+                                <Phone className="h-3 w-3" />
+                                {supplier.secondaryContactPhone}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -552,103 +659,41 @@ export default function SupplierCardPage() {
           {/* תנאים כספיים */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">תנאים כספיים</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Percent className="h-4 w-4" />
+                תנאים כספיים
+              </CardTitle>
             </CardHeader>
-            <CardContent className="grid gap-1">
-              <div className="flex justify-between py-2 border-b last:border-0">
-                <span className="text-muted-foreground">שיעור עמלה</span>
-                <span className="font-medium">
+            <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+              <div>
+                <p className="text-muted-foreground">שיעור עמלה</p>
+                <p className="font-medium">
                   {supplier.defaultCommissionRate ? `${supplier.defaultCommissionRate}%` : "לא הוגדר"}
                   {supplier.commissionType && (
-                    <span className="text-muted-foreground text-sm me-1">
+                    <span className="text-muted-foreground text-xs me-1">
                       ({supplier.commissionType === "percentage" ? "אחוזים" : "לפריט"})
                     </span>
                   )}
-                </span>
+                </p>
               </div>
-              <div className="flex justify-between py-2 border-b last:border-0">
-                <span className="text-muted-foreground">תדירות התחשבנות</span>
-                <span className="font-medium">{formatSettlementFrequency(supplier.settlementFrequency)}</span>
+              <div>
+                <p className="text-muted-foreground">תדירות התחשבנות</p>
+                <p className="font-medium">{formatSettlementFrequency(supplier.settlementFrequency)}</p>
               </div>
               {supplier.fiscalYearStartMonth && supplier.fiscalYearStartMonth > 1 && (
-                <div className="flex justify-between py-2 border-b last:border-0">
-                  <span className="text-muted-foreground">שנת כספים</span>
-                  <span className="font-medium">{HEBREW_MONTHS[supplier.fiscalYearStartMonth - 1]} - {HEBREW_MONTHS[(supplier.fiscalYearStartMonth - 2 + 12) % 12]}</span>
+                <div>
+                  <p className="text-muted-foreground">שנת כספים</p>
+                  <p className="font-medium">{HEBREW_MONTHS[supplier.fiscalYearStartMonth - 1]} - {HEBREW_MONTHS[(supplier.fiscalYearStartMonth - 2 + 12) % 12]}</p>
                 </div>
               )}
-              <div className="flex justify-between py-2 border-b last:border-0">
-                <span className="text-muted-foreground">מע״מ</span>
-                <span className="font-medium">{supplier.vatExempt ? "פטור ממע״מ" : supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</span>
+              <div>
+                <p className="text-muted-foreground">מע״מ</p>
+                <p className="font-medium">{supplier.vatExempt ? "פטור ממע״מ" : supplier.vatIncluded ? "כלול במחיר" : "לא כלול"}</p>
               </div>
               {supplier.paymentTerms && (
-                <div className="flex justify-between py-2 border-b last:border-0">
-                  <span className="text-muted-foreground">תנאי תשלום</span>
-                  <span className="font-medium">{supplier.paymentTerms}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* אנשי קשר */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">אנשי קשר</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!supplier.contactName && !supplier.secondaryContactName ? (
-                <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
-              ) : (
-                <div className="space-y-4">
-                  {supplier.contactName && (
-                    <div className="flex items-start gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                        <User className="h-5 w-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{supplier.contactName}</p>
-                          <Badge variant="secondary" className="text-xs">ראשי</Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
-                          {supplier.contactEmail && (
-                            <a href={`mailto:${supplier.contactEmail}`} className="hover:text-primary" dir="ltr">
-                              {supplier.contactEmail}
-                            </a>
-                          )}
-                          {supplier.contactPhone && (
-                            <a href={`tel:${supplier.contactPhone}`} className="hover:text-primary" dir="ltr">
-                              {supplier.contactPhone}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {supplier.secondaryContactName && (
-                    <div className="flex items-start gap-3">
-                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center shrink-0">
-                        <User className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium">{supplier.secondaryContactName}</p>
-                          <Badge variant="outline" className="text-xs">משני</Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground mt-1">
-                          {supplier.secondaryContactEmail && (
-                            <a href={`mailto:${supplier.secondaryContactEmail}`} className="hover:text-primary" dir="ltr">
-                              {supplier.secondaryContactEmail}
-                            </a>
-                          )}
-                          {supplier.secondaryContactPhone && (
-                            <a href={`tel:${supplier.secondaryContactPhone}`} className="hover:text-primary" dir="ltr">
-                              {supplier.secondaryContactPhone}
-                            </a>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                <div>
+                  <p className="text-muted-foreground">תנאי תשלום</p>
+                  <p className="font-medium">{supplier.paymentTerms}</p>
                 </div>
               )}
             </CardContent>
@@ -658,7 +703,10 @@ export default function SupplierCardPage() {
           {supplier.brands && supplier.brands.length > 0 && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">מותגים משויכים</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  מותגים משויכים
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
