@@ -66,7 +66,7 @@ export function AdminDashboard({ userRole }: AdminDashboardProps) {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Period Status Header */}
       <PeriodStatusHeader
         periodStatus={periodStatus}
@@ -81,7 +81,7 @@ export function AdminDashboard({ userRole }: AdminDashboardProps) {
       />
 
       {/* Action Sections - each loads independently */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <MissingSupplierFiles />
         <MissingFranchiseeFiles />
         <ReconciliationIssues />

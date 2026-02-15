@@ -19,9 +19,7 @@ export function PendingApprovals() {
   return (
     <ActionSection
       title="ממתינים לאישור"
-      icon={
-        <FileCheck className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-      }
+      icon={<FileCheck className="h-4 w-4" />}
       count={approvalCount}
       linkHref="/admin/settlements"
       linkText="צפה בהכל"
@@ -32,13 +30,15 @@ export function PendingApprovals() {
       {approvalCount > 0 && (
         <ActionItemRow
           icon={
-            <FileCheck className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            <FileCheck className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
           }
           iconBgClass="bg-purple-100 dark:bg-purple-900/50"
           title={`${approvalCount} התחשבנויות ממתינות לאישור`}
           subtitle="יש לבדוק ולאשר"
           badge={
-            <Badge className="bg-purple-600 text-xs">{approvalCount}</Badge>
+            <Badge className="bg-purple-500 text-white text-[10px] h-4 px-1.5 hover:bg-purple-500">
+              {approvalCount}
+            </Badge>
           }
           href="/admin/settlements"
         />

@@ -29,7 +29,6 @@ export function ReconciliationIssues() {
       maximumFractionDigits: 0,
     }).format(amount);
 
-  // Combine discrepancy details and pending count into items
   const allItems: Array<{
     key: string;
     type: "discrepancy" | "pending";
@@ -38,25 +37,23 @@ export function ReconciliationIssues() {
     badge?: React.ReactNode;
   }> = [];
 
-  // Add discrepancy detail items
   for (const d of discrepancyDetails) {
     allItems.push({
       key: d.crossRefId,
       type: "discrepancy",
       title: `${d.supplierName} ↔ ${d.franchiseeName}`,
-      subtitle: `ספק: ${formatCurrency(d.supplierAmount)} | זכיין: ${formatCurrency(d.franchiseeAmount)}`,
+      subtitle: `ספק: ${formatCurrency(d.supplierAmount)} · זכיין: ${formatCurrency(d.franchiseeAmount)}`,
       badge: (
         <Badge
           variant="outline"
-          className="text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+          className="text-[10px] h-4 px-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
         >
-          {formatCurrency(Math.abs(d.difference))} פער
+          {formatCurrency(Math.abs(d.difference))}
         </Badge>
       ),
     });
   }
 
-  // Add pending cross-refs as single summary row if any
   if (pendingCount > 0) {
     allItems.push({
       key: "pending-summary",
@@ -72,9 +69,7 @@ export function ReconciliationIssues() {
   return (
     <ActionSection
       title="בעיות התאמה"
-      icon={
-        <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-      }
+      icon={<AlertTriangle className="h-4 w-4" />}
       count={totalIssues}
       linkHref="/admin/reconciliation-v2"
       linkText="צפה בהכל"
@@ -89,9 +84,9 @@ export function ReconciliationIssues() {
           key={item.key}
           icon={
             item.type === "discrepancy" ? (
-              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
             ) : (
-              <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
             )
           }
           iconBgClass={
@@ -111,9 +106,9 @@ export function ReconciliationIssues() {
             key={item.key}
             icon={
               item.type === "discrepancy" ? (
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                <AlertTriangle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
               ) : (
-                <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               )
             }
             iconBgClass={

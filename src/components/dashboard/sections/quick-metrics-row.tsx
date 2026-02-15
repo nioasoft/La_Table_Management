@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, CheckCircle2, Clock } from "lucide-react";
+import { FileText, CheckCircle2, Clock, TrendingUp } from "lucide-react";
 import { MetricCard } from "../shared/metric-card";
 import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
 
@@ -42,6 +42,9 @@ export function QuickMetricsRow({
         ? "text-amber-600 dark:text-amber-400"
         : "text-muted-foreground";
 
+  const reportAccent =
+    reportPct >= 80 ? "green" : reportPct >= 50 ? "amber" : "neutral";
+
   const matchColorClass =
     matchPct >= 90
       ? "text-green-600 dark:text-green-400"
@@ -49,38 +52,46 @@ export function QuickMetricsRow({
         ? "text-amber-600 dark:text-amber-400"
         : "text-red-600 dark:text-red-400";
 
+  const matchAccent =
+    matchPct >= 90 ? "green" : matchPct >= 70 ? "amber" : "red";
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
       <MetricCard
         label="דוחות שהתקבלו"
         value={`${reportPct}%`}
-        subtitle={`${periodStatus?.reportStatus?.suppliersReceived || 0}/${periodStatus?.reportStatus?.suppliersTotal || 0} ספקים | ${periodStatus?.reportStatus?.franchiseesReceived || 0}/${periodStatus?.reportStatus?.franchiseesTotal || 0} זכיינים`}
-        icon={<FileText className="h-6 w-6" />}
+        subtitle={`${periodStatus?.reportStatus?.suppliersReceived || 0}/${periodStatus?.reportStatus?.suppliersTotal || 0} ספקים · ${periodStatus?.reportStatus?.franchiseesReceived || 0}/${periodStatus?.reportStatus?.franchiseesTotal || 0} זכיינים`}
+        icon={<FileText className="h-5 w-5" />}
         colorClass={reportColorClass}
+        accentColor={reportAccent as "green" | "amber" | "neutral"}
       />
       <MetricCard
         label="אחוז התאמה"
         value={`${matchPct}%`}
-        subtitle={`${periodStatus?.crossReferenceStatus?.matched || 0} תואמים | ${periodStatus?.crossReferenceStatus?.discrepancies || 0} פערים`}
-        icon={<CheckCircle2 className="h-6 w-6" />}
+        subtitle={`${periodStatus?.crossReferenceStatus?.matched || 0} תואמים · ${periodStatus?.crossReferenceStatus?.discrepancies || 0} פערים`}
+        icon={<CheckCircle2 className="h-5 w-5" />}
         colorClass={matchColorClass}
+        accentColor={matchAccent as "green" | "amber" | "red"}
       />
       <MetricCard
         label="ממתינים לאישור"
         value={pendingApproval}
         subtitle="פריטים דורשים אישור"
-        icon={<Clock className="h-6 w-6" />}
+        icon={<Clock className="h-5 w-5" />}
         colorClass={
           pendingApproval > 0
             ? "text-amber-600 dark:text-amber-400"
             : "text-muted-foreground"
         }
+        accentColor={pendingApproval > 0 ? "amber" : "neutral"}
       />
       <MetricCard
         label="סכום כולל"
         value={formatCurrency(totalAmount)}
-        subtitle={`${commissionStatus?.commissionSummary?.pendingCount || 0} ממתין | ${commissionStatus?.commissionSummary?.approvedCount || 0} מאושר | ${commissionStatus?.commissionSummary?.paidCount || 0} שולם`}
+        subtitle={`${commissionStatus?.commissionSummary?.pendingCount || 0} ממתין · ${commissionStatus?.commissionSummary?.approvedCount || 0} מאושר · ${commissionStatus?.commissionSummary?.paidCount || 0} שולם`}
+        icon={<TrendingUp className="h-5 w-5" />}
         colorClass="text-green-600 dark:text-green-400"
+        accentColor="green"
       />
     </div>
   );

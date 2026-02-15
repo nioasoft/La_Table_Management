@@ -645,63 +645,557 @@ export default function AdminSuppliersPage() {
                 : he.admin.suppliers.form.createDescription}
             </DialogDescription>
           </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
               {formError && (
                 <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                   <p className="text-sm text-destructive">{formError}</p>
                 </div>
               )}
 
-              {/* Basic Information - Compact */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="space-y-1">
-                  <Label htmlFor="code" className="text-xs">{he.admin.suppliers.form.fields.code} *</Label>
-                  <Input
-                    id="code"
-                    value={formData.code}
-                    onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                    placeholder={he.admin.suppliers.form.fields.codePlaceholder}
-                    disabled={isSubmitting}
-                    required
-                    className="h-8"
-                  />
+              {/* ═══ Group 1: Identity ═══ */}
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border/40">
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold tracking-tight">פרטי ספק</h3>
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="name" className="text-xs">{he.admin.suppliers.form.fields.name} *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder={he.admin.suppliers.form.fields.namePlaceholder}
-                    disabled={isSubmitting}
-                    required
-                    dir="rtl"
-                    className="h-8"
-                  />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="code" className="text-xs">{he.admin.suppliers.form.fields.code} *</Label>
+                    <Input
+                      id="code"
+                      value={formData.code}
+                      onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
+                      placeholder={he.admin.suppliers.form.fields.codePlaceholder}
+                      disabled={isSubmitting}
+                      required
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="name" className="text-xs">{he.admin.suppliers.form.fields.name} *</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.namePlaceholder}
+                      disabled={isSubmitting}
+                      required
+                      dir="rtl"
+                      className="h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="address" className="text-xs">{he.admin.suppliers.form.fields.address}</Label>
+                    <Input
+                      id="address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      placeholder={he.admin.suppliers.form.fields.addressPlaceholder}
+                      disabled={isSubmitting}
+                      dir="rtl"
+                      className="h-8"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label htmlFor="address" className="text-xs">{he.admin.suppliers.form.fields.address}</Label>
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    placeholder={he.admin.suppliers.form.fields.addressPlaceholder}
-                    disabled={isSubmitting}
-                    dir="rtl"
-                    className="h-8"
-                  />
+
+                {/* Status toggles */}
+                <div className="flex items-center gap-4 pt-3 border-t border-border/30">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="isActive"
+                      checked={formData.isActive}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, isActive: checked as boolean })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <Label htmlFor="isActive" className="cursor-pointer text-sm">
+                      {he.admin.suppliers.form.fields.isActive}
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="isHidden"
+                      checked={formData.isHidden}
+                      onCheckedChange={(checked) =>
+                        setFormData({ ...formData, isHidden: checked as boolean })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <Label htmlFor="isHidden" className="cursor-pointer text-sm">
+                      {he.admin.suppliers.form.fields.isHidden}
+                    </Label>
+                  </div>
                 </div>
               </div>
 
-              {/* Notes/Description */}
+              {/* ═══ Group 2: Business Settings ═══ */}
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+                {/* Commission Settings */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border/40">
+                    <Percent className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold tracking-tight">{he.admin.suppliers.form.sections.commissionSettings}</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="defaultCommissionRate">{he.admin.suppliers.form.fields.commissionRate}</Label>
+
+                      {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
+                        <Badge variant="secondary" className="text-xs">
+                          <FileText className="h-3 w-3 me-1" />
+                          העמלה נלקחת מהקובץ
+                        </Badge>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="defaultCommissionRate"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={formData.defaultCommissionRate}
+                          onChange={(e) => setFormData({ ...formData, defaultCommissionRate: e.target.value })}
+                          placeholder={he.admin.suppliers.form.fields.commissionRatePlaceholder}
+                          disabled={isSubmitting || (editingSupplier ? hasCommissionFromFile(editingSupplier.code) : false)}
+                          className="w-28"
+                        />
+                        <span className="text-muted-foreground">%</span>
+                        {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>לספק זה העמלה מחושבת אוטומטית מהקובץ</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {editingSupplier && hasCommissionFromFile(editingSupplier.code)
+                          ? "העמלה מחושבת ישירות מקובץ הספק"
+                          : "חל על כל הפריטים, אלא אם הוגדרו חריגות"}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="settlementFrequency">{he.admin.suppliers.form.fields.settlementFrequency}</Label>
+                      <Select
+                        value={formData.settlementFrequency}
+                        onValueChange={(value: SettlementFrequency) =>
+                          setFormData({
+                            ...formData,
+                            settlementFrequency: value,
+                            fiscalYearStartMonth: value === "annual" ? formData.fiscalYearStartMonth : 1,
+                          })
+                        }
+                        disabled={isSubmitting}
+                      >
+                        <SelectTrigger id="settlementFrequency">
+                          <SelectValue placeholder={he.admin.suppliers.form.fields.settlementFrequencyPlaceholder} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="monthly">{he.admin.suppliers.form.fields.settlementMonthly}</SelectItem>
+                          <SelectItem value="quarterly">{he.admin.suppliers.form.fields.settlementQuarterly}</SelectItem>
+                          <SelectItem value="semi_annual">{he.admin.suppliers.form.fields.settlementSemiAnnual}</SelectItem>
+                          <SelectItem value="annual">{he.admin.suppliers.form.fields.settlementAnnual}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {formData.settlementFrequency === "annual" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="fiscalYearStartMonth">חודש התחלת שנת כספים</Label>
+                        <Select
+                          value={String(formData.fiscalYearStartMonth || 1)}
+                          onValueChange={(value) =>
+                            setFormData({ ...formData, fiscalYearStartMonth: parseInt(value) })
+                          }
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="fiscalYearStartMonth">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="1">ינואר (ברירת מחדל)</SelectItem>
+                            <SelectItem value="2">פברואר</SelectItem>
+                            <SelectItem value="3">מרץ</SelectItem>
+                            <SelectItem value="4">אפריל</SelectItem>
+                            <SelectItem value="5">מאי</SelectItem>
+                            <SelectItem value="6">יוני</SelectItem>
+                            <SelectItem value="7">יולי</SelectItem>
+                            <SelectItem value="8">אוגוסט</SelectItem>
+                            <SelectItem value="9">ספטמבר</SelectItem>
+                            <SelectItem value="10">אוקטובר</SelectItem>
+                            <SelectItem value="11">נובמבר</SelectItem>
+                            <SelectItem value="12">דצמבר</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          רלוונטי לספקים עם שנת כספים שונה מינואר-דצמבר
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="vatExempt"
+                        checked={formData.vatExempt}
+                        onCheckedChange={(checked) =>
+                          setFormData({
+                            ...formData,
+                            vatExempt: checked as boolean,
+                            vatIncluded: checked ? false : formData.vatIncluded,
+                          })
+                        }
+                        disabled={isSubmitting}
+                      />
+                      <Label htmlFor="vatExempt" className="cursor-pointer">
+                        {he.admin.suppliers.form.fields.vatExempt}
+                      </Label>
+                    </div>
+                  </div>
+
+                  {/* Franchisee Fund */}
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="franchiseeFundEnabled"
+                        checked={formData.franchiseeFundEnabled}
+                        onCheckedChange={(checked) =>
+                          setFormData({
+                            ...formData,
+                            franchiseeFundEnabled: checked as boolean,
+                            franchiseeFundPercentage: checked ? formData.franchiseeFundPercentage : "",
+                          })
+                        }
+                        disabled={isSubmitting}
+                      />
+                      <Label htmlFor="franchiseeFundEnabled" className="cursor-pointer">
+                        קרן זכיינים
+                      </Label>
+                    </div>
+                    {formData.franchiseeFundEnabled && (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="100"
+                          value={formData.franchiseeFundPercentage}
+                          onChange={(e) =>
+                            setFormData({ ...formData, franchiseeFundPercentage: e.target.value })
+                          }
+                          disabled={isSubmitting}
+                          className="w-24"
+                          placeholder="אחוז"
+                        />
+                        <span className="text-sm text-muted-foreground">%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Commission Exceptions - Collapsible */}
+                  <Collapsible defaultOpen={false}>
+                    <CollapsibleTrigger className="group flex items-center gap-2 w-full px-3 py-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                      <Percent className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">פריטים מוחרגים</span>
+                      {formData.commissionExceptions.length > 0 && (
+                        <Badge variant="secondary" className="ms-2">
+                          {formData.commissionExceptions.length}
+                        </Badge>
+                      )}
+                      <ChevronDown className="h-4 w-4 ms-auto transition-transform group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-2">
+                      <CommissionExceptionsEditor
+                        exceptions={formData.commissionExceptions}
+                        onChange={(exceptions) => setFormData({ ...formData, commissionExceptions: exceptions })}
+                        disabled={isSubmitting}
+                        hideHeader
+                      />
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  {/* Commission Change Log Fields (only show when editing and rate is changing) */}
+                  {isCommissionRateChanging && (
+                    <div className="rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-4">
+                      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                        <History className="h-5 w-5" />
+                        <span className="font-medium">
+                          {he.admin.suppliers.form.commissionChange.title}
+                        </span>
+                      </div>
+                      <p className="text-sm text-amber-600 dark:text-amber-300">
+                        {he.admin.suppliers.form.commissionChange.changingFrom
+                          .replace("{from}", editingSupplier?.defaultCommissionRate || "0")
+                          .replace("{to}", formData.defaultCommissionRate)}
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="commissionEffectiveDate">
+                            {he.admin.suppliers.form.commissionChange.effectiveDate} *
+                          </Label>
+                          <Input
+                            id="commissionEffectiveDate"
+                            type="date"
+                            value={formData.commissionEffectiveDate}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                commissionEffectiveDate: e.target.value,
+                              })
+                            }
+                            disabled={isSubmitting}
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-2 md:col-span-2">
+                          <Label htmlFor="commissionChangeReason">
+                            {he.admin.suppliers.form.commissionChange.reason}
+                          </Label>
+                          <Input
+                            id="commissionChangeReason"
+                            value={formData.commissionChangeReason}
+                            onChange={(e) =>
+                              setFormData({
+                                ...formData,
+                                commissionChangeReason: e.target.value,
+                              })
+                            }
+                            placeholder={he.admin.suppliers.form.commissionChange.reasonPlaceholder}
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="commissionChangeNotes">
+                          {he.admin.suppliers.form.commissionChange.additionalNotes}
+                        </Label>
+                        <Input
+                          id="commissionChangeNotes"
+                          value={formData.commissionChangeNotes}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              commissionChangeNotes: e.target.value,
+                            })
+                          }
+                          placeholder={he.admin.suppliers.form.commissionChange.notesPlaceholder}
+                          disabled={isSubmitting}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Tax & Payment */}
+                <div className="space-y-3 pt-3 border-t border-border/30">
+                  <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border/40">
+                    <Hash className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold tracking-tight">{he.admin.suppliers.form.sections.taxPayment}</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
+                      <Input
+                        id="paymentTerms"
+                        value={formData.paymentTerms}
+                        onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                        placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
+                        disabled={isSubmitting}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hashavshevetCode">קוד חשבשבת</Label>
+                      <Input
+                        id="hashavshevetCode"
+                        value={formData.hashavshevetCode}
+                        onChange={(e) => setFormData({ ...formData, hashavshevetCode: e.target.value })}
+                        placeholder="קוד מפתח חשבון"
+                        disabled={isSubmitting}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        קוד הספק במערכת חשבשבת לייבוא עמלות
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ═══ Group 3: Relationships ═══ */}
+              <div className="rounded-lg border border-border/60 bg-muted/20 p-4 space-y-4">
+                {/* Associated Brands */}
+                {brands.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 mb-1 border-b border-border/40">
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-sm font-semibold tracking-tight">{he.admin.suppliers.form.sections.associatedBrands}</h3>
+                    </div>
+                    <div className="flex flex-wrap gap-3">
+                      {brands.map((brand) => (
+                        <div
+                          key={brand.id}
+                          className="flex items-center gap-2"
+                        >
+                          <Checkbox
+                            id={`brand-${brand.id}`}
+                            checked={formData.brandIds.includes(brand.id)}
+                            onCheckedChange={() => handleBrandToggle(brand.id)}
+                            disabled={isSubmitting}
+                          />
+                          <Label
+                            htmlFor={`brand-${brand.id}`}
+                            className="cursor-pointer"
+                          >
+                            {brand.nameHe}
+                            {brand.nameEn && (
+                              <span className="text-muted-foreground text-sm ms-1">
+                                ({brand.nameEn})
+                              </span>
+                            )}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Contacts - Collapsible */}
+                <Collapsible defaultOpen={false}>
+                  <CollapsibleTrigger className="group flex items-center gap-2 w-full px-3 py-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">אנשי קשר</span>
+                    {(formData.contactName || formData.contactEmail || formData.secondaryContactName || formData.secondaryContactEmail) && (
+                      <Check className="h-4 w-4 text-green-500" />
+                    )}
+                    <ChevronDown className="h-4 w-4 ms-auto transition-transform group-data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2 space-y-3">
+                    {/* Primary Contact */}
+                    <div className="space-y-2 p-2 rounded-md bg-muted/30">
+                      <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          id="contactName"
+                          value={formData.contactName}
+                          onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+                          placeholder="שם"
+                          disabled={isSubmitting}
+                          dir="rtl"
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          id="contactEmail"
+                          type="email"
+                          value={formData.contactEmail}
+                          onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                          placeholder="אימייל"
+                          disabled={isSubmitting}
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          id="contactPhone"
+                          value={formData.contactPhone}
+                          onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                          placeholder="טלפון"
+                          disabled={isSubmitting}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Secondary Contact */}
+                    {showSecondaryContact ? (
+                      <div className="space-y-2 p-2 rounded-md bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              setShowSecondaryContact(false);
+                              setFormData({
+                                ...formData,
+                                secondaryContactName: "",
+                                secondaryContactEmail: "",
+                                secondaryContactPhone: "",
+                              });
+                            }}
+                            disabled={isSubmitting}
+                          >
+                            <X className="h-3 w-3 me-1" />
+                            הסר
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <Input
+                            id="secondaryContactName"
+                            value={formData.secondaryContactName}
+                            onChange={(e) => setFormData({ ...formData, secondaryContactName: e.target.value })}
+                            placeholder="שם"
+                            disabled={isSubmitting}
+                            dir="rtl"
+                            className="h-8 text-sm"
+                          />
+                          <Input
+                            id="secondaryContactEmail"
+                            type="email"
+                            value={formData.secondaryContactEmail}
+                            onChange={(e) => setFormData({ ...formData, secondaryContactEmail: e.target.value })}
+                            placeholder="אימייל"
+                            disabled={isSubmitting}
+                            className="h-8 text-sm"
+                          />
+                          <Input
+                            id="secondaryContactPhone"
+                            value={formData.secondaryContactPhone}
+                            onChange={(e) => setFormData({ ...formData, secondaryContactPhone: e.target.value })}
+                            placeholder="טלפון"
+                            disabled={isSubmitting}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={() => setShowSecondaryContact(true)}
+                        disabled={isSubmitting}
+                      >
+                        <Plus className="h-3.5 w-3.5 me-1" />
+                        הוסף איש קשר משני
+                      </Button>
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              </div>
+
+              {/* ═══ Group 4: Metadata (standalone collapsibles) ═══ */}
               <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
-                  <MessageSquare className="h-3.5 w-3.5" />
+                <CollapsibleTrigger className="group flex items-center gap-2 w-full px-3 py-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">הערות</span>
                   {formData.description && (
-                    <Check className="h-3.5 w-3.5 text-green-500" />
+                    <Check className="h-4 w-4 text-green-500" />
                   )}
-                  <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform group-data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-2">
                   <Textarea
@@ -717,463 +1211,16 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* Contacts - Combined Collapsible */}
               <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
-                  <Users className="h-3.5 w-3.5" />
-                  <span className="text-sm font-medium">אנשי קשר</span>
-                  {(formData.contactName || formData.contactEmail || formData.secondaryContactName || formData.secondaryContactEmail) && (
-                    <Check className="h-3.5 w-3.5 text-green-500" />
-                  )}
-                  <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2 space-y-3">
-                  {/* Primary Contact */}
-                  <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                    <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      <Input
-                        id="contactName"
-                        value={formData.contactName}
-                        onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                        placeholder="שם"
-                        disabled={isSubmitting}
-                        dir="rtl"
-                        className="h-8 text-sm"
-                      />
-                      <Input
-                        id="contactEmail"
-                        type="email"
-                        value={formData.contactEmail}
-                        onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
-                        placeholder="אימייל"
-                        disabled={isSubmitting}
-                        className="h-8 text-sm"
-                      />
-                      <Input
-                        id="contactPhone"
-                        value={formData.contactPhone}
-                        onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
-                        placeholder="טלפון"
-                        disabled={isSubmitting}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Secondary Contact */}
-                  {showSecondaryContact ? (
-                    <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => {
-                            setShowSecondaryContact(false);
-                            setFormData({
-                              ...formData,
-                              secondaryContactName: "",
-                              secondaryContactEmail: "",
-                              secondaryContactPhone: "",
-                            });
-                          }}
-                          disabled={isSubmitting}
-                        >
-                          <X className="h-3 w-3 me-1" />
-                          הסר
-                        </Button>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          id="secondaryContactName"
-                          value={formData.secondaryContactName}
-                          onChange={(e) => setFormData({ ...formData, secondaryContactName: e.target.value })}
-                          placeholder="שם"
-                          disabled={isSubmitting}
-                          dir="rtl"
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="secondaryContactEmail"
-                          type="email"
-                          value={formData.secondaryContactEmail}
-                          onChange={(e) => setFormData({ ...formData, secondaryContactEmail: e.target.value })}
-                          placeholder="אימייל"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="secondaryContactPhone"
-                          value={formData.secondaryContactPhone}
-                          onChange={(e) => setFormData({ ...formData, secondaryContactPhone: e.target.value })}
-                          placeholder="טלפון"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full h-8 text-xs"
-                      onClick={() => setShowSecondaryContact(true)}
-                      disabled={isSubmitting}
-                    >
-                      <Plus className="h-3.5 w-3.5 me-1" />
-                      הוסף איש קשר משני
-                    </Button>
-                  )}
-                </CollapsibleContent>
-              </Collapsible>
-
-              {/* Commission Settings */}
-              <div className="space-y-2">
-                <h3 className="text-base font-semibold flex items-center gap-2">
-                  <Percent className="h-4 w-4" />
-                  {he.admin.suppliers.form.sections.commissionSettings}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="defaultCommissionRate">{he.admin.suppliers.form.fields.commissionRate}</Label>
-
-                    {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
-                      <Badge variant="secondary" className="text-xs">
-                        <FileText className="h-3 w-3 me-1" />
-                        העמלה נלקחת מהקובץ
-                      </Badge>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="defaultCommissionRate"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={formData.defaultCommissionRate}
-                        onChange={(e) => setFormData({ ...formData, defaultCommissionRate: e.target.value })}
-                        placeholder={he.admin.suppliers.form.fields.commissionRatePlaceholder}
-                        disabled={isSubmitting || (editingSupplier ? hasCommissionFromFile(editingSupplier.code) : false)}
-                        className="w-28"
-                      />
-                      <span className="text-muted-foreground">%</span>
-                      {editingSupplier && hasCommissionFromFile(editingSupplier.code) && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Info className="h-4 w-4 text-muted-foreground cursor-help" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>לספק זה העמלה מחושבת אוטומטית מהקובץ</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {editingSupplier && hasCommissionFromFile(editingSupplier.code)
-                        ? "העמלה מחושבת ישירות מקובץ הספק"
-                        : "חל על כל הפריטים, אלא אם הוגדרו חריגות"}
-                    </p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="settlementFrequency">{he.admin.suppliers.form.fields.settlementFrequency}</Label>
-                    <Select
-                      value={formData.settlementFrequency}
-                      onValueChange={(value: SettlementFrequency) =>
-                        setFormData({
-                          ...formData,
-                          settlementFrequency: value,
-                          fiscalYearStartMonth: value === "annual" ? formData.fiscalYearStartMonth : 1,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    >
-                      <SelectTrigger id="settlementFrequency">
-                        <SelectValue placeholder={he.admin.suppliers.form.fields.settlementFrequencyPlaceholder} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="monthly">{he.admin.suppliers.form.fields.settlementMonthly}</SelectItem>
-                        <SelectItem value="quarterly">{he.admin.suppliers.form.fields.settlementQuarterly}</SelectItem>
-                        <SelectItem value="semi_annual">{he.admin.suppliers.form.fields.settlementSemiAnnual}</SelectItem>
-                        <SelectItem value="annual">{he.admin.suppliers.form.fields.settlementAnnual}</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {formData.settlementFrequency === "annual" && (
-                    <div className="space-y-2">
-                      <Label htmlFor="fiscalYearStartMonth">חודש התחלת שנת כספים</Label>
-                      <Select
-                        value={String(formData.fiscalYearStartMonth || 1)}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, fiscalYearStartMonth: parseInt(value) })
-                        }
-                        disabled={isSubmitting}
-                      >
-                        <SelectTrigger id="fiscalYearStartMonth">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="1">ינואר (ברירת מחדל)</SelectItem>
-                          <SelectItem value="2">פברואר</SelectItem>
-                          <SelectItem value="3">מרץ</SelectItem>
-                          <SelectItem value="4">אפריל</SelectItem>
-                          <SelectItem value="5">מאי</SelectItem>
-                          <SelectItem value="6">יוני</SelectItem>
-                          <SelectItem value="7">יולי</SelectItem>
-                          <SelectItem value="8">אוגוסט</SelectItem>
-                          <SelectItem value="9">ספטמבר</SelectItem>
-                          <SelectItem value="10">אוקטובר</SelectItem>
-                          <SelectItem value="11">נובמבר</SelectItem>
-                          <SelectItem value="12">דצמבר</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        רלוונטי לספקים עם שנת כספים שונה מינואר-דצמבר
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="vatExempt"
-                      checked={formData.vatExempt}
-                      onCheckedChange={(checked) =>
-                        setFormData({
-                          ...formData,
-                          vatExempt: checked as boolean,
-                          vatIncluded: checked ? false : formData.vatIncluded,
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                    <Label htmlFor="vatExempt" className="cursor-pointer">
-                      {he.admin.suppliers.form.fields.vatExempt}
-                    </Label>
-                  </div>
-                </div>
-
-                {/* Franchisee Fund */}
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="franchiseeFundEnabled"
-                      checked={formData.franchiseeFundEnabled}
-                      onCheckedChange={(checked) =>
-                        setFormData({
-                          ...formData,
-                          franchiseeFundEnabled: checked as boolean,
-                          franchiseeFundPercentage: checked ? formData.franchiseeFundPercentage : "",
-                        })
-                      }
-                      disabled={isSubmitting}
-                    />
-                    <Label htmlFor="franchiseeFundEnabled" className="cursor-pointer">
-                      קרן זכיינים
-                    </Label>
-                  </div>
-                  {formData.franchiseeFundEnabled && (
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={formData.franchiseeFundPercentage}
-                        onChange={(e) =>
-                          setFormData({ ...formData, franchiseeFundPercentage: e.target.value })
-                        }
-                        disabled={isSubmitting}
-                        className="w-24"
-                        placeholder="אחוז"
-                      />
-                      <span className="text-sm text-muted-foreground">%</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Commission Exceptions - Collapsible */}
-                <Collapsible defaultOpen={false}>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
-                    <Percent className="h-3.5 w-3.5" />
-                    <span className="text-sm font-medium">פריטים מוחרגים</span>
-                    {formData.commissionExceptions.length > 0 && (
-                      <Badge variant="secondary" className="ms-2">
-                        {formData.commissionExceptions.length}
-                      </Badge>
-                    )}
-                    <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="pt-2">
-                    <CommissionExceptionsEditor
-                      exceptions={formData.commissionExceptions}
-                      onChange={(exceptions) => setFormData({ ...formData, commissionExceptions: exceptions })}
-                      disabled={isSubmitting}
-                      hideHeader
-                    />
-                  </CollapsibleContent>
-                </Collapsible>
-
-                {/* Commission Change Log Fields (only show when editing and rate is changing) */}
-                {isCommissionRateChanging && (
-                  <div className="rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-4">
-                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                      <History className="h-5 w-5" />
-                      <span className="font-medium">
-                        {he.admin.suppliers.form.commissionChange.title}
-                      </span>
-                    </div>
-                    <p className="text-sm text-amber-600 dark:text-amber-300">
-                      {he.admin.suppliers.form.commissionChange.changingFrom
-                        .replace("{from}", editingSupplier?.defaultCommissionRate || "0")
-                        .replace("{to}", formData.defaultCommissionRate)}
-                    </p>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="commissionEffectiveDate">
-                          {he.admin.suppliers.form.commissionChange.effectiveDate} *
-                        </Label>
-                        <Input
-                          id="commissionEffectiveDate"
-                          type="date"
-                          value={formData.commissionEffectiveDate}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              commissionEffectiveDate: e.target.value,
-                            })
-                          }
-                          disabled={isSubmitting}
-                          required
-                        />
-                      </div>
-
-                      <div className="space-y-2 md:col-span-2">
-                        <Label htmlFor="commissionChangeReason">
-                          {he.admin.suppliers.form.commissionChange.reason}
-                        </Label>
-                        <Input
-                          id="commissionChangeReason"
-                          value={formData.commissionChangeReason}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              commissionChangeReason: e.target.value,
-                            })
-                          }
-                          placeholder={he.admin.suppliers.form.commissionChange.reasonPlaceholder}
-                          disabled={isSubmitting}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="commissionChangeNotes">
-                        {he.admin.suppliers.form.commissionChange.additionalNotes}
-                      </Label>
-                      <Input
-                        id="commissionChangeNotes"
-                        value={formData.commissionChangeNotes}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            commissionChangeNotes: e.target.value,
-                          })
-                        }
-                        placeholder={he.admin.suppliers.form.commissionChange.notesPlaceholder}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Payment */}
-              <div className="space-y-2">
-                <h3 className="text-base font-semibold flex items-center gap-2">
-                  <Hash className="h-4 w-4" />
-                  {he.admin.suppliers.form.sections.taxPayment}
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentTerms">{he.admin.suppliers.form.fields.paymentTerms}</Label>
-                    <Input
-                      id="paymentTerms"
-                      value={formData.paymentTerms}
-                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                      placeholder={he.admin.suppliers.form.fields.paymentTermsPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="hashavshevetCode">קוד חשבשבת</Label>
-                    <Input
-                      id="hashavshevetCode"
-                      value={formData.hashavshevetCode}
-                      onChange={(e) => setFormData({ ...formData, hashavshevetCode: e.target.value })}
-                      placeholder="קוד מפתח חשבון"
-                      disabled={isSubmitting}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      קוד הספק במערכת חשבשבת לייבוא עמלות
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Associated Brands */}
-              {brands.length > 0 && (
-                <div className="space-y-2">
-                  <h3 className="text-base font-semibold">{he.admin.suppliers.form.sections.associatedBrands}</h3>
-                  <div className="flex flex-wrap gap-3">
-                    {brands.map((brand) => (
-                      <div
-                        key={brand.id}
-                        className="flex items-center space-x-2"
-                      >
-                        <Checkbox
-                          id={`brand-${brand.id}`}
-                          checked={formData.brandIds.includes(brand.id)}
-                          onCheckedChange={() => handleBrandToggle(brand.id)}
-                          disabled={isSubmitting}
-                        />
-                        <Label
-                          htmlFor={`brand-${brand.id}`}
-                          className="cursor-pointer"
-                        >
-                          {brand.nameHe}
-                          {brand.nameEn && (
-                            <span className="text-muted-foreground text-sm ms-1">
-                              ({brand.nameEn})
-                            </span>
-                          )}
-                        </Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* BKMV Aliases - Collapsible */}
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full p-3 rounded-lg border bg-muted/50 hover:bg-muted transition-colors">
-                  <Tags className="h-4 w-4" />
-                  <span className="text-base font-semibold">{he.admin.suppliers.form.sections.bkmvAliases}</span>
+                <CollapsibleTrigger className="group flex items-center gap-2 w-full px-3 py-2.5 rounded-md border border-border/60 bg-muted/30 hover:bg-muted/60 transition-colors">
+                  <Tags className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{he.admin.suppliers.form.sections.bkmvAliases}</span>
                   {formData.bkmvAliases.length > 0 && (
                     <Badge variant="secondary" className="ms-2">
                       {formData.bkmvAliases.length}
                     </Badge>
                   )}
-                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform group-data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-3 space-y-3">
                   <p className="text-sm text-muted-foreground">
@@ -1259,44 +1306,13 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* Status */}
-              <div className="flex items-center gap-4 p-2 rounded-md bg-muted/30">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="isActive"
-                    checked={formData.isActive}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, isActive: checked as boolean })
-                    }
-                    disabled={isSubmitting}
-                  />
-                  <Label htmlFor="isActive" className="cursor-pointer text-sm">
-                    {he.admin.suppliers.form.fields.isActive}
-                  </Label>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="isHidden"
-                    checked={formData.isHidden}
-                    onCheckedChange={(checked) =>
-                      setFormData({ ...formData, isHidden: checked as boolean })
-                    }
-                    disabled={isSubmitting}
-                  />
-                  <Label htmlFor="isHidden" className="cursor-pointer text-sm">
-                    {he.admin.suppliers.form.fields.isHidden}
-                  </Label>
-                </div>
-              </div>
-
               {/* Archive Section - Only when editing */}
               {editingSupplier && userRole === "super_user" && (
                 <Collapsible open={showArchiveConfirm} onOpenChange={setShowArchiveConfirm}>
-                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
+                  <CollapsibleTrigger className="group flex items-center gap-2 w-full px-3 py-2.5 rounded-md border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-destructive">
+                    <Trash2 className="h-4 w-4" />
                     <span className="text-sm font-medium">העבר לארכיון</span>
-                    <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
+                    <ChevronDown className="h-4 w-4 ms-auto transition-transform group-data-[state=open]:rotate-180" />
                   </CollapsibleTrigger>
                   <CollapsibleContent className="pt-3">
                     <div className="p-3 rounded-md border border-destructive/30 bg-destructive/5 space-y-3">
@@ -1333,7 +1349,7 @@ export default function AdminSuppliersPage() {
                 </Collapsible>
               )}
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-3 pt-4 border-t border-border/40">
                 <Button type="button" variant="outline" onClick={cancelForm} disabled={isSubmitting}>
                   {he.common.cancel}
                 </Button>

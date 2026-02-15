@@ -10,6 +10,30 @@ import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-
 
 const MAX_PREVIEW = 5;
 
+function SupplierRow({
+  supplier,
+}: {
+  supplier: SupplierCompletenessResponse["suppliers"][number];
+}) {
+  return (
+    <ActionItemRow
+      icon={<FileX className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />}
+      iconBgClass="bg-red-100 dark:bg-red-900/50"
+      title={supplier.supplier.name}
+      subtitle={supplier.brands.map((b) => b.nameHe).join(", ")}
+      badge={
+        <Badge
+          variant="outline"
+          className="text-[10px] h-4 px-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+        >
+          {supplier.stats.missing} חסרים
+        </Badge>
+      }
+      href={`/admin/suppliers/${supplier.supplier.id}`}
+    />
+  );
+}
+
 export function MissingSupplierFiles() {
   const { data, isLoading } = useSupplierCompleteness();
   const response = data as SupplierCompletenessResponse | undefined;
@@ -23,7 +47,7 @@ export function MissingSupplierFiles() {
   return (
     <ActionSection
       title="קבצי ספקים חסרים"
-      icon={<FileX className="h-4 w-4 text-red-600 dark:text-red-400" />}
+      icon={<FileX className="h-4 w-4" />}
       count={missingSuppliers.length}
       linkHref="/admin/supplier-files/completeness"
       linkText="צפה בהכל"
@@ -34,45 +58,11 @@ export function MissingSupplierFiles() {
       totalItems={missingSuppliers.length}
     >
       {previewItems.map((s) => (
-        <ActionItemRow
-          key={s.supplier.id}
-          icon={
-            <FileX className="h-4 w-4 text-red-600 dark:text-red-400" />
-          }
-          iconBgClass="bg-red-100 dark:bg-red-900/50"
-          title={s.supplier.name}
-          subtitle={s.brands.map((b) => b.nameHe).join(", ")}
-          badge={
-            <Badge
-              variant="outline"
-              className="text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
-            >
-              {s.stats.missing} חסרים
-            </Badge>
-          }
-          href={`/admin/suppliers/${s.supplier.id}`}
-        />
+        <SupplierRow key={s.supplier.id} supplier={s} />
       ))}
       <CollapsibleContent>
         {expandedItems.map((s) => (
-          <ActionItemRow
-            key={s.supplier.id}
-            icon={
-              <FileX className="h-4 w-4 text-red-600 dark:text-red-400" />
-            }
-            iconBgClass="bg-red-100 dark:bg-red-900/50"
-            title={s.supplier.name}
-            subtitle={s.brands.map((b) => b.nameHe).join(", ")}
-            badge={
-              <Badge
-                variant="outline"
-                className="text-xs text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
-              >
-                {s.stats.missing} חסרים
-              </Badge>
-            }
-            href={`/admin/suppliers/${s.supplier.id}`}
-          />
+          <SupplierRow key={s.supplier.id} supplier={s} />
         ))}
       </CollapsibleContent>
     </ActionSection>

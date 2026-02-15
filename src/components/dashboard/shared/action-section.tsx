@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,10 +27,16 @@ interface ActionSectionProps {
   totalItems?: number;
 }
 
-const priorityColors = {
-  high: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-  medium: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
-  low: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+const borderColors = {
+  high: "border-s-red-500",
+  medium: "border-s-amber-500",
+  low: "border-s-blue-500",
+};
+
+const countBadgeColors = {
+  high: "bg-red-500 text-white hover:bg-red-500",
+  medium: "bg-amber-500 text-white hover:bg-amber-500",
+  low: "bg-blue-500 text-white hover:bg-blue-500",
 };
 
 export function ActionSection({
@@ -50,57 +55,76 @@ export function ActionSection({
   const [isExpanded, setIsExpanded] = useState(false);
   const showExpandButton = (totalItems ?? count) > maxPreviewItems;
 
+  // When empty and not loading, render ultra-compact inline
+  if (!isLoading && count === 0) {
+    return (
+      <div className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/30">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground/60">{icon}</span>
+          <span className="text-xs text-muted-foreground">{title}</span>
+        </div>
+        <SectionEmptyState message={emptyMessage} />
+      </div>
+    );
+  }
+
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
+    <div
+      className={`rounded-lg border border-s-[3px] bg-card ${count > 0 ? borderColors[priority] : "border-s-transparent"}`}
+    >
+      <div className="px-3 py-2">
+        {/* Header */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {icon}
-            <h3 className="font-semibold text-sm">{title}</h3>
+            <span className="text-muted-foreground">{icon}</span>
+            <h3 className="text-sm font-semibold">{title}</h3>
             {count > 0 && (
-              <Badge className={`text-xs ${priorityColors[priority]}`}>
+              <Badge
+                className={`h-5 min-w-5 justify-center rounded-full px-1.5 text-[10px] font-bold ${countBadgeColors[priority]}`}
+              >
                 {count}
               </Badge>
             )}
           </div>
           {linkHref && linkText && count > 0 && (
             <Link href={linkHref}>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              >
                 {linkText}
-                <ChevronLeft className="h-3 w-3 me-1" />
+                <ChevronLeft className="h-3 w-3 me-0.5" />
               </Button>
             </Link>
           )}
         </div>
 
-        {isLoading ? (
-          <SectionSkeleton />
-        ) : count === 0 ? (
-          <SectionEmptyState message={emptyMessage} />
-        ) : (
-          <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
-            <div>{children}</div>
-            {showExpandButton && (
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full mt-1 h-7 text-xs text-muted-foreground"
-                >
-                  {isExpanded
-                    ? "הצג פחות"
-                    : `הצג עוד ${(totalItems ?? count) - maxPreviewItems}`}
-                  <ChevronDown
-                    className={`h-3 w-3 ms-1 transition-transform ${
-                      isExpanded ? "rotate-180" : ""
-                    }`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-            )}
-          </Collapsible>
-        )}
-      </CardContent>
-    </Card>
+        {/* Content */}
+        <div className="mt-1">
+          {isLoading ? (
+            <SectionSkeleton />
+          ) : (
+            <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+              <div>{children}</div>
+              {showExpandButton && (
+                <CollapsibleTrigger asChild>
+                  <button className="flex items-center justify-center gap-1 w-full py-1 mt-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors rounded-md hover:bg-muted/60">
+                    {isExpanded
+                      ? "הצג פחות"
+                      : `הצג עוד ${(totalItems ?? count) - maxPreviewItems}`}
+                    <ChevronDown
+                      className={`h-3 w-3 transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+                </CollapsibleTrigger>
+              )}
+            </Collapsible>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

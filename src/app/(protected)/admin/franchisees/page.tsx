@@ -1759,23 +1759,6 @@ function FranchiseeCard({
         </div>
 
         <div className="flex items-center gap-1">
-          <Select
-            value={franchisee.status}
-            onValueChange={(value: FranchiseeStatus) =>
-              onStatusChange(franchisee, value)
-            }
-          >
-            <SelectTrigger className="w-[100px] h-7 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="pending">{he.admin.franchisees.statuses.pending}</SelectItem>
-              <SelectItem value="active">{he.admin.franchisees.statuses.active}</SelectItem>
-              <SelectItem value="inactive">{he.admin.franchisees.statuses.inactive}</SelectItem>
-              <SelectItem value="suspended">{he.admin.franchisees.statuses.suspended}</SelectItem>
-              <SelectItem value="terminated">{he.admin.franchisees.statuses.terminated}</SelectItem>
-            </SelectContent>
-          </Select>
           <Button
             size="sm"
             variant="ghost"
