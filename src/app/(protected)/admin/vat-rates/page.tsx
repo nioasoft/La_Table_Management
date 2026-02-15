@@ -512,7 +512,7 @@ export default function AdminVatRatesPage() {
               האם אתה בטוח שברצונך למחוק את שיעור המע״מ של{" "}
               {rateToDelete && (parseFloat(rateToDelete.rate) * 100).toFixed(2)}%
               מתאריך {rateToDelete && formatDate(rateToDelete.effectiveFrom)}?
-              {isCurrentRate(rateToDelete!) && (
+              {rateToDelete && isCurrentRate(rateToDelete) && (
                 <span className="block mt-2 text-destructive font-medium">
                   שים לב: זהו השיעור הפעיל הנוכחי!
                 </span>
