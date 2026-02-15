@@ -99,6 +99,13 @@
       "when": 1739268000000,
       "tag": "0037_franchisee_account_classification",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1739354400000,
+      "tag": "0038_contact_table",
+      "breakpoints": true
     }
   ]
 }

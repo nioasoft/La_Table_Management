@@ -57,9 +57,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Brand, FranchiseeStatus, FranchiseeOwner, Document, Contact } from "@/db/schema";
+import type { Brand, FranchiseeStatus, FranchiseeOwner, Document, Contact, ContactRole } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
 import Link from "next/link";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { AliasManager } from "@/components/alias-manager";
 import { DocumentManager } from "@/components/document-manager";
 import { FranchiseeDetailCard } from "@/components/franchisee-detail-card";
@@ -122,6 +127,18 @@ const statusLabels: Record<FranchiseeStatus, string> = {
   pending: he.admin.franchisees.statuses.pending,
   suspended: he.admin.franchisees.statuses.suspended,
   terminated: he.admin.franchisees.statuses.terminated,
+};
+
+// Contact role labels in Hebrew
+const contactRoleLabels: Record<ContactRole, string> = {
+  owner: "בעלים",
+  manager: "מנהל",
+  accountant: "מנהלת חשבונות",
+  chef: "שף",
+  staff: "עובד מטה",
+  operations: "תפעול",
+  marketing: "שיווק",
+  other: "אחר",
 };
 
 interface FranchiseeFormData {
@@ -221,6 +238,19 @@ export default function AdminFranchiseesPage() {
   // Detail card state
   const [detailViewFranchisee, setDetailViewFranchisee] = useState<FranchiseeWithBrandAndContacts | null>(null);
 
+  // Contact form state (for edit form)
+  const [showContactFormInEdit, setShowContactFormInEdit] = useState(false);
+  const [editingContactIdInEdit, setEditingContactIdInEdit] = useState<string | null>(null);
+  const [contactFormInEdit, setContactFormInEdit] = useState({
+    name: "",
+    phone: "",
+    email: "",
+    role: "accountant" as ContactRole,
+    notes: "",
+  });
+  const [isContactSubmittingInEdit, setIsContactSubmittingInEdit] = useState(false);
+  const [deletingContactIdInEdit, setDeletingContactIdInEdit] = useState<string | null>(null);
+
   const { data: session, isPending } = authClient.useSession();
 
   const userRole = session
@@ -257,6 +287,12 @@ export default function AdminFranchiseesPage() {
 
   const franchisees: FranchiseeWithBrandAndContacts[] = franchiseesData?.franchisees || [];
   const stats = franchiseesData?.stats || null;
+
+  // Keep editingFranchisee contacts in sync after contact mutations
+  const editingId = editingFranchisee?.id;
+  const freshFranchisee = editingId
+    ? franchisees.find((f) => f.id === editingId)
+    : undefined;
 
   // Filter franchisees by search term
   const filteredFranchisees = useMemo(() => {
@@ -622,6 +658,82 @@ export default function AdminFranchiseesPage() {
     setFormData({ ...formData, owners: newOwners });
   };
 
+  const handleAddContactInEdit = () => {
+    setEditingContactIdInEdit(null);
+    setContactFormInEdit({
+      name: "",
+      phone: "",
+      email: "",
+      role: "accountant",
+      notes: "",
+    });
+    setShowContactFormInEdit(true);
+  };
+
+  const handleEditContactInEdit = (c: Contact) => {
+    setEditingContactIdInEdit(c.id);
+    setContactFormInEdit({
+      name: c.name,
+      phone: c.phone || "",
+      email: c.email || "",
+      role: c.role,
+      notes: c.notes || "",
+    });
+    setShowContactFormInEdit(true);
+  };
+
+  const handleCancelContactFormInEdit = () => {
+    setShowContactFormInEdit(false);
+    setEditingContactIdInEdit(null);
+    setContactFormInEdit({
+      name: "",
+      phone: "",
+      email: "",
+      role: "accountant",
+      notes: "",
+    });
+  };
+
+  const handleSaveContactInEdit = async () => {
+    if (!editingFranchisee || !contactFormInEdit.name.trim()) return;
+    setIsContactSubmittingInEdit(true);
+    try {
+      const url = editingContactIdInEdit
+        ? `/api/franchisees/${editingFranchisee.id}/contacts/${editingContactIdInEdit}`
+        : `/api/franchisees/${editingFranchisee.id}/contacts`;
+      const method = editingContactIdInEdit ? "PATCH" : "POST";
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(contactFormInEdit),
+      });
+      if (!response.ok) throw new Error("Failed to save contact");
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+      handleCancelContactFormInEdit();
+    } catch (error) {
+      console.error("Error saving contact:", error);
+    } finally {
+      setIsContactSubmittingInEdit(false);
+    }
+  };
+
+  const handleDeleteContactInEdit = async (contactId: string) => {
+    if (!editingFranchisee) return;
+    setDeletingContactIdInEdit(contactId);
+    try {
+      const response = await fetch(
+        `/api/franchisees/${editingFranchisee.id}/contacts/${contactId}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error("Failed to delete contact");
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+    } catch (error) {
+      console.error("Error deleting contact:", error);
+    } finally {
+      setDeletingContactIdInEdit(null);
+    }
+  };
+
   if (isLoading || isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -728,11 +840,13 @@ export default function AdminFranchiseesPage() {
               )}
 
               {/* Basic Information */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <FileText className="h-5 w-5" />
-                  {he.admin.franchisees.form.sections.basicInfo}
-                </h3>
+              <Collapsible defaultOpen={true}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <FileText className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.basicInfo}</span>
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="brandId">{he.admin.franchisees.form.fields.brand} *</Label>
@@ -838,30 +952,20 @@ export default function AdminFranchiseesPage() {
                   </div>
 
                 </div>
-              </div>
-
-              {/* Aliases Section */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Tag className="h-5 w-5" />
-                  {he.admin.franchisees.form.sections.aliases}
-                </h3>
-                <AliasManager
-                  aliases={formData.aliases}
-                  onChange={(newAliases) =>
-                    setFormData({ ...formData, aliases: newAliases })
-                  }
-                  disabled={isSubmitting}
-                  placeholder={he.admin.franchisees.form.aliases.placeholder}
-                />
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Address */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <MapPin className="h-5 w-5" />
-                  {he.admin.franchisees.form.sections.address}
-                </h3>
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <MapPin className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.address}</span>
+                  {(formData.address || formData.city) && (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="address">{he.admin.franchisees.form.fields.streetAddress}</Label>
@@ -932,14 +1036,20 @@ export default function AdminFranchiseesPage() {
                     />
                   </div>
                 </div>
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Primary Contact */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <UserCircle className="h-5 w-5" />
-                  {he.admin.franchisees.form.sections.primaryContact}
-                </h3>
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <UserCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.primaryContact}</span>
+                  {(formData.primaryContactName || formData.primaryContactEmail) && (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="primaryContactName">{he.admin.franchisees.form.fields.contactName}</Label>
@@ -991,15 +1101,21 @@ export default function AdminFranchiseesPage() {
                     />
                   </div>
                 </div>
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Owners */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    {he.admin.franchisees.form.sections.owners}
-                  </h3>
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <Users className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.owners}</span>
+                  {formData.owners.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">{formData.owners.length}</Badge>
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-4">
+                <div className="flex justify-end">
                   <Button
                     type="button"
                     variant="outline"
@@ -1083,14 +1199,211 @@ export default function AdminFranchiseesPage() {
                     </div>
                   </div>
                 ))}
-              </div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Additional Contacts (only in edit mode) */}
+              {editingFranchisee && (
+              <Collapsible defaultOpen={(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <Users className="h-4 w-4" />
+                  <span className="text-sm font-medium">אנשי קשר נוספים</span>
+                  {(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">{(freshFranchisee || editingFranchisee)?.contacts.length}</Badge>
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-3">
+                  <div className="flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddContactInEdit}
+                      disabled={isSubmitting || showContactFormInEdit}
+                    >
+                      <Plus className="h-4 w-4 me-1" />
+                      הוספת איש קשר
+                    </Button>
+                  </div>
+
+                  {/* Contact Add/Edit Form */}
+                  {showContactFormInEdit && (
+                    <div className="p-4 border rounded-lg bg-muted/20 space-y-3">
+                      <h4 className="font-medium text-sm">
+                        {editingContactIdInEdit ? "עריכת איש קשר" : "הוספת איש קשר חדש"}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">שם *</Label>
+                          <Input
+                            value={contactFormInEdit.name}
+                            onChange={(e) =>
+                              setContactFormInEdit({ ...contactFormInEdit, name: e.target.value })
+                            }
+                            placeholder="שם איש הקשר"
+                            disabled={isContactSubmittingInEdit}
+                            dir="rtl"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">תפקיד</Label>
+                          <Select
+                            value={contactFormInEdit.role}
+                            onValueChange={(value) =>
+                              setContactFormInEdit({ ...contactFormInEdit, role: value as ContactRole })
+                            }
+                            disabled={isContactSubmittingInEdit}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(contactRoleLabels).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">טלפון</Label>
+                          <Input
+                            value={contactFormInEdit.phone}
+                            onChange={(e) =>
+                              setContactFormInEdit({ ...contactFormInEdit, phone: e.target.value })
+                            }
+                            placeholder="+972-XX-XXX-XXXX"
+                            disabled={isContactSubmittingInEdit}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">אימייל</Label>
+                          <Input
+                            type="email"
+                            value={contactFormInEdit.email}
+                            onChange={(e) =>
+                              setContactFormInEdit({ ...contactFormInEdit, email: e.target.value })
+                            }
+                            placeholder="contact@example.com"
+                            disabled={isContactSubmittingInEdit}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">הערות</Label>
+                        <Input
+                          value={contactFormInEdit.notes}
+                          onChange={(e) =>
+                            setContactFormInEdit({ ...contactFormInEdit, notes: e.target.value })
+                          }
+                          placeholder="הערות נוספות"
+                          disabled={isContactSubmittingInEdit}
+                          dir="rtl"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelContactFormInEdit}
+                          disabled={isContactSubmittingInEdit}
+                        >
+                          ביטול
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={handleSaveContactInEdit}
+                          disabled={isContactSubmittingInEdit || !contactFormInEdit.name.trim()}
+                        >
+                          {isContactSubmittingInEdit && (
+                            <Loader2 className="h-4 w-4 animate-spin me-1" />
+                          )}
+                          {editingContactIdInEdit ? "עדכון" : "שמירה"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Existing Contacts List */}
+                  {(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0 ? (
+                    <div className="space-y-2">
+                      {(freshFranchisee || editingFranchisee)?.contacts.map((c) => (
+                        <div
+                          key={c.id}
+                          className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                              {c.name}
+                              <Badge variant="outline" className="text-xs">
+                                {contactRoleLabels[c.role as ContactRole] || c.role}
+                              </Badge>
+                            </div>
+                            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                              {c.phone && (
+                                <span className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3" />
+                                  {c.phone}
+                                </span>
+                              )}
+                              {c.email && (
+                                <span className="flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  {c.email}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => handleEditContactInEdit(c)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 hover:text-destructive"
+                              onClick={() => handleDeleteContactInEdit(c.id)}
+                              disabled={deletingContactIdInEdit === c.id}
+                            >
+                              {deletingContactIdInEdit === c.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : !showContactFormInEdit ? (
+                    <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר נוספים</p>
+                  ) : null}
+                </CollapsibleContent>
+              </Collapsible>
+              )}
 
               {/* Important Dates */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  {he.admin.franchisees.form.sections.importantDates}
-                </h3>
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <Calendar className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.importantDates}</span>
+                  {formData.openingDate && (
+                    <Check className="h-3.5 w-3.5 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="openingDate">{he.admin.franchisees.form.fields.openingDate}</Label>
@@ -1109,7 +1422,6 @@ export default function AdminFranchiseesPage() {
                   </div>
 
                 </div>
-              </div>
 
               {/* Important Dates Manager - Only shown when editing an existing franchisee */}
               {editingFranchisee && (
@@ -1128,6 +1440,30 @@ export default function AdminFranchiseesPage() {
                   תאריכים חשובים (חוזים, הסכמים וכו&apos;) ניתנים להוספה לאחר יצירת הזכיין
                 </div>
               )}
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Aliases Section */}
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <Tag className="h-4 w-4" />
+                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.aliases}</span>
+                  {formData.aliases.length > 0 && (
+                    <Badge variant="secondary" className="text-xs">{formData.aliases.length}</Badge>
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3">
+                <AliasManager
+                  aliases={formData.aliases}
+                  onChange={(newAliases) =>
+                    setFormData({ ...formData, aliases: newAliases })
+                  }
+                  disabled={isSubmitting}
+                  placeholder={he.admin.franchisees.form.aliases.placeholder}
+                />
+                </CollapsibleContent>
+              </Collapsible>
 
               {/* Notes */}
               <div className="space-y-2">
@@ -1601,9 +1937,9 @@ function FranchiseeCard({
                   >
                     <div className="font-medium flex items-center gap-2">
                       {contact.name}
-                      {contact.role === "owner" && (
-                        <Badge variant="outline" className="text-xs">בעלים</Badge>
-                      )}
+                      <Badge variant="outline" className="text-xs">
+                        {contactRoleLabels[contact.role as ContactRole] || contact.role}
+                      </Badge>
                       {contact.isPrimary && (
                         <Badge variant="secondary" className="text-xs">ראשי</Badge>
                       )}

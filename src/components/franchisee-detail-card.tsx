@@ -1,8 +1,18 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Card,
   CardContent,
@@ -54,8 +64,12 @@ import {
   ExternalLink,
   Coins,
   X,
+  Plus,
+  Pencil,
+  Trash2,
+  Save,
 } from "lucide-react";
-import type { FranchiseeStatus, Document, FranchiseeReminderType, ReminderStatus, Contact } from "@/db/schema";
+import type { FranchiseeStatus, Document, FranchiseeReminderType, ReminderStatus, Contact, ContactRole } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
 import { DocumentManager } from "@/components/document-manager";
 import { formatCurrency } from "@/lib/translations";
@@ -163,6 +177,35 @@ const reminderTypeLabels: Record<FranchiseeReminderType, string> = {
 };
 
 
+// Contact role labels in Hebrew
+const contactRoleLabels: Record<ContactRole, string> = {
+  owner: "בעלים",
+  manager: "מנהל",
+  accountant: "מנהלת חשבונות",
+  chef: "שף",
+  staff: "עובד מטה",
+  operations: "תפעול",
+  marketing: "שיווק",
+  other: "אחר",
+};
+
+// Contact form data
+interface ContactFormData {
+  name: string;
+  phone: string;
+  email: string;
+  role: ContactRole;
+  notes: string;
+}
+
+const emptyContactForm: ContactFormData = {
+  name: "",
+  phone: "",
+  email: "",
+  role: "accountant",
+  notes: "",
+};
+
 // Format percentage
 const formatPercent = (rate: number): string => {
   return `${rate.toFixed(2)}%`;
@@ -186,6 +229,7 @@ export function FranchiseeDetailCard({
   onEdit,
   onStatusChange,
 }: FranchiseeDetailCardProps) {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
 
   // Documents state
@@ -215,6 +259,13 @@ export function FranchiseeDetailCard({
   const [revenueCodesLoaded, setRevenueCodesLoaded] = useState(false);
   const [removingRevenueCode, setRemovingRevenueCode] = useState<string | null>(null);
 
+  // Contact form state
+  const [showContactForm, setShowContactForm] = useState(false);
+  const [editingContactId, setEditingContactId] = useState<string | null>(null);
+  const [contactForm, setContactForm] = useState<ContactFormData>(emptyContactForm);
+  const [isContactSubmitting, setIsContactSubmitting] = useState(false);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+
   // Reset state when dialog closes or franchisee changes
   useEffect(() => {
     if (!isOpen) {
@@ -230,6 +281,9 @@ export function FranchiseeDetailCard({
       setPurchasesLoaded(false);
       setRevenueCodes([]);
       setRevenueCodesLoaded(false);
+      setShowContactForm(false);
+      setEditingContactId(null);
+      setContactForm(emptyContactForm);
     }
   }, [isOpen, franchisee.id]);
 
@@ -343,6 +397,85 @@ export function FranchiseeDetailCard({
       setRemovingRevenueCode(null);
     }
   }, [franchisee.id]);
+
+  // Contact CRUD handlers
+  const handleAddContact = () => {
+    setEditingContactId(null);
+    setContactForm(emptyContactForm);
+    setShowContactForm(true);
+  };
+
+  const handleEditContact = (c: Contact) => {
+    setEditingContactId(c.id);
+    setContactForm({
+      name: c.name,
+      phone: c.phone || "",
+      email: c.email || "",
+      role: c.role,
+      notes: c.notes || "",
+    });
+    setShowContactForm(true);
+  };
+
+  const handleCancelContactForm = () => {
+    setShowContactForm(false);
+    setEditingContactId(null);
+    setContactForm(emptyContactForm);
+  };
+
+  const handleSaveContact = async () => {
+    if (!contactForm.name.trim()) return;
+
+    setIsContactSubmitting(true);
+    try {
+      if (editingContactId) {
+        const response = await fetch(
+          `/api/franchisees/${franchisee.id}/contacts/${editingContactId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(contactForm),
+          }
+        );
+        if (!response.ok) throw new Error("Failed to update contact");
+      } else {
+        const response = await fetch(
+          `/api/franchisees/${franchisee.id}/contacts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(contactForm),
+          }
+        );
+        if (!response.ok) throw new Error("Failed to create contact");
+      }
+
+      // Refresh franchisee data
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+      handleCancelContactForm();
+    } catch (error) {
+      console.error("Error saving contact:", error);
+    } finally {
+      setIsContactSubmitting(false);
+    }
+  };
+
+  const handleDeleteContact = async (contactId: string) => {
+    setDeletingContactId(contactId);
+    try {
+      const response = await fetch(
+        `/api/franchisees/${franchisee.id}/contacts/${contactId}`,
+        { method: "DELETE" }
+      );
+      if (!response.ok) throw new Error("Failed to delete contact");
+
+      queryClient.invalidateQueries({ queryKey: ["franchisees"] });
+    } catch (error) {
+      console.error("Error deleting contact:", error);
+    } finally {
+      setDeletingContactId(null);
+    }
+  };
 
   // Load data when tab changes
   useEffect(() => {
@@ -696,59 +829,206 @@ export function FranchiseeDetailCard({
               {/* Contacts */}
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    אנשי קשר
-                    {franchisee.contacts && franchisee.contacts.length > 0 && (
-                      <Badge variant="secondary" className="mr-2">
-                        {franchisee.contacts.length}
-                      </Badge>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Users className="h-4 w-4" />
+                      אנשי קשר
+                      {franchisee.contacts && franchisee.contacts.length > 0 && (
+                        <Badge variant="secondary" className="mr-2">
+                          {franchisee.contacts.length}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    {(userRole === "super_user" || userRole === "admin") && !showContactForm && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAddContact}
+                      >
+                        <Plus className="h-4 w-4 me-1" />
+                        הוספת איש קשר
+                      </Button>
                     )}
-                  </CardTitle>
+                  </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-3">
+                  {/* Contact Form (Add/Edit) */}
+                  {showContactForm && (
+                    <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
+                      <h4 className="font-medium text-sm">
+                        {editingContactId ? "עריכת איש קשר" : "הוספת איש קשר חדש"}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="contact-name" className="text-xs">שם *</Label>
+                          <Input
+                            id="contact-name"
+                            value={contactForm.name}
+                            onChange={(e) =>
+                              setContactForm({ ...contactForm, name: e.target.value })
+                            }
+                            placeholder="שם איש הקשר"
+                            disabled={isContactSubmitting}
+                            dir="rtl"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="contact-role" className="text-xs">תפקיד</Label>
+                          <Select
+                            value={contactForm.role}
+                            onValueChange={(value) =>
+                              setContactForm({ ...contactForm, role: value as ContactRole })
+                            }
+                            disabled={isContactSubmitting}
+                          >
+                            <SelectTrigger id="contact-role">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(contactRoleLabels).map(([value, label]) => (
+                                <SelectItem key={value} value={value}>
+                                  {label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="contact-phone" className="text-xs">טלפון</Label>
+                          <Input
+                            id="contact-phone"
+                            value={contactForm.phone}
+                            onChange={(e) =>
+                              setContactForm({ ...contactForm, phone: e.target.value })
+                            }
+                            placeholder="+972-XX-XXX-XXXX"
+                            disabled={isContactSubmitting}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="contact-email" className="text-xs">אימייל</Label>
+                          <Input
+                            id="contact-email"
+                            type="email"
+                            value={contactForm.email}
+                            onChange={(e) =>
+                              setContactForm({ ...contactForm, email: e.target.value })
+                            }
+                            placeholder="contact@example.com"
+                            disabled={isContactSubmitting}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="contact-notes" className="text-xs">הערות</Label>
+                        <Input
+                          id="contact-notes"
+                          value={contactForm.notes}
+                          onChange={(e) =>
+                            setContactForm({ ...contactForm, notes: e.target.value })
+                          }
+                          placeholder="הערות נוספות"
+                          disabled={isContactSubmitting}
+                          dir="rtl"
+                        />
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelContactForm}
+                          disabled={isContactSubmitting}
+                        >
+                          ביטול
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveContact}
+                          disabled={isContactSubmitting || !contactForm.name.trim()}
+                        >
+                          {isContactSubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin me-1" />
+                          ) : (
+                            <Save className="h-4 w-4 me-1" />
+                          )}
+                          {editingContactId ? "עדכון" : "שמירה"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Contacts List */}
                   {franchisee.contacts && franchisee.contacts.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {franchisee.contacts.map((contact) => (
+                      {franchisee.contacts.map((c) => (
                         <div
-                          key={contact.id}
+                          key={c.id}
                           className="p-3 border rounded-lg bg-muted/30 space-y-2"
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-medium flex items-center gap-2">
-                              {contact.name}
-                              {contact.role === "owner" && (
-                                <Badge variant="outline" className="text-xs">בעלים</Badge>
-                              )}
-                              {contact.isPrimary && (
+                              {c.name}
+                              <Badge variant="outline" className="text-xs">
+                                {contactRoleLabels[c.role] || c.role}
+                              </Badge>
+                              {c.isPrimary && (
                                 <Badge variant="secondary" className="text-xs">ראשי</Badge>
                               )}
                             </span>
+                            {(userRole === "super_user" || userRole === "admin") && (
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0"
+                                  onClick={() => handleEditContact(c)}
+                                  disabled={isContactSubmitting}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 hover:text-destructive"
+                                  onClick={() => handleDeleteContact(c.id)}
+                                  disabled={deletingContactId === c.id}
+                                >
+                                  {deletingContactId === c.id ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                </Button>
+                              </div>
+                            )}
                           </div>
                           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            {contact.phone && (
+                            {c.phone && (
                               <span className="flex items-center gap-1">
                                 <Phone className="h-3 w-3" />
-                                <a href={`tel:${contact.phone}`} className="hover:underline">
-                                  {contact.phone}
+                                <a href={`tel:${c.phone}`} className="hover:underline">
+                                  {c.phone}
                                 </a>
                               </span>
                             )}
-                            {contact.email && (
+                            {c.email && (
                               <span className="flex items-center gap-1">
                                 <Mail className="h-3 w-3" />
-                                <a href={`mailto:${contact.email}`} className="hover:underline">
-                                  {contact.email}
+                                <a href={`mailto:${c.email}`} className="hover:underline">
+                                  {c.email}
                                 </a>
                               </span>
                             )}
                           </div>
+                          {c.notes && (
+                            <p className="text-xs text-muted-foreground">{c.notes}</p>
+                          )}
                         </div>
                       ))}
                     </div>
-                  ) : (
+                  ) : !showContactForm ? (
                     <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
-                  )}
+                  ) : null}
                 </CardContent>
               </Card>
             </TabsContent>

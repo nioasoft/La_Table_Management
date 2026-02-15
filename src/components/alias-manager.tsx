@@ -155,26 +155,6 @@ export function AliasManager({
         </div>
       )}
 
-      {/* Helpful Examples */}
-      <div className="text-xs text-muted-foreground space-y-1 bg-muted/50 rounded-md p-3">
-        <p className="font-medium flex items-center gap-1">
-          <Tag className="h-3 w-3" />
-          {t.help.title}
-        </p>
-        <p>
-          {t.help.description}
-        </p>
-        <p className="mt-2">
-          <span className="font-medium">{t.help.examplesTitle}</span>
-        </p>
-        <ul className="list-disc list-inside mr-4 space-y-0.5">
-          <li>{t.help.examples.shortNames}</li>
-          <li>{t.help.examples.alternativeSpellings}</li>
-          <li>{t.help.examples.branchNumbers}</li>
-          <li>{t.help.examples.internalCodes}</li>
-        </ul>
-      </div>
-
       {/* Limit indicator */}
       {maxAliases > 0 && (
         <div className="text-xs text-muted-foreground text-right">
