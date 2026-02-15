@@ -193,6 +193,7 @@ export default function AdminSuppliersPage() {
   const [supplierDocuments, setSupplierDocuments] = useState<
     Record<string, DocumentWithUploader[]>
   >({});
+  const [showSecondaryContact, setShowSecondaryContact] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiveConfirmText, setArchiveConfirmText] = useState("");
   const { data: session, isPending } = authClient.useSession();
@@ -529,6 +530,7 @@ export default function AdminSuppliersPage() {
       commissionChangeNotes: "",
       commissionEffectiveDate: formatDateAsLocal(new Date()),
     });
+    setShowSecondaryContact(!!(supplier.secondaryContactName || supplier.secondaryContactEmail || supplier.secondaryContactPhone));
     setShowForm(true);
     setFormError(null);
   };
@@ -552,6 +554,7 @@ export default function AdminSuppliersPage() {
     setEditingSupplier(null);
     setFormData(initialFormData);
     setFormError(null);
+    setShowSecondaryContact(false);
     setShowArchiveConfirm(false);
     setArchiveConfirmText("");
   };
@@ -705,7 +708,7 @@ export default function AdminSuppliersPage() {
               </div>
 
               {/* Notes/Description */}
-              <Collapsible defaultOpen={!!formData.description}>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <MessageSquare className="h-3.5 w-3.5" />
                   <span className="text-sm font-medium">הערות</span>
@@ -729,7 +732,7 @@ export default function AdminSuppliersPage() {
               </Collapsible>
 
               {/* Contacts - Combined Collapsible */}
-              <Collapsible defaultOpen={!!(formData.contactName || formData.contactEmail || formData.contactPhone || formData.secondaryContactName || formData.secondaryContactEmail || formData.secondaryContactPhone)}>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <Users className="h-3.5 w-3.5" />
                   <span className="text-sm font-medium">אנשי קשר</span>
@@ -738,43 +741,65 @@ export default function AdminSuppliersPage() {
                   )}
                   <ChevronDown className="h-3.5 w-3.5 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
-                <CollapsibleContent className="pt-2">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {/* Primary Contact */}
-                    <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          id="contactName"
-                          value={formData.contactName}
-                          onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                          placeholder="שם"
-                          disabled={isSubmitting}
-                          dir="rtl"
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="contactEmail"
-                          type="email"
-                          value={formData.contactEmail}
-                          onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
-                          placeholder="אימייל"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="contactPhone"
-                          value={formData.contactPhone}
-                          onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
-                          placeholder="טלפון"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                      </div>
+                <CollapsibleContent className="pt-2 space-y-3">
+                  {/* Primary Contact */}
+                  <div className="space-y-2 p-2 rounded-md bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input
+                        id="contactName"
+                        value={formData.contactName}
+                        onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+                        placeholder="שם"
+                        disabled={isSubmitting}
+                        dir="rtl"
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        id="contactEmail"
+                        type="email"
+                        value={formData.contactEmail}
+                        onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                        placeholder="אימייל"
+                        disabled={isSubmitting}
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        id="contactPhone"
+                        value={formData.contactPhone}
+                        onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                        placeholder="טלפון"
+                        disabled={isSubmitting}
+                        className="h-8 text-sm"
+                      />
                     </div>
-                    {/* Secondary Contact */}
+                  </div>
+
+                  {/* Secondary Contact */}
+                  {showSecondaryContact ? (
                     <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setShowSecondaryContact(false);
+                            setFormData({
+                              ...formData,
+                              secondaryContactName: "",
+                              secondaryContactEmail: "",
+                              secondaryContactPhone: "",
+                            });
+                          }}
+                          disabled={isSubmitting}
+                        >
+                          <X className="h-3 w-3 me-1" />
+                          הסר
+                        </Button>
+                      </div>
                       <div className="grid grid-cols-3 gap-2">
                         <Input
                           id="secondaryContactName"
@@ -804,7 +829,19 @@ export default function AdminSuppliersPage() {
                         />
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={() => setShowSecondaryContact(true)}
+                      disabled={isSubmitting}
+                    >
+                      <Plus className="h-3.5 w-3.5 me-1" />
+                      הוסף איש קשר משני
+                    </Button>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
