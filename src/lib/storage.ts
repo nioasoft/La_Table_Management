@@ -189,7 +189,7 @@ export function isAllowedFileType(mimeType: string): boolean {
  * Get max file size in bytes (10MB default)
  */
 export function getMaxFileSize(): number {
-  return 10 * 1024 * 1024; // 10MB
+  return 20 * 1024 * 1024; // 20MB
 }
 
 /**

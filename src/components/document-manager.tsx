@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -198,7 +199,7 @@ export function DocumentManager({
     }
   };
 
-  // Handle upload
+  // Handle upload - uses client-side Vercel Blob upload to bypass serverless body size limit
   const handleUpload = async () => {
     if (!uploadForm.file) {
       setUploadError(t.errors.selectFile);
@@ -210,24 +211,50 @@ export function DocumentManager({
       return;
     }
 
+    // Client-side size validation (20MB)
+    const MAX_SIZE = 20 * 1024 * 1024;
+    if (uploadForm.file.size > MAX_SIZE) {
+      setUploadError("הקובץ גדול מדי. הגודל המרבי הוא 20MB");
+      return;
+    }
+
     setIsUploading(true);
     setUploadError(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", uploadForm.file);
-      formData.append("name", uploadForm.name.trim());
-      formData.append("description", uploadForm.description.trim());
-      formData.append("documentType", uploadForm.documentType);
+      // Step 1: Upload file directly to Vercel Blob (bypasses serverless function body limit)
+      const blob = await upload(uploadForm.file.name, uploadForm.file, {
+        access: "public",
+        handleUploadUrl: "/api/documents/upload-url",
+      });
 
+      // Step 2: Create document record with metadata only (JSON body, no file transfer)
       const response = await fetch(`/api/documents/${entityType}/${entityId}`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: uploadForm.name.trim(),
+          description: uploadForm.description.trim(),
+          documentType: uploadForm.documentType,
+          fileUrl: blob.url,
+          fileName: blob.pathname.split("/").pop() || uploadForm.file.name,
+          fileSize: uploadForm.file.size,
+          mimeType: uploadForm.file.type,
+        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to upload document");
+        let errorMessage = "שגיאה בשמירת המסמך";
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // Response wasn't JSON (e.g. plain text error from Vercel)
+          if (response.status === 413) {
+            errorMessage = "הקובץ גדול מדי לשרת";
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -236,7 +263,7 @@ export function DocumentManager({
       resetUploadForm();
     } catch (error) {
       console.error("Upload error:", error);
-      setUploadError(error instanceof Error ? error.message : "Failed to upload document");
+      setUploadError(error instanceof Error ? error.message : "שגיאה בהעלאת המסמך");
     } finally {
       setIsUploading(false);
     }
