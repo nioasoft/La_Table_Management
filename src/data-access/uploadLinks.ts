@@ -1231,3 +1231,49 @@ export async function checkDuplicateBkmvUpload(
 
   return { exists: false };
 }
+
+/**
+ * Get franchisee BKMVDATA upload status for a given period.
+ * Returns all active franchisees with whether they have at least one
+ * non-rejected BKMV file for the specified period.
+ */
+export async function getFranchiseeBkmvStatusForPeriod(
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<{
+  franchisees: Array<{ id: string; name: string; hasFile: boolean }>;
+}> {
+  // Get all active franchisees
+  const activeFranchisees = await database
+    .select({ id: franchisee.id, name: franchisee.name })
+    .from(franchisee)
+    .where(eq(franchisee.isActive, true));
+
+  // Get all BKMV files for this period (non-rejected)
+  const bkmvFiles = await database
+    .select({
+      franchiseeId: uploadedFile.franchiseeId,
+    })
+    .from(uploadedFile)
+    .where(
+      and(
+        isNotNull(uploadedFile.franchiseeId),
+        eq(uploadedFile.periodStartDate, periodStartDate),
+        eq(uploadedFile.periodEndDate, periodEndDate),
+        ne(uploadedFile.processingStatus, "rejected")
+      )
+    );
+
+  // Build set of franchisee IDs that have files
+  const franchiseeIdsWithFiles = new Set(
+    bkmvFiles.map((f) => f.franchiseeId).filter(Boolean)
+  );
+
+  const result = activeFranchisees.map((f) => ({
+    id: f.id,
+    name: f.name,
+    hasFile: franchiseeIdsWithFiles.has(f.id),
+  }));
+
+  return { franchisees: result };
+}

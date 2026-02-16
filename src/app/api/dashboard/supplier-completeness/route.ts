@@ -100,6 +100,8 @@ export async function GET(request: NextRequest) {
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()));
     const brandId = searchParams.get("brandId") || undefined;
     const frequencyFilter = searchParams.get("frequency") as SettlementPeriodType | undefined;
+    const periodStart = searchParams.get("periodStart") || undefined;
+    const periodEnd = searchParams.get("periodEnd") || undefined;
 
     // Get all active suppliers with brands
     const allSuppliers = await getSuppliersWithBrands(true);
@@ -189,7 +191,16 @@ export async function GET(request: NextRequest) {
       const supplierFiles = fileMap.get(supplier.id) || new Map();
 
       // Filter to only include periods that have ended
-      const applicablePeriods = periods.filter(p => p.endDate < now);
+      let applicablePeriods = periods.filter(p => p.endDate < now);
+
+      // If a selected period range is provided, only keep periods that overlap with it
+      if (periodStart && periodEnd) {
+        const selStart = new Date(periodStart);
+        const selEnd = new Date(periodEnd);
+        applicablePeriods = applicablePeriods.filter(p =>
+          p.startDate <= selEnd && p.endDate >= selStart
+        );
+      }
 
       const periodStatuses: PeriodStatus[] = applicablePeriods.map(period => {
         const periodKey = createPeriodKeyFromInfo(period);
@@ -199,7 +210,7 @@ export async function GET(request: NextRequest) {
         if (file) {
           if (file.status === "approved" || file.status === "auto_approved") {
             status = "approved";
-          } else if (file.status === "needs_review") {
+          } else if (["needs_review", "pending", "processing"].includes(file.status)) {
             status = "pending";
           }
         }

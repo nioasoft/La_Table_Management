@@ -38,14 +38,20 @@ export function usePeriodStatus(periodStart?: string, periodEnd?: string) {
   });
 }
 
-export function useUploadStatus() {
+export function useUploadStatus(periodStart?: string, periodEnd?: string) {
   return useQuery({
-    queryKey: dashboardKeys.uploadStatus(),
+    queryKey: [...dashboardKeys.uploadStatus(), periodStart, periodEnd],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/upload-status");
+      const params = new URLSearchParams();
+      if (periodStart) params.set("periodStart", periodStart);
+      if (periodEnd) params.set("periodEnd", periodEnd);
+      const qs = params.toString();
+      const url = `/api/dashboard/upload-status${qs ? `?${qs}` : ""}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch upload status");
       return res.json();
     },
+    enabled: !!periodStart && !!periodEnd,
   });
 }
 
@@ -71,12 +77,15 @@ export function useUpcomingReminders(daysAhead = 30, limit = 10) {
   });
 }
 
-export function useSupplierCompleteness(year?: number) {
+export function useSupplierCompleteness(year?: number, periodStart?: string, periodEnd?: string) {
   const currentYear = year || new Date().getFullYear();
   return useQuery({
-    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear],
+    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear, periodStart, periodEnd],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/supplier-completeness?year=${currentYear}`);
+      const params = new URLSearchParams({ year: String(currentYear) });
+      if (periodStart) params.set("periodStart", periodStart);
+      if (periodEnd) params.set("periodEnd", periodEnd);
+      const res = await fetch(`/api/dashboard/supplier-completeness?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch supplier completeness");
       return res.json();
     },

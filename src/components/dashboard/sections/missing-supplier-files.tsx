@@ -1,43 +1,42 @@
 "use client";
 
+import Link from "next/link";
 import { FileX } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ActionSection } from "../shared/action-section";
-import { ActionItemRow } from "../shared/action-item-row";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { useSupplierCompleteness } from "@/queries/dashboard";
 import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-completeness/route";
 import { useDashboardPeriod } from "../dashboard-period-context";
 
-const MAX_PREVIEW = 5;
+const MAX_PREVIEW = 24; // 6 rows of 4
 
-function SupplierRow({
+function SupplierChip({
   supplier,
 }: {
   supplier: SupplierCompletenessResponse["suppliers"][number];
 }) {
   return (
-    <ActionItemRow
-      icon={<FileX className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />}
-      iconBgClass="bg-red-100 dark:bg-red-900/50"
-      title={supplier.supplier.name}
-      subtitle={supplier.brands.map((b) => b.nameHe).join(", ")}
-      badge={
+    <Link href={`/admin/suppliers/${supplier.supplier.id}`}>
+      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/60 transition-colors group cursor-pointer">
+        <div className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 bg-red-100 dark:bg-red-900/50">
+          <FileX className="h-3 w-3 text-red-600 dark:text-red-400" />
+        </div>
+        <span className="text-sm leading-tight truncate">{supplier.supplier.name}</span>
         <Badge
           variant="outline"
-          className="text-[10px] h-4 px-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+          className="text-[10px] h-4 px-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800 shrink-0"
         >
-          {supplier.stats.missing} חסרים
+          {supplier.stats.missing}
         </Badge>
-      }
-      href={`/admin/suppliers/${supplier.supplier.id}`}
-    />
+      </div>
+    </Link>
   );
 }
 
 export function MissingSupplierFiles() {
-  const { year } = useDashboardPeriod();
-  const { data, isLoading } = useSupplierCompleteness(year);
+  const { year, startDate, endDate } = useDashboardPeriod();
+  const { data, isLoading } = useSupplierCompleteness(year, startDate, endDate);
   const response = data as SupplierCompletenessResponse | undefined;
 
   const missingSuppliers =
@@ -59,13 +58,17 @@ export function MissingSupplierFiles() {
       isLoading={isLoading}
       totalItems={missingSuppliers.length}
     >
-      {previewItems.map((s) => (
-        <SupplierRow key={s.supplier.id} supplier={s} />
-      ))}
-      <CollapsibleContent>
-        {expandedItems.map((s) => (
-          <SupplierRow key={s.supplier.id} supplier={s} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-2">
+        {previewItems.map((s) => (
+          <SupplierChip key={s.supplier.id} supplier={s} />
         ))}
+      </div>
+      <CollapsibleContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-2">
+          {expandedItems.map((s) => (
+            <SupplierChip key={s.supplier.id} supplier={s} />
+          ))}
+        </div>
       </CollapsibleContent>
     </ActionSection>
   );

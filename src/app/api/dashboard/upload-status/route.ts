@@ -3,33 +3,40 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import {
-  getDashboardUploadStatus,
-  type DashboardUploadStatus,
-} from "@/data-access/uploadLinks";
+import { getFranchiseeBkmvStatusForPeriod } from "@/data-access/uploadLinks";
 
 /**
- * Upload status response type for dashboard widget
+ * Franchisee BKMV upload status for dashboard
  */
-export type UploadStatusResponse = DashboardUploadStatus;
+export interface FranchiseeBkmvStatus {
+  franchisees: Array<{ id: string; name: string; hasFile: boolean }>;
+}
 
 /**
- * GET /api/dashboard/upload-status - Get upload status for dashboard widget
- * Returns:
- * - Suppliers: list with upload status (who has uploaded, who hasn't)
- * - Franchisees: list with upload status (who has uploaded, who hasn't)
- * - Pending upload links with expiry dates
- * - Summary statistics
+ * GET /api/dashboard/upload-status - Get franchisee BKMV file status for a period
+ * Query params:
+ *   - periodStart: YYYY-MM-DD (required)
+ *   - periodEnd: YYYY-MM-DD (required)
  */
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    // Fetch upload status for all entities
-    const uploadStatus = await getDashboardUploadStatus();
+    const { searchParams } = new URL(request.url);
+    const periodStart = searchParams.get("periodStart");
+    const periodEnd = searchParams.get("periodEnd");
 
-    return NextResponse.json(uploadStatus);
+    if (!periodStart || !periodEnd) {
+      return NextResponse.json(
+        { error: "periodStart and periodEnd are required" },
+        { status: 400 }
+      );
+    }
+
+    const result = await getFranchiseeBkmvStatusForPeriod(periodStart, periodEnd);
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching upload status:", error);
     return NextResponse.json(

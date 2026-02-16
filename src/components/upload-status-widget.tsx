@@ -22,15 +22,25 @@ import {
   Building2,
   FileUp,
 } from "lucide-react";
-import type { UploadStatusResponse } from "@/app/api/dashboard/upload-status/route";
 import { t, formatDate as formatDateHe } from "@/lib/translations";
-import { useUploadStatus } from "@/queries/dashboard";
 
-type EntityUploadStatus = UploadStatusResponse["suppliers"][0];
+// Legacy types preserved for this unused widget
+interface EntityUploadStatus {
+  id: string;
+  name: string;
+  entityType: "supplier" | "franchisee";
+  hasUploaded: boolean;
+  uploadStats: { total: number; pending: number; uploaded: number; expired: number; cancelled: number };
+  pendingLinks: Array<{ id: string; name: string; expiresAt: Date | null; createdAt: Date }>;
+}
 type PendingLink = EntityUploadStatus["pendingLinks"][0];
 
 export function UploadStatusWidget() {
-  const { data, isLoading, error, refetch } = useUploadStatus();
+  // This widget is no longer used - kept for reference
+  const data = null as { suppliers: EntityUploadStatus[]; franchisees: EntityUploadStatus[]; summary: { totalEntities: number; entitiesWithUploads: number; totalPendingLinks: number; expiringSoon: number } } | null;
+  const isLoading = false;
+  const error = null as Error | null;
+  const refetch = () => Promise.resolve();
   const [activeTab, setActiveTab] = useState<"overview" | "suppliers" | "franchisees">("overview");
 
   // Don't show widget if user doesn't have permission (403 error)

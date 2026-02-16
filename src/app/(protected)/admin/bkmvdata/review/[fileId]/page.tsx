@@ -43,6 +43,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Loader2,
   CheckCircle2,
@@ -58,6 +59,7 @@ import {
   Plus,
   Ban,
   DollarSign,
+  Search,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
@@ -140,6 +142,7 @@ export default function FileDetailsPage() {
   // Blacklist state
   const [blacklistingMatch, setBlacklistingMatch] = useState<SupplierMatch | null>(null);
   const [blacklistNotes, setBlacklistNotes] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   // Revenue account state
   const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
   const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
@@ -208,6 +211,13 @@ export default function FileDetailsPage() {
     }
     return { available, alreadyMatched };
   }, [sortedSuppliers, alreadyMatchedSupplierIds]);
+
+  const filteredMatches = useMemo(() => {
+    const matches = fileData?.supplierMatches || [];
+    if (!searchQuery.trim()) return matches;
+    const query = searchQuery.trim().toLowerCase();
+    return matches.filter((m) => m.bkmvName.toLowerCase().includes(query));
+  }, [fileData?.supplierMatches, searchQuery]);
 
   // Review action mutation
   const reviewMutation = useMutation({
@@ -647,6 +657,15 @@ export default function FileDetailsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="relative mb-4">
+            <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="חיפוש לפי שם במבנה אחיד..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="ps-9"
+            />
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -660,14 +679,14 @@ export default function FileDetailsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {supplierMatches.length === 0 ? (
+                {filteredMatches.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={isReviewed ? 5 : 6} className="text-center py-8 text-muted-foreground">
-                      אין נתוני התאמות
+                      {searchQuery.trim() ? "לא נמצאו תוצאות" : "אין נתוני התאמות"}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  supplierMatches.map((match, index) => (
+                  filteredMatches.map((match, index) => (
                     <TableRow
                                     key={index}
                                     className={

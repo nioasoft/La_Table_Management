@@ -5,13 +5,14 @@ import { UserX } from "lucide-react";
 import { ActionSection } from "../shared/action-section";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { useUploadStatus } from "@/queries/dashboard";
-import type { UploadStatusResponse } from "@/app/api/dashboard/upload-status/route";
+import { useDashboardPeriod } from "../dashboard-period-context";
+import type { FranchiseeBkmvStatus } from "@/app/api/dashboard/upload-status/route";
 
 const MAX_PREVIEW = 24; // 6 rows of 4
 
 function FranchiseeChip({ name }: { name: string }) {
   return (
-    <Link href="/admin/franchisees">
+    <Link href="/admin/bkmvdata">
       <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/60 transition-colors group cursor-pointer">
         <div className="h-6 w-6 rounded-md flex items-center justify-center shrink-0 bg-amber-100 dark:bg-amber-900/50">
           <UserX className="h-3 w-3 text-amber-600 dark:text-amber-400" />
@@ -23,11 +24,12 @@ function FranchiseeChip({ name }: { name: string }) {
 }
 
 export function MissingFranchiseeFiles() {
-  const { data, isLoading } = useUploadStatus();
-  const uploadStatus = data as UploadStatusResponse | undefined;
+  const { startDate, endDate } = useDashboardPeriod();
+  const { data, isLoading } = useUploadStatus(startDate, endDate);
+  const response = data as FranchiseeBkmvStatus | undefined;
 
-  const missingFranchisees = (uploadStatus?.franchisees ?? []).filter(
-    (f) => !f.hasUploaded
+  const missingFranchisees = (response?.franchisees ?? []).filter(
+    (f) => !f.hasFile
   );
 
   const previewItems = missingFranchisees.slice(0, MAX_PREVIEW);
@@ -38,7 +40,7 @@ export function MissingFranchiseeFiles() {
       title="קבצי זכיינים חסרים"
       icon={<UserX className="h-4 w-4" />}
       count={missingFranchisees.length}
-      linkHref="/admin/franchisees"
+      linkHref="/admin/bkmvdata"
       linkText="צפה בהכל"
       emptyMessage="כל הזכיינים שלחו קבצים!"
       maxPreviewItems={MAX_PREVIEW}

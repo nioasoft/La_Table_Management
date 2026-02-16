@@ -811,14 +811,19 @@ export default function SupplierFilesPage() {
         </div>
       </div>
 
-      {/* 2x2 Grid Layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Row 1, Col 1: Supplier Selection */}
+      {/* 3-Step Workflow Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Step 1: Supplier Selection */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">בחירת ספק</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                selectedSupplierId ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              }`}>1</span>
+              בחירת ספק
+            </CardTitle>
             <CardDescription>
-              בחר ספק מהרשימה כדי להעלות קובץ עמלות
+              בחר ספק מהרשימה
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -830,10 +835,15 @@ export default function SupplierFilesPage() {
           </CardContent>
         </Card>
 
-        {/* Row 1, Col 2: Period Selection */}
+        {/* Step 2: Period Selection */}
         <Card className={!selectedSupplier ? "opacity-50" : ""}>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">בחירת תקופה</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                selectedPeriodKey ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              }`}>2</span>
+              בחירת תקופה
+            </CardTitle>
             <CardDescription>
               {selectedSupplier
                 ? "בחר את התקופה עבורה מועלה הקובץ"
@@ -856,16 +866,18 @@ export default function SupplierFilesPage() {
           </CardContent>
         </Card>
 
-        {/* Row 2, Col 1: File Upload */}
+        {/* Step 3: File Upload */}
         <Card className={!selectedPeriodKey ? "opacity-50" : ""}>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
-              <FileUp className="h-5 w-5" />
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
+                processingResult ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+              }`}>3</span>
               העלאת קובץ
             </CardTitle>
             <CardDescription>
               {selectedPeriodKey && selectedSupplier
-                ? `העלה קובץ ${selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? 'קובץ'} מהספק`
+                ? `קובץ ${selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? ''}`
                 : "בחר ספק ותקופה תחילה"}
             </CardDescription>
           </CardHeader>
@@ -873,7 +885,7 @@ export default function SupplierFilesPage() {
             {/* Drag and Drop Zone */}
             <div
               className={`
-                relative rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer
+                relative rounded-lg border-2 border-dashed p-4 transition-colors cursor-pointer
                 ${isDragging ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"}
                 ${!selectedPeriodKey ? "opacity-50 cursor-not-allowed" : ""}
                 ${isUploading ? "pointer-events-none" : ""}
@@ -895,28 +907,21 @@ export default function SupplierFilesPage() {
                 disabled={isUploading || !selectedPeriodKey}
                 className="hidden"
               />
-              <div className="flex flex-col items-center gap-2 text-center">
+              <div className="flex flex-col items-center gap-1.5 text-center">
                 {isUploading ? (
                   <>
-                    <Loader2 className="h-10 w-10 text-primary animate-spin" />
-                    <p className="text-sm font-medium">מעבד את הקובץ...</p>
+                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                    <p className="text-sm font-medium">מעבד...</p>
                   </>
                 ) : (
                   <>
-                    <Upload className={`h-10 w-10 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
-                    <div>
-                      <p className="text-sm font-medium">
-                        {isDragging ? "שחרר כדי להעלות" : "גרור קובץ לכאן"}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        או לחץ לבחירת קובץ
-                      </p>
-                    </div>
-                    {selectedSupplier && (
-                      <p className="text-xs text-muted-foreground">
-                        קבצים נתמכים: {selectedSupplier.fileMapping?.fileType?.toUpperCase() ?? 'N/A'}
-                      </p>
-                    )}
+                    <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                    <p className="text-sm font-medium">
+                      {isDragging ? "שחרר כדי להעלות" : "גרור קובץ לכאן"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      או לחץ לבחירת קובץ
+                    </p>
                   </>
                 )}
               </div>
@@ -924,37 +929,32 @@ export default function SupplierFilesPage() {
 
             {/* Upload Error */}
             {uploadError && (
-              <div className="mt-4 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+              <div className="mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                 <div className="flex items-center gap-2 text-destructive">
-                  <XCircle className="h-5 w-5" />
-                  <p className="font-medium">שגיאה בעיבוד הקובץ</p>
+                  <XCircle className="h-4 w-4" />
+                  <p className="font-medium text-sm">שגיאה</p>
                 </div>
-                <p className="mt-1 text-sm text-destructive">{uploadError}</p>
+                <p className="mt-1 text-xs text-destructive">{uploadError}</p>
               </div>
             )}
           </CardContent>
         </Card>
-
-        {/* Row 2, Col 2: Upload History */}
-        {selectedSupplier ? (
-          <UploadHistoryPanel
-            supplierId={selectedSupplierId}
-            supplierName={selectedSupplier.name}
-          />
-        ) : (
-          <Card className="opacity-50">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">היסטוריית העלאות</CardTitle>
-              <CardDescription>בחר ספק תחילה</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground text-center py-4">
-                בחר ספק כדי לראות את היסטוריית ההעלאות
-              </p>
-            </CardContent>
-          </Card>
-        )}
       </div>
+
+      {/* Upload History - Full Width */}
+      {selectedSupplier && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">היסטוריית העלאות - {selectedSupplier.name}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <UploadHistoryPanel
+              supplierId={selectedSupplierId}
+              supplierName={selectedSupplier.name}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Processing Results - Full Width */}
       {processingResult && (
