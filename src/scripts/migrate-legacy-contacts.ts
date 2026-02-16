@@ -44,7 +44,7 @@ async function main() {
   for (const f of franchisees) {
     // Check if contacts already exist for this franchisee
     const existingContacts = await db
-      .select({ id: schema.contact.id, role: schema.contact.role })
+      .select({ id: schema.contact.id, role: schema.contact.role, isPrimary: schema.contact.isPrimary })
       .from(schema.contact)
       .where(eq(schema.contact.franchiseeId, f.id));
 

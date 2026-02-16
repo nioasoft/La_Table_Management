@@ -66,10 +66,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       state,
       postalCode,
       country,
-      primaryContactName,
-      primaryContactEmail,
-      primaryContactPhone,
-      owners,
       openingDate,
       leaseOption1End,
       leaseOption2End,
@@ -105,27 +101,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
-    // Validate owners array if provided
-    if (owners && Array.isArray(owners)) {
-      for (const owner of owners) {
-        if (!owner.name) {
-          return NextResponse.json(
-            { error: "Each owner must have a name" },
-            { status: 400 }
-          );
-        }
-        if (
-          owner.ownershipPercentage !== undefined &&
-          (owner.ownershipPercentage < 0 || owner.ownershipPercentage > 100)
-        ) {
-          return NextResponse.json(
-            { error: "Ownership percentage must be between 0 and 100" },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
     const updateData: UpdateFranchiseeDataWithStatusChange = {};
 
     if (brandId !== undefined) updateData.brandId = brandId;
@@ -140,13 +115,6 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (state !== undefined) updateData.state = state;
     if (postalCode !== undefined) updateData.postalCode = postalCode;
     if (country !== undefined) updateData.country = country;
-    if (primaryContactName !== undefined)
-      updateData.primaryContactName = primaryContactName;
-    if (primaryContactEmail !== undefined)
-      updateData.primaryContactEmail = primaryContactEmail;
-    if (primaryContactPhone !== undefined)
-      updateData.primaryContactPhone = primaryContactPhone;
-    if (owners !== undefined) updateData.owners = owners;
     if (openingDate !== undefined) updateData.openingDate = openingDate;
     if (leaseOption1End !== undefined) updateData.leaseOption1End = leaseOption1End;
     if (leaseOption2End !== undefined) updateData.leaseOption2End = leaseOption2End;

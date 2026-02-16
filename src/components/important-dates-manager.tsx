@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -526,11 +527,12 @@ export function ImportantDatesManager({
             {/* Description */}
             <div className="space-y-2">
               <Label>הערות</Label>
-              <Input
+              <Textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 placeholder="הערות נוספות (אופציונלי)"
                 dir="rtl"
+                rows={3}
               />
             </div>
           </div>

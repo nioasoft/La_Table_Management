@@ -118,10 +118,6 @@ export async function POST(request: NextRequest) {
       state,
       postalCode,
       country,
-      primaryContactName,
-      primaryContactEmail,
-      primaryContactPhone,
-      owners,
       openingDate,
       leaseOption1End,
       leaseOption2End,
@@ -150,27 +146,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate owners array if provided
-    if (owners && Array.isArray(owners)) {
-      for (const owner of owners) {
-        if (!owner.name) {
-          return NextResponse.json(
-            { error: "Each owner must have a name" },
-            { status: 400 }
-          );
-        }
-        if (
-          owner.ownershipPercentage !== undefined &&
-          (owner.ownershipPercentage < 0 || owner.ownershipPercentage > 100)
-        ) {
-          return NextResponse.json(
-            { error: "Ownership percentage must be between 0 and 100" },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
     const newFranchisee = await createFranchisee({
       id: randomUUID(),
       brandId,
@@ -183,10 +158,6 @@ export async function POST(request: NextRequest) {
       state: state || null,
       postalCode: postalCode || null,
       country: country || null,
-      primaryContactName: primaryContactName || null,
-      primaryContactEmail: primaryContactEmail || null,
-      primaryContactPhone: primaryContactPhone || null,
-      owners: owners || null,
       openingDate: openingDate || null,
       leaseOption1End: leaseOption1End || null,
       leaseOption2End: leaseOption2End || null,
