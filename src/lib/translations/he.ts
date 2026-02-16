@@ -3242,6 +3242,7 @@ export const he = {
       users: "משתמשים",
       communications: "תקשורת",
       vatRates: "שיעורי מע״מ",
+      contactReports: "ייצוא אנשי קשר",
     },
 
     // User section

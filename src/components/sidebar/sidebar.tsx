@@ -219,6 +219,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/vat-rates",
                 icon: <Percent className="h-4 w-4" />,
               },
+              {
+                label: he.sidebar.subNavigation.contactReports,
+                href: "/admin/contact-reports",
+                icon: <FileSpreadsheet className="h-4 w-4" />,
+              },
             ],
           },
           {
