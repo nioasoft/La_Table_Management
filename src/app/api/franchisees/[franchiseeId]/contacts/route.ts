@@ -56,7 +56,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, phone, email, role, notes, isPrimary } = body;
+    const { name, phone, email, role, notes, isPrimary, ownershipPercentage } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -74,6 +74,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       role: (role as ContactRole) || "other",
       notes: notes || null,
       isPrimary: isPrimary || false,
+      ownershipPercentage: role === "owner" && ownershipPercentage != null
+        ? String(ownershipPercentage)
+        : null,
       isActive: true,
       createdBy: user.id,
     });

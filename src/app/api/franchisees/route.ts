@@ -17,7 +17,7 @@ import {
   type GetFranchiseesOptions,
 } from "@/data-access/franchisees";
 import { randomUUID } from "crypto";
-import type { FranchiseeStatus, FranchiseeOwner, FranchiseeCategory } from "@/db/schema";
+import type { FranchiseeStatus, FranchiseeCategory } from "@/db/schema";
 
 /**
  * GET /api/franchisees - Get all franchisees (Admin/Super User only)

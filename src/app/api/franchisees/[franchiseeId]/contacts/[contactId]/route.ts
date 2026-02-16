@@ -32,7 +32,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
 
     const body = await request.json();
-    const { name, phone, email, role, notes, isPrimary } = body;
+    const { name, phone, email, role, notes, isPrimary, ownershipPercentage } = body;
 
     const updated = await updateContact(contactId, {
       ...(name !== undefined && { name }),
@@ -41,6 +41,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       ...(role !== undefined && { role }),
       ...(notes !== undefined && { notes: notes || null }),
       ...(isPrimary !== undefined && { isPrimary }),
+      ...(ownershipPercentage !== undefined && {
+        ownershipPercentage: role === "owner" && ownershipPercentage != null
+          ? String(ownershipPercentage)
+          : null,
+      }),
     });
 
     return NextResponse.json({ contact: updated });

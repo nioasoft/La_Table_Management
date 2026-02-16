@@ -731,117 +731,6 @@ export default function AdminSuppliersPage() {
                     </div>
                   </div>
 
-                  {/* Contacts */}
-                  <div className="space-y-3 pt-3 border-t border-border/30">
-                    <div className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-sm font-semibold tracking-tight">אנשי קשר</h3>
-                      {(formData.contactName || formData.contactEmail || formData.secondaryContactName || formData.secondaryContactEmail) && (
-                        <Check className="h-4 w-4 text-green-500" />
-                      )}
-                    </div>
-
-                    {/* Primary Contact */}
-                    <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                      <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          id="contactName"
-                          value={formData.contactName}
-                          onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
-                          placeholder="שם"
-                          disabled={isSubmitting}
-                          dir="rtl"
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="contactEmail"
-                          type="email"
-                          value={formData.contactEmail}
-                          onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
-                          placeholder="אימייל"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                        <Input
-                          id="contactPhone"
-                          value={formData.contactPhone}
-                          onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
-                          placeholder="טלפון"
-                          disabled={isSubmitting}
-                          className="h-8 text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Secondary Contact */}
-                    {showSecondaryContact ? (
-                      <div className="space-y-2 p-2 rounded-md bg-muted/30">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
-                            onClick={() => {
-                              setShowSecondaryContact(false);
-                              setFormData({
-                                ...formData,
-                                secondaryContactName: "",
-                                secondaryContactEmail: "",
-                                secondaryContactPhone: "",
-                              });
-                            }}
-                            disabled={isSubmitting}
-                          >
-                            <X className="h-3 w-3 me-1" />
-                            הסר
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2">
-                          <Input
-                            id="secondaryContactName"
-                            value={formData.secondaryContactName}
-                            onChange={(e) => setFormData({ ...formData, secondaryContactName: e.target.value })}
-                            placeholder="שם"
-                            disabled={isSubmitting}
-                            dir="rtl"
-                            className="h-8 text-sm"
-                          />
-                          <Input
-                            id="secondaryContactEmail"
-                            type="email"
-                            value={formData.secondaryContactEmail}
-                            onChange={(e) => setFormData({ ...formData, secondaryContactEmail: e.target.value })}
-                            placeholder="אימייל"
-                            disabled={isSubmitting}
-                            className="h-8 text-sm"
-                          />
-                          <Input
-                            id="secondaryContactPhone"
-                            value={formData.secondaryContactPhone}
-                            onChange={(e) => setFormData({ ...formData, secondaryContactPhone: e.target.value })}
-                            placeholder="טלפון"
-                            disabled={isSubmitting}
-                            className="h-8 text-sm"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="w-full h-8 text-xs"
-                        onClick={() => setShowSecondaryContact(true)}
-                        disabled={isSubmitting}
-                      >
-                        <Plus className="h-3.5 w-3.5 me-1" />
-                        הוסף איש קשר משני
-                      </Button>
-                    )}
-                  </div>
                 </CollapsibleContent>
               </Collapsible>
 
@@ -1114,7 +1003,121 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* ═══ 3. מס ותשלום ═══ */}
+              {/* ═══ 3. אנשי קשר ═══ */}
+              <Collapsible defaultOpen={false}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                  <Users className="h-4 w-4" />
+                  <span className="text-sm font-medium">אנשי קשר</span>
+                  {(formData.contactName || formData.contactEmail || formData.secondaryContactName || formData.secondaryContactEmail) && (
+                    <Check className="h-4 w-4 text-green-500" />
+                  )}
+                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-3 space-y-3">
+                  {/* Primary Contact */}
+                  <div className="space-y-2 p-2 rounded-md bg-muted/30">
+                    <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.primaryContact}</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input
+                        id="contactName"
+                        value={formData.contactName}
+                        onChange={(e) => setFormData({ ...formData, contactName: e.target.value })}
+                        placeholder="שם"
+                        disabled={isSubmitting}
+                        dir="rtl"
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        id="contactEmail"
+                        type="email"
+                        value={formData.contactEmail}
+                        onChange={(e) => setFormData({ ...formData, contactEmail: e.target.value })}
+                        placeholder="אימייל"
+                        disabled={isSubmitting}
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        id="contactPhone"
+                        value={formData.contactPhone}
+                        onChange={(e) => setFormData({ ...formData, contactPhone: e.target.value })}
+                        placeholder="טלפון"
+                        disabled={isSubmitting}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Secondary Contact */}
+                  {showSecondaryContact ? (
+                    <div className="space-y-2 p-2 rounded-md bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-muted-foreground">{he.admin.suppliers.form.sections.secondaryContact}</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => {
+                            setShowSecondaryContact(false);
+                            setFormData({
+                              ...formData,
+                              secondaryContactName: "",
+                              secondaryContactEmail: "",
+                              secondaryContactPhone: "",
+                            });
+                          }}
+                          disabled={isSubmitting}
+                        >
+                          <X className="h-3 w-3 me-1" />
+                          הסר
+                        </Button>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Input
+                          id="secondaryContactName"
+                          value={formData.secondaryContactName}
+                          onChange={(e) => setFormData({ ...formData, secondaryContactName: e.target.value })}
+                          placeholder="שם"
+                          disabled={isSubmitting}
+                          dir="rtl"
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          id="secondaryContactEmail"
+                          type="email"
+                          value={formData.secondaryContactEmail}
+                          onChange={(e) => setFormData({ ...formData, secondaryContactEmail: e.target.value })}
+                          placeholder="אימייל"
+                          disabled={isSubmitting}
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          id="secondaryContactPhone"
+                          value={formData.secondaryContactPhone}
+                          onChange={(e) => setFormData({ ...formData, secondaryContactPhone: e.target.value })}
+                          placeholder="טלפון"
+                          disabled={isSubmitting}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full h-8 text-xs"
+                      onClick={() => setShowSecondaryContact(true)}
+                      disabled={isSubmitting}
+                    >
+                      <Plus className="h-3.5 w-3.5 me-1" />
+                      הוסף איש קשר משני
+                    </Button>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* ═══ 4. מס ותשלום ═══ */}
               <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <Hash className="h-4 w-4" />
@@ -1153,7 +1156,7 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* ═══ 4. מותגים משויכים ═══ */}
+              {/* ═══ 5. מותגים משויכים ═══ */}
               {brands.length > 0 && (
                 <Collapsible defaultOpen={false}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
@@ -1197,7 +1200,7 @@ export default function AdminSuppliersPage() {
                 </Collapsible>
               )}
 
-              {/* ═══ 5. הערות ═══ */}
+              {/* ═══ 6. הערות ═══ */}
               <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <MessageSquare className="h-4 w-4" />
@@ -1221,7 +1224,7 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* ═══ 6. כינויים ═══ */}
+              {/* ═══ 7. כינויים ═══ */}
               <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <Tags className="h-4 w-4" />
@@ -1317,7 +1320,7 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* ═══ 7. ארכיון ═══ */}
+              {/* ═══ 8. ארכיון ═══ */}
               {editingSupplier && userRole === "super_user" && (
                 <Collapsible open={showArchiveConfirm} onOpenChange={setShowArchiveConfirm}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-destructive">

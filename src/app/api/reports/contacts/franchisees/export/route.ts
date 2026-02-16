@@ -4,20 +4,19 @@ import {
   isAuthError,
 } from "@/lib/api-middleware";
 import * as XLSX from "xlsx";
-import { getFranchisees } from "@/data-access/franchisees";
+import { getFranchiseesWithContacts } from "@/data-access/franchisees";
 import { formatDateAsLocal } from "@/lib/date-utils";
-import type { FranchiseeOwner } from "@/db/schema";
 
 /**
  * GET /api/reports/contacts/franchisees/export
- * Export franchisee contacts to Excel with one row per owner
+ * Export franchisee contacts to Excel with one row per owner (from contact table)
  */
 export async function GET(request: NextRequest) {
   try {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    const franchisees = await getFranchisees({ category: "all" });
+    const franchisees = await getFranchiseesWithContacts({ category: "all" });
 
     const headers = [
       "מותג",
@@ -32,29 +31,51 @@ export async function GET(request: NextRequest) {
 
     for (const f of franchisees) {
       const brandName = f.brand?.nameHe ?? "-";
-      const owners = f.owners as FranchiseeOwner[] | null;
+      // Get owner contacts from the contact table
+      const ownerContacts = f.contacts?.filter((c) => c.role === "owner") || [];
 
-      if (owners && owners.length > 0) {
-        for (const owner of owners) {
+      if (ownerContacts.length > 0) {
+        for (const owner of ownerContacts) {
           rows.push([
             brandName,
             f.name,
             owner.name || "-",
             owner.phone || "-",
             owner.email || "-",
-            owner.ownershipPercentage ?? 0,
+            owner.ownershipPercentage ? parseFloat(owner.ownershipPercentage) : 0,
           ]);
         }
       } else {
-        // Fallback to legacy fields
-        rows.push([
-          brandName,
-          f.name,
-          f.ownerName || "-",
-          f.contactPhone || "-",
-          f.contactEmail || "-",
-          0,
-        ]);
+        // Fallback to legacy JSONB owners field
+        const legacyOwners = f.owners as Array<{
+          name: string;
+          phone: string;
+          email: string;
+          ownershipPercentage?: number;
+        }> | null;
+
+        if (legacyOwners && legacyOwners.length > 0) {
+          for (const owner of legacyOwners) {
+            rows.push([
+              brandName,
+              f.name,
+              owner.name || "-",
+              owner.phone || "-",
+              owner.email || "-",
+              owner.ownershipPercentage ?? 0,
+            ]);
+          }
+        } else {
+          // No owners at all
+          rows.push([
+            brandName,
+            f.name,
+            f.ownerName || "-",
+            f.contactPhone || "-",
+            f.contactEmail || "-",
+            0,
+          ]);
+        }
       }
     }
 

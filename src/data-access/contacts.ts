@@ -72,6 +72,22 @@ export async function updateContact(
 }
 
 /**
+ * Batch create contacts for a franchisee
+ */
+export async function batchCreateContacts(
+  items: CreateContactData[]
+): Promise<Contact[]> {
+  if (items.length === 0) return [];
+  const values = items.map((data) => ({
+    ...data,
+    id: data.id || crypto.randomUUID(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }));
+  return database.insert(contact).values(values).returning();
+}
+
+/**
  * Delete a contact (hard delete)
  */
 export async function deleteContact(id: string): Promise<boolean> {

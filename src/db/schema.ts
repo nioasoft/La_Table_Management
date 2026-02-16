@@ -2617,6 +2617,8 @@ export const contact = pgTable(
       .notNull(),
     // הערות
     notes: text("notes"),
+    // אחוז בעלות (רלוונטי רק לתפקיד owner)
+    ownershipPercentage: decimal("ownership_percentage", { precision: 5, scale: 2 }),
     // סטטוס
     isActive: boolean("is_active")
       .$default(() => true)

@@ -196,6 +196,7 @@ interface ContactFormData {
   email: string;
   role: ContactRole;
   notes: string;
+  ownershipPercentage: string;
 }
 
 const emptyContactForm: ContactFormData = {
@@ -204,6 +205,7 @@ const emptyContactForm: ContactFormData = {
   email: "",
   role: "accountant",
   notes: "",
+  ownershipPercentage: "",
 };
 
 // Format percentage
@@ -399,9 +401,12 @@ export function FranchiseeDetailCard({
   }, [franchisee.id]);
 
   // Contact CRUD handlers
-  const handleAddContact = () => {
+  const handleAddContact = (presetRole?: ContactRole) => {
     setEditingContactId(null);
-    setContactForm(emptyContactForm);
+    setContactForm({
+      ...emptyContactForm,
+      role: presetRole || "accountant",
+    });
     setShowContactForm(true);
   };
 
@@ -413,6 +418,7 @@ export function FranchiseeDetailCard({
       email: c.email || "",
       role: c.role,
       notes: c.notes || "",
+      ownershipPercentage: c.ownershipPercentage || "",
     });
     setShowContactForm(true);
   };
@@ -773,55 +779,7 @@ export function FranchiseeDetailCard({
 
             {/* Contacts & Owners Tab */}
             <TabsContent value="contacts" className="mt-0 space-y-4" data-testid="contacts-tab-content">
-              {/* Primary Contact */}
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <UserCircle className="h-4 w-4" />
-                    איש קשר ראשי
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {franchisee.primaryContactName || franchisee.primaryContactPhone || franchisee.primaryContactEmail ? (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <p className="text-muted-foreground">שם</p>
-                        <p className="font-medium">{franchisee.primaryContactName || "—"}</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">טלפון</p>
-                        <p className="font-medium flex items-center gap-1">
-                          {franchisee.primaryContactPhone ? (
-                            <>
-                              <Phone className="h-3 w-3" />
-                              <a href={`tel:${franchisee.primaryContactPhone}`} className="hover:underline">
-                                {franchisee.primaryContactPhone}
-                              </a>
-                            </>
-                          ) : "—"}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">אימייל</p>
-                        <p className="font-medium flex items-center gap-1">
-                          {franchisee.primaryContactEmail ? (
-                            <>
-                              <Mail className="h-3 w-3" />
-                              <a href={`mailto:${franchisee.primaryContactEmail}`} className="hover:underline">
-                                {franchisee.primaryContactEmail}
-                              </a>
-                            </>
-                          ) : "—"}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-sm">לא הוגדר איש קשר ראשי</p>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Contacts */}
+              {/* Unified Contacts */}
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -835,14 +793,24 @@ export function FranchiseeDetailCard({
                       )}
                     </CardTitle>
                     {(userRole === "super_user" || userRole === "admin") && !showContactForm && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleAddContact}
-                      >
-                        <Plus className="h-4 w-4 me-1" />
-                        הוספת איש קשר
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAddContact("owner")}
+                        >
+                          <Plus className="h-4 w-4 me-1" />
+                          הוספת בעלים
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleAddContact()}
+                        >
+                          <Plus className="h-4 w-4 me-1" />
+                          הוספת איש קשר
+                        </Button>
+                      </div>
                     )}
                   </div>
                 </CardHeader>
@@ -851,7 +819,10 @@ export function FranchiseeDetailCard({
                   {showContactForm && (
                     <div className="p-4 border rounded-lg bg-muted/20 space-y-4">
                       <h4 className="font-medium text-sm">
-                        {editingContactId ? "עריכת איש קשר" : "הוספת איש קשר חדש"}
+                        {editingContactId
+                          ? (contactForm.role === "owner" ? "עריכת בעלים" : "עריכת איש קשר")
+                          : (contactForm.role === "owner" ? "הוספת בעלים" : "הוספת איש קשר חדש")
+                        }
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
@@ -913,6 +884,23 @@ export function FranchiseeDetailCard({
                             disabled={isContactSubmitting}
                           />
                         </div>
+                        {contactForm.role === "owner" && (
+                          <div className="space-y-1.5">
+                            <Label htmlFor="contact-ownership" className="text-xs">אחוז בעלות</Label>
+                            <Input
+                              id="contact-ownership"
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={contactForm.ownershipPercentage}
+                              onChange={(e) =>
+                                setContactForm({ ...contactForm, ownershipPercentage: e.target.value })
+                              }
+                              placeholder="0-100"
+                              disabled={isContactSubmitting}
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="contact-notes" className="text-xs">הערות</Label>
@@ -952,22 +940,29 @@ export function FranchiseeDetailCard({
                     </div>
                   )}
 
-                  {/* Contacts List */}
+                  {/* Contacts List - owners first, then others */}
                   {franchisee.contacts && franchisee.contacts.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {franchisee.contacts.map((c) => (
+                      {[...franchisee.contacts]
+                        .sort((a, b) => (a.role === "owner" ? -1 : 1) - (b.role === "owner" ? -1 : 1))
+                        .map((c) => (
                         <div
                           key={c.id}
                           className="p-3 border rounded-lg bg-muted/30 space-y-2"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="font-medium flex items-center gap-2">
+                            <span className="font-medium flex items-center gap-2 flex-wrap">
                               {c.name}
                               <Badge variant="outline" className="text-xs">
                                 {contactRoleLabels[c.role] || c.role}
                               </Badge>
                               {c.isPrimary && (
                                 <Badge variant="secondary" className="text-xs">ראשי</Badge>
+                              )}
+                              {c.role === "owner" && c.ownershipPercentage && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {c.ownershipPercentage}% בעלות
+                                </Badge>
                               )}
                             </span>
                             {(userRole === "super_user" || userRole === "admin") && (

@@ -57,7 +57,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Brand, FranchiseeStatus, FranchiseeOwner, Document, Contact, ContactRole } from "@/db/schema";
+import type { Brand, FranchiseeStatus, Document, Contact, ContactRole } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
 import Link from "next/link";
 import {
@@ -151,10 +151,6 @@ interface FranchiseeFormData {
   state: string;
   postalCode: string;
   country: string;
-  primaryContactName: string;
-  primaryContactEmail: string;
-  primaryContactPhone: string;
-  owners: FranchiseeOwner[];
   openingDate: string;
   leaseOption1End: string;
   leaseOption2End: string;
@@ -176,10 +172,6 @@ const initialFormData: FranchiseeFormData = {
   state: "",
   postalCode: "",
   country: "",
-  primaryContactName: "",
-  primaryContactEmail: "",
-  primaryContactPhone: "",
-  owners: [],
   openingDate: "",
   leaseOption1End: "",
   leaseOption2End: "",
@@ -189,13 +181,6 @@ const initialFormData: FranchiseeFormData = {
   notes: "",
   hashavshevetItemKey: "",
   isActive: true,
-};
-
-const emptyOwner: FranchiseeOwner = {
-  name: "",
-  phone: "",
-  email: "",
-  ownershipPercentage: 0,
 };
 
 export default function AdminFranchiseesPage() {
@@ -245,9 +230,20 @@ export default function AdminFranchiseesPage() {
     email: "",
     role: "accountant" as ContactRole,
     notes: "",
+    ownershipPercentage: "",
   });
   const [isContactSubmittingInEdit, setIsContactSubmittingInEdit] = useState(false);
   const [deletingContactIdInEdit, setDeletingContactIdInEdit] = useState<string | null>(null);
+  // Pending contacts for create mode (saved after franchisee creation)
+  const [pendingContacts, setPendingContacts] = useState<Array<{
+    tempId: string;
+    name: string;
+    phone: string;
+    email: string;
+    role: ContactRole;
+    notes: string;
+    ownershipPercentage: string;
+  }>>([]);
 
   const { data: session, isPending } = authClient.useSession();
 
@@ -300,7 +296,7 @@ export default function AdminFranchiseesPage() {
       f.name.toLowerCase().includes(term) ||
       f.code?.toLowerCase().includes(term) ||
       f.aliases?.some((a) => a.toLowerCase().includes(term)) ||
-      f.primaryContactName?.toLowerCase().includes(term) ||
+      f.contacts?.some((c) => c.name.toLowerCase().includes(term)) ||
       f.city?.toLowerCase().includes(term)
     );
   }, [franchisees, searchTerm]);
@@ -382,7 +378,6 @@ export default function AdminFranchiseesPage() {
         body: JSON.stringify({
           ...data,
           aliases: data.aliases.length > 0 ? data.aliases : null,
-          owners: data.owners.length > 0 ? data.owners : null,
           openingDate: data.openingDate || null,
           leaseOption1End: data.leaseOption1End || null,
           leaseOption2End: data.leaseOption2End || null,
@@ -396,11 +391,36 @@ export default function AdminFranchiseesPage() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: async (result) => {
+      // Batch-create pending contacts for new franchisee
+      const franchiseeId = result.franchisee?.id;
+      if (franchiseeId && pendingContacts.length > 0) {
+        for (const pc of pendingContacts) {
+          try {
+            await fetch(`/api/franchisees/${franchiseeId}/contacts`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: pc.name,
+                phone: pc.phone || null,
+                email: pc.email || null,
+                role: pc.role,
+                notes: pc.notes || null,
+                ownershipPercentage: pc.role === "owner" && pc.ownershipPercentage
+                  ? parseFloat(pc.ownershipPercentage)
+                  : null,
+              }),
+            });
+          } catch (err) {
+            console.error("Error creating contact:", err);
+          }
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["franchisees"] });
       setShowForm(false);
       setEditingFranchisee(null);
       setFormData(initialFormData);
+      setPendingContacts([]);
     },
     onError: (error: Error) => {
       setFormError(error.message);
@@ -416,7 +436,6 @@ export default function AdminFranchiseesPage() {
         body: JSON.stringify({
           ...data,
           aliases: data.aliases.length > 0 ? data.aliases : null,
-          owners: data.owners.length > 0 ? data.owners : null,
           openingDate: data.openingDate || null,
           leaseOption1End: data.leaseOption1End || null,
           leaseOption2End: data.leaseOption2End || null,
@@ -471,10 +490,6 @@ export default function AdminFranchiseesPage() {
       state: franchisee.state || "",
       postalCode: franchisee.postalCode || "",
       country: franchisee.country || "",
-      primaryContactName: franchisee.primaryContactName || "",
-      primaryContactEmail: franchisee.primaryContactEmail || "",
-      primaryContactPhone: franchisee.primaryContactPhone || "",
-      owners: franchisee.owners || [],
       openingDate: franchisee.openingDate || "",
       leaseOption1End: franchisee.leaseOption1End || "",
       leaseOption2End: franchisee.leaseOption2End || "",
@@ -629,40 +644,19 @@ export default function AdminFranchiseesPage() {
     setEditingFranchisee(null);
     setFormData(initialFormData);
     setFormError(null);
+    setPendingContacts([]);
+    setShowContactFormInEdit(false);
   };
 
-  const addOwner = () => {
-    setFormData({
-      ...formData,
-      owners: [...formData.owners, { ...emptyOwner }],
-    });
-  };
-
-  const removeOwner = (index: number) => {
-    setFormData({
-      ...formData,
-      owners: formData.owners.filter((_, i) => i !== index),
-    });
-  };
-
-  const updateOwner = (
-    index: number,
-    field: keyof FranchiseeOwner,
-    value: string | number
-  ) => {
-    const newOwners = [...formData.owners];
-    newOwners[index] = { ...newOwners[index], [field]: value };
-    setFormData({ ...formData, owners: newOwners });
-  };
-
-  const handleAddContactInEdit = () => {
+  const handleAddContactInEdit = (presetRole?: ContactRole) => {
     setEditingContactIdInEdit(null);
     setContactFormInEdit({
       name: "",
       phone: "",
       email: "",
-      role: "accountant",
+      role: presetRole || "accountant",
       notes: "",
+      ownershipPercentage: "",
     });
     setShowContactFormInEdit(true);
   };
@@ -675,6 +669,7 @@ export default function AdminFranchiseesPage() {
       email: c.email || "",
       role: c.role,
       notes: c.notes || "",
+      ownershipPercentage: c.ownershipPercentage || "",
     });
     setShowContactFormInEdit(true);
   };
@@ -688,7 +683,60 @@ export default function AdminFranchiseesPage() {
       email: "",
       role: "accountant",
       notes: "",
+      ownershipPercentage: "",
     });
+  };
+
+  // Add contact to pending list (create mode)
+  const handleAddPendingContact = (presetRole?: ContactRole) => {
+    setEditingContactIdInEdit(null);
+    setContactFormInEdit({
+      name: "",
+      phone: "",
+      email: "",
+      role: presetRole || "accountant",
+      notes: "",
+      ownershipPercentage: "",
+    });
+    setShowContactFormInEdit(true);
+  };
+
+  const handleSavePendingContact = () => {
+    if (!contactFormInEdit.name.trim()) return;
+    if (editingContactIdInEdit) {
+      // Edit existing pending contact
+      setPendingContacts((prev) =>
+        prev.map((c) =>
+          c.tempId === editingContactIdInEdit
+            ? { ...contactFormInEdit, tempId: c.tempId }
+            : c
+        )
+      );
+    } else {
+      // Add new pending contact
+      setPendingContacts((prev) => [
+        ...prev,
+        { ...contactFormInEdit, tempId: crypto.randomUUID() },
+      ]);
+    }
+    handleCancelContactFormInEdit();
+  };
+
+  const handleEditPendingContact = (c: typeof pendingContacts[number]) => {
+    setEditingContactIdInEdit(c.tempId);
+    setContactFormInEdit({
+      name: c.name,
+      phone: c.phone,
+      email: c.email,
+      role: c.role,
+      notes: c.notes,
+      ownershipPercentage: c.ownershipPercentage,
+    });
+    setShowContactFormInEdit(true);
+  };
+
+  const handleRemovePendingContact = (tempId: string) => {
+    setPendingContacts((prev) => prev.filter((c) => c.tempId !== tempId));
   };
 
   const handleSaveContactInEdit = async () => {
@@ -1026,187 +1074,43 @@ export default function AdminFranchiseesPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* Primary Contact */}
-              <Collapsible defaultOpen={false}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
-                  <UserCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.primaryContact}</span>
-                  {(formData.primaryContactName || formData.primaryContactEmail) && (
-                    <Check className="h-3.5 w-3.5 text-green-500" />
-                  )}
-                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="primaryContactName">{he.admin.franchisees.form.fields.contactName}</Label>
-                    <Input
-                      id="primaryContactName"
-                      value={formData.primaryContactName}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          primaryContactName: e.target.value,
-                        })
-                      }
-                      placeholder={he.admin.franchisees.form.fields.contactNamePlaceholder}
-                      disabled={isSubmitting}
-                      dir="rtl"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="primaryContactPhone">{he.admin.franchisees.form.fields.contactPhone}</Label>
-                    <Input
-                      id="primaryContactPhone"
-                      value={formData.primaryContactPhone}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          primaryContactPhone: e.target.value,
-                        })
-                      }
-                      placeholder={he.admin.franchisees.form.fields.contactPhonePlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="primaryContactEmail">{he.admin.franchisees.form.fields.contactEmail}</Label>
-                    <Input
-                      id="primaryContactEmail"
-                      type="email"
-                      value={formData.primaryContactEmail}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          primaryContactEmail: e.target.value,
-                        })
-                      }
-                      placeholder={he.admin.franchisees.form.fields.contactEmailPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                </div>
-                </CollapsibleContent>
-              </Collapsible>
-
-              {/* Owners */}
-              <Collapsible defaultOpen={false}>
+              {/* Unified Contacts Section */}
+              <Collapsible defaultOpen={
+                editingFranchisee
+                  ? ((freshFranchisee || editingFranchisee)?.contacts?.length ?? 0) > 0
+                  : pendingContacts.length > 0
+              }>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <Users className="h-4 w-4" />
-                  <span className="text-sm font-medium">{he.admin.franchisees.form.sections.owners}</span>
-                  {formData.owners.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">{formData.owners.length}</Badge>
-                  )}
-                  <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
-                </CollapsibleTrigger>
-                <CollapsibleContent className="pt-3 space-y-4">
-                <div className="flex justify-end">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addOwner}
-                    disabled={isSubmitting}
-                  >
-                    <Plus className="h-4 w-4 me-1" />
-                    {he.admin.franchisees.form.owners.addOwner}
-                  </Button>
-                </div>
-
-                {formData.owners.map((owner, index) => (
-                  <div
-                    key={index}
-                    className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 border rounded-lg relative"
-                  >
-                    <div className="space-y-2">
-                      <Label>{he.admin.franchisees.form.fields.ownerName} *</Label>
-                      <Input
-                        value={owner.name}
-                        onChange={(e) =>
-                          updateOwner(index, "name", e.target.value)
-                        }
-                        placeholder={he.admin.franchisees.form.fields.ownerNamePlaceholder}
-                        disabled={isSubmitting}
-                        dir="rtl"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{he.admin.franchisees.form.fields.ownerPhone}</Label>
-                      <Input
-                        value={owner.phone}
-                        onChange={(e) =>
-                          updateOwner(index, "phone", e.target.value)
-                        }
-                        placeholder={he.common.phone}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{he.admin.franchisees.form.fields.ownerEmail}</Label>
-                      <Input
-                        type="email"
-                        value={owner.email}
-                        onChange={(e) =>
-                          updateOwner(index, "email", e.target.value)
-                        }
-                        placeholder={he.common.email}
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{he.admin.franchisees.form.fields.ownershipPercentage}</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="100"
-                        value={owner.ownershipPercentage}
-                        onChange={(e) =>
-                          updateOwner(
-                            index,
-                            "ownershipPercentage",
-                            parseFloat(e.target.value) || 0
-                          )
-                        }
-                        placeholder="0-100"
-                        disabled={isSubmitting}
-                      />
-                    </div>
-                    <div className="flex items-end">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => removeOwner(index)}
-                        disabled={isSubmitting}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-                </CollapsibleContent>
-              </Collapsible>
-
-              {/* Additional Contacts (only in edit mode) */}
-              {editingFranchisee && (
-              <Collapsible defaultOpen={(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
-                  <Users className="h-4 w-4" />
-                  <span className="text-sm font-medium">אנשי קשר נוספים</span>
-                  {(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0 && (
-                    <Badge variant="secondary" className="text-xs">{(freshFranchisee || editingFranchisee)?.contacts.length}</Badge>
-                  )}
+                  <span className="text-sm font-medium">אנשי קשר</span>
+                  {(() => {
+                    const count = editingFranchisee
+                      ? ((freshFranchisee || editingFranchisee)?.contacts?.length ?? 0)
+                      : pendingContacts.length;
+                    return count > 0 ? (
+                      <Badge variant="secondary" className="text-xs">{count}</Badge>
+                    ) : null;
+                  })()}
                   <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
                 <CollapsibleContent className="pt-3 space-y-3">
-                  <div className="flex justify-end">
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 justify-end">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={handleAddContactInEdit}
+                      onClick={() => editingFranchisee ? handleAddContactInEdit("owner") : handleAddPendingContact("owner")}
+                      disabled={isSubmitting || showContactFormInEdit}
+                    >
+                      <Plus className="h-4 w-4 me-1" />
+                      הוספת בעלים
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => editingFranchisee ? handleAddContactInEdit() : handleAddPendingContact()}
                       disabled={isSubmitting || showContactFormInEdit}
                     >
                       <Plus className="h-4 w-4 me-1" />
@@ -1214,11 +1118,18 @@ export default function AdminFranchiseesPage() {
                     </Button>
                   </div>
 
+                  {!editingFranchisee && (
+                    <p className="text-xs text-muted-foreground">אנשי קשר יישמרו לאחר יצירת הזכיין</p>
+                  )}
+
                   {/* Contact Add/Edit Form */}
                   {showContactFormInEdit && (
                     <div className="p-4 border rounded-lg bg-muted/20 space-y-3">
                       <h4 className="font-medium text-sm">
-                        {editingContactIdInEdit ? "עריכת איש קשר" : "הוספת איש קשר חדש"}
+                        {editingContactIdInEdit
+                          ? (contactFormInEdit.role === "owner" ? "עריכת בעלים" : "עריכת איש קשר")
+                          : (contactFormInEdit.role === "owner" ? "הוספת בעלים" : "הוספת איש קשר חדש")
+                        }
                       </h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="space-y-1.5">
@@ -1277,6 +1188,22 @@ export default function AdminFranchiseesPage() {
                             disabled={isContactSubmittingInEdit}
                           />
                         </div>
+                        {contactFormInEdit.role === "owner" && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">אחוז בעלות</Label>
+                            <Input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={contactFormInEdit.ownershipPercentage}
+                              onChange={(e) =>
+                                setContactFormInEdit({ ...contactFormInEdit, ownershipPercentage: e.target.value })
+                              }
+                              placeholder="0-100"
+                              disabled={isContactSubmittingInEdit}
+                            />
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label className="text-xs">הערות</Label>
@@ -1303,8 +1230,11 @@ export default function AdminFranchiseesPage() {
                         <Button
                           type="button"
                           size="sm"
-                          onClick={handleSaveContactInEdit}
-                          disabled={isContactSubmittingInEdit || !contactFormInEdit.name.trim()}
+                          onClick={editingFranchisee ? handleSaveContactInEdit : handleSavePendingContact}
+                          disabled={
+                            (editingFranchisee ? isContactSubmittingInEdit : false) ||
+                            !contactFormInEdit.name.trim()
+                          }
                         >
                           {isContactSubmittingInEdit && (
                             <Loader2 className="h-4 w-4 animate-spin me-1" />
@@ -1315,20 +1245,101 @@ export default function AdminFranchiseesPage() {
                     </div>
                   )}
 
-                  {/* Existing Contacts List */}
-                  {(freshFranchisee || editingFranchisee)?.contacts && (freshFranchisee || editingFranchisee)?.contacts.length > 0 ? (
+                  {/* Contacts List - Edit Mode (from DB) */}
+                  {editingFranchisee && (() => {
+                    const contacts = (freshFranchisee || editingFranchisee)?.contacts || [];
+                    const owners = contacts.filter((c) => c.role === "owner");
+                    const others = contacts.filter((c) => c.role !== "owner");
+                    const sorted = [...owners, ...others];
+                    return sorted.length > 0 ? (
+                      <div className="space-y-2">
+                        {sorted.map((c) => (
+                          <div
+                            key={c.id}
+                            className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 text-sm font-medium">
+                                {c.name}
+                                <Badge variant="outline" className="text-xs">
+                                  {contactRoleLabels[c.role as ContactRole] || c.role}
+                                </Badge>
+                                {c.isPrimary && (
+                                  <Badge variant="secondary" className="text-xs">ראשי</Badge>
+                                )}
+                                {c.role === "owner" && c.ownershipPercentage && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {c.ownershipPercentage}% בעלות
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                {c.phone && (
+                                  <span className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {c.phone}
+                                  </span>
+                                )}
+                                {c.email && (
+                                  <span className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    {c.email}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0"
+                                onClick={() => handleEditContactInEdit(c)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 hover:text-destructive"
+                                onClick={() => handleDeleteContactInEdit(c.id)}
+                                disabled={deletingContactIdInEdit === c.id}
+                              >
+                                {deletingContactIdInEdit === c.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : !showContactFormInEdit ? (
+                      <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
+                    ) : null;
+                  })()}
+
+                  {/* Contacts List - Create Mode (pending) */}
+                  {!editingFranchisee && pendingContacts.length > 0 && (
                     <div className="space-y-2">
-                      {(freshFranchisee || editingFranchisee)?.contacts.map((c) => (
+                      {pendingContacts.map((c) => (
                         <div
-                          key={c.id}
+                          key={c.tempId}
                           className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
                         >
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 text-sm font-medium">
                               {c.name}
                               <Badge variant="outline" className="text-xs">
-                                {contactRoleLabels[c.role as ContactRole] || c.role}
+                                {contactRoleLabels[c.role] || c.role}
                               </Badge>
+                              {c.role === "owner" && c.ownershipPercentage && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {c.ownershipPercentage}% בעלות
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                               {c.phone && (
@@ -1351,7 +1362,7 @@ export default function AdminFranchiseesPage() {
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0"
-                              onClick={() => handleEditContactInEdit(c)}
+                              onClick={() => handleEditPendingContact(c)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
@@ -1360,25 +1371,21 @@ export default function AdminFranchiseesPage() {
                               variant="ghost"
                               size="sm"
                               className="h-7 w-7 p-0 hover:text-destructive"
-                              onClick={() => handleDeleteContactInEdit(c.id)}
-                              disabled={deletingContactIdInEdit === c.id}
+                              onClick={() => handleRemovePendingContact(c.tempId)}
                             >
-                              {deletingContactIdInEdit === c.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
+                              <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
                         </div>
                       ))}
                     </div>
-                  ) : !showContactFormInEdit ? (
-                    <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר נוספים</p>
-                  ) : null}
+                  )}
+
+                  {!editingFranchisee && pendingContacts.length === 0 && !showContactFormInEdit && (
+                    <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
-              )}
 
               {/* Important Dates */}
               <Collapsible defaultOpen={false}>
@@ -1752,8 +1759,8 @@ function FranchiseeCard({
             {franchisee.city && (
               <span className="text-xs text-muted-foreground">{franchisee.city}</span>
             )}
-            {franchisee.primaryContactName && (
-              <span className="text-xs text-muted-foreground">{franchisee.primaryContactName}</span>
+            {franchisee.contacts?.[0]?.name && (
+              <span className="text-xs text-muted-foreground">{franchisee.contacts[0].name}</span>
             )}
           </div>
         </div>
@@ -1849,35 +1856,6 @@ function FranchiseeCard({
             </div>
           )}
 
-          {/* Primary Contact */}
-          {(franchisee.primaryContactName ||
-            franchisee.primaryContactPhone ||
-            franchisee.primaryContactEmail) && (
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <UserCircle className="h-4 w-4" />
-                {he.admin.franchisees.card.primaryContact}
-              </div>
-              <div className="text-sm text-muted-foreground me-6 flex flex-wrap gap-4">
-                {franchisee.primaryContactName && (
-                  <span>{franchisee.primaryContactName}</span>
-                )}
-                {franchisee.primaryContactPhone && (
-                  <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" />
-                    {franchisee.primaryContactPhone}
-                  </span>
-                )}
-                {franchisee.primaryContactEmail && (
-                  <span className="flex items-center gap-1">
-                    <Mail className="h-3 w-3" />
-                    {franchisee.primaryContactEmail}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Contacts */}
           {franchisee.contacts && franchisee.contacts.length > 0 && (
             <div className="space-y-2">
@@ -1886,7 +1864,9 @@ function FranchiseeCard({
                 אנשי קשר ({franchisee.contacts.length})
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 me-6">
-                {franchisee.contacts.map((contact) => (
+                {[...franchisee.contacts]
+                  .sort((a, b) => (a.role === "owner" ? -1 : 1) - (b.role === "owner" ? -1 : 1))
+                  .map((contact) => (
                   <div
                     key={contact.id}
                     className="text-sm bg-muted/50 rounded p-2 space-y-1"
@@ -1898,6 +1878,11 @@ function FranchiseeCard({
                       </Badge>
                       {contact.isPrimary && (
                         <Badge variant="secondary" className="text-xs">ראשי</Badge>
+                      )}
+                      {contact.role === "owner" && contact.ownershipPercentage && (
+                        <Badge variant="secondary" className="text-xs">
+                          {contact.ownershipPercentage}% בעלות
+                        </Badge>
                       )}
                     </div>
                     <div className="flex flex-wrap gap-3 text-muted-foreground text-xs">
