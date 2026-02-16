@@ -68,9 +68,11 @@ import {
   Pencil,
   Trash2,
   Save,
+  ChevronDown,
 } from "lucide-react";
 import type { FranchiseeStatus, Document, FranchiseeReminderType, ReminderStatus, Contact, ContactRole } from "@/db/schema";
 import type { FranchiseeWithBrandAndContacts } from "@/data-access/franchisees";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DocumentManager } from "@/components/document-manager";
 import { formatCurrency } from "@/lib/translations";
 
@@ -263,6 +265,7 @@ export function FranchiseeDetailCard({
 
   // Contact form state
   const [showContactForm, setShowContactForm] = useState(false);
+  const [contactsOpen, setContactsOpen] = useState(false);
   const [editingContactId, setEditingContactId] = useState<string | null>(null);
   const [contactForm, setContactForm] = useState<ContactFormData>(emptyContactForm);
   const [isContactSubmitting, setIsContactSubmitting] = useState(false);
@@ -942,80 +945,90 @@ export function FranchiseeDetailCard({
 
                   {/* Contacts List - owners first, then others */}
                   {franchisee.contacts && franchisee.contacts.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {[...franchisee.contacts]
-                        .sort((a, b) => (a.role === "owner" ? -1 : 1) - (b.role === "owner" ? -1 : 1))
-                        .map((c) => (
-                        <div
-                          key={c.id}
-                          className="p-3 border rounded-lg bg-muted/30 space-y-2"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium flex items-center gap-2 flex-wrap">
-                              {c.name}
-                              <Badge variant="outline" className="text-xs">
-                                {contactRoleLabels[c.role] || c.role}
-                              </Badge>
-                              {c.isPrimary && (
-                                <Badge variant="secondary" className="text-xs">ראשי</Badge>
-                              )}
-                              {c.role === "owner" && c.ownershipPercentage && (
-                                <Badge variant="secondary" className="text-xs">
-                                  {c.ownershipPercentage}% בעלות
-                                </Badge>
-                              )}
-                            </span>
-                            {(userRole === "super_user" || userRole === "admin") && (
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0"
-                                  onClick={() => handleEditContact(c)}
-                                  disabled={isContactSubmitting}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 w-7 p-0 hover:text-destructive"
-                                  onClick={() => handleDeleteContact(c.id)}
-                                  disabled={deletingContactId === c.id}
-                                >
-                                  {deletingContactId === c.id ? (
-                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3.5 w-3.5" />
+                    <Collapsible open={contactsOpen || showContactForm} onOpenChange={setContactsOpen}>
+                      <CollapsibleTrigger asChild>
+                        <Button variant="ghost" size="sm" className="w-full justify-between px-2 h-8 text-xs text-muted-foreground hover:text-foreground">
+                          <span>{contactsOpen || showContactForm ? "הסתר אנשי קשר" : "הצג אנשי קשר"}</span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${contactsOpen || showContactForm ? "rotate-180" : ""}`} />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+                          {[...franchisee.contacts]
+                            .sort((a, b) => (a.role === "owner" ? -1 : 1) - (b.role === "owner" ? -1 : 1))
+                            .map((c) => (
+                            <div
+                              key={c.id}
+                              className="p-3 border rounded-lg bg-muted/30 space-y-2"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-medium flex items-center gap-2 flex-wrap">
+                                  {c.name}
+                                  <Badge variant="outline" className="text-xs">
+                                    {contactRoleLabels[c.role] || c.role}
+                                  </Badge>
+                                  {c.isPrimary && (
+                                    <Badge variant="secondary" className="text-xs">ראשי</Badge>
                                   )}
-                                </Button>
+                                  {c.role === "owner" && c.ownershipPercentage && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      {c.ownershipPercentage}% בעלות
+                                    </Badge>
+                                  )}
+                                </span>
+                                {(userRole === "super_user" || userRole === "admin") && (
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0"
+                                      onClick={() => handleEditContact(c)}
+                                      disabled={isContactSubmitting}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0 hover:text-destructive"
+                                      onClick={() => handleDeleteContact(c.id)}
+                                      disabled={deletingContactId === c.id}
+                                    >
+                                      {deletingContactId === c.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      )}
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
-                          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                            {c.phone && (
-                              <span className="flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                <a href={`tel:${c.phone}`} className="hover:underline">
-                                  {c.phone}
-                                </a>
-                              </span>
-                            )}
-                            {c.email && (
-                              <span className="flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                <a href={`mailto:${c.email}`} className="hover:underline">
-                                  {c.email}
-                                </a>
-                              </span>
-                            )}
-                          </div>
-                          {c.notes && (
-                            <p className="text-xs text-muted-foreground">{c.notes}</p>
-                          )}
+                              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                {c.phone && (
+                                  <span className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    <a href={`tel:${c.phone}`} className="hover:underline">
+                                      {c.phone}
+                                    </a>
+                                  </span>
+                                )}
+                                {c.email && (
+                                  <span className="flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    <a href={`mailto:${c.email}`} className="hover:underline">
+                                      {c.email}
+                                    </a>
+                                  </span>
+                                )}
+                              </div>
+                              {c.notes && (
+                                <p className="text-xs text-muted-foreground">{c.notes}</p>
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   ) : !showContactForm ? (
                     <p className="text-muted-foreground text-sm">לא הוגדרו אנשי קשר</p>
                   ) : null}

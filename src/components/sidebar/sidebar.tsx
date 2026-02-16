@@ -174,11 +174,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 icon: <Scale className="h-4 w-4" />,
               },
               {
-                label: he.sidebar.subNavigation.filesReport,
-                href: "/admin/reports/files",
-                icon: <Files className="h-4 w-4" />,
-              },
-              {
                 label: he.sidebar.subNavigation.supplierFilesReport,
                 href: "/admin/reports/supplier-files",
                 icon: <FileUp className="h-4 w-4" />,
@@ -279,6 +274,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.depositsReport,
                 href: "/admin/reports/deposits",
                 icon: <FileBarChart className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.filesReport,
+                href: "/admin/reports/files",
+                icon: <Files className="h-4 w-4" />,
               },
             ],
           },
