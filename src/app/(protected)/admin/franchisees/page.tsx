@@ -1788,25 +1788,6 @@ function FranchiseeCard({
             size="sm"
             variant="ghost"
             className="h-7 px-2"
-            onClick={onToggleDocuments}
-            disabled={isLoadingDocuments}
-            title={he.admin.franchisees.card.documents}
-          >
-            {isLoadingDocuments ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <>
-                <FileText className="h-3.5 w-3.5" />
-                {documents.length > 0 && (
-                  <span className="text-xs ms-0.5">{documents.length}</span>
-                )}
-              </>
-            )}
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2"
             onClick={onToggleHistory}
             disabled={isLoadingHistory}
             title={he.admin.franchisees.card.history}
