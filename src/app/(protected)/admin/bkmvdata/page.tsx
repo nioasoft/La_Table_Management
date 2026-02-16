@@ -67,7 +67,7 @@ import {
   Upload,
   Clock,
   FileCheck,
-  ExternalLink,
+  Download,
   Ban,
   BarChart3,
   DollarSign,
@@ -2192,11 +2192,28 @@ export default function BkmvDataPage() {
                                 </Button>
                               </a>
                               {item.fileUrl && (
-                                <a href={item.fileUrl} target="_blank" rel="noopener noreferrer">
-                                  <Button size="sm" variant="ghost" className="gap-1">
-                                    <ExternalLink className="h-3 w-3" />
-                                  </Button>
-                                </a>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="gap-1"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(item.fileUrl);
+                                      const blob = await res.blob();
+                                      const url = URL.createObjectURL(blob);
+                                      const a = document.createElement("a");
+                                      a.href = url;
+                                      a.download = item.fileName || "BKMVDATA.txt";
+                                      a.click();
+                                      URL.revokeObjectURL(url);
+                                    } catch {
+                                      // Fallback: open in new tab
+                                      window.open(item.fileUrl, "_blank");
+                                    }
+                                  }}
+                                >
+                                  <Download className="h-3 w-3" />
+                                </Button>
                               )}
                             </div>
                           </TableCell>
