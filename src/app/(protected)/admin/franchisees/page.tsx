@@ -1075,11 +1075,7 @@ export default function AdminFranchiseesPage() {
               </Collapsible>
 
               {/* Unified Contacts Section */}
-              <Collapsible defaultOpen={
-                editingFranchisee
-                  ? ((freshFranchisee || editingFranchisee)?.contacts?.length ?? 0) > 0
-                  : pendingContacts.length > 0
-              }>
+              <Collapsible defaultOpen={false}>
                 <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
                   <Users className="h-4 w-4" />
                   <span className="text-sm font-medium">אנשי קשר</span>
