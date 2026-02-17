@@ -44,6 +44,7 @@ import {
   Menu,
   Archive,
   PiggyBank,
+  UserRound,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -143,6 +144,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.franchisees,
                 href: "/admin/franchisees",
                 icon: <Building2 className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.staff,
+                href: "/admin/staff",
+                icon: <UserRound className="h-4 w-4" />,
               },
             ],
           },

@@ -2665,6 +2665,68 @@ export type UpdateContactData = Partial<Omit<CreateContactData, "id" | "createdA
 export type ContactRole = (typeof contactRoleEnum.enumValues)[number];
 
 // ============================================================================
+// STAFF CONTACTS TABLE (HQ/Management Staff Directory)
+// ============================================================================
+
+export const staffRoleEnum = pgEnum("staff_role", [
+  "back_office",   // בק אופיס
+  "consultant",    // יועצים
+  "owner",         // בעלים
+  "chain_chef",    // שף רשת
+  "brand_manager", // מנהל מותג
+]);
+
+export const staffContact = pgTable(
+  "staff_contact",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    role: staffRoleEnum("role").notNull(),
+    // null = group-level ("קבוצת לה טייבל"), otherwise brand-specific
+    brandId: text("brand_id").references(() => brand.id, {
+      onDelete: "set null",
+    }),
+    isActive: boolean("is_active")
+      .$default(() => true)
+      .notNull(),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_staff_contact_brand").on(table.brandId),
+    index("idx_staff_contact_role").on(table.role),
+    index("idx_staff_contact_is_active").on(table.isActive),
+  ]
+);
+
+// Staff contact relations
+export const staffContactRelations = relations(staffContact, ({ one }) => ({
+  brand: one(brand, {
+    fields: [staffContact.brandId],
+    references: [brand.id],
+  }),
+  createdByUser: one(user, {
+    fields: [staffContact.createdBy],
+    references: [user.id],
+  }),
+}));
+
+// Staff contact types
+export type StaffContact = typeof staffContact.$inferSelect;
+export type CreateStaffContactData = typeof staffContact.$inferInsert;
+export type UpdateStaffContactData = Partial<Omit<CreateStaffContactData, "id" | "createdAt">>;
+export type StaffRole = (typeof staffRoleEnum.enumValues)[number];
+
+// ============================================================================
 // RECONCILIATION V2 TABLES (Supplier Reconciliation Module)
 // ============================================================================
 

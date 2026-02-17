@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ExcelExportButton } from "@/components/reports/report-export-button";
-import { Store, Building2 } from "lucide-react";
+import { Store, Building2, UserRound } from "lucide-react";
 
 export default function ContactReportsPage() {
   return (
@@ -16,11 +16,11 @@ export default function ContactReportsPage() {
       <div>
         <h1 className="text-2xl font-bold">ייצוא דוחות אנשי קשר</h1>
         <p className="text-muted-foreground mt-1">
-          ייצוא רשימות אנשי קשר של זכיינים וספקים לקובץ אקסל
+          ייצוא רשימות אנשי קשר של זכיינים, ספקים ואנשי מטה לקובץ אקסל
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -53,6 +53,24 @@ export default function ContactReportsPage() {
             <ExcelExportButton
               endpoint="/api/reports/contacts/suppliers/export"
               reportType="supplier-contacts"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <UserRound className="h-5 w-5 text-primary" />
+              <CardTitle>דוח אנשי מטה</CardTitle>
+            </div>
+            <CardDescription>
+              רשימת כל אנשי המטה עם פרטי קשר ותפקידים
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ExcelExportButton
+              endpoint="/api/reports/contacts/staff/export"
+              reportType="staff-contacts"
             />
           </CardContent>
         </Card>

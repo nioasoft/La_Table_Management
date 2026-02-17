@@ -3221,6 +3221,7 @@ export const he = {
       // Data Management
       suppliers: "ספקים",
       franchisees: "זכיינים",
+      staff: "אנשי מטה",
       brands: "מותגים",
       bkmvdata: "מבנה אחיד",
       supplierFiles: "קבצי ספקים",
@@ -3254,6 +3255,67 @@ export const he = {
     // Toggle
     collapse: "כווץ תפריט",
     expand: "הרחב תפריט",
+  },
+
+  // ==========================================================================
+  // STAFF CONTACTS - HQ Staff Directory
+  // ==========================================================================
+  staffContacts: {
+    title: "אנשי מטה",
+    description: "ניהול אנשי מטה של קבוצת לה טייבל",
+    addButton: "הוסף איש מטה",
+    editTitle: "עריכת איש מטה",
+    createTitle: "הוספת איש מטה חדש",
+    group: "קבוצת לה טייבל",
+
+    // Form labels
+    form: {
+      name: "שם",
+      phone: "טלפון",
+      email: "אימייל",
+      role: "תפקיד",
+      brand: "מותג",
+      namePlaceholder: "שם איש מטה",
+      phonePlaceholder: "050-0000000",
+      emailPlaceholder: "email@example.com",
+    },
+
+    // Role labels
+    roles: {
+      back_office: "בק אופיס",
+      consultant: "יועצים",
+      owner: "בעלים",
+      chain_chef: "שף רשת",
+      brand_manager: "מנהל מותג",
+    },
+
+    // Filters
+    filters: {
+      allBrands: "כל המותגים",
+      allRoles: "כל התפקידים",
+    },
+
+    // Table
+    table: {
+      name: "שם",
+      phone: "טלפון",
+      email: "אימייל",
+      role: "תפקיד",
+      brand: "מותג / קבוצה",
+      actions: "פעולות",
+    },
+
+    // Empty state
+    empty: "לא נמצאו אנשי מטה. לחץ על \"הוסף איש מטה\" להתחלה.",
+
+    // Delete
+    deleteTitle: "מחיקת איש מטה",
+    deleteDescription: "האם אתה בטוח שברצונך למחוק את",
+    deleteConfirm: "מחק",
+
+    // Export
+    exportTitle: "דוח אנשי מטה",
+    exportDescription: "רשימת כל אנשי המטה עם פרטי קשר ותפקידים",
   },
 } as const;
 
