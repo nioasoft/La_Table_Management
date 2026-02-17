@@ -51,6 +51,7 @@ import {
   AlertTriangle,
   FileText,
   Calendar,
+  CalendarRange,
   Building2,
   ArrowRight,
   Check,
@@ -82,6 +83,7 @@ interface RevenueAccount {
   totalAmount: number;
   transactionCount: number;
   isConfirmed: boolean;
+  monthlyBreakdown?: Record<string, number>;
 }
 
 interface FileDetails {
@@ -122,6 +124,13 @@ interface FileDetails {
     processedAt: string;
     matchedFranchiseeId: string | null;
     confirmedRevenueAccountCode: string | null;
+    monthlyBreakdown: Record<string, Array<{
+      supplierId: string | null;
+      supplierName: string;
+      amount: number;
+      transactionCount: number;
+    }>> | null;
+    revenueMonthlyBreakdown: Record<string, number> | null;
   } | null;
   supplierMatches: SupplierMatch[];
   revenueAccounts: RevenueAccount[];
@@ -146,6 +155,9 @@ export default function FileDetailsPage() {
   // Revenue account state
   const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
   const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
+  // Date filter state
+  const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
+  const [selectedMonthEnd, setSelectedMonthEnd] = useState<string>("");
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -212,15 +224,114 @@ export default function FileDetailsPage() {
     return { available, alreadyMatched };
   }, [sortedSuppliers, alreadyMatchedSupplierIds]);
 
-  const filteredMatches = useMemo(() => {
+  // Extract available months from monthlyBreakdown
+  const availableMonths = useMemo(() => {
+    const mb = fileData?.processingResult?.monthlyBreakdown;
+    if (!mb) return [];
+    return Object.keys(mb).sort();
+  }, [fileData?.processingResult?.monthlyBreakdown]);
+
+  const hasMonthlyBreakdown = availableMonths.length > 0;
+  const isDateFilterActive = hasMonthlyBreakdown && selectedMonthStart !== "";
+
+  // Format YYYY-MM to Hebrew month label
+  const formatMonthLabel = useCallback((yyyymm: string) => {
+    const [year, month] = yyyymm.split("-");
+    const monthNames = [
+      "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+      "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+    ];
+    return `${monthNames[parseInt(month, 10) - 1]} ${year}`;
+  }, []);
+
+  // Filter end month options to be >= start month
+  const endMonthOptions = useMemo(() => {
+    if (!selectedMonthStart) return availableMonths;
+    return availableMonths.filter((m) => m >= selectedMonthStart);
+  }, [availableMonths, selectedMonthStart]);
+
+  // Re-aggregate supplier matches based on date filter
+  const dateFilteredMatches = useMemo(() => {
     const matches = fileData?.supplierMatches || [];
+    const mb = fileData?.processingResult?.monthlyBreakdown;
+    if (!isDateFilterActive || !mb) return matches;
+
+    const effectiveEnd = selectedMonthEnd || selectedMonthStart;
+
+    // Aggregate amounts per bkmvName for selected months
+    const aggregated = new Map<string, { amount: number; transactionCount: number }>();
+    for (const [month, entries] of Object.entries(mb)) {
+      if (month < selectedMonthStart || month > effectiveEnd) continue;
+      for (const entry of entries) {
+        const existing = aggregated.get(entry.supplierName);
+        if (existing) {
+          existing.amount += entry.amount;
+          existing.transactionCount += entry.transactionCount;
+        } else {
+          aggregated.set(entry.supplierName, {
+            amount: entry.amount,
+            transactionCount: entry.transactionCount,
+          });
+        }
+      }
+    }
+
+    // Overlay filtered amounts onto original matches (preserve match metadata)
+    return matches.map((match) => {
+      const filtered = aggregated.get(match.bkmvName);
+      return {
+        ...match,
+        amount: filtered?.amount ?? 0,
+        transactionCount: filtered?.transactionCount ?? 0,
+      };
+    });
+  }, [fileData?.supplierMatches, fileData?.processingResult?.monthlyBreakdown, isDateFilterActive, selectedMonthStart, selectedMonthEnd]);
+
+  // Filtered revenue accounts based on date filter
+  const filteredRevenueAccounts = useMemo(() => {
+    const accounts = fileData?.revenueAccounts || [];
+    if (!isDateFilterActive) return accounts;
+
+    const effectiveEnd = selectedMonthEnd || selectedMonthStart;
+
+    return accounts.map((account) => {
+      if (!account.monthlyBreakdown) return account;
+      let filteredAmount = 0;
+      let filteredCount = 0;
+      for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
+        if (month >= selectedMonthStart && month <= effectiveEnd) {
+          filteredAmount += amount;
+          filteredCount++; // count months with data
+        }
+      }
+      return {
+        ...account,
+        totalAmount: filteredAmount,
+      };
+    });
+  }, [fileData?.revenueAccounts, isDateFilterActive, selectedMonthStart, selectedMonthEnd]);
+
+  // Filtered total for the indicator
+  const dateFilteredTotal = useMemo(() => {
+    if (!isDateFilterActive) return null;
+    let totalAmount = 0;
+    let totalTransactions = 0;
+    for (const m of dateFilteredMatches) {
+      totalAmount += m.amount;
+      totalTransactions += m.transactionCount;
+    }
+    return { totalAmount, totalTransactions };
+  }, [isDateFilterActive, dateFilteredMatches]);
+
+  const filteredMatches = useMemo(() => {
+    const matches = dateFilteredMatches;
     if (!searchQuery.trim()) return matches;
     const query = searchQuery.trim().toLowerCase();
     return matches.filter((m) =>
       m.bkmvName.toLowerCase().includes(query) ||
       m.matchedSupplierName?.toLowerCase().includes(query)
     );
-  }, [fileData?.supplierMatches, searchQuery]);
+  }, [dateFilteredMatches, searchQuery]);
 
   // Review action mutation
   const reviewMutation = useMutation({
@@ -527,6 +638,92 @@ export default function FileDetailsPage() {
         </Card>
       </div>
 
+      {/* Date Filter */}
+      {hasMonthlyBreakdown && (
+        <Card className={`mb-6 ${isDateFilterActive ? "border-blue-300 bg-blue-50/30" : ""}`}>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarRange className="h-5 w-5" />
+              סינון לפי תקופה
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-muted-foreground whitespace-nowrap">מחודש</label>
+                <Select
+                  value={selectedMonthStart}
+                  onValueChange={(val) => {
+                    setSelectedMonthStart(val);
+                    // Reset end month if it's now before start
+                    if (selectedMonthEnd && selectedMonthEnd < val) {
+                      setSelectedMonthEnd("");
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="בחר חודש..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableMonths.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {formatMonthLabel(month)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-muted-foreground whitespace-nowrap">עד חודש</label>
+                <Select
+                  value={selectedMonthEnd}
+                  onValueChange={setSelectedMonthEnd}
+                  disabled={!selectedMonthStart}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder={selectedMonthStart ? "עד (אופציונלי)..." : "בחר חודש התחלה קודם"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {endMonthOptions.map((month) => (
+                      <SelectItem key={month} value={month}>
+                        {formatMonthLabel(month)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {isDateFilterActive && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedMonthStart("");
+                    setSelectedMonthEnd("");
+                  }}
+                >
+                  <X className="h-4 w-4 ms-1" />
+                  נקה סינון
+                </Button>
+              )}
+            </div>
+            {isDateFilterActive && dateFilteredTotal && (
+              <div className="mt-3 flex items-center gap-4 text-sm">
+                <Badge variant="secondary" className="gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {selectedMonthEnd && selectedMonthEnd !== selectedMonthStart
+                    ? `${formatMonthLabel(selectedMonthStart)} - ${formatMonthLabel(selectedMonthEnd)}`
+                    : formatMonthLabel(selectedMonthStart)}
+                </Badge>
+                <span className="text-muted-foreground">
+                  סה״כ מסונן: <span className="font-mono font-medium text-foreground">{formatAmount(dateFilteredTotal.totalAmount)}</span>
+                  {" "}({dateFilteredTotal.totalTransactions} עסקאות)
+                </span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Review Info (if reviewed) */}
       {isReviewed && file.reviewedAt && (
         <Card className="mb-6">
@@ -574,7 +771,7 @@ export default function FileDetailsPage() {
               onValueChange={setSelectedRevenueAccount}
               className="space-y-3"
             >
-              {revenueAccounts.map((account) => (
+              {filteredRevenueAccounts.map((account) => (
                 <div
                   key={account.accountCode}
                   className={`flex items-center gap-4 p-3 rounded-lg border ${

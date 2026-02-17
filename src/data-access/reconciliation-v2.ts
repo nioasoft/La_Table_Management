@@ -25,7 +25,7 @@ import {
   type SupplierFileProcessingResult,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull } from "drizzle-orm";
+import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, inArray } from "drizzle-orm";
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
@@ -263,7 +263,7 @@ export async function createReconciliationSession(
     .where(
       fileIdsToLoad.length === 1
         ? eq(supplierFileUpload.id, fileIdsToLoad[0])
-        : sql`${supplierFileUpload.id} = ANY(${fileIdsToLoad})`
+        : inArray(supplierFileUpload.id, fileIdsToLoad)
     );
 
   if (!supplierFileData.length) return null;
@@ -713,7 +713,7 @@ export async function bulkApproveComparisons(
     })
     .where(
       and(
-        sql`${reconciliationComparison.id} = ANY(${comparisonIds})`,
+        inArray(reconciliationComparison.id, comparisonIds),
         eq(reconciliationComparison.status, "needs_review")
       )
     )

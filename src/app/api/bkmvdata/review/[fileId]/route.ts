@@ -113,6 +113,8 @@ export async function GET(
         processedAt: processingResult.processedAt,
         matchedFranchiseeId: processingResult.matchedFranchiseeId,
         confirmedRevenueAccountCode: processingResult.confirmedRevenueAccountCode,
+        monthlyBreakdown: processingResult.monthlyBreakdown ?? null,
+        revenueMonthlyBreakdown: processingResult.revenueMonthlyBreakdown ?? null,
       } : null,
       supplierMatches: enrichedMatches,
       revenueAccounts: processingResult?.revenueAccounts || [],
