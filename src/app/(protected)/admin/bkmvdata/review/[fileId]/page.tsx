@@ -510,96 +510,117 @@ export default function FileDetailsPage() {
   const isReviewed = file.processingStatus === "approved" || file.processingStatus === "rejected";
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto px-4 py-3">
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-4 flex items-start justify-between">
         <div>
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-2 mb-1">
             <Link href="/admin/bkmvdata/review">
-              <Button variant="ghost" size="sm">
-                <ArrowRight className="h-4 w-4 ms-1" />
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
+                <ArrowRight className="h-3.5 w-3.5 ms-1" />
                 חזרה
               </Button>
             </Link>
-            <h1 className="text-2xl font-bold">פרטי קובץ לסקירה</h1>
+            <h1 className="text-lg font-bold">פרטי קובץ לסקירה</h1>
           </div>
-          <p className="text-muted-foreground">{file.fileName}</p>
+          <p className="text-sm text-muted-foreground">{file.fileName}</p>
         </div>
         {!isReviewed && (
           <div className="flex gap-2">
             <Button
-              variant="default"
+              size="sm"
               className="bg-green-600 hover:bg-green-700"
               onClick={() => setIsApproveDialogOpen(true)}
             >
-              <Check className="h-4 w-4 ms-2" />
+              <Check className="h-3.5 w-3.5 ms-1.5" />
               אשר קובץ
             </Button>
             <Button
+              size="sm"
               variant="destructive"
               onClick={() => setIsRejectDialogOpen(true)}
             >
-              <X className="h-4 w-4 ms-2" />
+              <X className="h-3.5 w-3.5 ms-1.5" />
               דחה קובץ
             </Button>
           </div>
         )}
         {isReviewed && (
-          <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"} className="text-base px-4 py-2">
+          <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"} className="text-sm px-3 py-1">
             {file.processingStatus === "approved" ? "אושר" : "נדחה"}
           </Badge>
         )}
       </div>
 
       {/* File Info & Stats */}
-      <div className="grid gap-6 md:grid-cols-2 mb-6">
+      <div className="grid gap-3 md:grid-cols-2 mb-4">
         {/* File Info Card */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <FileText className="h-4 w-4" />
               פרטי קובץ
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <CardContent className="px-4 pb-3 pt-0 space-y-2">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
               <div>
-                <p className="text-muted-foreground">שם קובץ</p>
-                <p className="font-medium">{file.fileName}</p>
+                <p className="text-xs text-muted-foreground">שם קובץ</p>
+                <p className="font-medium text-sm">{file.fileName}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">גודל</p>
-                <p className="font-medium">{formatFileSize(file.fileSize)}</p>
+                <p className="text-xs text-muted-foreground">גודל</p>
+                <p className="font-medium text-sm">{formatFileSize(file.fileSize)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">תאריך העלאה</p>
-                <p className="font-medium">{formatDate(file.uploadedAt)}</p>
+                <p className="text-xs text-muted-foreground">תאריך העלאה</p>
+                <p className="font-medium text-sm">{formatDate(file.uploadedAt)}</p>
               </div>
               <div>
-                <p className="text-muted-foreground">מייל מעלה</p>
-                <p className="font-medium">{file.uploadedByEmail || "לא צוין"}</p>
+                <p className="text-xs text-muted-foreground">מייל מעלה</p>
+                <p className="font-medium text-sm">{file.uploadedByEmail || "לא צוין"}</p>
               </div>
               {processingResult?.dateRange && (
-                <>
-                  <div className="col-span-2">
-                    <p className="text-muted-foreground">תקופה בקובץ</p>
-                    <p className="font-medium">
-                      {new Date(processingResult.dateRange.startDate).toLocaleDateString("he-IL")}
-                      {" - "}
-                      {new Date(processingResult.dateRange.endDate).toLocaleDateString("he-IL")}
-                    </p>
-                  </div>
-                </>
+                <div className="col-span-2">
+                  <p className="text-xs text-muted-foreground">תקופה בקובץ</p>
+                  <p className="font-medium text-sm">
+                    {new Date(processingResult.dateRange.startDate).toLocaleDateString("he-IL")}
+                    {" - "}
+                    {new Date(processingResult.dateRange.endDate).toLocaleDateString("he-IL")}
+                  </p>
+                </div>
               )}
             </div>
             {franchisee && (
-              <div className="mt-4 p-3 bg-muted rounded-lg">
+              <div className="mt-2 p-2 bg-muted rounded">
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                   <div>
-                    <p className="font-medium">{franchisee.name}</p>
-                    <p className="text-sm text-muted-foreground">קוד: {franchisee.code}</p>
+                    <p className="font-medium text-sm">{franchisee.name}</p>
+                    <p className="text-xs text-muted-foreground">קוד: {franchisee.code}</p>
                   </div>
+                </div>
+              </div>
+            )}
+            {isReviewed && file.reviewedAt && (
+              <div className="mt-2 pt-2 border-t">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">תאריך סקירה</p>
+                    <p className="font-medium text-sm">{formatDate(file.reviewedAt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">סטטוס</p>
+                    <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"} className="text-xs">
+                      {file.processingStatus === "approved" ? "אושר" : "נדחה"}
+                    </Badge>
+                  </div>
+                  {file.reviewNotes && (
+                    <div className="col-span-2 mt-1">
+                      <p className="text-xs text-muted-foreground">הערות</p>
+                      <p className="font-medium text-sm">{file.reviewNotes}</p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -608,31 +629,31 @@ export default function FileDetailsPage() {
 
         {/* Stats Card */}
         <Card>
-          <CardHeader>
-            <CardTitle>סטטיסטיקות התאמה</CardTitle>
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-sm font-semibold">סטטיסטיקות התאמה</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-3 pt-0">
             {processingResult?.matchStats ? (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-4 bg-muted rounded-lg">
-                  <p className="text-3xl font-bold">{processingResult.matchStats.total}</p>
-                  <p className="text-sm text-muted-foreground">סה״כ ספקים</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="text-center p-2.5 bg-muted rounded">
+                  <p className="text-2xl font-bold">{processingResult.matchStats.total}</p>
+                  <p className="text-xs text-muted-foreground">סה״כ ספקים</p>
                 </div>
-                <div className="text-center p-4 bg-green-50 rounded-lg">
-                  <p className="text-3xl font-bold text-green-600">{processingResult.matchStats.exactMatches}</p>
-                  <p className="text-sm text-muted-foreground">התאמות מלאות</p>
+                <div className="text-center p-2.5 bg-green-50 rounded">
+                  <p className="text-2xl font-bold text-green-600">{processingResult.matchStats.exactMatches}</p>
+                  <p className="text-xs text-muted-foreground">התאמות מלאות</p>
                 </div>
-                <div className="text-center p-4 bg-amber-50 rounded-lg">
-                  <p className="text-3xl font-bold text-amber-600">{processingResult.matchStats.fuzzyMatches}</p>
-                  <p className="text-sm text-muted-foreground">התאמות חלקיות</p>
+                <div className="text-center p-2.5 bg-amber-50 rounded">
+                  <p className="text-2xl font-bold text-amber-600">{processingResult.matchStats.fuzzyMatches}</p>
+                  <p className="text-xs text-muted-foreground">התאמות חלקיות</p>
                 </div>
-                <div className="text-center p-4 bg-red-50 rounded-lg">
-                  <p className="text-3xl font-bold text-red-600">{processingResult.matchStats.unmatched}</p>
-                  <p className="text-sm text-muted-foreground">לא מותאמים</p>
+                <div className="text-center p-2.5 bg-red-50 rounded">
+                  <p className="text-2xl font-bold text-red-600">{processingResult.matchStats.unmatched}</p>
+                  <p className="text-xs text-muted-foreground">לא מותאמים</p>
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground">אין נתוני עיבוד</p>
+              <p className="text-muted-foreground text-sm">אין נתוני עיבוד</p>
             )}
           </CardContent>
         </Card>
@@ -640,17 +661,17 @@ export default function FileDetailsPage() {
 
       {/* Date Filter */}
       {hasMonthlyBreakdown && (
-        <Card className={`mb-6 ${isDateFilterActive ? "border-blue-300 bg-blue-50/30" : ""}`}>
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <CalendarRange className="h-5 w-5" />
+        <Card className={`mb-4 ${isDateFilterActive ? "border-blue-300 bg-blue-50/30" : ""}`}>
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarRange className="h-4 w-4" />
               סינון לפי תקופה
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-muted-foreground whitespace-nowrap">מחודש</label>
+          <CardContent className="px-4 pb-3 pt-0">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">מחודש</label>
                 <Select
                   value={selectedMonthStart}
                   onValueChange={(val) => {
@@ -673,8 +694,8 @@ export default function FileDetailsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-muted-foreground whitespace-nowrap">עד חודש</label>
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs text-muted-foreground whitespace-nowrap">עד חודש</label>
                 <Select
                   value={selectedMonthEnd}
                   onValueChange={setSelectedMonthEnd}
@@ -707,7 +728,7 @@ export default function FileDetailsPage() {
               )}
             </div>
             {isDateFilterActive && dateFilteredTotal && (
-              <div className="mt-3 flex items-center gap-4 text-sm">
+              <div className="mt-2 flex items-center gap-3 text-xs">
                 <Badge variant="secondary" className="gap-1">
                   <Calendar className="h-3 w-3" />
                   {selectedMonthEnd && selectedMonthEnd !== selectedMonthStart
@@ -724,57 +745,29 @@ export default function FileDetailsPage() {
         </Card>
       )}
 
-      {/* Review Info (if reviewed) */}
-      {isReviewed && file.reviewedAt && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>פרטי סקירה</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">תאריך סקירה</p>
-                <p className="font-medium">{formatDate(file.reviewedAt)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">סטטוס</p>
-                <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"}>
-                  {file.processingStatus === "approved" ? "אושר" : "נדחה"}
-                </Badge>
-              </div>
-              {file.reviewNotes && (
-                <div className="col-span-2">
-                  <p className="text-muted-foreground">הערות</p>
-                  <p className="font-medium">{file.reviewNotes}</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Revenue Account Selection */}
       {revenueAccounts && revenueAccounts.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <DollarSign className="h-5 w-5" />
+        <Card className="mb-4">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <DollarSign className="h-4 w-4" />
               זיהוי חשבון המחזור
             </CardTitle>
-            <CardDescription>
+            <CardDescription className="text-xs">
               בחר את חשבון ההכנסות שמייצג את המחזור של הזכיין
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-3 pt-0">
             <RadioGroup
               value={selectedRevenueAccount || processingResult?.confirmedRevenueAccountCode || ""}
               onValueChange={setSelectedRevenueAccount}
-              className="space-y-3"
+              className="space-y-2"
             >
               {filteredRevenueAccounts.map((account) => (
                 <div
                   key={account.accountCode}
-                  className={`flex items-center gap-4 p-3 rounded-lg border ${
+                  className={`flex items-center gap-3 p-2 rounded border text-sm ${
                     account.isConfirmed ? "bg-green-50 border-green-200" : "bg-muted/30"
                   }`}
                 >
@@ -787,23 +780,23 @@ export default function FileDetailsPage() {
                     htmlFor={`revenue-${account.accountCode}`}
                     className="flex-1 flex items-center justify-between cursor-pointer"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-semibold">
                         {formatAmount(account.totalAmount)}
                       </span>
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         ({account.transactionCount} עסקאות)
                       </span>
                       {account.isConfirmed && (
-                        <Badge variant="success" className="gap-1">
+                        <Badge variant="success" className="gap-1 text-xs">
                           <Check className="h-3 w-3" />
                           מאושר
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">{account.accountName}</span>
-                      <span className="text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{account.accountName}</span>
+                      <span className="text-xs text-muted-foreground">
                         (קוד: {account.accountCode})
                       </span>
                     </div>
@@ -813,14 +806,14 @@ export default function FileDetailsPage() {
             </RadioGroup>
 
             {!isReviewed && (
-              <div className="mt-4 flex items-center justify-between">
+              <div className="mt-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="saveRevenueToFranchisee"
                     checked={saveRevenueToFranchisee}
                     onCheckedChange={(checked) => setSaveRevenueToFranchisee(checked === true)}
                   />
-                  <Label htmlFor="saveRevenueToFranchisee" className="text-sm">
+                  <Label htmlFor="saveRevenueToFranchisee" className="text-xs">
                     שמור לקבצים הבאים של זכיין זה
                   </Label>
                 </div>
@@ -828,11 +821,12 @@ export default function FileDetailsPage() {
                   onClick={handleConfirmRevenue}
                   disabled={!selectedRevenueAccount || revenueConfirmMutation.isPending}
                   size="sm"
+                  className="h-7 text-xs"
                 >
                   {revenueConfirmMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                    <Loader2 className="h-3.5 w-3.5 animate-spin ms-1.5" />
                   ) : (
-                    <Check className="h-4 w-4 ms-2" />
+                    <Check className="h-3.5 w-3.5 ms-1.5" />
                   )}
                   אשר חשבון
                 </Button>
@@ -840,7 +834,7 @@ export default function FileDetailsPage() {
             )}
 
             {franchisee?.revenueAccountCode && (
-              <p className="mt-3 text-sm text-muted-foreground">
+              <p className="mt-2 text-xs text-muted-foreground">
                 חשבון שמור לזכיין: <span className="font-medium">{franchisee.revenueAccountCode}</span>
               </p>
             )}
@@ -850,38 +844,38 @@ export default function FileDetailsPage() {
 
       {/* Matches Table */}
       <Card>
-        <CardHeader>
-          <CardTitle>טבלת התאמות ספקים</CardTitle>
-          <CardDescription>
+        <CardHeader className="pb-2 pt-3 px-4">
+          <CardTitle className="text-sm font-semibold">טבלת התאמות ספקים</CardTitle>
+          <CardDescription className="text-xs">
             {!isReviewed && "לחץ על עריכה כדי לשנות התאמה או להוסיף כינוי לספק"}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="relative mb-4">
-            <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <CardContent className="px-4 pb-3 pt-0">
+          <div className="relative mb-3">
+            <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
               placeholder="חיפוש לפי שם במבנה אחיד..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="ps-9"
+              className="ps-8 h-8 text-sm"
             />
           </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-right">שם במבנה אחיד</TableHead>
-                  <TableHead className="text-right">סכום</TableHead>
-                  <TableHead className="text-right">עסקאות</TableHead>
-                  <TableHead className="text-right">ספק מותאם</TableHead>
-                  <TableHead className="text-right">סטטוס</TableHead>
-                  {!isReviewed && <TableHead className="text-right">פעולות</TableHead>}
+                  <TableHead className="text-right text-xs py-2">שם במבנה אחיד</TableHead>
+                  <TableHead className="text-right text-xs py-2">סכום</TableHead>
+                  <TableHead className="text-right text-xs py-2">עסקאות</TableHead>
+                  <TableHead className="text-right text-xs py-2">ספק מותאם</TableHead>
+                  <TableHead className="text-right text-xs py-2">סטטוס</TableHead>
+                  {!isReviewed && <TableHead className="text-right text-xs py-2">פעולות</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredMatches.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isReviewed ? 5 : 6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isReviewed ? 5 : 6} className="text-center py-4 text-sm text-muted-foreground">
                       {searchQuery.trim() ? "לא נמצאו תוצאות" : "אין נתוני התאמות"}
                     </TableCell>
                   </TableRow>
@@ -899,35 +893,36 @@ export default function FileDetailsPage() {
                                         : ""
                                     }
                                   >
-                      <TableCell className="font-medium">{match.bkmvName}</TableCell>
-                      <TableCell className="font-mono">{formatAmount(match.amount)}</TableCell>
-                      <TableCell>{match.transactionCount}</TableCell>
-                      <TableCell>
+                      <TableCell className="font-medium text-sm py-1.5">{match.bkmvName}</TableCell>
+                      <TableCell className="font-mono text-sm py-1.5">{formatAmount(match.amount)}</TableCell>
+                      <TableCell className="text-sm py-1.5">{match.transactionCount}</TableCell>
+                      <TableCell className="py-1.5">
                         {match.matchedSupplierId ? (
                           <div>
-                            <p className="font-medium">{match.matchedSupplierName}</p>
+                            <p className="font-medium text-sm">{match.matchedSupplierName}</p>
                             {match.matchedSupplierCode && (
                               <p className="text-xs text-muted-foreground">{match.matchedSupplierCode}</p>
                             )}
                           </div>
                         ) : (
-                          <span className="text-muted-foreground">לא מותאם</span>
+                          <span className="text-sm text-muted-foreground">לא מותאם</span>
                         )}
                       </TableCell>
-                      <TableCell>{getMatchBadge(match)}</TableCell>
+                      <TableCell className="py-1.5">{getMatchBadge(match)}</TableCell>
                       {!isReviewed && (
-                        <TableCell>
-                          <div className="flex gap-1">
+                        <TableCell className="py-1.5">
+                          <div className="flex gap-0.5">
                             <Button
                               size="sm"
                               variant="ghost"
+                              className="h-7 px-2 text-xs"
                               onClick={() => {
                                 setEditingMatch(match);
                                 setSelectedNewSupplier(match.matchedSupplierId || "");
                                 setAddAsAlias(true);
                               }}
                             >
-                              <Edit className="h-4 w-4 ms-1" />
+                              <Edit className="h-3.5 w-3.5 ms-1" />
                               עריכה
                             </Button>
                             {/* Show blacklist button only for unmatched items */}
@@ -935,14 +930,14 @@ export default function FileDetailsPage() {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                className="text-gray-600 hover:text-gray-900"
+                                className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900"
                                 onClick={() => {
                                   setBlacklistingMatch(match);
                                   setBlacklistNotes("");
                                 }}
                                 title="סמן כלא רלוונטי"
                               >
-                                <Ban className="h-4 w-4 ms-1" />
+                                <Ban className="h-3.5 w-3.5 ms-1" />
                                 לא מתאים
                               </Button>
                             )}
