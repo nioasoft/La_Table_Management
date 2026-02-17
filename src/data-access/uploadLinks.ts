@@ -1243,11 +1243,16 @@ export async function getFranchiseeBkmvStatusForPeriod(
 ): Promise<{
   franchisees: Array<{ id: string; name: string; hasFile: boolean }>;
 }> {
-  // Get all active franchisees
+  // Get all active regular franchisees (exclude "other" category like Don Pedro)
   const activeFranchisees = await database
     .select({ id: franchisee.id, name: franchisee.name })
     .from(franchisee)
-    .where(eq(franchisee.isActive, true));
+    .where(
+      and(
+        eq(franchisee.isActive, true),
+        eq(franchisee.category, "regular")
+      )
+    );
 
   // Get all BKMV files for this period (non-rejected)
   const bkmvFiles = await database
@@ -1258,8 +1263,8 @@ export async function getFranchiseeBkmvStatusForPeriod(
     .where(
       and(
         isNotNull(uploadedFile.franchiseeId),
-        eq(uploadedFile.periodStartDate, periodStartDate),
-        eq(uploadedFile.periodEndDate, periodEndDate),
+        lte(uploadedFile.periodStartDate, periodEndDate),
+        gte(uploadedFile.periodEndDate, periodStartDate),
         ne(uploadedFile.processingStatus, "rejected")
       )
     );

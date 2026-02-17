@@ -121,7 +121,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (leaseOption3End !== undefined) updateData.leaseOption3End = leaseOption3End;
     if (franchiseAgreementEnd !== undefined)
       updateData.franchiseAgreementEnd = franchiseAgreementEnd;
-    if (status !== undefined) updateData.status = status;
+    if (status !== undefined) {
+      updateData.status = status;
+      // Auto-sync isActive when status changes (unless isActive was explicitly provided)
+      if (isActive === undefined) {
+        updateData.isActive = status === "active";
+      }
+    }
     if (notes !== undefined) updateData.notes = notes;
     if (hashavshevetItemKey !== undefined) updateData.hashavshevetItemKey = hashavshevetItemKey;
     if (isActive !== undefined) updateData.isActive = isActive;
