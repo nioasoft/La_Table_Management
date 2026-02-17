@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Loader2, Scale, ArrowLeft, History, AlertCircle, Trash2, RefreshCw, List } from "lucide-react";
 import { SupplierSelector, PeriodSelector } from "@/components/reconciliation-v2";
-import { useCreateReconciliationSession, useReviewQueueCount, useDeleteReconciliationSession } from "@/queries/reconciliation-v2";
+import { useCreateReconciliationSession, useReviewQueueCount, useDeleteReconciliationSession, reconciliationV2Keys } from "@/queries/reconciliation-v2";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ export default function ReconciliationV2Page() {
     existingSessionId: string | null;
   } | null>(null);
 
+  const queryClient = useQueryClient();
   const createSession = useCreateReconciliationSession();
   const deleteSession = useDeleteReconciliationSession();
   const { data: reviewQueueCount } = useReviewQueueCount();
@@ -154,6 +156,10 @@ export default function ReconciliationV2Page() {
                 setSupplierId(value);
                 setPeriodKey(null);
                 setPeriodData(null);
+                // Force fresh fetch of periods (including session existence)
+                queryClient.invalidateQueries({
+                  queryKey: reconciliationV2Keys.supplierPeriods(value),
+                });
               }}
             />
           </div>

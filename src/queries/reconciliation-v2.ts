@@ -268,12 +268,16 @@ export function useCreateReconciliationSession() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: reconciliationV2Keys.sessions(),
       });
       queryClient.invalidateQueries({
         queryKey: reconciliationV2Keys.suppliers(),
+      });
+      // Invalidate periods so hasExistingSession is fresh when navigating back
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.supplierPeriods(variables.supplierId),
       });
     },
   });
