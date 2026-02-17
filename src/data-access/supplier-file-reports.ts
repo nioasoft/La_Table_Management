@@ -704,6 +704,8 @@ export async function getFranchiseeBreakdownReport(
   // Build conditions array
   const conditions: ReturnType<typeof eq>[] = [
     inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"]),
+    eq(supplier.isActive, true),
+    eq(supplier.isHidden, false),
   ];
 
   // Apply date filters using overlap logic
@@ -815,7 +817,7 @@ export async function getFranchiseeBreakdownReport(
       // Add supplier entry - group by supplier
       const fm = file.fileMapping as SupplierFileMapping | null;
       const isMultiFileSupplier = (fm?.maxUploadFiles ?? 1) > 1;
-      const supplierKey = file.supplierId;
+      const supplierKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
       const existingSupplier = franchiseeData.suppliers.get(supplierKey);
 
       if (existingSupplier) {
