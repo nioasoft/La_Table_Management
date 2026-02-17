@@ -2,12 +2,13 @@ import { database } from "@/db";
 import {
   franchisee,
   brand,
+  supplier,
   uploadedFile,
   franchiseeBkmvYear,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, inArray, gte, lte, isNotNull } from "drizzle-orm";
-import { normalizeName } from "@/lib/franchisee-matcher";
+import { eq, and, inArray, gte, lte, isNotNull, desc } from "drizzle-orm";
+import { normalizeName, generateNameVariants } from "@/lib/franchisee-matcher";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 
 // ============================================================================
@@ -124,10 +125,13 @@ export async function getCommissionRevenueReport(
   }
 
   // ---- BKMV FILES: Get revenue data from uploaded BKMV files ----
+  // Only approved/auto_approved files, ordered by newest first so we can
+  // deduplicate per franchisee (take only the latest file's revenue data)
   const bkmvFiles = await database
     .select({
       franchiseeId: uploadedFile.franchiseeId,
       processingResult: uploadedFile.bkmvProcessingResult,
+      createdAt: uploadedFile.createdAt,
     })
     .from(uploadedFile)
     .where(
@@ -135,22 +139,30 @@ export async function getCommissionRevenueReport(
         isNotNull(uploadedFile.bkmvProcessingResult),
         isNotNull(uploadedFile.franchiseeId),
         lte(uploadedFile.periodStartDate, endDate),
-        gte(uploadedFile.periodEndDate, startDate)
+        gte(uploadedFile.periodEndDate, startDate),
+        inArray(uploadedFile.processingStatus, ["approved", "auto_approved"])
       )
-    );
+    )
+    .orderBy(desc(uploadedFile.createdAt));
 
   // Aggregate revenue by franchiseeId from BKMV files
-  // Also collect per-month detail for breakdown
+  // Per franchisee, only use the LATEST file (first encountered due to desc order)
   const revenueMap = new Map<string, number>();
   const revenueDetailMap = new Map<string, Map<string, number>>();
+  const seenFranchiseeIds = new Set<string>();
 
   for (const file of bkmvFiles) {
+    const fId = file.franchiseeId!;
+
+    // Skip if we already processed a newer file for this franchisee
+    if (seenFranchiseeIds.has(fId)) continue;
+    seenFranchiseeIds.add(fId);
+
     const result = file.processingResult as BkmvProcessingResult | null;
     if (!result?.revenueMonthlyBreakdown) continue;
 
     for (const [month, amount] of Object.entries(result.revenueMonthlyBreakdown)) {
       if (months.includes(month)) {
-        const fId = file.franchiseeId!;
         const prev = revenueMap.get(fId) || 0;
         revenueMap.set(fId, prev + (amount as number));
 
@@ -184,6 +196,43 @@ export async function getCommissionRevenueReport(
   // Get small supplier names set for matching
   const smallSupplierNames = await getSmallSupplierNamesSet();
 
+  // Build exact-match verification map: supplierId -> Set<nameVariant>
+  // This lets us distinguish exact matches (confidence=1) from fuzzy matches
+  // since the stored monthlyBreakdown only has supplierId without confidence
+  const allSuppliers = await database
+    .select({
+      id: supplier.id,
+      name: supplier.name,
+      code: supplier.code,
+      bkmvAliases: supplier.bkmvAliases,
+    })
+    .from(supplier);
+
+  const supplierExactVariants = new Map<string, Set<string>>();
+  for (const s of allSuppliers) {
+    const variants = new Set<string>();
+    for (const v of generateNameVariants(s.name)) variants.add(v);
+    for (const v of generateNameVariants(s.code)) variants.add(v);
+    if (s.bkmvAliases) {
+      for (const alias of s.bkmvAliases as string[]) {
+        for (const v of generateNameVariants(alias)) variants.add(v);
+      }
+    }
+    supplierExactVariants.set(s.id, variants);
+  }
+
+  /**
+   * Check if a BKMV entry name is an exact match for the assigned supplier.
+   * Returns false for fuzzy matches (entries where supplierId was set based
+   * on fuzzy similarity rather than exact name/alias/code match).
+   */
+  function isExactSupplierMatch(supplierId: string, bkmvName: string): boolean {
+    const variants = supplierExactVariants.get(supplierId);
+    if (!variants) return false;
+    const nameVariants = generateNameVariants(bkmvName);
+    return nameVariants.some((v) => variants.has(v));
+  }
+
   // Build purchases map from BKMVDATA
   // Also collect per-supplier detail for breakdown
   const purchasesMap = new Map<string, number>();
@@ -204,10 +253,12 @@ export async function getCommissionRevenueReport(
       if (!months.includes(month)) continue;
 
       for (const entry of entries) {
-        const isMatched = entry.supplierId !== null;
-        const isSmall = !isMatched && smallSupplierNames.has(normalizeName(entry.supplierName));
+        // Only include exact matches (confidence=1) - not fuzzy matches
+        const isExactMatch = entry.supplierId !== null &&
+          isExactSupplierMatch(entry.supplierId, entry.supplierName);
+        const isSmall = !isExactMatch && smallSupplierNames.has(normalizeName(entry.supplierName));
 
-        if (!isMatched && !isSmall) continue;
+        if (!isExactMatch && !isSmall) continue;
 
         const fId = record.franchiseeId;
         const prev = purchasesMap.get(fId) || 0;
@@ -226,7 +277,7 @@ export async function getCommissionRevenueReport(
         } else {
           supplierMap.set(key, {
             supplierName: entry.supplierName,
-            supplierId: entry.supplierId,
+            supplierId: isExactMatch ? entry.supplierId : null,
             amount: entry.amount,
             transactionCount: entry.transactionCount,
             isSmallSupplier: isSmall,
