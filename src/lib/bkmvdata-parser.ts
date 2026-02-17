@@ -1470,9 +1470,16 @@ export function convertRevenueSummaryToArray(
  * This mirrors the dual-matching approach used by buildRevenueSummary().
  */
 export function buildAllAccountsSummary(
-  result: BkmvParseResult
+  result: BkmvParseResult,
+  startDate?: Date,
+  endDate?: Date,
 ): Map<string, AllAccountSummary> {
   const summary = new Map<string, AllAccountSummary>();
+
+  // Optionally filter transactions by date range
+  const transactions = (startDate && endDate)
+    ? filterTransactionsByPeriod(result.transactions, startDate, endDate)
+    : result.transactions;
 
   // Build lookup map from B110 accountKey (trimmed) → account info
   type AccountInfo = { accountKey: string; accountName: string; accountType: string; accountSort: string };
@@ -1513,7 +1520,7 @@ export function buildAllAccountsSummary(
   }
 
   // Match each B100 transaction to a B110 account
-  for (const tx of result.transactions) {
+  for (const tx of transactions) {
     if (tx.amount === 0) continue;
 
     // Strategy 1: match B100 accountCode (normalized) → B110 accountKey

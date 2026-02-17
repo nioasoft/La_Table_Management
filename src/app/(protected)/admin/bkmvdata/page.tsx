@@ -204,6 +204,7 @@ export default function BkmvDataPage() {
 
   // Classification state
   const [classifiedAccounts, setClassifiedAccounts] = useState<Map<string, ClassifiedAccount>>(new Map());
+  const [savedClassificationsMap, setSavedClassificationsMap] = useState<Map<string, AccountCategory> | undefined>();
   const [activeCategory, setActiveCategory] = useState<CategoryTab>('uncategorized');
 
   // History and upload state
@@ -687,6 +688,7 @@ export default function BkmvDataPage() {
                   const classData = await classResponse.json();
                   if (classData.map && Object.keys(classData.map).length > 0) {
                     savedMap = new Map(Object.entries(classData.map)) as Map<string, AccountCategory>;
+                    setSavedClassificationsMap(savedMap);
                   }
                 }
               } catch {
@@ -800,26 +802,40 @@ export default function BkmvDataPage() {
   const handleDateFilter = useCallback(() => {
     if (!parseResult || !filterStartDate || !filterEndDate) return;
 
+    // Rebuild classified accounts with date-filtered amounts
+    const [sY, sM, sD] = filterStartDate.split("-").map(Number);
+    const [eY, eM, eD] = filterEndDate.split("-").map(Number);
+    const start = new Date(sY, sM - 1, sD);
+    const end = new Date(eY, eM - 1, eD);
+    const allAccounts = buildAllAccountsSummary(parseResult, start, end);
+    const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    setClassifiedAccounts(classified);
+
     const matches = reRunSupplierMatching(
-      parseResult, classifiedAccounts, blacklistedNames, suppliers,
+      parseResult, classified, blacklistedNames, suppliers,
       true, filterStartDate, filterEndDate
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, classifiedAccounts, suppliers, blacklistedNames, reRunSupplierMatching]);
+  }, [parseResult, filterStartDate, filterEndDate, savedClassificationsMap, suppliers, blacklistedNames, reRunSupplierMatching]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
     if (!parseResult) return;
 
+    // Rebuild classified accounts with full (unfiltered) data
+    const allAccounts = buildAllAccountsSummary(parseResult);
+    const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    setClassifiedAccounts(classified);
+
     const matches = reRunSupplierMatching(
-      parseResult, classifiedAccounts, blacklistedNames, suppliers, false
+      parseResult, classified, blacklistedNames, suppliers, false
     );
     setMatchingResults(matches);
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames, classifiedAccounts, reRunSupplierMatching]);
+  }, [parseResult, suppliers, blacklistedNames, savedClassificationsMap, reRunSupplierMatching]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
