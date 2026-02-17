@@ -16,8 +16,22 @@ import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 
 export interface CommissionRevenueReportFilters {
   year: number;
-  quarter: 1 | 2 | 3 | 4 | "annual";
+  startMonth: number; // 1-12
+  endMonth: number; // 1-12
   brandId?: string;
+}
+
+export interface SupplierBreakdownEntry {
+  supplierName: string;
+  supplierId: string | null;
+  amount: number;
+  transactionCount: number;
+  isSmallSupplier: boolean;
+}
+
+export interface RevenueBreakdownEntry {
+  month: string; // "YYYY-MM"
+  amount: number;
 }
 
 export interface CommissionRevenueRow {
@@ -28,6 +42,8 @@ export interface CommissionRevenueRow {
   totalRevenue: number; // Revenue from BKMV files (turnover)
   totalSupplierPurchases: number; // Purchases from BKMVDATA (matched + small suppliers)
   supplierPurchasesPercentage: number | null; // null when revenue is 0
+  supplierBreakdown: SupplierBreakdownEntry[];
+  revenueBreakdown: RevenueBreakdownEntry[];
 }
 
 export interface CommissionRevenueReport {
@@ -39,7 +55,8 @@ export interface CommissionRevenueReport {
     count: number;
   };
   year: number;
-  quarter: 1 | 2 | 3 | 4 | "annual";
+  startMonth: number;
+  endMonth: number;
   brandId: string | null;
   brandName: string | null;
   generatedAt: string;
@@ -49,12 +66,10 @@ export interface CommissionRevenueReport {
 // HELPERS
 // ============================================================================
 
-/**
- * Get date range for a year/quarter or full year
- */
 function getDateRange(
   year: number,
-  quarter: 1 | 2 | 3 | 4 | "annual"
+  startMonth: number,
+  endMonth: number
 ): { startDate: string; endDate: string; months: string[] } {
   const formatLocalDate = (date: Date) => {
     const y = date.getFullYear();
@@ -63,24 +78,13 @@ function getDateRange(
     return `${y}-${m}-${d}`;
   };
 
-  let startMonth: number;
-  let endMonth: number;
+  // startMonth/endMonth are 1-12
+  const start = new Date(year, startMonth - 1, 1);
+  const end = new Date(year, endMonth, 0); // last day of endMonth
 
-  if (quarter === "annual") {
-    startMonth = 0;
-    endMonth = 11;
-  } else {
-    startMonth = (quarter - 1) * 3;
-    endMonth = startMonth + 2;
-  }
-
-  const start = new Date(year, startMonth, 1);
-  const end = new Date(year, endMonth + 1, 0); // last day of end month
-
-  // Build months array (YYYY-MM format)
   const months: string[] = [];
   for (let m = startMonth; m <= endMonth; m++) {
-    months.push(`${year}-${String(m + 1).padStart(2, "0")}`);
+    months.push(`${year}-${String(m).padStart(2, "0")}`);
   }
 
   return {
@@ -103,8 +107,8 @@ function getDateRange(
 export async function getCommissionRevenueReport(
   filters: CommissionRevenueReportFilters
 ): Promise<CommissionRevenueReport> {
-  const { year, quarter, brandId } = filters;
-  const { startDate, endDate, months } = getDateRange(year, quarter);
+  const { year, startMonth, endMonth, brandId } = filters;
+  const { startDate, endDate, months } = getDateRange(year, startMonth, endMonth);
 
   // Get brand info if filtering
   let brandInfo: { id: string; nameHe: string } | null = null;
@@ -136,16 +140,26 @@ export async function getCommissionRevenueReport(
     );
 
   // Aggregate revenue by franchiseeId from BKMV files
+  // Also collect per-month detail for breakdown
   const revenueMap = new Map<string, number>();
+  const revenueDetailMap = new Map<string, Map<string, number>>();
+
   for (const file of bkmvFiles) {
     const result = file.processingResult as BkmvProcessingResult | null;
     if (!result?.revenueMonthlyBreakdown) continue;
 
     for (const [month, amount] of Object.entries(result.revenueMonthlyBreakdown)) {
-      // Only include months within the requested period
       if (months.includes(month)) {
-        const prev = revenueMap.get(file.franchiseeId!) || 0;
-        revenueMap.set(file.franchiseeId!, prev + (amount as number));
+        const fId = file.franchiseeId!;
+        const prev = revenueMap.get(fId) || 0;
+        revenueMap.set(fId, prev + (amount as number));
+
+        // Collect per-month detail
+        if (!revenueDetailMap.has(fId)) {
+          revenueDetailMap.set(fId, new Map());
+        }
+        const monthMap = revenueDetailMap.get(fId)!;
+        monthMap.set(month, (monthMap.get(month) || 0) + (amount as number));
       }
     }
   }
@@ -171,7 +185,9 @@ export async function getCommissionRevenueReport(
   const smallSupplierNames = await getSmallSupplierNamesSet();
 
   // Build purchases map from BKMVDATA
+  // Also collect per-supplier detail for breakdown
   const purchasesMap = new Map<string, number>();
+  const purchasesDetailMap = new Map<string, Map<string, SupplierBreakdownEntry>>();
 
   type MonthlyBreakdownEntry = {
     supplierId: string | null;
@@ -185,17 +201,37 @@ export async function getCommissionRevenueReport(
     if (!breakdown) continue;
 
     for (const [month, entries] of Object.entries(breakdown)) {
-      if (!months.includes(month)) continue; // Only requested months
+      if (!months.includes(month)) continue;
 
       for (const entry of entries) {
-        // Include if: matched supplier (non-null supplierId) OR small supplier
         const isMatched = entry.supplierId !== null;
         const isSmall = !isMatched && smallSupplierNames.has(normalizeName(entry.supplierName));
 
         if (!isMatched && !isSmall) continue;
 
-        const prev = purchasesMap.get(record.franchiseeId) || 0;
-        purchasesMap.set(record.franchiseeId, prev + entry.amount);
+        const fId = record.franchiseeId;
+        const prev = purchasesMap.get(fId) || 0;
+        purchasesMap.set(fId, prev + entry.amount);
+
+        // Collect per-supplier detail
+        if (!purchasesDetailMap.has(fId)) {
+          purchasesDetailMap.set(fId, new Map());
+        }
+        const supplierMap = purchasesDetailMap.get(fId)!;
+        const key = entry.supplierName;
+        const existing = supplierMap.get(key);
+        if (existing) {
+          existing.amount += entry.amount;
+          existing.transactionCount += entry.transactionCount;
+        } else {
+          supplierMap.set(key, {
+            supplierName: entry.supplierName,
+            supplierId: entry.supplierId,
+            amount: entry.amount,
+            transactionCount: entry.transactionCount,
+            isSmallSupplier: isSmall,
+          });
+        }
       }
     }
   }
@@ -207,7 +243,7 @@ export async function getCommissionRevenueReport(
   ]);
 
   if (allFranchiseeIds.size === 0) {
-    return emptyReport(year, quarter, brandId, brandInfo);
+    return emptyReport(year, startMonth, endMonth, brandId, brandInfo);
   }
 
   // Fetch franchisee details
@@ -239,13 +275,11 @@ export async function getCommissionRevenueReport(
   // Build rows
   const rows: CommissionRevenueRow[] = [];
   for (const f of franchiseeDetails) {
-    // Apply brand filter
     if (brandId && f.brandId !== brandId) continue;
 
     const revenue = revenueMap.get(f.id) || 0;
     const supplierPurchases = purchasesMap.get(f.id) || 0;
 
-    // Skip franchisees with no data at all
     if (revenue === 0 && supplierPurchases === 0) continue;
 
     let supplierPurchasesPercentage: number | null;
@@ -253,9 +287,30 @@ export async function getCommissionRevenueReport(
       supplierPurchasesPercentage =
         Math.round((supplierPurchases / revenue) * 100 * 100) / 100;
     } else {
-      // Has supplier purchases but no revenue data
       supplierPurchasesPercentage = null;
     }
+
+    // Build supplier breakdown sorted by amount desc
+    const supplierDetail = purchasesDetailMap.get(f.id);
+    const supplierBreakdown: SupplierBreakdownEntry[] = supplierDetail
+      ? Array.from(supplierDetail.values())
+          .map((e) => ({
+            ...e,
+            amount: Math.round(e.amount * 100) / 100,
+          }))
+          .sort((a, b) => b.amount - a.amount)
+      : [];
+
+    // Build revenue monthly breakdown sorted by month
+    const revenueDetail = revenueDetailMap.get(f.id);
+    const revenueBreakdown: RevenueBreakdownEntry[] = revenueDetail
+      ? Array.from(revenueDetail.entries())
+          .map(([month, amount]) => ({
+            month,
+            amount: Math.round(amount * 100) / 100,
+          }))
+          .sort((a, b) => a.month.localeCompare(b.month))
+      : [];
 
     rows.push({
       franchiseeId: f.id,
@@ -265,6 +320,8 @@ export async function getCommissionRevenueReport(
       totalRevenue: Math.round(revenue * 100) / 100,
       totalSupplierPurchases: Math.round(supplierPurchases * 100) / 100,
       supplierPurchasesPercentage,
+      supplierBreakdown,
+      revenueBreakdown,
     });
   }
 
@@ -299,7 +356,8 @@ export async function getCommissionRevenueReport(
       count: rows.length,
     },
     year,
-    quarter,
+    startMonth,
+    endMonth,
     brandId: brandId || null,
     brandName: brandInfo?.nameHe || null,
     generatedAt: new Date().toISOString(),
@@ -308,7 +366,8 @@ export async function getCommissionRevenueReport(
 
 function emptyReport(
   year: number,
-  quarter: 1 | 2 | 3 | 4 | "annual",
+  startMonth: number,
+  endMonth: number,
   brandId: string | undefined,
   brandInfo: { id: string; nameHe: string } | null
 ): CommissionRevenueReport {
@@ -321,7 +380,8 @@ function emptyReport(
       count: 0,
     },
     year,
-    quarter,
+    startMonth,
+    endMonth,
     brandId: brandId || null,
     brandName: brandInfo?.nameHe || null,
     generatedAt: new Date().toISOString(),

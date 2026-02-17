@@ -9,12 +9,18 @@ import {
 } from "@/data-access/commission-revenue-report";
 import * as XLSX from "xlsx";
 
+const MONTH_NAMES_HE = [
+  "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+  "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+];
+
 /**
  * GET /api/reports/commission-revenue/export - Export commission-to-revenue report to Excel
  *
  * Query parameters:
  * - year: number (required)
- * - quarter: 1|2|3|4|annual (required)
+ * - startMonth: 1-12 (required)
+ * - endMonth: 1-12 (required, >= startMonth)
  * - brandId: string (optional)
  */
 export async function GET(request: NextRequest) {
@@ -25,11 +31,12 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
 
     const yearStr = searchParams.get("year");
-    const quarterStr = searchParams.get("quarter");
+    const startMonthStr = searchParams.get("startMonth");
+    const endMonthStr = searchParams.get("endMonth");
 
-    if (!yearStr || !quarterStr) {
+    if (!yearStr || !startMonthStr || !endMonthStr) {
       return NextResponse.json(
-        { error: "year and quarter are required" },
+        { error: "year, startMonth and endMonth are required" },
         { status: 400 }
       );
     }
@@ -42,23 +49,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let quarter: 1 | 2 | 3 | 4 | "annual";
-    if (quarterStr === "annual") {
-      quarter = "annual";
-    } else {
-      const q = parseInt(quarterStr, 10);
-      if (![1, 2, 3, 4].includes(q)) {
-        return NextResponse.json(
-          { error: "Quarter must be 1, 2, 3, 4, or 'annual'" },
-          { status: 400 }
-        );
-      }
-      quarter = q as 1 | 2 | 3 | 4;
+    const startMonth = parseInt(startMonthStr, 10);
+    const endMonth = parseInt(endMonthStr, 10);
+
+    if (
+      isNaN(startMonth) || isNaN(endMonth) ||
+      startMonth < 1 || startMonth > 12 ||
+      endMonth < 1 || endMonth > 12 ||
+      startMonth > endMonth
+    ) {
+      return NextResponse.json(
+        { error: "startMonth and endMonth must be 1-12, startMonth <= endMonth" },
+        { status: 400 }
+      );
     }
 
     const filters: CommissionRevenueReportFilters = {
       year,
-      quarter,
+      startMonth,
+      endMonth,
       brandId: searchParams.get("brandId") || undefined,
     };
 
@@ -125,22 +134,34 @@ export async function GET(request: NextRequest) {
       { wch: 25 }, // Name
       { wch: 10 }, // Code
       { wch: 15 }, // Brand
+      { wch: 18 }, // Revenue
       { wch: 18 }, // Purchases
-      { wch: 18 }, // Commissions
       { wch: 12 }, // Percentage
     ];
 
     // Set RTL direction
     ws["!dir"] = "rtl";
 
-    const quarterLabel = quarter === "annual" ? "שנתי" : `Q${quarter}`;
-    XLSX.utils.book_append_sheet(wb, ws, `אחוז קניות ${quarterLabel}`);
+    // Sheet name based on month range
+    const periodLabel = startMonth === endMonth
+      ? MONTH_NAMES_HE[startMonth - 1]
+      : startMonth === 1 && endMonth === 12
+        ? "שנתי"
+        : `${MONTH_NAMES_HE[startMonth - 1]}-${MONTH_NAMES_HE[endMonth - 1]}`;
+    XLSX.utils.book_append_sheet(wb, ws, `אחוז קניות ${periodLabel}`);
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
+    // Filename based on month range
     const brandSuffix = report.brandName ? `-${report.brandName}` : "";
-    const qLabel = quarter === "annual" ? "annual" : `Q${quarter}`;
-    const filename = `commission-revenue-${year}-${qLabel}${brandSuffix}.xlsx`;
+    const startLabel = `M${String(startMonth).padStart(2, "0")}`;
+    const endLabel = `M${String(endMonth).padStart(2, "0")}`;
+    const fileLabel = startMonth === endMonth
+      ? startLabel
+      : startMonth === 1 && endMonth === 12
+        ? "annual"
+        : `${startLabel}-${endLabel}`;
+    const filename = `commission-revenue-${year}-${fileLabel}${brandSuffix}.xlsx`;
 
     return new NextResponse(buffer, {
       headers: {

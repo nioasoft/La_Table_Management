@@ -13,7 +13,8 @@ import {
  *
  * Query parameters:
  * - year: number (required)
- * - quarter: 1|2|3|4|annual (required)
+ * - startMonth: 1-12 (required)
+ * - endMonth: 1-12 (required, >= startMonth)
  * - brandId: string (optional)
  */
 export async function GET(request: NextRequest) {
@@ -24,11 +25,12 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
 
     const yearStr = searchParams.get("year");
-    const quarterStr = searchParams.get("quarter");
+    const startMonthStr = searchParams.get("startMonth");
+    const endMonthStr = searchParams.get("endMonth");
 
-    if (!yearStr || !quarterStr) {
+    if (!yearStr || !startMonthStr || !endMonthStr) {
       return NextResponse.json(
-        { error: "year and quarter are required" },
+        { error: "year, startMonth and endMonth are required" },
         { status: 400 }
       );
     }
@@ -41,23 +43,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    let quarter: 1 | 2 | 3 | 4 | "annual";
-    if (quarterStr === "annual") {
-      quarter = "annual";
-    } else {
-      const q = parseInt(quarterStr, 10);
-      if (![1, 2, 3, 4].includes(q)) {
-        return NextResponse.json(
-          { error: "Quarter must be 1, 2, 3, 4, or 'annual'" },
-          { status: 400 }
-        );
-      }
-      quarter = q as 1 | 2 | 3 | 4;
+    const startMonth = parseInt(startMonthStr, 10);
+    const endMonth = parseInt(endMonthStr, 10);
+
+    if (
+      isNaN(startMonth) || isNaN(endMonth) ||
+      startMonth < 1 || startMonth > 12 ||
+      endMonth < 1 || endMonth > 12 ||
+      startMonth > endMonth
+    ) {
+      return NextResponse.json(
+        { error: "startMonth and endMonth must be 1-12, startMonth <= endMonth" },
+        { status: 400 }
+      );
     }
 
     const filters: CommissionRevenueReportFilters = {
       year,
-      quarter,
+      startMonth,
+      endMonth,
       brandId: searchParams.get("brandId") || undefined,
     };
 
