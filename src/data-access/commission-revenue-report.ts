@@ -6,6 +6,7 @@ import {
   supplierFileUpload,
   uploadedFile,
   type SupplierFileProcessingResult,
+  type SupplierFileMapping,
   type BkmvProcessingResult,
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or, isNotNull } from "drizzle-orm";
@@ -157,6 +158,7 @@ export async function getCommissionRevenueReport(
       id: supplier.id,
       defaultCommissionRate: supplier.defaultCommissionRate,
       commissionType: supplier.commissionType,
+      fileMapping: supplier.fileMapping,
     })
     .from(supplier)
     .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
@@ -170,11 +172,13 @@ export async function getCommissionRevenueReport(
     string,
     { rate: number; type: string | null }
   >();
+  const supplierFileMappingMap = new Map<string, SupplierFileMapping | null>();
   for (const s of activeSuppliers) {
     supplierRateMap.set(s.id, {
       rate: Number(s.defaultCommissionRate || 0),
       type: s.commissionType,
     });
+    supplierFileMappingMap.set(s.id, (s.fileMapping as SupplierFileMapping | null) ?? null);
   }
 
   // Query supplier file uploads overlapping the period
@@ -184,6 +188,9 @@ export async function getCommissionRevenueReport(
           .select({
             supplierId: supplierFileUpload.supplierId,
             processingResult: supplierFileUpload.processingResult,
+            periodStartDate: supplierFileUpload.periodStartDate,
+            periodEndDate: supplierFileUpload.periodEndDate,
+            createdAt: supplierFileUpload.createdAt,
           })
           .from(supplierFileUpload)
           .where(
@@ -199,22 +206,62 @@ export async function getCommissionRevenueReport(
           )
       : [];
 
-  // Aggregate purchases by franchiseeId from supplier files
-  const purchasesMap = new Map<string, number>();
+  // Deduplicate supplier files before aggregating purchases:
+  // - Single-file suppliers: keep only latest file per supplier+period
+  // - Multi-file suppliers (maxUploadFiles > 1): keep all files for same period
+  type FileRecord = (typeof fileRecords)[number];
+  const singleFileDedupMap = new Map<string, FileRecord>();
+  const multiFileMatchesByKey = new Map<
+    string,
+    SupplierFileProcessingResult["franchiseeMatches"]
+  >();
 
   for (const file of fileRecords) {
-    const result = file.processingResult as SupplierFileProcessingResult | null;
-    if (!result?.franchiseeMatches) continue;
+    const fm = supplierFileMappingMap.get(file.supplierId);
+    const isMultiFile = ((fm?.maxUploadFiles as number | undefined) ?? 1) > 1;
+    const dedupKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
 
-    for (const match of result.franchiseeMatches) {
+    if (isMultiFile) {
+      const result = file.processingResult as SupplierFileProcessingResult | null;
+      if (result?.franchiseeMatches) {
+        const existing = multiFileMatchesByKey.get(dedupKey) ?? [];
+        existing.push(...result.franchiseeMatches);
+        multiFileMatchesByKey.set(dedupKey, existing);
+      }
+    } else {
+      const existing = singleFileDedupMap.get(dedupKey);
+      if (!existing || file.createdAt > existing.createdAt) {
+        singleFileDedupMap.set(dedupKey, file);
+      }
+    }
+  }
+
+  // Build purchasesMap from deduplicated data
+  const purchasesMap = new Map<string, number>();
+
+  const addMatchesToPurchases = (
+    matches: SupplierFileProcessingResult["franchiseeMatches"]
+  ) => {
+    for (const match of matches) {
       if (!match.matchedFranchiseeId) continue;
       if (match.matchType === "blacklisted") continue;
-
-      // Aggregate purchases (netAmount)
       const purchaseAmount = match.netAmount || 0;
-      const prevPurchases = purchasesMap.get(match.matchedFranchiseeId) || 0;
-      purchasesMap.set(match.matchedFranchiseeId, prevPurchases + purchaseAmount);
+      const prev = purchasesMap.get(match.matchedFranchiseeId) || 0;
+      purchasesMap.set(match.matchedFranchiseeId, prev + purchaseAmount);
     }
+  };
+
+  // Single-file suppliers (latest file only per supplier+period)
+  for (const file of singleFileDedupMap.values()) {
+    const result = file.processingResult as SupplierFileProcessingResult | null;
+    if (result?.franchiseeMatches) {
+      addMatchesToPurchases(result.franchiseeMatches);
+    }
+  }
+
+  // Multi-file suppliers (all files merged per supplier+period)
+  for (const matches of multiFileMatchesByKey.values()) {
+    addMatchesToPurchases(matches);
   }
 
   // ---- JOIN: Merge revenue and purchases maps ----

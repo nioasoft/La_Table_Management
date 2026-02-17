@@ -547,6 +547,7 @@ export default function SupplierFilesReportPage() {
   const [periodKey, setPeriodKey] = useState("");
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [resetTrigger, setResetTrigger] = useState(0);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -579,7 +580,9 @@ export default function SupplierFilesReportPage() {
     setError(null);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/reports/supplier-files${queryString ? `?${queryString}` : ""}`);
+      const response = await fetch(`/api/reports/supplier-files${queryString ? `?${queryString}` : ""}`, {
+        cache: "no-store",
+      });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch report");
@@ -611,6 +614,20 @@ export default function SupplierFilesReportPage() {
     }
   }, [session, userRole, fetchReport]);
 
+  // Auto-fetch when period or reset changes
+  const prevPeriodKeyRef = useRef(periodKey);
+  const prevResetTriggerRef = useRef(resetTrigger);
+  useEffect(() => {
+    if (!hasInitiallyLoaded.current) return;
+    const periodKeyChanged = prevPeriodKeyRef.current !== periodKey;
+    const resetTriggered = prevResetTriggerRef.current !== resetTrigger;
+    prevPeriodKeyRef.current = periodKey;
+    prevResetTriggerRef.current = resetTrigger;
+    if (periodKeyChanged || resetTriggered) {
+      fetchReport();
+    }
+  }, [periodKey, resetTrigger, fetchReport]);
+
   // Handle period change
   const handlePeriodChange = (newPeriodType: SettlementPeriodType | "", newPeriodKey: string) => {
     setPeriodType(newPeriodType);
@@ -637,6 +654,7 @@ export default function SupplierFilesReportPage() {
     setPeriodKey("");
     setUseCustomDateRange(true);
     setSearchTerm("");
+    setResetTrigger((n) => n + 1);
   };
 
   // Summary cards
