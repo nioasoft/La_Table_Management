@@ -298,16 +298,17 @@ export async function POST(request: NextRequest) {
     );
 
     // Archive to year-based BKMV table
+    let yearArchiveResult: { updated: number[]; skipped: number[]; merged: number[] } | null = null;
     try {
       const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
-      const yearResult = await upsertFromFullBreakdown(
+      yearArchiveResult = await upsertFromFullBreakdown(
         franchiseeId,
         monthlyBreakdown,
         storedResult.supplierMatches,
         uploadedFileRecord.id
       );
-      if (yearResult.skipped.length > 0) {
-        console.log(`BKMV year archiving: skipped years ${yearResult.skipped.join(", ")} (complete)`);
+      if (yearArchiveResult.merged.length > 0) {
+        console.log(`BKMV year archiving: merged months into years ${yearArchiveResult.merged.join(", ")}`);
       }
     } catch (yearError) {
       console.error("Error archiving BKMV year data:", yearError);
@@ -354,6 +355,7 @@ export async function POST(request: NextRequest) {
         created: crossRefResult.crossReferencesCreated,
         errors: crossRefResult.errors,
       } : null,
+      yearArchive: yearArchiveResult,
     });
   } catch (error) {
     console.error("Error in admin BKMVDATA process:", error);

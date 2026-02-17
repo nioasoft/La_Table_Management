@@ -2,7 +2,7 @@
  * Data Access Layer for Franchisee BKMV Year
  *
  * Handles year-based archiving of BKMV monthly data per franchisee.
- * Complete years (12 months) are locked from overwrite; incomplete years get replaced on new upload.
+ * New uploads merge months into existing year data (last-write-wins).
  */
 
 import { database } from "@/db";
@@ -16,6 +16,7 @@ import {
   groupMonthlyBreakdownByYear,
   aggregateSupplierMatchesFromBreakdown,
   getAmountForPeriod,
+  mergeMonthlyBreakdown,
 } from "@/lib/bkmvdata-parser";
 
 type SupplierMatchEntry = {
@@ -28,6 +29,7 @@ type SupplierMatchEntry = {
 
 interface UpsertResult {
   skipped: boolean;
+  merged: boolean;
   reason?: "year_complete";
   record?: FranchiseeBkmvYear;
 }
@@ -51,7 +53,8 @@ function extractMonthsCovered(
 
 /**
  * Upsert BKMV year data for a single year.
- * If the year is already complete (12 months), skip unless forceOverwrite is true.
+ * If the year already exists, merges new months into existing data (last-write-wins).
+ * forceOverwrite = true replaces the entire year data without merging.
  */
 export async function upsertBkmvYearData(
   franchiseeId: string,
@@ -73,8 +76,13 @@ export async function upsertBkmvYearData(
     )
     .limit(1);
 
-  if (existing.length > 0 && existing[0].isComplete && !opts?.forceOverwrite) {
-    return { skipped: true, reason: "year_complete" };
+  // If year exists: merge new months into existing data (last-write-wins)
+  // forceOverwrite = true means full replacement (no merge)
+  if (existing.length > 0 && !opts?.forceOverwrite) {
+    const existingBreakdown = existing[0].monthlyBreakdown as MonthlyBreakdown || {};
+    monthlyBreakdown = mergeMonthlyBreakdown(existingBreakdown, monthlyBreakdown);
+    // Re-aggregate supplier matches from merged breakdown
+    supplierMatches = aggregateSupplierMatchesFromBreakdown(monthlyBreakdown);
   }
 
   const monthsCovered = extractMonthsCovered(monthlyBreakdown, year);
@@ -111,7 +119,7 @@ export async function upsertBkmvYearData(
       .where(eq(franchiseeBkmvYear.id, existing[0].id))
       .returning();
 
-    return { skipped: false, record: updated };
+    return { skipped: false, merged: existing.length > 0, record: updated };
   } else {
     // Insert new record
     const [inserted] = await database
@@ -134,7 +142,7 @@ export async function upsertBkmvYearData(
       })
       .returning();
 
-    return { skipped: false, record: inserted };
+    return { skipped: false, merged: false, record: inserted };
   }
 }
 
@@ -148,14 +156,15 @@ export async function upsertFromFullBreakdown(
   supplierMatches: SupplierMatchEntry[] | null,
   sourceFileId: string | null,
   opts?: { forceOverwrite?: boolean }
-): Promise<{ updated: number[]; skipped: number[] }> {
+): Promise<{ updated: number[]; skipped: number[]; merged: number[] }> {
   if (!monthlyBreakdown || Object.keys(monthlyBreakdown).length === 0) {
-    return { updated: [], skipped: [] };
+    return { updated: [], skipped: [], merged: [] };
   }
 
   const byYear = groupMonthlyBreakdownByYear(monthlyBreakdown);
   const updated: number[] = [];
   const skipped: number[] = [];
+  const merged: number[] = [];
 
   for (const [year, yearBreakdown] of byYear) {
     const yearSupplierMatches =
@@ -174,10 +183,13 @@ export async function upsertFromFullBreakdown(
       skipped.push(year);
     } else {
       updated.push(year);
+      if (result.merged) {
+        merged.push(year);
+      }
     }
   }
 
-  return { updated, skipped };
+  return { updated, skipped, merged };
 }
 
 /**

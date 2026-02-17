@@ -256,7 +256,7 @@ export async function createReconciliationSession(
   const vatRate = await getVatRateForDate(periodDate);
 
   // Build franchisee amount map from year-based BKMV archive (preferred)
-  // Falls back to uploaded_file records if year table has no data
+  // Falls back to uploaded_file records per-franchisee if not in year table
   const franchiseeAmounts = new Map<
     string,
     { amount: number; fileId: string | null }
@@ -270,16 +270,25 @@ export async function createReconciliationSession(
     periodEndDate
   );
 
-  if (yearAmounts.size > 0) {
-    // Use year table data - apply VAT conversion
-    for (const [fId, data] of yearAmounts) {
-      const netAmount = supplierData[0].vatExempt
-        ? roundToTwoDecimals(data.amount)
-        : roundToTwoDecimals(calculateNetFromGross(data.amount, vatRate));
-      franchiseeAmounts.set(fId, { amount: netAmount, fileId: data.fileId });
+  // Step 1: Use year table data (preferred source) - apply VAT conversion
+  for (const [fId, data] of yearAmounts) {
+    const netAmount = supplierData[0].vatExempt
+      ? roundToTwoDecimals(data.amount)
+      : roundToTwoDecimals(calculateNetFromGross(data.amount, vatRate));
+    franchiseeAmounts.set(fId, { amount: netAmount, fileId: data.fileId });
+  }
+
+  // Step 2: Collect franchisee IDs from supplier file that are NOT in year table
+  const supplierFranchiseeIds = new Set<string>();
+  for (const match of processingResult.franchiseeMatches) {
+    if (match.matchedFranchiseeId && match.matchType !== "blacklisted") {
+      supplierFranchiseeIds.add(match.matchedFranchiseeId);
     }
-  } else {
-    // Fallback: query uploaded_file records (legacy path, pre-migration)
+  }
+  const missingFranchiseeIds = [...supplierFranchiseeIds].filter(id => !franchiseeAmounts.has(id));
+
+  // Step 3: Fallback to uploaded_file records for missing franchisees
+  if (missingFranchiseeIds.length > 0) {
     const allFranchiseeFiles = await database
       .select({
         id: uploadedFile.id,
@@ -306,6 +315,8 @@ export async function createReconciliationSession(
     const latestFileByFranchisee = new Map<string, typeof allFranchiseeFiles[number]>();
     for (const file of allFranchiseeFiles) {
       if (!file.franchiseeId) continue;
+      // Only consider files for franchisees missing from year table
+      if (!missingFranchiseeIds.includes(file.franchiseeId)) continue;
       const existing = latestFileByFranchisee.get(file.franchiseeId);
       if (!existing || (file.createdAt && existing.createdAt && file.createdAt > existing.createdAt)) {
         latestFileByFranchisee.set(file.franchiseeId, file);
