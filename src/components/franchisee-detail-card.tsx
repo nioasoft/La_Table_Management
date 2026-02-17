@@ -163,6 +163,7 @@ const reminderStatusColors: Record<ReminderStatus, "default" | "success" | "seco
   sent: "success",
   acknowledged: "success",
   dismissed: "secondary",
+  handled: "success",
 };
 
 const reminderStatusLabels: Record<ReminderStatus, string> = {
@@ -170,6 +171,7 @@ const reminderStatusLabels: Record<ReminderStatus, string> = {
   sent: "נשלח",
   acknowledged: "אושר",
   dismissed: "נדחה",
+  handled: "טופל",
 };
 
 const reminderTypeLabels: Record<FranchiseeReminderType, string> = {

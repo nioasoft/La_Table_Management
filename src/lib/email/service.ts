@@ -256,6 +256,83 @@ export async function sendEmailWithTemplateData(
 }
 
 /**
+ * Send an email directly using pre-rendered HTML (no DB template needed).
+ * Useful for React Email component renders and escalation emails.
+ */
+export async function sendDirectEmail(options: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  entityType?: string;
+  entityId?: string;
+  metadata?: Record<string, unknown>;
+}): Promise<SendEmailResult> {
+  const { to, subject, html, text, entityType, entityId, metadata } = options;
+  const fromEmail = EMAIL_DEFAULTS.fromEmail;
+  const fromName = EMAIL_DEFAULTS.fromName;
+
+  // Create email log entry
+  const logId = randomUUID();
+  await createEmailLog({
+    id: logId,
+    templateId: null,
+    toEmail: to,
+    toName: null,
+    fromEmail,
+    fromName,
+    subject,
+    bodyHtml: html,
+    bodyText: text,
+    status: "pending",
+    entityType: entityType || null,
+    entityId: entityId || null,
+    metadata: metadata || null,
+  });
+
+  if (resend) {
+    try {
+      const result = await resend.emails.send({
+        from: `${fromName} <${fromEmail}>`,
+        to,
+        subject,
+        html,
+        text,
+      });
+
+      if (result.error) {
+        await updateEmailLogStatus(logId, "failed", {
+          failedAt: new Date(),
+          errorMessage: result.error.message,
+        });
+        return { success: false, error: result.error.message };
+      }
+
+      await updateEmailLogStatus(logId, "sent", {
+        messageId: result.data?.id,
+        sentAt: new Date(),
+      });
+
+      return { success: true, messageId: result.data?.id };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      await updateEmailLogStatus(logId, "failed", {
+        failedAt: new Date(),
+        errorMessage,
+      });
+      return { success: false, error: errorMessage };
+    }
+  } else {
+    console.log("Email would be sent (no provider configured):", { to, subject });
+    await updateEmailLogStatus(logId, "sent", {
+      sentAt: new Date(),
+      messageId: `dev-${logId}`,
+    });
+    return { success: true, messageId: `dev-${logId}` };
+  }
+}
+
+/**
  * Preview an email template with variables
  */
 export async function previewEmailTemplate(

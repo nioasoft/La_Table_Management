@@ -43,6 +43,7 @@ export const reminderStatusEnum = pgEnum("reminder_status", [
   "sent",
   "acknowledged",
   "dismissed",
+  "handled",
 ]);
 
 export const reminderTypeEnum = pgEnum("reminder_type", [

@@ -28,6 +28,7 @@ export {
   sendEmailWithTemplate,
   sendEmailWithTemplateCode,
   sendEmailWithTemplateData,
+  sendDirectEmail,
   previewEmailTemplate,
   previewReactEmailTemplate,
   validateTemplateVariables,

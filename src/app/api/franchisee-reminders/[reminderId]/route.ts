@@ -9,6 +9,7 @@ import {
   deleteFranchiseeReminder,
   markReminderAsSent,
   markReminderAsDismissed,
+  markReminderAsHandled,
   calculateNotificationDate,
 } from "@/data-access/franchiseeReminders";
 import type { FranchiseeReminderType, ReminderStatus } from "@/db/schema";
@@ -81,6 +82,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ reminder: updatedReminder });
     }
 
+    if (action === "handle") {
+      const result = await markReminderAsHandled(reminderId, user.id);
+      return NextResponse.json({ success: true, handled: result.handled });
+    }
+
     // Validate reminder type if provided
     if (reminderType) {
       const validTypes: FranchiseeReminderType[] = ["lease_option", "franchise_agreement", "custom"];
@@ -94,7 +100,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     // Validate status if provided
     if (status) {
-      const validStatuses: ReminderStatus[] = ["pending", "sent", "acknowledged", "dismissed"];
+      const validStatuses: ReminderStatus[] = ["pending", "sent", "acknowledged", "dismissed", "handled"];
       if (!validStatuses.includes(status)) {
         return NextResponse.json(
           { error: "Invalid status" },

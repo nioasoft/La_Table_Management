@@ -86,6 +86,7 @@ const statusLabels: Record<ReminderStatus, string> = {
   sent: t.status.sent,
   acknowledged: t.status.acknowledged,
   dismissed: t.status.dismissed,
+  handled: "טופל",
 };
 
 const statusColors: Record<ReminderStatus, "default" | "success" | "secondary" | "destructive"> = {
@@ -93,6 +94,7 @@ const statusColors: Record<ReminderStatus, "default" | "success" | "secondary" |
   sent: "success",
   acknowledged: "success",
   dismissed: "secondary",
+  handled: "success",
 };
 
 export default function FranchiseeRemindersTab() {

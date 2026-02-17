@@ -1,216 +1,276 @@
 import { NextRequest, NextResponse } from "next/server";
+import { render } from "@react-email/components";
 import { database } from "@/db";
 import {
   franchiseeReminder,
   franchisee,
-  type FranchiseeReminder,
   type FranchiseeReminderType,
 } from "@/db/schema";
 import { eq, and, lte, or } from "drizzle-orm";
 import {
   getPendingRemindersForNotification,
   markReminderAsSent,
-  getFranchiseeRemindersByType,
+  createFranchiseeReminder,
   type FranchiseeReminderWithFranchisee,
 } from "@/data-access/franchiseeReminders";
-import { getFranchiseeById } from "@/data-access/franchisees";
-import { sendEmailWithTemplateCode } from "@/lib/email/service";
+import { getActiveFranchisees } from "@/data-access/franchisees";
+import { sendDirectEmail } from "@/lib/email/service";
+import { AgreementExpiryEmail } from "@/emails/agreement-expiry";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Franchisee Reminders Cron Job
  *
- * This endpoint processes franchisee reminders for:
- * - Lease option expiration dates
- * - Franchise agreement expiration dates
- * - Custom reminders
+ * Manages contract/lease expiration reminders for franchisees.
  *
- * Reminders are sent based on the notificationDate field which is calculated
- * from reminderDate - daysBeforeNotification.
+ * Auto-creates 3 reminders per expiry date:
+ *   - 30 days before
+ *   - 15 days before
+ *   - On the day (0 days before)
+ *
+ * ALL reminders are sent ONLY to Reut (reutl@latableg.com), not to franchisees.
+ *
+ * "Handled" feature: When Reut marks a reminder as "handled" in the dashboard,
+ * all related future reminders for that same expiry date are also marked as handled.
  *
  * Query params:
- * - action: "all" | "lease_option" | "franchise_agreement" | "custom" (default: "all")
- * - dryRun: "true" to simulate without sending emails
- * - emailTemplateCode: Template code to use for reminder emails (default: "franchisee_reminder")
- *
- * Authentication:
- * This endpoint uses a secret token for authentication.
- * Set CRON_SECRET environment variable and pass it as Authorization header.
+ * - action: "all" | "lease_option" | "franchise_agreement" | "custom"
+ * - dryRun: "true" to simulate
+ * - autoCreate: "true" to auto-create reminders from franchisee dates
  */
 
-// Get reminders due for notification by type
-async function getRemindersDueByType(
-  type: FranchiseeReminderType
-): Promise<FranchiseeReminderWithFranchisee[]> {
-  const today = formatDateAsLocal(new Date());
+const ADMIN_EMAIL = "reutl@latableg.com";
+const REMINDER_DAYS = [30, 15, 0]; // Days before expiry to send reminders
+const LOOK_AHEAD_DAYS = 90;
 
-  const results = await database
-    .select({
-      reminder: franchiseeReminder,
-      franchisee: {
-        id: franchisee.id,
-        name: franchisee.name,
-        code: franchisee.code,
-      },
-    })
-    .from(franchiseeReminder)
-    .leftJoin(franchisee, eq(franchiseeReminder.franchiseeId, franchisee.id))
-    .where(
-      and(
-        eq(franchiseeReminder.reminderType, type),
-        eq(franchiseeReminder.status, "pending"),
-        lte(franchiseeReminder.notificationDate, today)
-      )
-    );
-
-  return results.map((r) => ({
-    ...r.reminder,
-    franchisee: r.franchisee,
-    createdByUser: null,
-  }));
+// Get advance notice days for display in email (from franchisee data or default)
+function getAdvanceNoticeDays(reminderType: FranchiseeReminderType): number {
+  switch (reminderType) {
+    case "lease_option":
+      return 90; // Standard lease notice period
+    case "franchise_agreement":
+      return 60; // Standard franchise agreement notice
+    default:
+      return 30;
+  }
 }
 
-// Send reminder email to all recipients
-async function sendReminderEmails(
+// Send agreement expiry reminder email to Reut
+async function sendExpiryReminderEmail(
   reminder: FranchiseeReminderWithFranchisee,
-  templateCode: string,
-  dryRun: boolean = false
-): Promise<{ success: boolean; sentCount: number; errors: string[] }> {
-  const results = {
-    success: true,
-    sentCount: 0,
-    errors: [] as string[],
-  };
+  dryRun: boolean
+): Promise<{ success: boolean; error?: string }> {
+  if (dryRun) return { success: true };
 
-  const recipients = reminder.recipients as string[];
-  if (!recipients || recipients.length === 0) {
-    return { success: false, sentCount: 0, errors: ["No recipients configured"] };
-  }
-
-  // Get franchisee details for email context
-  const franchiseeData = reminder.franchisee;
-
-  // Format reminder type for display
-  const reminderTypeLabels: Record<FranchiseeReminderType, string> = {
-    lease_option: "אופציית חכירה",
-    franchise_agreement: "הסכם זיכיון",
-    custom: "תזכורת מותאמת",
-  };
-
-  // Calculate days remaining
+  const franchiseeName = reminder.franchisee?.name || "לא ידוע";
   const reminderDate = new Date(reminder.reminderDate);
   const today = new Date();
   const daysRemaining = Math.ceil(
     (reminderDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
   );
 
-  for (const recipientEmail of recipients) {
-    try {
-      if (dryRun) {
-        results.sentCount++;
+  const reminderTypeLabels: Record<FranchiseeReminderType, string> = {
+    lease_option: "אופציית שכירות",
+    franchise_agreement: "הסכם זיכיון",
+    custom: "תזכורת",
+  };
+
+  const advanceNoticeDays = getAdvanceNoticeDays(reminder.reminderType);
+
+  const html = await render(
+    AgreementExpiryEmail({
+      franchisee_name: franchiseeName,
+      expiry_date: reminderDate.toLocaleDateString("he-IL"),
+      advance_notice_days: String(advanceNoticeDays),
+      reminder_type: reminderTypeLabels[reminder.reminderType],
+      days_remaining: String(Math.max(0, daysRemaining)),
+    })
+  );
+  const text = await render(
+    AgreementExpiryEmail({
+      franchisee_name: franchiseeName,
+      expiry_date: reminderDate.toLocaleDateString("he-IL"),
+      advance_notice_days: String(advanceNoticeDays),
+      reminder_type: reminderTypeLabels[reminder.reminderType],
+      days_remaining: String(Math.max(0, daysRemaining)),
+    }),
+    { plainText: true }
+  );
+
+  return sendDirectEmail({
+    to: ADMIN_EMAIL,
+    subject: `תזכורת: תפוגת ${reminderTypeLabels[reminder.reminderType]} - ${franchiseeName}`,
+    html,
+    text,
+    entityType: "franchisee_reminder",
+    entityId: reminder.id,
+    metadata: {
+      reminderId: reminder.id,
+      franchiseeId: reminder.franchiseeId,
+      reminderType: reminder.reminderType,
+      daysRemaining,
+    },
+  });
+}
+
+// Auto-create reminders from franchisee date fields
+// Creates 3 reminders per expiry date: 30, 15, 0 days before
+async function autoCreateRemindersFromFranchisees(
+  dryRun: boolean
+): Promise<{ created: number; skipped: number; errors: string[] }> {
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const franchisees = await getActiveFranchisees();
+  const today = new Date();
+
+  for (const f of franchisees) {
+    // Collect all expiry dates to check
+    const expiryDates: { date: string; type: FranchiseeReminderType; label: string }[] = [];
+
+    if (f.leaseOption1End) {
+      expiryDates.push({ date: f.leaseOption1End, type: "lease_option", label: "אופציה 1" });
+    }
+    if (f.leaseOption2End) {
+      expiryDates.push({ date: f.leaseOption2End, type: "lease_option", label: "אופציה 2" });
+    }
+    if (f.leaseOption3End) {
+      expiryDates.push({ date: f.leaseOption3End, type: "lease_option", label: "אופציה 3" });
+    }
+    if (f.franchiseAgreementEnd) {
+      expiryDates.push({ date: f.franchiseAgreementEnd, type: "franchise_agreement", label: "הסכם זיכיון" });
+    }
+
+    for (const expiry of expiryDates) {
+      const expiryDate = new Date(expiry.date);
+      const daysUntilExpiry = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Only create reminders for dates within the look-ahead window
+      if (daysUntilExpiry < -30 || daysUntilExpiry > LOOK_AHEAD_DAYS + 30) {
         continue;
       }
 
-      const sendResult = await sendEmailWithTemplateCode(
-        templateCode,
-        {
-          franchisee_name: franchiseeData?.name || "לא ידוע",
-          franchisee_code: franchiseeData?.code || "",
-          reminder_type: reminderTypeLabels[reminder.reminderType],
-          reminder_title: reminder.title,
-          reminder_description: reminder.description || "",
-          reminder_date: new Date(reminder.reminderDate).toLocaleDateString(
-            "he-IL"
-          ),
-          days_remaining: daysRemaining.toString(),
-          days_before_notification: reminder.daysBeforeNotification.toString(),
-        },
-        {
-          to: recipientEmail,
-          entityType: "franchisee_reminder",
-          entityId: reminder.id,
-          metadata: {
-            reminderId: reminder.id,
-            franchiseeId: reminder.franchiseeId,
-            reminderType: reminder.reminderType,
-          },
-        }
-      );
+      for (const daysBefore of REMINDER_DAYS) {
+        const notificationDate = new Date(expiry.date);
+        notificationDate.setDate(notificationDate.getDate() - daysBefore);
 
-      if (sendResult.success) {
-        results.sentCount++;
-      } else {
-        results.errors.push(`${recipientEmail}: ${sendResult.error}`);
+        // Skip if notification date is more than 30 days in the past
+        const daysUntilNotification = Math.ceil(
+          (notificationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysUntilNotification < -30) continue;
+
+        // Check if reminder already exists for this franchisee + date + daysBefore
+        const existing = await database
+          .select({ id: franchiseeReminder.id })
+          .from(franchiseeReminder)
+          .where(
+            and(
+              eq(franchiseeReminder.franchiseeId, f.id),
+              eq(franchiseeReminder.reminderType, expiry.type),
+              eq(franchiseeReminder.reminderDate, expiry.date),
+              eq(franchiseeReminder.daysBeforeNotification, daysBefore)
+            )
+          )
+          .limit(1);
+
+        if (existing.length > 0) {
+          results.skipped++;
+          continue;
+        }
+
+        if (dryRun) {
+          results.created++;
+          continue;
+        }
+
+        try {
+          await createFranchiseeReminder({
+            id: crypto.randomUUID(),
+            franchiseeId: f.id,
+            title: `תום ${expiry.label} - ${f.name}`,
+            description: `${daysBefore === 0 ? "היום" : `${daysBefore} יום לפני`} תפוגת ${expiry.label} של סניף ${f.name}`,
+            reminderType: expiry.type,
+            reminderDate: expiry.date,
+            daysBeforeNotification: daysBefore,
+            notificationDate: formatDateAsLocal(notificationDate),
+            recipients: [ADMIN_EMAIL],
+            status: "pending",
+            metadata: {
+              expiryLabel: expiry.label,
+              autoCreated: true,
+            },
+          });
+          results.created++;
+        } catch (error) {
+          results.errors.push(
+            `${f.name} ${expiry.label} (${daysBefore}d): ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        }
       }
-    } catch (error) {
-      results.errors.push(
-        `${recipientEmail}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
     }
   }
 
-  results.success = results.sentCount > 0;
   return results;
 }
 
-// Process reminders by type
-async function processRemindersByType(
+// Process pending reminders - send emails
+async function processReminders(
   type: FranchiseeReminderType | "all",
-  templateCode: string,
-  dryRun: boolean = false
+  dryRun: boolean
 ): Promise<{
   processed: number;
   failed: number;
   emailsSent: number;
   errors: string[];
-  reminders: { id: string; franchisee: string; type: string }[];
+  reminders: { id: string; franchisee: string; type: string; daysBefore: number }[];
 }> {
   const results = {
     processed: 0,
     failed: 0,
     emailsSent: 0,
     errors: [] as string[],
-    reminders: [] as { id: string; franchisee: string; type: string }[],
+    reminders: [] as { id: string; franchisee: string; type: string; daysBefore: number }[],
   };
 
-  let reminders: FranchiseeReminderWithFranchisee[];
+  const today = formatDateAsLocal(new Date());
 
-  if (type === "all") {
-    reminders = await getPendingRemindersForNotification();
-  } else {
-    reminders = await getRemindersDueByType(type);
-  }
+  // Get pending reminders where notificationDate <= today AND status is pending
+  // Also skip "handled" reminders
+  const allPending = await getPendingRemindersForNotification();
+
+  // Filter by type if specified
+  const reminders = type === "all"
+    ? allPending
+    : allPending.filter((r) => r.reminderType === type);
 
   for (const reminder of reminders) {
+    // Skip handled reminders (extra safety - getPendingRemindersForNotification already filters by status=pending)
+    if (reminder.status === "handled" || reminder.status === "dismissed") {
+      continue;
+    }
+
     try {
-      const sendResult = await sendReminderEmails(reminder, templateCode, dryRun);
+      const sendResult = await sendExpiryReminderEmail(reminder, dryRun);
 
       if (sendResult.success) {
-        // Mark reminder as sent (unless dry run)
         if (!dryRun) {
           await markReminderAsSent(reminder.id);
         }
-
         results.processed++;
-        results.emailsSent += sendResult.sentCount;
+        results.emailsSent++;
         results.reminders.push({
           id: reminder.id,
           franchisee: reminder.franchisee?.name || "Unknown",
           type: reminder.reminderType,
+          daysBefore: reminder.daysBeforeNotification,
         });
       } else {
         results.failed++;
         results.errors.push(
-          `Reminder ${reminder.id}: ${sendResult.errors.join(", ")}`
-        );
-      }
-
-      // Add any partial errors
-      if (sendResult.errors.length > 0 && sendResult.success) {
-        results.errors.push(
-          `Reminder ${reminder.id} (partial): ${sendResult.errors.join(", ")}`
+          `Reminder ${reminder.id}: ${sendResult.error}`
         );
       }
     } catch (error) {
@@ -226,153 +286,13 @@ async function processRemindersByType(
   return results;
 }
 
-// Auto-create reminders from franchisee date fields
-async function autoCreateRemindersFromFranchisees(
-  dryRun: boolean = false
-): Promise<{
-  created: number;
-  skipped: number;
-  errors: string[];
-}> {
-  const results = {
-    created: 0,
-    skipped: 0,
-    errors: [] as string[],
-  };
-
-  // Get all active franchisees
-  const { getActiveFranchisees } = await import("@/data-access/franchisees");
-  const franchisees = await getActiveFranchisees();
-
-  const today = new Date();
-  const lookAheadDays = 90; // Create reminders for dates within 90 days
-  const defaultDaysBefore = 30;
-
-  for (const f of franchisees) {
-    // Check lease option dates (1, 2, and 3)
-    const leaseOptions = [
-      { date: f.leaseOption1End, label: "אופציה 1" },
-      { date: f.leaseOption2End, label: "אופציה 2" },
-      { date: f.leaseOption3End, label: "אופציה 3" },
-    ];
-
-    for (const option of leaseOptions) {
-      if (option.date) {
-        const leaseDate = new Date(option.date);
-        const daysUntil = Math.ceil(
-          (leaseDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        if (daysUntil > 0 && daysUntil <= lookAheadDays + defaultDaysBefore) {
-          // Check if reminder already exists
-          const existingReminders = await getRemindersDueByType("lease_option");
-          const alreadyExists = existingReminders.some(
-            (r) =>
-              r.franchiseeId === f.id &&
-              r.reminderDate === option.date
-          );
-
-          if (!alreadyExists) {
-            if (!dryRun) {
-              const { createFranchiseeReminder } = await import(
-                "@/data-access/franchiseeReminders"
-              );
-              const notificationDate = new Date(option.date);
-              notificationDate.setDate(
-                notificationDate.getDate() - defaultDaysBefore
-              );
-
-              await createFranchiseeReminder({
-                id: crypto.randomUUID(),
-                franchiseeId: f.id,
-                title: `תום ${option.label} - ${f.name}`,
-                description: `תאריך סיום ${option.label} של סניף ${f.name} מתקרב`,
-                reminderType: "lease_option",
-                reminderDate: option.date,
-                daysBeforeNotification: defaultDaysBefore,
-                notificationDate: formatDateAsLocal(notificationDate),
-                recipients: [
-                  f.primaryContactEmail ||
-                    f.contactEmail ||
-                    "admin@latable.co.il",
-                ].filter(Boolean) as string[],
-                status: "pending",
-              });
-            }
-            results.created++;
-          } else {
-            results.skipped++;
-          }
-        }
-      }
-    }
-
-    // Check franchise agreement end
-    if (f.franchiseAgreementEnd) {
-      const agreementDate = new Date(f.franchiseAgreementEnd);
-      const daysUntil = Math.ceil(
-        (agreementDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-      );
-
-      if (daysUntil > 0 && daysUntil <= lookAheadDays + defaultDaysBefore) {
-        // Check if reminder already exists
-        const existingReminders = await getRemindersDueByType("franchise_agreement");
-        const alreadyExists = existingReminders.some(
-          (r) =>
-            r.franchiseeId === f.id &&
-            r.reminderDate === f.franchiseAgreementEnd
-        );
-
-        if (!alreadyExists) {
-          if (!dryRun) {
-            const { createFranchiseeReminder } = await import(
-              "@/data-access/franchiseeReminders"
-            );
-            const notificationDate = new Date(f.franchiseAgreementEnd);
-            notificationDate.setDate(
-              notificationDate.getDate() - defaultDaysBefore
-            );
-
-            await createFranchiseeReminder({
-              id: crypto.randomUUID(),
-              franchiseeId: f.id,
-              title: `תום הסכם זיכיון - ${f.name}`,
-              description: `תאריך סיום הסכם הזיכיון של סניף ${f.name} מתקרב`,
-              reminderType: "franchise_agreement",
-              reminderDate: f.franchiseAgreementEnd,
-              daysBeforeNotification: defaultDaysBefore,
-              notificationDate: formatDateAsLocal(notificationDate),
-              recipients: [
-                f.primaryContactEmail ||
-                  f.contactEmail ||
-                  "admin@latable.co.il",
-              ].filter(Boolean) as string[],
-              status: "pending",
-            });
-          }
-          results.created++;
-        } else {
-          results.skipped++;
-        }
-      }
-    }
-  }
-
-  return results;
-}
-
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = request.headers.get("authorization");
 
     if (!cronSecret) {
-      console.error("CRON_SECRET must be configured");
-      return NextResponse.json(
-        { error: "Server misconfigured" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
     }
     if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -381,24 +301,18 @@ export async function POST(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get("action") || "all";
     const dryRun = searchParams.get("dryRun") === "true";
-    const templateCode =
-      searchParams.get("emailTemplateCode") || "franchisee_reminder";
     const autoCreate = searchParams.get("autoCreate") === "true";
 
     interface ResultsType {
       timestamp: string;
       dryRun: boolean;
-      autoCreate?: {
-        created: number;
-        skipped: number;
-        errors: string[];
-      };
+      autoCreate?: { created: number; skipped: number; errors: string[] };
       reminders?: {
         processed: number;
         failed: number;
         emailsSent: number;
         errors: string[];
-        reminders: { id: string; franchisee: string; type: string }[];
+        reminders: { id: string; franchisee: string; type: string; daysBefore: number }[];
       };
       totals: {
         processed: number;
@@ -410,18 +324,12 @@ export async function POST(request: NextRequest) {
     }
 
     const results: ResultsType = {
-      timestamp: new Date().toISOString(),
+      timestamp: formatDateAsLocal(new Date()),
       dryRun,
-      totals: {
-        processed: 0,
-        failed: 0,
-        emailsSent: 0,
-        created: 0,
-        errors: [],
-      },
+      totals: { processed: 0, failed: 0, emailsSent: 0, created: 0, errors: [] },
     };
 
-    // Auto-create reminders from franchisee dates if requested
+    // Auto-create reminders
     if (autoCreate) {
       results.autoCreate = await autoCreateRemindersFromFranchisees(dryRun);
       results.totals.created += results.autoCreate.created;
@@ -429,37 +337,24 @@ export async function POST(request: NextRequest) {
     }
 
     // Process reminders
-    if (
-      action === "all" ||
-      action === "lease_option" ||
-      action === "franchise_agreement" ||
-      action === "custom"
-    ) {
-      const reminderType = action === "all" ? "all" : (action as FranchiseeReminderType);
-      results.reminders = await processRemindersByType(
-        reminderType,
-        templateCode,
-        dryRun
-      );
-
-      results.totals.processed += results.reminders.processed;
-      results.totals.failed += results.reminders.failed;
-      results.totals.emailsSent += results.reminders.emailsSent;
-      results.totals.errors.push(...results.reminders.errors);
-    } else {
+    const validTypes: (FranchiseeReminderType | "all")[] = [
+      "all", "lease_option", "franchise_agreement", "custom",
+    ];
+    if (!validTypes.includes(action as FranchiseeReminderType | "all")) {
       return NextResponse.json(
-        {
-          error:
-            "Invalid action. Use: all, lease_option, franchise_agreement, custom",
-        },
+        { error: "Invalid action. Use: all, lease_option, franchise_agreement, custom" },
         { status: 400 }
       );
     }
 
-    return NextResponse.json({
-      success: true,
-      ...results,
-    });
+    const reminderType = action === "all" ? "all" : (action as FranchiseeReminderType);
+    results.reminders = await processReminders(reminderType, dryRun);
+    results.totals.processed += results.reminders.processed;
+    results.totals.failed += results.reminders.failed;
+    results.totals.emailsSent += results.reminders.emailsSent;
+    results.totals.errors.push(...results.reminders.errors);
+
+    return NextResponse.json({ success: true, ...results });
   } catch (error) {
     console.error("Error processing franchisee reminders cron job:", error);
     return NextResponse.json(
@@ -472,72 +367,35 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * GET /api/cron/franchisee-reminders - Health check for cron endpoint
- */
 export async function GET(request: NextRequest) {
-  // Verify cron secret for health check too
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
 
   if (!cronSecret) {
-    console.error("CRON_SECRET must be configured");
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
   }
   if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get statistics
   const pendingReminders = await getPendingRemindersForNotification();
-  const leaseReminders = await getRemindersDueByType("lease_option");
-  const agreementReminders = await getRemindersDueByType("franchise_agreement");
-  const customReminders = await getRemindersDueByType("custom");
 
   return NextResponse.json({
     status: "ok",
     endpoint: "/api/cron/franchisee-reminders",
-    description: "Franchisee contract and lease reminder scheduler",
+    description: "Franchisee contract/lease reminder scheduler",
+    currentDate: formatDateAsLocal(new Date()),
     statistics: {
       pendingRemindersTotal: pendingReminders.length,
-      byType: {
-        lease_option: leaseReminders.length,
-        franchise_agreement: agreementReminders.length,
-        custom: customReminders.length,
-      },
     },
-    actions: {
-      all: "Process all pending reminders",
-      lease_option: "Process lease option reminders only",
-      franchise_agreement: "Process franchise agreement reminders only",
-      custom: "Process custom reminders only",
+    reminderSchedule: {
+      daysBeforeExpiry: REMINDER_DAYS,
+      recipient: ADMIN_EMAIL,
+      note: "All reminders sent to admin only, not to franchisees",
     },
-    usage: {
-      method: "POST",
-      queryParams: {
-        action: "all | lease_option | franchise_agreement | custom",
-        dryRun: "true to simulate without sending emails",
-        emailTemplateCode:
-          "template code to use (default: franchisee_reminder)",
-        autoCreate:
-          "true to auto-create reminders from franchisee dates (within 90 days)",
-      },
-      authentication: "Bearer token in Authorization header (CRON_SECRET)",
-    },
-    reminderTypes: {
-      lease_option: "Reminders for lease option expiration dates",
-      franchise_agreement: "Reminders for franchise agreement expiration dates",
-      custom: "Custom reminders created manually",
-    },
-    notes: {
-      notificationTiming:
-        "Reminders are sent based on notificationDate = reminderDate - daysBeforeNotification",
-      defaultDaysBefore: "30 days before the event date",
-      autoCreate:
-        "When enabled, automatically creates reminders for franchisees with leaseOptionEnd or franchiseAgreementEnd dates within 90 days",
+    features: {
+      autoCreate: "Creates 3 reminders (30/15/0 days) per expiry date",
+      handled: "Marking as 'handled' stops future reminders for that date",
     },
   });
 }

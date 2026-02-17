@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/db";
-import { supplier, type Supplier, type SettlementFrequency, type SettlementPeriodType } from "@/db/schema";
+import {
+  supplier,
+  supplierBrand,
+  brand,
+  fileRequest,
+  type Supplier,
+  type SettlementFrequency,
+  type SettlementPeriodType,
+} from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
 import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
@@ -10,25 +18,19 @@ import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 /**
  * Settlement File Requests Cron Job
  *
- * This endpoint is called on the 1st of each month to send file requests
- * to suppliers based on their settlement frequency.
+ * Runs daily. On the LAST DAY of each settlement period, sends file requests
+ * to suppliers for that period's commission report.
  *
  * Settlement Frequencies:
- * - monthly: Send every 1st of the month
- * - quarterly: Send on Jan 1, Apr 1, Jul 1, Oct 1
- * - semi_annual: Send on Jan 1, Jul 1
- * - annual: Send on Jan 1
- * - bi_weekly: Send every 1st and 15th
- * - weekly: Should be handled by a separate weekly job
+ * - monthly: last day of each month
+ * - quarterly: 31/3, 30/6, 30/9, 31/12
+ * - semi_annual: 30/6, 31/12
+ * - annual: 31/12
  *
  * Query params:
- * - action: "all" | "monthly" | "quarterly" | "semi_annual" | "annual" | "bi_weekly" (default: "all")
+ * - action: "all" | specific frequency (default: "all")
  * - dryRun: "true" to simulate without sending emails
  * - emailTemplateId: Optional template ID for file request emails
- *
- * Authentication:
- * This endpoint uses a secret token for authentication.
- * Set CRON_SECRET environment variable and pass it as Authorization header.
  */
 
 // Map settlement frequency to settlement period type
@@ -43,41 +45,58 @@ function frequencyToPeriodType(frequency: SettlementFrequency): SettlementPeriod
     case "annual":
       return "annual";
     default:
-      // bi_weekly and weekly don't have corresponding period types
       return null;
+  }
+}
+
+/**
+ * Get the last day of the current period for a given frequency.
+ * Returns true if today is the last day of a period for that frequency.
+ */
+function isLastDayOfPeriod(frequency: SettlementFrequency, date: Date): boolean {
+  const day = date.getDate();
+  const month = date.getMonth(); // 0-indexed
+  const lastDayOfMonth = new Date(date.getFullYear(), month + 1, 0).getDate();
+
+  switch (frequency) {
+    case "monthly":
+      // Last day of every month
+      return day === lastDayOfMonth;
+
+    case "quarterly":
+      // Last day of March (31), June (30), September (30), December (31)
+      return day === lastDayOfMonth && [2, 5, 8, 11].includes(month);
+
+    case "semi_annual":
+      // Last day of June (30), December (31)
+      return day === lastDayOfMonth && [5, 11].includes(month);
+
+    case "annual":
+      // Last day of December (31)
+      return day === lastDayOfMonth && month === 11;
+
+    case "bi_weekly":
+      // 1st and 15th of each month
+      return day === 1 || day === 15;
+
+    case "weekly":
+      // Every Sunday
+      return date.getDay() === 0;
+
+    default:
+      return false;
   }
 }
 
 // Determine which settlement frequencies should be processed on this date
 function getActiveFrequencies(date: Date): SettlementFrequency[] {
-  const day = date.getDate();
-  const month = date.getMonth() + 1; // 1-indexed
-
   const frequencies: SettlementFrequency[] = [];
+  const all: SettlementFrequency[] = ["monthly", "quarterly", "semi_annual", "annual", "bi_weekly"];
 
-  // Monthly: Every 1st of the month
-  if (day === 1) {
-    frequencies.push("monthly");
-  }
-
-  // Quarterly: Jan 1, Apr 1, Jul 1, Oct 1
-  if (day === 1 && [1, 4, 7, 10].includes(month)) {
-    frequencies.push("quarterly");
-  }
-
-  // Semi-annual: Jan 1, Jul 1
-  if (day === 1 && [1, 7].includes(month)) {
-    frequencies.push("semi_annual");
-  }
-
-  // Annual: Jan 1
-  if (day === 1 && month === 1) {
-    frequencies.push("annual");
-  }
-
-  // Bi-weekly: 1st and 15th of each month
-  if (day === 1 || day === 15) {
-    frequencies.push("bi_weekly");
+  for (const freq of all) {
+    if (isLastDayOfPeriod(freq, date)) {
+      frequencies.push(freq);
+    }
   }
 
   return frequencies;
@@ -96,6 +115,51 @@ async function getSuppliersByFrequency(
         eq(supplier.settlementFrequency, frequency)
       )
     ) as unknown as Promise<Supplier[]>;
+}
+
+// Get brand names for a supplier (Hebrew names joined with " / ")
+async function getSupplierBrandNames(supplierId: string): Promise<string> {
+  const results = await database
+    .select({ nameHe: brand.nameHe })
+    .from(supplierBrand)
+    .innerJoin(brand, eq(supplierBrand.brandId, brand.id))
+    .where(eq(supplierBrand.supplierId, supplierId));
+
+  if (results.length === 0) return "לה טייבל";
+  return results.map((r) => r.nameHe).join(" / ");
+}
+
+// Check if a file request already exists for this supplier and period
+async function hasExistingFileRequest(
+  supplierId: string,
+  periodDescription: string
+): Promise<boolean> {
+  const existing = await database
+    .select({ id: fileRequest.id })
+    .from(fileRequest)
+    .where(
+      and(
+        eq(fileRequest.entityType, "supplier"),
+        eq(fileRequest.entityId, supplierId),
+        eq(fileRequest.documentType, "settlement_report")
+      )
+    );
+
+  // Check metadata for matching period
+  for (const req of existing) {
+    const full = await database
+      .select()
+      .from(fileRequest)
+      .where(eq(fileRequest.id, req.id))
+      .limit(1);
+    if (full.length > 0) {
+      const meta = full[0].metadata as Record<string, unknown> | null;
+      if (meta?.periodDescription === periodDescription) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 // Calculate due date based on settlement frequency
@@ -123,42 +187,41 @@ function calculateDueDate(frequency: SettlementFrequency): string {
       dueDate.setFullYear(dueDate.getFullYear() + 1);
       break;
     default:
-      dueDate.setDate(dueDate.getDate() + 14); // Default 2 weeks
+      dueDate.setDate(dueDate.getDate() + 14);
   }
 
   return formatDateAsLocal(dueDate);
 }
 
-// Get period description based on frequency
-function getPeriodDescription(frequency: SettlementFrequency): string {
-  const now = new Date();
-  const month = now.toLocaleString("he-IL", { month: "long" });
-  const year = now.getFullYear();
+// Get period description in Hebrew based on frequency
+function getPeriodDescription(frequency: SettlementFrequency, date: Date): string {
+  const hebrewMonths = [
+    "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
+    "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
+  ];
+
+  const year = date.getFullYear();
+  const month = date.getMonth(); // 0-indexed
 
   switch (frequency) {
     case "monthly":
-      // Previous month
-      const prevMonth = new Date(now);
-      prevMonth.setMonth(prevMonth.getMonth() - 1);
-      return `${prevMonth.toLocaleString("he-IL", { month: "long" })} ${prevMonth.getFullYear()}`;
-    case "quarterly":
-      // Previous quarter
-      const quarter = Math.floor((now.getMonth() - 1) / 3) + 1;
-      return `רבעון ${quarter} ${year}`;
-    case "semi_annual":
-      // Previous half-year
-      const halfYear = now.getMonth() < 6 ? 2 : 1;
-      const halfYearYear = now.getMonth() < 6 ? year - 1 : year;
-      return `חצי שנה ${halfYear} ${halfYearYear}`;
+      return `חודש ${hebrewMonths[month]} ${year}`;
+    case "quarterly": {
+      const quarter = Math.floor(month / 3) + 1;
+      return `רבעון ${quarter}/${year}`;
+    }
+    case "semi_annual": {
+      const half = month < 6 ? 1 : 2;
+      return `מחצית ${half}/${year}`;
+    }
     case "annual":
-      // Previous year
-      return `שנת ${year - 1}`;
+      return `שנת ${year}`;
     case "bi_weekly":
-      return `תקופה דו-שבועית - ${month} ${year}`;
+      return `תקופה דו-שבועית - ${hebrewMonths[month]} ${year}`;
     case "weekly":
-      return `שבוע ${now.toLocaleDateString("he-IL")}`;
+      return `שבוע ${date.toLocaleDateString("he-IL")}`;
     default:
-      return `${month} ${year}`;
+      return `${hebrewMonths[month]} ${year}`;
   }
 }
 
@@ -169,6 +232,7 @@ async function processFrequency(
   dryRun: boolean = false
 ): Promise<{
   processed: number;
+  skipped: number;
   failed: number;
   errors: string[];
   suppliers: string[];
@@ -176,33 +240,32 @@ async function processFrequency(
 }> {
   const results = {
     processed: 0,
+    skipped: 0,
     failed: 0,
     errors: [] as string[],
     suppliers: [] as string[],
     settlementPeriodCreated: undefined as { periodKey: string; created: boolean } | undefined,
   };
 
+  const now = new Date();
+  const periodDescription = getPeriodDescription(frequency, now);
+
   // Create settlement period for this frequency if applicable
   const periodType = frequencyToPeriodType(frequency);
   if (periodType && !dryRun) {
     try {
-      // Get the most recent completed period for this frequency
-      const periods = getPeriodsForFrequency(periodType, new Date(), 1);
+      const periods = getPeriodsForFrequency(periodType, now, 1);
       if (periods.length > 0) {
-        const currentPeriod = periods[0]; // The most recent completed period
+        const currentPeriod = periods[0];
         const result = await getOrCreateSettlementPeriodByPeriodKey(currentPeriod.key);
         if (result) {
           results.settlementPeriodCreated = {
             periodKey: currentPeriod.key,
             created: result.created,
           };
-          console.log(
-            `Settlement period ${currentPeriod.key}: ${result.created ? "created" : "already exists"}`
-          );
         }
       }
     } catch (error) {
-      console.error("Error creating settlement period:", error);
       results.errors.push(
         `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
       );
@@ -213,9 +276,7 @@ async function processFrequency(
 
   for (const supplierData of suppliers) {
     try {
-      // Get supplier email (prefer primary, fallback to secondary)
-      const recipientEmail =
-        supplierData.contactEmail || supplierData.secondaryContactEmail;
+      const recipientEmail = supplierData.contactEmail || supplierData.secondaryContactEmail;
 
       if (!recipientEmail) {
         results.failed++;
@@ -225,25 +286,33 @@ async function processFrequency(
         continue;
       }
 
+      // Dedup check: skip if already sent for this period
+      if (!dryRun) {
+        const alreadySent = await hasExistingFileRequest(supplierData.id, periodDescription);
+        if (alreadySent) {
+          results.skipped++;
+          continue;
+        }
+      }
+
+      // Get brand names for this supplier
+      const brandNames = await getSupplierBrandNames(supplierData.id);
+
       const dueDate = calculateDueDate(frequency);
-      const periodDescription = getPeriodDescription(frequency);
 
       if (dryRun) {
-        // Dry run: just log what would be sent
         results.processed++;
-        results.suppliers.push(supplierData.name);
+        results.suppliers.push(`${supplierData.name} (${brandNames})`);
         continue;
       }
 
-      // Resolve maxFiles from supplier file mapping config
       const maxFiles = supplierData.fileMapping?.maxUploadFiles ?? 1;
 
-      // Create and send file request
       await createFileRequest({
         entityType: "supplier",
         entityId: supplierData.id,
         documentType: "settlement_report",
-        description: `דוח התחשבנות עבור ${periodDescription}`,
+        description: `דוח עמלות רשת עבור ${periodDescription}`,
         recipientEmail,
         recipientName: supplierData.contactName || supplierData.name,
         emailTemplateId: emailTemplateId || undefined,
@@ -253,6 +322,7 @@ async function processFrequency(
         metadata: {
           settlementFrequency: frequency,
           periodDescription,
+          brandNames,
           requestedAt: new Date().toISOString(),
           cronTriggered: true,
         },
@@ -275,16 +345,11 @@ async function processFrequency(
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = request.headers.get("authorization");
 
     if (!cronSecret) {
-      console.error("CRON_SECRET must be configured");
-      return NextResponse.json(
-        { error: "Server misconfigured" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
     }
     if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -299,48 +364,31 @@ export async function POST(request: NextRequest) {
       timestamp: string;
       dryRun: boolean;
       activeFrequencies: SettlementFrequency[];
-      byFrequency: Record<
-        string,
-        {
-          processed: number;
-          failed: number;
-          errors: string[];
-          suppliers: string[];
-          settlementPeriodCreated?: { periodKey: string; created: boolean };
-        }
-      >;
-      totals: {
+      byFrequency: Record<string, {
         processed: number;
+        skipped: number;
         failed: number;
         errors: string[];
-      };
+        suppliers: string[];
+        settlementPeriodCreated?: { periodKey: string; created: boolean };
+      }>;
+      totals: { processed: number; skipped: number; failed: number; errors: string[] };
       settlementPeriodsCreated: { frequency: string; periodKey: string; created: boolean }[];
     } = {
-      timestamp: new Date().toISOString(),
+      timestamp: formatDateAsLocal(new Date()),
       dryRun,
       activeFrequencies: [],
       byFrequency: {},
-      totals: {
-        processed: 0,
-        failed: 0,
-        errors: [],
-      },
+      totals: { processed: 0, skipped: 0, failed: 0, errors: [] },
       settlementPeriodsCreated: [],
     };
 
-    // Determine which frequencies to process
     let frequenciesToProcess: SettlementFrequency[];
 
     if (action === "all") {
-      // Auto-detect based on current date
       frequenciesToProcess = getActiveFrequencies(new Date());
     } else if (
-      action === "monthly" ||
-      action === "quarterly" ||
-      action === "semi_annual" ||
-      action === "annual" ||
-      action === "bi_weekly" ||
-      action === "weekly"
+      ["monthly", "quarterly", "semi_annual", "annual", "bi_weekly", "weekly"].includes(action)
     ) {
       frequenciesToProcess = [action as SettlementFrequency];
     } else {
@@ -352,20 +400,14 @@ export async function POST(request: NextRequest) {
 
     results.activeFrequencies = frequenciesToProcess;
 
-    // Process each frequency
     for (const frequency of frequenciesToProcess) {
-      const frequencyResults = await processFrequency(
-        frequency,
-        emailTemplateId,
-        dryRun
-      );
-
+      const frequencyResults = await processFrequency(frequency, emailTemplateId, dryRun);
       results.byFrequency[frequency] = frequencyResults;
       results.totals.processed += frequencyResults.processed;
+      results.totals.skipped += frequencyResults.skipped;
       results.totals.failed += frequencyResults.failed;
       results.totals.errors.push(...frequencyResults.errors);
 
-      // Track settlement periods created
       if (frequencyResults.settlementPeriodCreated) {
         results.settlementPeriodsCreated.push({
           frequency,
@@ -374,10 +416,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      ...results,
-    });
+    return NextResponse.json({ success: true, ...results });
   } catch (error) {
     console.error("Error processing settlement requests cron job:", error);
     return NextResponse.json(
@@ -390,60 +429,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * GET /api/cron/settlement-requests - Health check for cron endpoint
- */
 export async function GET(request: NextRequest) {
-  // Verify cron secret for health check too
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
 
   if (!cronSecret) {
-    console.error("CRON_SECRET must be configured");
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
   }
   if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get current date info
   const now = new Date();
   const activeFrequencies = getActiveFrequencies(now);
 
   return NextResponse.json({
     status: "ok",
     endpoint: "/api/cron/settlement-requests",
-    description: "Settlement file request scheduler",
-    currentDate: now.toISOString(),
+    description: "Settlement file request scheduler - sends on last day of each period",
+    currentDate: formatDateAsLocal(now),
+    isLastDayOfMonth: now.getDate() === new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
     activeFrequencies,
-    actions: {
-      all: "Process all active frequencies for current date",
-      monthly: "Process monthly suppliers only",
-      quarterly: "Process quarterly suppliers only",
-      semi_annual: "Process semi-annual suppliers only",
-      annual: "Process annual suppliers only",
-      bi_weekly: "Process bi-weekly suppliers only",
-      weekly: "Process weekly suppliers only",
-    },
-    usage: {
-      method: "POST",
-      queryParams: {
-        action: "all | monthly | quarterly | semi_annual | annual | bi_weekly | weekly",
-        dryRun: "true to simulate without sending emails",
-        emailTemplateId: "optional template ID for file request emails",
-      },
-      authentication: "Bearer token in Authorization header (CRON_SECRET)",
-    },
     schedulingNotes: {
-      monthly: "Runs on 1st of every month",
-      quarterly: "Runs on 1st of Jan, Apr, Jul, Oct",
-      semi_annual: "Runs on 1st of Jan, Jul",
-      annual: "Runs on 1st of Jan",
-      bi_weekly: "Runs on 1st and 15th of every month",
-      weekly: "Should be handled by separate weekly cron",
+      monthly: "Last day of every month",
+      quarterly: "Last day of March, June, September, December",
+      semi_annual: "Last day of June, December",
+      annual: "Last day of December",
     },
   });
 }

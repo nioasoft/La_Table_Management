@@ -10,6 +10,7 @@ import { MissingFranchiseeFiles } from "./sections/missing-franchisee-files";
 import { ReconciliationIssues } from "./sections/reconciliation-issues";
 import { PendingApprovals } from "./sections/pending-approvals";
 import { UpcomingReminders } from "./sections/upcoming-reminders";
+import { OverdueSupplierRequests } from "./sections/overdue-supplier-requests";
 
 interface AdminDashboardProps {
   userRole?: UserRole | null;
@@ -30,6 +31,7 @@ export function AdminDashboard({ userRole }: AdminDashboardProps) {
         {/* Action Sections - each loads independently */}
         <div className="space-y-2">
           <MissingSupplierFiles />
+          <OverdueSupplierRequests />
           <MissingFranchiseeFiles />
           <ReconciliationIssues />
           {isSuperUser && <PendingApprovals />}

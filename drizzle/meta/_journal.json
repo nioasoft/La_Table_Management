@@ -127,6 +127,13 @@
       "when": 1739613600000,
       "tag": "0041_add_bkmv_small_supplier",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1739700000000,
+      "tag": "0042_add_handled_reminder_status",
+      "breakpoints": true
     }
   ]
 }

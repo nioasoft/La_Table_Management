@@ -303,6 +303,52 @@ export async function markReminderAsDismissed(
 }
 
 /**
+ * Mark a reminder as handled.
+ * Also marks all related future reminders for the same franchisee + date + type as handled.
+ */
+export async function markReminderAsHandled(
+  id: string,
+  handledBy: string
+): Promise<{ handled: number }> {
+  // First get the reminder to find related ones
+  const reminder = await getFranchiseeReminderById(id);
+  if (!reminder) return { handled: 0 };
+
+  // Mark all reminders for the same franchisee + reminderDate + reminderType as handled
+  const results = await database
+    .update(franchiseeReminder)
+    .set({
+      status: "handled",
+      dismissedAt: new Date(),
+      dismissedBy: handledBy,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(franchiseeReminder.franchiseeId, reminder.franchiseeId),
+        eq(franchiseeReminder.reminderDate, reminder.reminderDate),
+        eq(franchiseeReminder.reminderType, reminder.reminderType),
+        eq(franchiseeReminder.status, "pending")
+      )
+    );
+
+  // Also mark the current one if it's already sent
+  if (reminder.status === "sent") {
+    await database
+      .update(franchiseeReminder)
+      .set({
+        status: "handled",
+        dismissedAt: new Date(),
+        dismissedBy: handledBy,
+        updatedAt: new Date(),
+      })
+      .where(eq(franchiseeReminder.id, id));
+  }
+
+  return { handled: (results.rowCount ?? 0) + (reminder.status === "sent" ? 1 : 0) };
+}
+
+/**
  * Get reminder statistics
  */
 export async function getFranchiseeReminderStats(): Promise<{

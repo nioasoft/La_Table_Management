@@ -1,11 +1,16 @@
 "use client";
 
-import { Bell, CalendarClock } from "lucide-react";
+import { useState } from "react";
+import { Bell, CalendarClock, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ActionSection } from "../shared/action-section";
 import { ActionItemRow } from "../shared/action-item-row";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { useUpcomingReminders } from "@/queries/dashboard";
+import { useQueryClient } from "@tanstack/react-query";
+import { dashboardKeys } from "@/queries/dashboard";
+import { toast } from "sonner";
 import type { UpcomingRemindersResponse } from "@/app/api/dashboard/upcoming-reminders/route";
 
 const MAX_PREVIEW = 5;
@@ -56,27 +61,63 @@ function ReminderRow({
 }: {
   reminder: UpcomingRemindersResponse["reminders"][number];
 }) {
+  const [isHandling, setIsHandling] = useState(false);
+  const queryClient = useQueryClient();
   const daysUntil = getDaysUntil(reminder.reminderDate);
   const urgency = getUrgencyStyle(daysUntil);
   const typeLabel =
     reminderTypeLabels[reminder.reminderType] || reminder.reminderType;
 
+  async function handleMarkAsHandled(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsHandling(true);
+    try {
+      const res = await fetch(`/api/franchisee-reminders/${reminder.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "handle" }),
+      });
+      if (!res.ok) throw new Error("Failed to mark as handled");
+      toast.success("התזכורת סומנה כטופלה");
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.upcomingReminders() });
+    } catch {
+      toast.error("שגיאה בעדכון התזכורת");
+    } finally {
+      setIsHandling(false);
+    }
+  }
+
   return (
-    <ActionItemRow
-      icon={<CalendarClock className={`h-3.5 w-3.5 ${urgency.iconColor}`} />}
-      iconBgClass={urgency.iconBg}
-      title={reminder.franchisee?.name || "לא ידוע"}
-      subtitle={`${typeLabel} · ${new Date(reminder.reminderDate).toLocaleDateString("he-IL")}`}
-      badge={
-        <Badge
-          variant="outline"
-          className={`text-[10px] h-4 px-1.5 ${urgency.badgeClass}`}
-        >
-          {urgency.text}
-        </Badge>
-      }
-      href="/admin/franchisee-reminders"
-    />
+    <div className="flex items-center gap-1">
+      <div className="flex-1 min-w-0">
+        <ActionItemRow
+          icon={<CalendarClock className={`h-3.5 w-3.5 ${urgency.iconColor}`} />}
+          iconBgClass={urgency.iconBg}
+          title={reminder.franchisee?.name || "לא ידוע"}
+          subtitle={`${typeLabel} · ${new Date(reminder.reminderDate).toLocaleDateString("he-IL")}`}
+          badge={
+            <Badge
+              variant="outline"
+              className={`text-[10px] h-4 px-1.5 ${urgency.badgeClass}`}
+            >
+              {urgency.text}
+            </Badge>
+          }
+          href="/admin/franchisee-reminders"
+        />
+      </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-green-600 shrink-0"
+        onClick={handleMarkAsHandled}
+        disabled={isHandling}
+        title="סמן כטופל"
+      >
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
   );
 }
 

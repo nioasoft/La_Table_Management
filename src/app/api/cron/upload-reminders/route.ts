@@ -1,191 +1,309 @@
 import { NextRequest, NextResponse } from "next/server";
+import { render } from "@react-email/components";
 import { database } from "@/db";
-import { fileRequest, type FileRequest } from "@/db/schema";
-import { eq, and, lt, isNull, sql } from "drizzle-orm";
-import {
-  sendFileRequestReminder,
-} from "@/data-access/fileRequests";
+import { fileRequest, contact, type FileRequest } from "@/db/schema";
+import { eq, and, lt } from "drizzle-orm";
+import { sendFileRequestReminder, updateFileRequest } from "@/data-access/fileRequests";
+import { sendDirectEmail } from "@/lib/email/service";
+import { AdminEscalationEmail } from "@/emails/admin-escalation";
+import { BkmvOwnerEscalationEmail } from "@/emails/bkmv-owner-escalation";
+import { formatDateAsLocal } from "@/lib/date-utils";
 
 /**
  * Upload Reminders Cron Job
  *
- * This endpoint sends reminders for file requests that have been sent
- * but haven't received uploads after a specified number of days.
+ * Sends reminders for file requests that haven't received uploads.
+ *
+ * Supplier flow (entityType=supplier):
+ *   - 7 days after sent: 1st reminder
+ *   - 3 days after 1st: 2nd reminder
+ *   - After 2 reminders: escalation email to Reut (reutl@latableg.com)
+ *
+ * BKMV flow (entityType=franchisee, requestType=bkmv in metadata):
+ *   - 2 days after sent: 1st reminder (to accountant)
+ *   - 2 days later: 2nd reminder (to accountant)
+ *   - 2 days later: 3rd reminder (to accountant + owners) - escalation
+ *   - Continues every 2 days to both until upload
  *
  * Query params:
  * - action: "all" | "initial" | "followup" (default: "all")
- * - daysAfterSent: days after initial send to send first reminder (default: 5)
- * - maxReminders: maximum number of reminders to send per request (default: 3)
- * - reminderIntervalDays: days between reminder emails (default: 3)
  * - dryRun: "true" to simulate without sending emails
- * - reminderTemplateId: Optional template ID for reminder emails
- *
- * Authentication:
- * This endpoint uses a secret token for authentication.
- * Set CRON_SECRET environment variable and pass it as Authorization header.
  */
 
-interface ReminderConfig {
-  daysAfterSent: number;
-  maxReminders: number;
-  reminderIntervalDays: number;
-  dryRun: boolean;
-  reminderTemplateId?: string;
-}
+const ADMIN_EMAIL = "reutl@latableg.com";
 
-// Get file requests that need initial reminder (sent X days ago, no reminders yet)
-async function getRequestsNeedingInitialReminder(
-  daysAfterSent: number
-): Promise<FileRequest[]> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysAfterSent);
-
-  // Get all sent requests and filter for those without reminders in JS
-  const requests = (await database
-    .select()
-    .from(fileRequest)
-    .where(
-      and(
-        eq(fileRequest.status, "sent"),
-        lt(fileRequest.sentAt, cutoffDate)
-      )
-    )) as unknown as FileRequest[];
-
-  // Filter for requests with no reminders
-  return requests.filter((req) => {
-    const reminders = req.remindersSent as string[] | null;
-    return !reminders || reminders.length === 0;
-  });
-}
-
-// Get file requests that need follow-up reminder
-async function getRequestsNeedingFollowupReminder(
-  maxReminders: number,
-  reminderIntervalDays: number
-): Promise<FileRequest[]> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - reminderIntervalDays);
-
-  // Get all sent requests that have reminders
-  const requests = (await database
-    .select()
-    .from(fileRequest)
-    .where(eq(fileRequest.status, "sent"))) as unknown as FileRequest[];
-
-  // Filter in application code for complex JSON logic
-  return requests.filter((req) => {
-    const reminders = req.remindersSent as string[] | null;
-    if (!reminders || reminders.length === 0) return false;
-    if (reminders.length >= maxReminders) return false;
-
-    // Check if last reminder was sent more than reminderIntervalDays ago
-    const lastReminder = new Date(reminders[reminders.length - 1]);
-    return lastReminder < cutoffDate;
-  });
-}
-
-// Send reminder for a file request
-async function sendReminder(
-  request: FileRequest,
-  templateId?: string,
-  dryRun: boolean = false
-): Promise<{ success: boolean; error?: string }> {
-  if (dryRun) {
-    return { success: true };
-  }
-
-  const result = await sendFileRequestReminder(request.id, templateId);
-  return result;
-}
-
-// Process initial reminders (first reminder after X days)
-async function processInitialReminders(
-  config: ReminderConfig
-): Promise<{
+interface ReminderResult {
   processed: number;
+  escalated: number;
   failed: number;
   errors: string[];
   requests: string[];
-}> {
-  const results = {
-    processed: 0,
-    failed: 0,
-    errors: [] as string[],
-    requests: [] as string[],
-  };
+}
 
-  const requests = await getRequestsNeedingInitialReminder(config.daysAfterSent);
+// Reminder config per entity type
+interface EntityReminderConfig {
+  daysAfterSent: number;
+  reminderInterval: number;
+  maxRemindersBeforeEscalation: number;
+}
 
-  for (const request of requests) {
-    try {
-      const sendResult = await sendReminder(
-        request,
-        config.reminderTemplateId,
-        config.dryRun
-      );
+function getReminderConfig(req: FileRequest): EntityReminderConfig {
+  const meta = req.metadata as Record<string, unknown> | null;
+  const isBkmv = req.entityType === "franchisee" && meta?.requestType === "bkmv";
 
-      if (sendResult.success) {
-        results.processed++;
-        results.requests.push(request.id);
-      } else {
-        results.failed++;
-        results.errors.push(`Request ${request.id}: ${sendResult.error}`);
-      }
-    } catch (error) {
-      results.failed++;
-      results.errors.push(
-        `Request ${request.id}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+  if (isBkmv) {
+    return { daysAfterSent: 2, reminderInterval: 2, maxRemindersBeforeEscalation: 2 };
+  }
+  // Supplier defaults
+  return { daysAfterSent: 7, reminderInterval: 3, maxRemindersBeforeEscalation: 2 };
+}
+
+// Get all sent file requests that may need reminders
+async function getSentFileRequests(): Promise<FileRequest[]> {
+  return database
+    .select()
+    .from(fileRequest)
+    .where(eq(fileRequest.status, "sent")) as unknown as Promise<FileRequest[]>;
+}
+
+// Get owner emails for a franchisee
+async function getOwnerEmails(franchiseeId: string): Promise<string[]> {
+  const owners = await database
+    .select({ email: contact.email })
+    .from(contact)
+    .where(
+      and(
+        eq(contact.franchiseeId, franchiseeId),
+        eq(contact.role, "owner"),
+        eq(contact.isActive, true)
+      )
+    );
+  return owners.map((o) => o.email).filter((e): e is string => !!e);
+}
+
+// Send escalation email to Reut about a supplier that hasn't uploaded
+async function sendSupplierEscalation(
+  req: FileRequest,
+  dryRun: boolean
+): Promise<{ success: boolean; error?: string }> {
+  const meta = req.metadata as Record<string, unknown> | null;
+  const periodDescription = (meta?.periodDescription as string) || "לא ידוע";
+  const reminders = (req.remindersSent || []) as string[];
+
+  if (dryRun) return { success: true };
+
+  const html = await render(
+    AdminEscalationEmail({
+      supplier_name: req.recipientName || req.recipientEmail,
+      period: periodDescription,
+      original_sent_date: req.sentAt
+        ? new Date(req.sentAt).toLocaleDateString("he-IL")
+        : "לא ידוע",
+      reminders_sent: String(reminders.length),
+    })
+  );
+  const text = await render(
+    AdminEscalationEmail({
+      supplier_name: req.recipientName || req.recipientEmail,
+      period: periodDescription,
+      original_sent_date: req.sentAt
+        ? new Date(req.sentAt).toLocaleDateString("he-IL")
+        : "לא ידוע",
+      reminders_sent: String(reminders.length),
+    }),
+    { plainText: true }
+  );
+
+  return sendDirectEmail({
+    to: ADMIN_EMAIL,
+    subject: `התראה: הספק ${req.recipientName || req.recipientEmail} לא העלה דוח`,
+    html,
+    text,
+    entityType: "admin_escalation",
+    entityId: req.id,
+    metadata: {
+      fileRequestId: req.id,
+      supplierName: req.recipientName,
+      escalationType: "supplier_no_upload",
+    },
+  });
+}
+
+// Send BKMV escalation to owners (while still including the accountant)
+async function sendBkmvOwnerEscalation(
+  req: FileRequest,
+  ownerEmails: string[],
+  dryRun: boolean
+): Promise<{ success: boolean; sentCount: number; errors: string[] }> {
+  const meta = req.metadata as Record<string, unknown> | null;
+  const startDate = (meta?.startDate as string) || "01/01/2026";
+  const originalSentDate = req.sentAt
+    ? new Date(req.sentAt).toLocaleDateString("he-IL")
+    : "לא ידוע";
+
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || "http://localhost:3000";
+  const uploadUrl = meta?.uploadToken ? `${baseUrl}/upload/${meta.uploadToken}` : "";
+
+  const result = { success: false, sentCount: 0, errors: [] as string[] };
+
+  for (const email of ownerEmails) {
+    if (dryRun) {
+      result.sentCount++;
+      continue;
+    }
+
+    const html = await render(
+      BkmvOwnerEscalationEmail({
+        original_sent_date: originalSentDate,
+        start_date: startDate,
+        upload_link: uploadUrl,
+        franchisee_name: req.recipientName || "",
+      })
+    );
+    const text = await render(
+      BkmvOwnerEscalationEmail({
+        original_sent_date: originalSentDate,
+        start_date: startDate,
+        upload_link: uploadUrl,
+        franchisee_name: req.recipientName || "",
+      }),
+      { plainText: true }
+    );
+
+    const sendResult = await sendDirectEmail({
+      to: email,
+      subject: `תזכורת: קובץ מבנה אחיד BKMV טרם הועלה - ${req.recipientName || ""}`,
+      html,
+      text,
+      entityType: "bkmv_owner_escalation",
+      entityId: req.id,
+      metadata: {
+        fileRequestId: req.id,
+        franchiseeId: req.entityId,
+        escalationType: "bkmv_owner",
+      },
+    });
+
+    if (sendResult.success) {
+      result.sentCount++;
+    } else {
+      result.errors.push(`${email}: ${sendResult.error}`);
     }
   }
 
-  return results;
+  result.success = result.sentCount > 0;
+  return result;
 }
 
-// Process follow-up reminders
-async function processFollowupReminders(
-  config: ReminderConfig
-): Promise<{
-  processed: number;
-  failed: number;
-  errors: string[];
-  requests: string[];
-}> {
-  const results = {
+// Main processing logic
+async function processReminders(dryRun: boolean): Promise<ReminderResult> {
+  const results: ReminderResult = {
     processed: 0,
+    escalated: 0,
     failed: 0,
-    errors: [] as string[],
-    requests: [] as string[],
+    errors: [],
+    requests: [],
   };
 
-  const requests = await getRequestsNeedingFollowupReminder(
-    config.maxReminders,
-    config.reminderIntervalDays
-  );
+  const allRequests = await getSentFileRequests();
+  const now = new Date();
 
-  for (const request of requests) {
+  for (const req of allRequests) {
     try {
-      const sendResult = await sendReminder(
-        request,
-        config.reminderTemplateId,
-        config.dryRun
-      );
+      const config = getReminderConfig(req);
+      const reminders = (req.remindersSent || []) as string[];
+      const reminderCount = reminders.length;
+      const meta = req.metadata as Record<string, unknown> | null;
 
-      if (sendResult.success) {
-        results.processed++;
-        results.requests.push(request.id);
+      // Already escalated and past max? For suppliers, stop after escalation
+      if (
+        req.entityType === "supplier" &&
+        reminderCount >= config.maxRemindersBeforeEscalation &&
+        meta?.escalatedToAdmin
+      ) {
+        continue; // Already escalated, no more reminders for suppliers
+      }
+
+      // Determine the reference date for timing
+      let referenceDate: Date;
+      if (reminderCount === 0) {
+        // No reminders sent yet - check against sentAt
+        if (!req.sentAt) continue;
+        referenceDate = new Date(req.sentAt);
+        const daysSinceSent = Math.floor(
+          (now.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysSinceSent < config.daysAfterSent) continue;
       } else {
-        results.failed++;
-        results.errors.push(`Request ${request.id}: ${sendResult.error}`);
+        // Check against last reminder date
+        const lastReminderDate = new Date(reminders[reminders.length - 1]);
+        const daysSinceLastReminder = Math.floor(
+          (now.getTime() - lastReminderDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (daysSinceLastReminder < config.reminderInterval) continue;
+      }
+
+      // Check if this should be an escalation
+      const shouldEscalate = reminderCount >= config.maxRemindersBeforeEscalation;
+      const isBkmv = req.entityType === "franchisee" && meta?.requestType === "bkmv";
+
+      if (shouldEscalate && req.entityType === "supplier") {
+        // Supplier escalation: send alert to Reut
+        const escResult = await sendSupplierEscalation(req, dryRun);
+        if (escResult.success) {
+          results.escalated++;
+          results.requests.push(`${req.id} (escalated to admin)`);
+          if (!dryRun) {
+            await updateFileRequest(req.id, {
+              metadata: { ...meta, escalatedToAdmin: true, escalatedAt: new Date().toISOString() },
+            });
+          }
+        } else {
+          results.failed++;
+          results.errors.push(`${req.id}: escalation failed - ${escResult.error}`);
+        }
+      } else if (shouldEscalate && isBkmv) {
+        // BKMV escalation: send to accountant (regular reminder) + owners
+        const reminderResult = await sendFileRequestReminder(req.id);
+        if (reminderResult.success) {
+          results.processed++;
+          results.requests.push(req.id);
+        }
+
+        // Also send to owners
+        const ownerEmails = await getOwnerEmails(req.entityId);
+        if (ownerEmails.length > 0) {
+          const ownerResult = await sendBkmvOwnerEscalation(req, ownerEmails, dryRun);
+          if (ownerResult.success) {
+            results.escalated++;
+          }
+          if (ownerResult.errors.length > 0) {
+            results.errors.push(...ownerResult.errors);
+          }
+        }
+
+        // Update escalation level in metadata
+        if (!dryRun) {
+          const currentLevel = (meta?.escalationLevel as number) || 0;
+          await updateFileRequest(req.id, {
+            metadata: { ...meta, escalationLevel: currentLevel + 1 },
+          });
+        }
+      } else {
+        // Regular reminder (no escalation)
+        const sendResult = await sendFileRequestReminder(req.id);
+        if (sendResult.success) {
+          results.processed++;
+          results.requests.push(req.id);
+        } else {
+          results.failed++;
+          results.errors.push(`${req.id}: ${sendResult.error}`);
+        }
       }
     } catch (error) {
       results.failed++;
       results.errors.push(
-        `Request ${request.id}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
+        `${req.id}: ${error instanceof Error ? error.message : "Unknown error"}`
       );
     }
   }
@@ -195,93 +313,26 @@ async function processFollowupReminders(
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify cron secret
     const cronSecret = process.env.CRON_SECRET;
     const authHeader = request.headers.get("authorization");
 
     if (!cronSecret) {
-      console.error("CRON_SECRET must be configured");
-      return NextResponse.json(
-        { error: "Server misconfigured" },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
     }
     if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const action = searchParams.get("action") || "all";
     const dryRun = searchParams.get("dryRun") === "true";
 
-    const config: ReminderConfig = {
-      daysAfterSent: parseInt(searchParams.get("daysAfterSent") || "5", 10),
-      maxReminders: parseInt(searchParams.get("maxReminders") || "3", 10),
-      reminderIntervalDays: parseInt(
-        searchParams.get("reminderIntervalDays") || "3",
-        10
-      ),
-      dryRun,
-      reminderTemplateId: searchParams.get("reminderTemplateId") || undefined,
-    };
-
-    const results: {
-      timestamp: string;
-      dryRun: boolean;
-      config: ReminderConfig;
-      initial?: {
-        processed: number;
-        failed: number;
-        errors: string[];
-        requests: string[];
-      };
-      followup?: {
-        processed: number;
-        failed: number;
-        errors: string[];
-        requests: string[];
-      };
-      totals: {
-        processed: number;
-        failed: number;
-        errors: string[];
-      };
-    } = {
-      timestamp: new Date().toISOString(),
-      dryRun,
-      config,
-      totals: {
-        processed: 0,
-        failed: 0,
-        errors: [],
-      },
-    };
-
-    // Process based on action
-    if (action === "all" || action === "initial") {
-      results.initial = await processInitialReminders(config);
-      results.totals.processed += results.initial.processed;
-      results.totals.failed += results.initial.failed;
-      results.totals.errors.push(...results.initial.errors);
-    }
-
-    if (action === "all" || action === "followup") {
-      results.followup = await processFollowupReminders(config);
-      results.totals.processed += results.followup.processed;
-      results.totals.failed += results.followup.failed;
-      results.totals.errors.push(...results.followup.errors);
-    }
-
-    if (action !== "all" && action !== "initial" && action !== "followup") {
-      return NextResponse.json(
-        { error: "Invalid action. Use: all, initial, followup" },
-        { status: 400 }
-      );
-    }
+    const reminderResults = await processReminders(dryRun);
 
     return NextResponse.json({
       success: true,
-      ...results,
+      timestamp: formatDateAsLocal(new Date()),
+      dryRun,
+      ...reminderResults,
     });
   } catch (error) {
     console.error("Error processing upload reminders cron job:", error);
@@ -295,60 +346,39 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/**
- * GET /api/cron/upload-reminders - Health check for cron endpoint
- */
 export async function GET(request: NextRequest) {
-  // Verify cron secret for health check too
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
 
   if (!cronSecret) {
-    console.error("CRON_SECRET must be configured");
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 503 }
-    );
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
   }
   if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // Get statistics
-  const pendingInitial = await getRequestsNeedingInitialReminder(5);
-  const pendingFollowup = await getRequestsNeedingFollowupReminder(3, 3);
+  const sentRequests = await getSentFileRequests();
 
   return NextResponse.json({
     status: "ok",
     endpoint: "/api/cron/upload-reminders",
-    description: "Upload reminder scheduler for file requests",
+    description: "Upload reminder scheduler with escalation support",
     statistics: {
-      pendingInitialReminders: pendingInitial.length,
-      pendingFollowupReminders: pendingFollowup.length,
+      totalSentRequests: sentRequests.length,
+      supplierRequests: sentRequests.filter((r) => r.entityType === "supplier").length,
+      franchiseeRequests: sentRequests.filter((r) => r.entityType === "franchisee").length,
     },
-    actions: {
-      all: "Process all reminders (initial + followup)",
-      initial: "Process initial reminders only (first reminder after X days)",
-      followup: "Process follow-up reminders only",
-    },
-    usage: {
-      method: "POST",
-      queryParams: {
-        action: "all | initial | followup",
-        daysAfterSent:
-          "days after initial send to send first reminder (default: 5)",
-        maxReminders:
-          "maximum number of reminders to send per request (default: 3)",
-        reminderIntervalDays: "days between reminder emails (default: 3)",
-        dryRun: "true to simulate without sending emails",
-        reminderTemplateId: "optional template ID for reminder emails",
+    reminderSchedule: {
+      supplier: {
+        firstReminder: "7 days after initial request",
+        secondReminder: "3 days after first reminder",
+        escalation: "After 2 reminders → alert to Reut",
       },
-      authentication: "Bearer token in Authorization header (CRON_SECRET)",
-    },
-    defaultBehavior: {
-      initialReminder: "Sent 5 days after original file request",
-      followupReminders: "Sent every 3 days after first reminder",
-      maxReminders: "3 reminders total per request",
+      bkmv: {
+        interval: "Every 2 days",
+        escalation: "After 2 reminders → include owners",
+        continues: "Every 2 days to both accountant and owners",
+      },
     },
   });
 }

@@ -6,41 +6,38 @@ import {
 import * as React from "react";
 import { EmailLayout } from "./components/email-layout";
 
-interface SupplierRequestEmailProps {
-  entity_name?: string;
-  period?: string;
+interface BkmvRequestEmailProps {
+  start_date?: string;
   upload_link?: string;
-  deadline?: string;
-  brand_name?: string;
-  brand_names?: string;
+  franchisee_name?: string;
 }
 
-export function SupplierRequestEmail({
-  entity_name = "{{entity_name}}",
-  period = "{{period}}",
+export function BkmvRequestEmail({
+  start_date = "{{start_date}}",
   upload_link = "{{upload_link}}",
-  deadline = "{{deadline}}",
-  brand_name = "La Table",
-  brand_names = "{{brand_names}}",
-}: SupplierRequestEmailProps) {
-  const displayBrands = brand_names && brand_names !== "{{brand_names}}" ? brand_names : brand_name;
-  const subject = `בקשת דוח עמלות רשת - ${period}`;
+  franchisee_name = "{{franchisee_name}}",
+}: BkmvRequestEmailProps) {
+  const subject = `בקשת קובץ מבנה אחיד BKMV - ${franchisee_name}`;
 
   return (
     <EmailLayout preview={subject}>
       <Section style={section}>
         <Text style={text}>שלום רב,</Text>
         <Text style={text}>
-          נבקשכם להעלות דוח עמלות רשת עבור קבוצת לה טייבל
-          ({displayBrands}) בקישור המצורף מטה.
+          נבקשכם להעלות קובץ מבנה אחיד מסוג BKMV
+          עבור התקופה החל מ־{start_date} ועד היום,
+          בקישור המצורף מטה.
         </Text>
         <Section style={buttonSection}>
           <Button style={button} href={upload_link}>
-            📎 קישור להעלאת הדוח
+            📎 קישור להעלאת הקובץ
           </Button>
         </Section>
         <Text style={text}>
-          נודה להעלאת הדוח בהקדם האפשרי.
+          הקובץ נדרש לצורך ריכוז ובקרה שוטפת ברמת הקבוצה.
+        </Text>
+        <Text style={text}>
+          נודה להעלאתו בהקדם האפשרי.
         </Text>
         <Text style={text}>
           במידה וקיימת שאלה או תקלה בתהליך ההעלאה – נשמח לסייע.
@@ -93,4 +90,4 @@ const signature: React.CSSProperties = {
   textAlign: "right" as const,
 };
 
-export default SupplierRequestEmail;
+export default BkmvRequestEmail;
