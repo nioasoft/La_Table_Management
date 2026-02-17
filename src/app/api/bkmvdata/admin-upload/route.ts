@@ -12,6 +12,7 @@ import {
 } from "@/data-access/uploadLinks";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
+import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { randomUUID } from "crypto";
 import type { BkmvProcessingResult } from "@/db/schema";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -168,26 +169,30 @@ export async function POST(request: NextRequest) {
     // Process BKMVDATA with blacklist support
     const allSuppliers = await getSuppliers();
     const blacklistedNames = await getBlacklistedNamesSet();
+    const smallSupplierNames = await getSmallSupplierNamesSet();
     const matchResults = matchBkmvSuppliers(
       parseResult.supplierSummary,
       allSuppliers,
       { minConfidence: 0.6, reviewThreshold: 1.0 },
-      blacklistedNames
+      blacklistedNames,
+      smallSupplierNames
     );
 
-    // Calculate match statistics (excluding blacklisted items)
-    const nonBlacklistedResults = matchResults.filter(r => r.matchResult.matchType !== "blacklisted");
-    const blacklistedCount = matchResults.length - nonBlacklistedResults.length;
-    const exactMatches = nonBlacklistedResults.filter(r =>
+    // Calculate match statistics (excluding blacklisted and small supplier items)
+    const classifiedResults = matchResults.filter(r =>
+      r.matchResult.matchType !== "blacklisted" && r.matchResult.matchType !== "small_supplier"
+    );
+    const blacklistedCount = matchResults.filter(r => r.matchResult.matchType === "blacklisted").length;
+    const exactMatches = classifiedResults.filter(r =>
       r.matchResult.matchedSupplier && r.matchResult.confidence === 1
     ).length;
-    const fuzzyMatches = nonBlacklistedResults.filter(r =>
+    const fuzzyMatches = classifiedResults.filter(r =>
       r.matchResult.matchedSupplier && r.matchResult.confidence < 1
     ).length;
-    const unmatched = nonBlacklistedResults.filter(r => !r.matchResult.matchedSupplier).length;
+    const unmatched = classifiedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
     // Determine processing status (blacklisted items don't count as unmatched)
-    const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
+    const shouldAutoApprove = exactMatches === classifiedResults.length && unmatched === 0;
     const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
     // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)

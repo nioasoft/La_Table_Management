@@ -70,6 +70,7 @@ export type SupplierMatchType =
   | "fuzzy_name"        // Fuzzy match on primary name
   | "fuzzy_alias"       // Fuzzy match on a BKMV alias
   | "blacklisted"       // Name is in the blacklist (not a real supplier)
+  | "small_supplier"    // Name is marked as small supplier (no commission)
   | "no_match";         // No match found
 
 /**
@@ -406,12 +407,14 @@ export interface BkmvSupplierMatchingResult {
  * @param suppliers - List of suppliers from the database to match against
  * @param config - Optional matching configuration
  * @param blacklistedNames - Optional set of normalized names to mark as blacklisted
+ * @param smallSupplierNames - Optional set of normalized names to mark as small supplier
  */
 export function matchBkmvSuppliers(
   supplierSummary: Map<string, { totalAmount: number; transactionCount: number }>,
   suppliers: Supplier[],
   config: Partial<SupplierMatcherConfig> = {},
-  blacklistedNames?: Set<string>
+  blacklistedNames?: Set<string>,
+  smallSupplierNames?: Set<string>
 ): BkmvSupplierMatchingResult[] {
   // Phase 1: Initial matching - run matchSupplierName for each BKMV name
   const entries: Array<{
@@ -425,6 +428,8 @@ export function matchBkmvSuppliers(
     const normalizedBkmvName = normalizeName(bkmvName);
     const isBlacklisted = blacklistedNames?.has(normalizedBkmvName) ?? false;
 
+    const isSmallSupplier = smallSupplierNames?.has(normalizedBkmvName) ?? false;
+
     if (isBlacklisted) {
       const blacklistedResult: SupplierMatchResult = {
         originalName: bkmvName,
@@ -436,6 +441,17 @@ export function matchBkmvSuppliers(
         alternatives: [],
       };
       entries.push({ bkmvName, summary, matchResult: blacklistedResult, isBlacklisted: true });
+    } else if (isSmallSupplier) {
+      const smallSupplierResult: SupplierMatchResult = {
+        originalName: bkmvName,
+        matchedSupplier: null,
+        confidence: 1,
+        matchType: "small_supplier",
+        matchedOn: "small_supplier",
+        requiresReview: false,
+        alternatives: [],
+      };
+      entries.push({ bkmvName, summary, matchResult: smallSupplierResult, isBlacklisted: false });
     } else {
       const matchResult = matchSupplierName(bkmvName, suppliers, config);
       entries.push({ bkmvName, summary, matchResult, isBlacklisted: false });
@@ -523,7 +539,8 @@ export function matchBkmvSuppliers(
    */
   results.sort((a, b) => {
     const getPriority = (r: BkmvSupplierMatchingResult): number => {
-      if (r.matchResult.matchType === "blacklisted") return 4;
+      if (r.matchResult.matchType === "blacklisted") return 5;
+      if (r.matchResult.matchType === "small_supplier") return 4;
       if (r.matchResult.confidence === 1 && r.matchResult.matchedSupplier) return 1;
       if (r.matchResult.matchedSupplier) return 2;
       return 3;

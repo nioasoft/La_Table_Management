@@ -151,6 +151,11 @@ export async function PATCH(
       return handleRevenueConfirmation(fileId, body);
     }
 
+    // Check if this is a small supplier marking request
+    if (body.markAsSmallSupplier) {
+      return handleSmallSupplierMarking(fileId, body.bkmvName);
+    }
+
     // Otherwise, handle supplier match update
     const { bkmvName, newSupplierId, addAsAlias } = body;
 
@@ -380,6 +385,101 @@ async function handleRevenueConfirmation(
     });
   } catch (error) {
     console.error("Error confirming revenue account:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Handle marking a BKMV name as small supplier in the processing result
+ */
+async function handleSmallSupplierMarking(
+  fileId: string,
+  bkmvName: string
+): Promise<NextResponse> {
+  try {
+    if (!bkmvName) {
+      return NextResponse.json(
+        { error: "bkmvName is required" },
+        { status: 400 }
+      );
+    }
+
+    const file = await getUploadedFileById(fileId);
+    if (!file) {
+      return NextResponse.json(
+        { error: "File not found" },
+        { status: 404 }
+      );
+    }
+
+    const processingResult = file.bkmvProcessingResult as BkmvProcessingResult | null;
+    if (!processingResult) {
+      return NextResponse.json(
+        { error: "No processing result found" },
+        { status: 400 }
+      );
+    }
+
+    // Update the match type to "small_supplier"
+    const updatedMatches = processingResult.supplierMatches.map((match) => {
+      if (match.bkmvName === bkmvName) {
+        return {
+          ...match,
+          matchType: "small_supplier",
+          requiresReview: false,
+        };
+      }
+      return match;
+    });
+
+    // Recalculate stats (small suppliers count as neither matched nor unmatched)
+    const exactMatches = updatedMatches.filter(m => m.matchedSupplierId && m.confidence === 1).length;
+    const fuzzyMatches = updatedMatches.filter(m => m.matchedSupplierId && m.confidence < 1).length;
+    const unmatched = updatedMatches.filter(m => !m.matchedSupplierId && m.matchType !== "blacklisted" && m.matchType !== "small_supplier").length;
+
+    const updatedResult: BkmvProcessingResult = {
+      ...processingResult,
+      supplierMatches: updatedMatches,
+      matchStats: {
+        total: updatedMatches.length,
+        exactMatches,
+        fuzzyMatches,
+        unmatched,
+      },
+    };
+
+    await updateUploadedFileProcessingStatus(
+      fileId,
+      file.processingStatus as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected",
+      updatedResult
+    );
+
+    // Re-archive to year-based BKMV table
+    const franchiseeId = file.franchiseeId;
+    if (franchiseeId && updatedResult.monthlyBreakdown) {
+      try {
+        const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+        await upsertFromFullBreakdown(
+          franchiseeId,
+          updatedResult.monthlyBreakdown,
+          updatedResult.supplierMatches,
+          fileId
+        );
+      } catch (yearError) {
+        console.error("Error archiving BKMV year data:", yearError);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `"${bkmvName}" סומן כספק קטן ללא עמלה`,
+      updatedStats: updatedResult.matchStats,
+    });
+  } catch (error) {
+    console.error("Error marking small supplier:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

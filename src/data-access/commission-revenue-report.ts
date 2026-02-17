@@ -1,15 +1,14 @@
 import { database } from "@/db";
 import {
-  supplier,
   franchisee,
   brand,
-  supplierFileUpload,
   uploadedFile,
-  type SupplierFileProcessingResult,
-  type SupplierFileMapping,
+  franchiseeBkmvYear,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, inArray, gte, lte, or, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, gte, lte, isNotNull } from "drizzle-orm";
+import { normalizeName } from "@/lib/franchisee-matcher";
+import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 
 // ============================================================================
 // TYPES
@@ -27,7 +26,7 @@ export interface CommissionRevenueRow {
   code: string;
   brandName: string;
   totalRevenue: number; // Revenue from BKMV files (turnover)
-  totalSupplierPurchases: number; // Purchases from supplier files
+  totalSupplierPurchases: number; // Purchases from BKMVDATA (matched + small suppliers)
   supplierPurchasesPercentage: number | null; // null when revenue is 0
 }
 
@@ -99,7 +98,7 @@ function getDateRange(
  * Get supplier purchases-to-revenue ratio report
  *
  * Revenue (turnover): from uploaded_file.bkmvProcessingResult.revenueMonthlyBreakdown
- * Supplier Purchases: from supplier_file_upload.processingResult.franchiseeMatches (netAmount totals)
+ * Supplier Purchases: from franchisee_bkmv_year.monthlyBreakdown (matched suppliers + small suppliers)
  */
 export async function getCommissionRevenueReport(
   filters: CommissionRevenueReportFilters
@@ -151,117 +150,54 @@ export async function getCommissionRevenueReport(
     }
   }
 
-  // ---- SUPPLIER FILES: Get all supplier file uploads for the period ----
-  // Get all active non-hidden suppliers
-  const activeSuppliers = await database
+  // ---- BKMVDATA: Get supplier purchases from unified structure ----
+  const startYear = parseInt(startDate.slice(0, 4), 10);
+  const endYear = parseInt(endDate.slice(0, 4), 10);
+
+  const yearRecords = await database
     .select({
-      id: supplier.id,
-      defaultCommissionRate: supplier.defaultCommissionRate,
-      commissionType: supplier.commissionType,
-      fileMapping: supplier.fileMapping,
+      franchiseeId: franchiseeBkmvYear.franchiseeId,
+      monthlyBreakdown: franchiseeBkmvYear.monthlyBreakdown,
     })
-    .from(supplier)
-    .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
+    .from(franchiseeBkmvYear)
+    .where(
+      and(
+        gte(franchiseeBkmvYear.year, startYear),
+        lte(franchiseeBkmvYear.year, endYear)
+      )
+    );
 
-  const supplierIds = activeSuppliers.map((s) => s.id);
-  if (supplierIds.length === 0 && revenueMap.size === 0) {
-    return emptyReport(year, quarter, brandId, brandInfo);
-  }
+  // Get small supplier names set for matching
+  const smallSupplierNames = await getSmallSupplierNamesSet();
 
-  const supplierRateMap = new Map<
-    string,
-    { rate: number; type: string | null }
-  >();
-  const supplierFileMappingMap = new Map<string, SupplierFileMapping | null>();
-  for (const s of activeSuppliers) {
-    supplierRateMap.set(s.id, {
-      rate: Number(s.defaultCommissionRate || 0),
-      type: s.commissionType,
-    });
-    supplierFileMappingMap.set(s.id, (s.fileMapping as SupplierFileMapping | null) ?? null);
-  }
-
-  // Query supplier file uploads overlapping the period
-  const fileRecords =
-    supplierIds.length > 0
-      ? await database
-          .select({
-            supplierId: supplierFileUpload.supplierId,
-            processingResult: supplierFileUpload.processingResult,
-            periodStartDate: supplierFileUpload.periodStartDate,
-            periodEndDate: supplierFileUpload.periodEndDate,
-            createdAt: supplierFileUpload.createdAt,
-          })
-          .from(supplierFileUpload)
-          .where(
-            and(
-              inArray(supplierFileUpload.supplierId, supplierIds),
-              or(
-                eq(supplierFileUpload.processingStatus, "auto_approved"),
-                eq(supplierFileUpload.processingStatus, "approved")
-              ),
-              lte(supplierFileUpload.periodStartDate, endDate),
-              gte(supplierFileUpload.periodEndDate, startDate)
-            )
-          )
-      : [];
-
-  // Deduplicate supplier files before aggregating purchases:
-  // - Single-file suppliers: keep only latest file per supplier+period
-  // - Multi-file suppliers (maxUploadFiles > 1): keep all files for same period
-  type FileRecord = (typeof fileRecords)[number];
-  const singleFileDedupMap = new Map<string, FileRecord>();
-  const multiFileMatchesByKey = new Map<
-    string,
-    SupplierFileProcessingResult["franchiseeMatches"]
-  >();
-
-  for (const file of fileRecords) {
-    const fm = supplierFileMappingMap.get(file.supplierId);
-    const isMultiFile = ((fm?.maxUploadFiles as number | undefined) ?? 1) > 1;
-    const dedupKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
-
-    if (isMultiFile) {
-      const result = file.processingResult as SupplierFileProcessingResult | null;
-      if (result?.franchiseeMatches) {
-        const existing = multiFileMatchesByKey.get(dedupKey) ?? [];
-        existing.push(...result.franchiseeMatches);
-        multiFileMatchesByKey.set(dedupKey, existing);
-      }
-    } else {
-      const existing = singleFileDedupMap.get(dedupKey);
-      if (!existing || file.createdAt > existing.createdAt) {
-        singleFileDedupMap.set(dedupKey, file);
-      }
-    }
-  }
-
-  // Build purchasesMap from deduplicated data
+  // Build purchases map from BKMVDATA
   const purchasesMap = new Map<string, number>();
 
-  const addMatchesToPurchases = (
-    matches: SupplierFileProcessingResult["franchiseeMatches"]
-  ) => {
-    for (const match of matches) {
-      if (!match.matchedFranchiseeId) continue;
-      if (match.matchType === "blacklisted") continue;
-      const purchaseAmount = match.netAmount || 0;
-      const prev = purchasesMap.get(match.matchedFranchiseeId) || 0;
-      purchasesMap.set(match.matchedFranchiseeId, prev + purchaseAmount);
-    }
+  type MonthlyBreakdownEntry = {
+    supplierId: string | null;
+    supplierName: string;
+    amount: number;
+    transactionCount: number;
   };
 
-  // Single-file suppliers (latest file only per supplier+period)
-  for (const file of singleFileDedupMap.values()) {
-    const result = file.processingResult as SupplierFileProcessingResult | null;
-    if (result?.franchiseeMatches) {
-      addMatchesToPurchases(result.franchiseeMatches);
-    }
-  }
+  for (const record of yearRecords) {
+    const breakdown = record.monthlyBreakdown as Record<string, MonthlyBreakdownEntry[]> | null;
+    if (!breakdown) continue;
 
-  // Multi-file suppliers (all files merged per supplier+period)
-  for (const matches of multiFileMatchesByKey.values()) {
-    addMatchesToPurchases(matches);
+    for (const [month, entries] of Object.entries(breakdown)) {
+      if (!months.includes(month)) continue; // Only requested months
+
+      for (const entry of entries) {
+        // Include if: matched supplier (non-null supplierId) OR small supplier
+        const isMatched = entry.supplierId !== null;
+        const isSmall = !isMatched && smallSupplierNames.has(normalizeName(entry.supplierName));
+
+        if (!isMatched && !isSmall) continue;
+
+        const prev = purchasesMap.get(record.franchiseeId) || 0;
+        purchasesMap.set(record.franchiseeId, prev + entry.amount);
+      }
+    }
   }
 
   // ---- JOIN: Merge revenue and purchases maps ----

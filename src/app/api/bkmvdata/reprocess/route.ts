@@ -4,6 +4,7 @@ import { parseBkmvData, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
+import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { getDocument } from "@/lib/storage";
 import { database } from "@/db";
 import { uploadedFile } from "@/db/schema";
@@ -75,9 +76,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Load suppliers and blacklist once for all files
+    // Load suppliers, blacklist, and small suppliers once for all files
     const allSuppliers = await getSuppliers();
     const blacklistedNames = await getBlacklistedNamesSet();
+    const smallSupplierNames = await getSmallSupplierNamesSet();
 
     let processed = 0;
     let failed = 0;
@@ -102,7 +104,8 @@ export async function POST(request: NextRequest) {
           parseResult.supplierSummary,
           allSuppliers,
           { minConfidence: 0.6, reviewThreshold: 1.0 },
-          blacklistedNames
+          blacklistedNames,
+          smallSupplierNames
         );
 
         // Collect manual overrides from old supplierMatches (preserve admin edits)

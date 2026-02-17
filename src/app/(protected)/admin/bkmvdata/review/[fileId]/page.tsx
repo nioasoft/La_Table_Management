@@ -61,6 +61,7 @@ import {
   Ban,
   DollarSign,
   Search,
+  Store,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
@@ -151,7 +152,12 @@ export default function FileDetailsPage() {
   // Blacklist state
   const [blacklistingMatch, setBlacklistingMatch] = useState<SupplierMatch | null>(null);
   const [blacklistNotes, setBlacklistNotes] = useState("");
+  // Small supplier state
+  const [smallSupplierMatch, setSmallSupplierMatch] = useState<SupplierMatch | null>(null);
+  const [smallSupplierNotes, setSmallSupplierNotes] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  // Status filter state
+  const [matchFilter, setMatchFilter] = useState<string>("all");
   // Revenue account state
   const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
   const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
@@ -323,15 +329,29 @@ export default function FileDetailsPage() {
     return { totalAmount, totalTransactions };
   }, [isDateFilterActive, dateFilteredMatches]);
 
+  // Status-filtered matches
+  const statusFilteredMatches = useMemo(() => {
+    if (matchFilter === "all") return dateFilteredMatches;
+    return dateFilteredMatches.filter((m) => {
+      switch (matchFilter) {
+        case "matched": return !!m.matchedSupplierId;
+        case "unmatched": return !m.matchedSupplierId && m.matchType !== "blacklisted" && m.matchType !== "small_supplier";
+        case "small_supplier": return m.matchType === "small_supplier";
+        case "blacklisted": return m.matchType === "blacklisted";
+        default: return true;
+      }
+    });
+  }, [dateFilteredMatches, matchFilter]);
+
   const filteredMatches = useMemo(() => {
-    const matches = dateFilteredMatches;
+    const matches = statusFilteredMatches;
     if (!searchQuery.trim()) return matches;
     const query = searchQuery.trim().toLowerCase();
     return matches.filter((m) =>
       m.bkmvName.toLowerCase().includes(query) ||
       m.matchedSupplierName?.toLowerCase().includes(query)
     );
-  }, [dateFilteredMatches, searchQuery]);
+  }, [statusFilteredMatches, searchQuery]);
 
   // Review action mutation
   const reviewMutation = useMutation({
@@ -390,6 +410,38 @@ export default function FileDetailsPage() {
     },
   });
 
+  // Small supplier mutation
+  const smallSupplierMutation = useMutation({
+    mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
+      // 1. Add to small supplier table
+      const addResponse = await fetch("/api/bkmvdata/small-supplier", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, notes }),
+      });
+      if (!addResponse.ok) {
+        const error = await addResponse.json();
+        throw new Error(error.error || "Failed to add small supplier");
+      }
+      // 2. Update match type in processing result
+      const patchResponse = await fetch(`/api/bkmvdata/review/${fileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bkmvName: name, markAsSmallSupplier: true }),
+      });
+      if (!patchResponse.ok) {
+        throw new Error("Failed to update match type");
+      }
+      return patchResponse.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "small-supplier"] });
+      setSmallSupplierMatch(null);
+      setSmallSupplierNotes("");
+    },
+  });
+
   // Revenue confirmation mutation
   const revenueConfirmMutation = useMutation({
     mutationFn: async ({ accountCode, saveToFranchisee }: { accountCode: string; saveToFranchisee: boolean }) => {
@@ -434,6 +486,14 @@ export default function FileDetailsPage() {
     });
   }, [blacklistingMatch, blacklistNotes, blacklistMutation]);
 
+  const handleSmallSupplier = useCallback(() => {
+    if (!smallSupplierMatch) return;
+    smallSupplierMutation.mutate({
+      name: smallSupplierMatch.bkmvName,
+      notes: smallSupplierNotes || undefined,
+    });
+  }, [smallSupplierMatch, smallSupplierNotes, smallSupplierMutation]);
+
   const handleConfirmRevenue = useCallback(() => {
     if (!selectedRevenueAccount) return;
     revenueConfirmMutation.mutate({
@@ -469,6 +529,9 @@ export default function FileDetailsPage() {
     // Check for blacklisted items
     if (match.matchType === "blacklisted") {
       return <Badge variant="secondary" className="gap-1 bg-gray-200"><Ban className="h-3 w-3" />לא רלוונטי</Badge>;
+    }
+    if (match.matchType === "small_supplier") {
+      return <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-700"><Store className="h-3 w-3" />ספק קטן</Badge>;
     }
     if (!match.matchedSupplierId) {
       return <Badge variant="destructive">לא מותאם</Badge>;
@@ -851,14 +914,28 @@ export default function FileDetailsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
-          <div className="relative mb-3">
-            <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="חיפוש לפי שם במבנה אחיד..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="ps-8 h-8 text-sm"
-            />
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="חיפוש לפי שם במבנה אחיד..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="ps-8 h-8 text-sm"
+              />
+            </div>
+            <Select value={matchFilter} onValueChange={setMatchFilter}>
+              <SelectTrigger className="w-[160px] h-8 text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">הכל</SelectItem>
+                <SelectItem value="matched">מותאמים</SelectItem>
+                <SelectItem value="unmatched">לא מותאמים</SelectItem>
+                <SelectItem value="small_supplier">ספקים קטנים</SelectItem>
+                <SelectItem value="blacklisted">רשימה שחורה</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="rounded-md border">
             <Table>
@@ -886,6 +963,8 @@ export default function FileDetailsPage() {
                                     className={
                                       match.matchType === "blacklisted"
                                         ? "bg-gray-50/50"
+                                        : match.matchType === "small_supplier"
+                                        ? "bg-blue-50/50"
                                         : !match.matchedSupplierId
                                         ? "bg-red-50/50"
                                         : match.confidence < 1 && match.matchType !== "manual" && match.matchType !== "exact"
@@ -925,21 +1004,36 @@ export default function FileDetailsPage() {
                               <Edit className="h-3.5 w-3.5 ms-1" />
                               עריכה
                             </Button>
-                            {/* Show blacklist button only for unmatched items */}
-                            {!match.matchedSupplierId && match.matchType !== "blacklisted" && (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900"
-                                onClick={() => {
-                                  setBlacklistingMatch(match);
-                                  setBlacklistNotes("");
-                                }}
-                                title="סמן כלא רלוונטי"
-                              >
-                                <Ban className="h-3.5 w-3.5 ms-1" />
-                                לא מתאים
-                              </Button>
+                            {/* Show blacklist + small supplier buttons for unmatched items */}
+                            {!match.matchedSupplierId && match.matchType !== "blacklisted" && match.matchType !== "small_supplier" && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-blue-600 hover:text-blue-900"
+                                  onClick={() => {
+                                    setSmallSupplierMatch(match);
+                                    setSmallSupplierNotes("");
+                                  }}
+                                  title="סמן כספק קטן ללא עמלה"
+                                >
+                                  <Store className="h-3.5 w-3.5 ms-1" />
+                                  ספק קטן
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs text-gray-600 hover:text-gray-900"
+                                  onClick={() => {
+                                    setBlacklistingMatch(match);
+                                    setBlacklistNotes("");
+                                  }}
+                                  title="סמן כלא רלוונטי"
+                                >
+                                  <Ban className="h-3.5 w-3.5 ms-1" />
+                                  לא מתאים
+                                </Button>
+                              </>
                             )}
                           </div>
                         </TableCell>
@@ -1129,6 +1223,46 @@ export default function FileDetailsPage() {
                 <Ban className="h-4 w-4 ms-2" />
               )}
               הוסף לרשימה שחורה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Small Supplier Dialog */}
+      <Dialog open={!!smallSupplierMatch} onOpenChange={(open) => !open && setSmallSupplierMatch(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>סימון כספק קטן ללא עמלה</DialogTitle>
+            <DialogDescription>
+              האם לסמן את &quot;{smallSupplierMatch?.bkmvName}&quot; כספק קטן?
+              סכומי ספק זה ייכללו בדוח אחוז הקניות ממחזור, אך לא תחושב עמלה.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="text-sm font-medium">הערות (אופציונלי)</label>
+            <Textarea
+              value={smallSupplierNotes}
+              onChange={(e) => setSmallSupplierNotes(e.target.value)}
+              placeholder="הערות נוספות על הספק..."
+              rows={3}
+              className="mt-2"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSmallSupplierMatch(null)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleSmallSupplier}
+              disabled={smallSupplierMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {smallSupplierMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin ms-2" />
+              ) : (
+                <Store className="h-4 w-4 ms-2" />
+              )}
+              סמן כספק קטן
             </Button>
           </DialogFooter>
         </DialogContent>

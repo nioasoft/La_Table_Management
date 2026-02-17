@@ -27,6 +27,7 @@ import { notifySuperUsersAboutUpload } from "@/lib/notifications";
 import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
+import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
@@ -287,27 +288,31 @@ export async function POST(
           const periodStartDate = formatDateAsLocal(dateRange.startDate);
           const periodEndDate = formatDateAsLocal(dateRange.endDate);
 
-          // Get all suppliers and blacklist for matching
+          // Get all suppliers, blacklist, and small suppliers for matching
           const allSuppliers = await getSuppliers();
           const blacklistedNames = await getBlacklistedNamesSet();
+          const smallSupplierNames = await getSmallSupplierNamesSet();
 
-          // Match suppliers from BKMVDATA with blacklist support
+          // Match suppliers from BKMVDATA with blacklist + small supplier support
           const matchResults = matchBkmvSuppliers(
             parseResult.supplierSummary,
             allSuppliers,
             { minConfidence: 0.6, reviewThreshold: 1.0 },
-            blacklistedNames
+            blacklistedNames,
+            smallSupplierNames
           );
 
-          // Calculate match statistics (excluding blacklisted items)
-          const nonBlacklistedResults = matchResults.filter(r => r.matchResult.matchType !== "blacklisted");
-          const exactMatches = nonBlacklistedResults.filter(r =>
+          // Calculate match statistics (excluding blacklisted and small supplier items)
+          const classifiedResults = matchResults.filter(r =>
+            r.matchResult.matchType !== "blacklisted" && r.matchResult.matchType !== "small_supplier"
+          );
+          const exactMatches = classifiedResults.filter(r =>
             r.matchResult.matchedSupplier && r.matchResult.confidence === 1
           ).length;
-          const fuzzyMatches = nonBlacklistedResults.filter(r =>
+          const fuzzyMatches = classifiedResults.filter(r =>
             r.matchResult.matchedSupplier && r.matchResult.confidence < 1
           ).length;
-          const unmatched = nonBlacklistedResults.filter(r => !r.matchResult.matchedSupplier).length;
+          const unmatched = classifiedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
           // Try to match franchisee by company ID
           let matchedFranchiseeId: string | null = null;
@@ -320,7 +325,7 @@ export async function POST(
 
           // Determine processing status
           // Auto-approve if all non-blacklisted matches are exact (100% confidence) and no unmatched
-          const shouldAutoApprove = exactMatches === nonBlacklistedResults.length && unmatched === 0;
+          const shouldAutoApprove = exactMatches === classifiedResults.length && unmatched === 0;
           const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
           // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)

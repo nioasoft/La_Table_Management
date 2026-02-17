@@ -340,6 +340,23 @@ export default function BkmvDataPage() {
     );
   }, [blacklistData]);
 
+  // Fetch small suppliers for matching
+  const { data: smallSupplierData } = useQuery({
+    queryKey: ["bkmvdata", "small-supplier"],
+    queryFn: async () => {
+      const response = await fetch("/api/bkmvdata/small-supplier");
+      if (!response.ok) throw new Error("Failed to fetch small suppliers");
+      return response.json();
+    },
+    enabled: !isPending && !!session,
+  });
+
+  // Convert small suppliers to Set for matching
+  const smallSupplierNames = useMemo((): Set<string> => {
+    if (!smallSupplierData?.items) return new Set<string>();
+    return new Set<string>(smallSupplierData.items.map((item: { normalizedName: string }) => item.normalizedName));
+  }, [smallSupplierData]);
+
   // Fetch franchisees for filter dropdown
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
@@ -726,7 +743,8 @@ export default function BkmvDataPage() {
         supplierFiltered,
         suppliers,
         { minConfidence: 0.6, reviewThreshold: 0.85 },
-        blacklistedNames
+        blacklistedNames,
+        smallSupplierNames
       );
       setMatchingResults(matches);
     } catch (err) {
@@ -735,7 +753,7 @@ export default function BkmvDataPage() {
     } finally {
       setIsProcessing(false);
     }
-  }, [selectedFile, suppliers, blacklistedNames]);
+  }, [selectedFile, suppliers, blacklistedNames, smallSupplierNames]);
 
   // Add alias to supplier
   const handleAddAlias = useCallback(async (supplierId: string, alias: string) => {
@@ -761,11 +779,12 @@ export default function BkmvDataPage() {
         parseResult.supplierSummary,
         updatedSuppliers,
         { minConfidence: 0.6, reviewThreshold: 0.85 },
-        blacklistedNames
+        blacklistedNames,
+        smallSupplierNames
       );
       setMatchingResults(matches);
     }
-  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames]);
+  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames, smallSupplierNames]);
 
   // Helper to re-run supplier matching with current classification and date filters
   const reRunSupplierMatching = useCallback((
@@ -776,6 +795,7 @@ export default function BkmvDataPage() {
     dateFiltered: boolean,
     startDate?: string,
     endDate?: string,
+    currentSmallSuppliers?: Set<string>,
   ) => {
     let summaryToUse = result.supplierSummary;
     if (dateFiltered && startDate && endDate) {
@@ -794,7 +814,8 @@ export default function BkmvDataPage() {
       supplierFiltered,
       currentSuppliers,
       { minConfidence: 0.6, reviewThreshold: 0.85 },
-      currentBlacklist
+      currentBlacklist,
+      currentSmallSuppliers
     );
   }, []);
 
@@ -813,11 +834,11 @@ export default function BkmvDataPage() {
 
     const matches = reRunSupplierMatching(
       parseResult, classified, blacklistedNames, suppliers,
-      true, filterStartDate, filterEndDate
+      true, filterStartDate, filterEndDate, smallSupplierNames
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, savedClassificationsMap, suppliers, blacklistedNames, reRunSupplierMatching]);
+  }, [parseResult, filterStartDate, filterEndDate, savedClassificationsMap, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
@@ -829,13 +850,14 @@ export default function BkmvDataPage() {
     setClassifiedAccounts(classified);
 
     const matches = reRunSupplierMatching(
-      parseResult, classified, blacklistedNames, suppliers, false
+      parseResult, classified, blacklistedNames, suppliers, false,
+      undefined, undefined, smallSupplierNames
     );
     setMatchingResults(matches);
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames, savedClassificationsMap, reRunSupplierMatching]);
+  }, [parseResult, suppliers, blacklistedNames, savedClassificationsMap, reRunSupplierMatching, smallSupplierNames]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
@@ -843,11 +865,11 @@ export default function BkmvDataPage() {
 
     const matches = reRunSupplierMatching(
       parseResult, classifiedAccounts, blacklistedNames, suppliers,
-      isDateFiltered, filterStartDate, filterEndDate
+      isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
     );
     setMatchingResults(matches);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blacklistedNames]);
+  }, [blacklistedNames, smallSupplierNames]);
 
   // Handle quick-classify action (from uncategorized or all tab)
   const handleQuickClassify = useCallback(async (
@@ -890,14 +912,14 @@ export default function BkmvDataPage() {
         setClassifiedAccounts(currentClassified => {
           const matches = reRunSupplierMatching(
             parseResult, currentClassified, blacklistedNames, suppliers,
-            isDateFiltered, filterStartDate, filterEndDate
+            isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
           );
           setMatchingResults(matches);
           return currentClassified;
         });
       }, 0);
     }
-  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts]);
+  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
 
   // Handle reclassify (move back to auto-detection / uncategorized)
   const handleReclassify = useCallback(async (accountKey: string) => {
@@ -937,13 +959,13 @@ export default function BkmvDataPage() {
       setClassifiedAccounts(currentClassified => {
         const matches = reRunSupplierMatching(
           parseResult, currentClassified, blacklistedNames, suppliers,
-          isDateFiltered, filterStartDate, filterEndDate
+          isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
         );
         setMatchingResults(matches);
         return currentClassified;
       });
     }, 0);
-  }, [matchedFranchisee, parseResult, reclassifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching]);
+  }, [matchedFranchisee, parseResult, reclassifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, smallSupplierNames]);
 
   // Handle saving selected revenue accounts
   const handleSaveRevenueAccounts = useCallback(async () => {

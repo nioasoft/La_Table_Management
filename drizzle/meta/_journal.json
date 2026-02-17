@@ -120,6 +120,13 @@
       "when": 1739527200000,
       "tag": "0040_staff_contact",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1739613600000,
+      "tag": "0041_add_bkmv_small_supplier",
+      "breakpoints": true
     }
   ]
 }

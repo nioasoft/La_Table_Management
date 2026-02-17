@@ -1057,6 +1057,46 @@ export const bkmvBlacklistRelations = relations(bkmvBlacklist, ({ one }) => ({
 export type BkmvBlacklist = typeof bkmvBlacklist.$inferSelect;
 export type CreateBkmvBlacklistData = typeof bkmvBlacklist.$inferInsert;
 
+// BKMV Small Supplier table - Names to include in purchase reports without commission
+// These are suppliers that appear in BKMVDATA files but don't have a formal supplier record.
+// Their amounts are included in the commission-revenue report (purchase percentage).
+export const bkmvSmallSupplier = pgTable(
+  "bkmv_small_supplier",
+  {
+    id: text("id").primaryKey(),
+    // Original name as it appears in the BKMVDATA file
+    name: text("name").notNull(),
+    // Normalized name for matching (lowercase, trimmed, etc.)
+    normalizedName: text("normalized_name").notNull(),
+    // Who added this entry
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    // Optional notes explaining why this was marked as small supplier
+    notes: text("notes"),
+    // Timestamps
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("idx_bkmv_small_supplier_normalized_name").on(table.normalizedName),
+    uniqueIndex("idx_bkmv_small_supplier_name_unique").on(table.normalizedName),
+  ]
+);
+
+// BKMV Small Supplier relations
+export const bkmvSmallSupplierRelations = relations(bkmvSmallSupplier, ({ one }) => ({
+  createdByUser: one(user, {
+    fields: [bkmvSmallSupplier.createdBy],
+    references: [user.id],
+  }),
+}));
+
+// BKMV Small Supplier types
+export type BkmvSmallSupplier = typeof bkmvSmallSupplier.$inferSelect;
+export type CreateBkmvSmallSupplierData = typeof bkmvSmallSupplier.$inferInsert;
+
 // ============================================================================
 // FRANCHISEE BKMV YEAR - Year-based BKMV data archiving
 // ============================================================================
