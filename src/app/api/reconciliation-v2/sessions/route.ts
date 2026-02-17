@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const { user } = authResult;
 
     const body = await request.json();
-    const { supplierId, supplierFileId, periodStartDate, periodEndDate } = body;
+    const { supplierId, supplierFileId, supplierFileIds, periodStartDate, periodEndDate } = body;
 
     // Validate required fields
     if (!supplierId) {
@@ -48,7 +48,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!supplierFileId) {
+    // Accept either supplierFileId (single) or supplierFileIds (array)
+    const effectiveFileId = supplierFileId || (supplierFileIds?.length ? supplierFileIds[0] : null);
+    if (!effectiveFileId) {
       return NextResponse.json(
         { error: "מזהה קובץ ספק חסר" },
         { status: 400 }
@@ -64,10 +66,11 @@ export async function POST(request: NextRequest) {
 
     const session = await createReconciliationSession(
       supplierId,
-      supplierFileId,
+      effectiveFileId,
       periodStartDate,
       periodEndDate,
-      user.id
+      user.id,
+      supplierFileIds // Pass all file IDs for multi-file merge
     );
 
     if (!session) {

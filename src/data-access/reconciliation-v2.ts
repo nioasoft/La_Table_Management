@@ -57,7 +57,8 @@ export type SupplierPeriod = {
   periodKey: string; // Format: "YYYY-MM-DD_YYYY-MM-DD"
   periodStartDate: string;
   periodEndDate: string;
-  supplierFileId: string;
+  supplierFileId: string; // First/latest file ID (for backward compat)
+  supplierFileIds: string[]; // All file IDs for this period (for multi-file suppliers)
   supplierFileName: string;
   uploadedAt: Date;
   hasExistingSession: boolean;
@@ -157,8 +158,9 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     )
     .orderBy(desc(supplierFileUpload.createdAt)); // Order by upload date to get latest first
 
-  // Group by period and keep only the latest file for each period
+  // Group by period and collect ALL file IDs per period (for multi-file suppliers)
   const latestByPeriod = new Map<string, typeof files[0]>();
+  const allFileIdsByPeriod = new Map<string, string[]>();
   for (const file of files) {
     if (!file.periodStartDate || !file.periodEndDate) continue;
     const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
@@ -166,6 +168,10 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     if (!latestByPeriod.has(periodKey)) {
       latestByPeriod.set(periodKey, file);
     }
+    // Collect all file IDs for this period
+    const existingIds = allFileIdsByPeriod.get(periodKey) || [];
+    existingIds.push(file.id);
+    allFileIdsByPeriod.set(periodKey, existingIds);
   }
 
   // Check which periods already have sessions
@@ -192,13 +198,17 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     .map((file) => {
       const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
       const existingSession = sessionMap.get(periodKey);
+      const fileIds = allFileIdsByPeriod.get(periodKey) || [file.id];
 
       return {
         periodKey,
         periodStartDate: file.periodStartDate!,
         periodEndDate: file.periodEndDate!,
         supplierFileId: file.id,
-        supplierFileName: file.originalFileName,
+        supplierFileIds: fileIds,
+        supplierFileName: fileIds.length > 1
+          ? `${file.originalFileName} (+${fileIds.length - 1})`
+          : file.originalFileName,
         uploadedAt: file.createdAt,
         hasExistingSession: !!existingSession,
         existingSessionId: existingSession?.id || null,
@@ -212,14 +222,16 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
 // ============================================================================
 
 /**
- * Create a new reconciliation session with comparisons
+ * Create a new reconciliation session with comparisons.
+ * Supports multi-file suppliers: pass supplierFileIds to merge franchiseeMatches from multiple files.
  */
 export async function createReconciliationSession(
   supplierId: string,
   supplierFileId: string,
   periodStartDate: string,
   periodEndDate: string,
-  createdBy: string
+  createdBy: string,
+  supplierFileIds?: string[]
 ): Promise<ReconciliationSessionWithDetails | null> {
   // Get supplier info
   const supplierData = await database
@@ -235,7 +247,12 @@ export async function createReconciliationSession(
 
   if (!supplierData.length) return null;
 
-  // Get supplier file with processing result
+  // Determine which file IDs to load
+  const fileIdsToLoad = (supplierFileIds && supplierFileIds.length > 0)
+    ? supplierFileIds
+    : [supplierFileId];
+
+  // Get supplier file(s) with processing results
   const supplierFileData = await database
     .select({
       id: supplierFileUpload.id,
@@ -243,12 +260,35 @@ export async function createReconciliationSession(
       processingResult: supplierFileUpload.processingResult,
     })
     .from(supplierFileUpload)
-    .where(eq(supplierFileUpload.id, supplierFileId))
-    .limit(1);
+    .where(
+      fileIdsToLoad.length === 1
+        ? eq(supplierFileUpload.id, fileIdsToLoad[0])
+        : sql`${supplierFileUpload.id} = ANY(${fileIdsToLoad})`
+    );
 
-  if (!supplierFileData.length || !supplierFileData[0].processingResult) return null;
+  if (!supplierFileData.length) return null;
 
-  const processingResult = supplierFileData[0].processingResult as SupplierFileProcessingResult;
+  // Merge franchiseeMatches from all files
+  const allFranchiseeMatches: SupplierFileProcessingResult["franchiseeMatches"] = [];
+  let primaryFileName = "";
+
+  for (const fileData of supplierFileData) {
+    if (!fileData.processingResult) continue;
+    const result = fileData.processingResult as SupplierFileProcessingResult;
+    if (result.franchiseeMatches) {
+      allFranchiseeMatches.push(...result.franchiseeMatches);
+    }
+    if (!primaryFileName) primaryFileName = fileData.originalFileName;
+  }
+
+  if (allFranchiseeMatches.length === 0 && supplierFileData.every(f => !f.processingResult)) return null;
+
+  // Build a merged processingResult with combined franchiseeMatches
+  const firstResult = supplierFileData.find(f => f.processingResult)?.processingResult as SupplierFileProcessingResult;
+  const processingResult: SupplierFileProcessingResult = {
+    ...firstResult,
+    franchiseeMatches: allFranchiseeMatches,
+  };
 
   // Get VAT rate for the period (use period start date)
   // BKMV amounts include VAT, so we need to convert to net amounts for comparison
@@ -526,6 +566,10 @@ export async function createReconciliationSession(
     throw error;
   }
 
+  const displayFileName = fileIdsToLoad.length > 1
+    ? `${primaryFileName} (+${fileIdsToLoad.length - 1} קבצים)`
+    : primaryFileName;
+
   return {
     ...newSession,
     totalFranchisees: comparisonEntries.length,
@@ -537,7 +581,7 @@ export async function createReconciliationSession(
     totalDifference: totalDifference.toString(),
     supplierName: supplierData[0].name,
     supplierCode: supplierData[0].code,
-    supplierFileName: supplierFileData[0].originalFileName,
+    supplierFileName: displayFileName,
   };
 }
 

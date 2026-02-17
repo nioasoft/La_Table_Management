@@ -21,6 +21,7 @@ interface PeriodSelectorProps {
     periodStartDate: string;
     periodEndDate: string;
     supplierFileId: string;
+    supplierFileIds: string[];
     hasExistingSession: boolean;
     existingSessionId: string | null;
   }) => void;
@@ -54,6 +55,7 @@ export function PeriodSelector({
         periodStartDate: latest.periodStartDate,
         periodEndDate: latest.periodEndDate,
         supplierFileId: latest.supplierFileId,
+        supplierFileIds: latest.supplierFileIds ?? [latest.supplierFileId],
         hasExistingSession: latest.hasExistingSession,
         existingSessionId: latest.existingSessionId,
       });
@@ -87,6 +89,7 @@ export function PeriodSelector({
             periodStartDate: period.periodStartDate,
             periodEndDate: period.periodEndDate,
             supplierFileId: period.supplierFileId,
+            supplierFileIds: period.supplierFileIds ?? [period.supplierFileId],
             hasExistingSession: period.hasExistingSession,
             existingSessionId: period.existingSessionId,
           });

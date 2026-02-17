@@ -253,6 +253,7 @@ export function useCreateReconciliationSession() {
     mutationFn: async (data: {
       supplierId: string;
       supplierFileId: string;
+      supplierFileIds?: string[];
       periodStartDate: string;
       periodEndDate: string;
     }) => {

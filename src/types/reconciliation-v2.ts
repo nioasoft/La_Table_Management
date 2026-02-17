@@ -101,6 +101,7 @@ export interface SupplierPeriod {
   periodStartDate: string;
   periodEndDate: string;
   supplierFileId: string;
+  supplierFileIds: string[]; // All file IDs for this period (for multi-file suppliers)
   supplierFileName: string;
   uploadedAt: Date;
   hasExistingSession: boolean;

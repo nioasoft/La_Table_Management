@@ -196,6 +196,18 @@ export default function SupplierFilesPage() {
   // Multi-file overwrite state
   const [overlappingFranchiseeNames, setOverlappingFranchiseeNames] = useState<string[]>([]);
 
+  // Multi-file upload progress state
+  const [multiFileProgress, setMultiFileProgress] = useState<{
+    total: number;
+    current: number;
+    currentFileName: string;
+    succeeded: number;
+    failed: number;
+    results: Array<{ fileName: string; success: boolean; error?: string; fileId?: string }>;
+  } | null>(null);
+  // Track whether to overwrite all duplicates for batch upload
+  const [overwriteAllDuplicates, setOverwriteAllDuplicates] = useState(false);
+
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
 
@@ -260,6 +272,7 @@ export default function SupplierFilesPage() {
   }, [sortedFranchisees, franchiseeSearch]);
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+  const isMultiFile = (selectedSupplier?.fileMapping?.maxUploadFiles ?? 1) > 1;
 
   // Track if initial selection from URL has been done
   const initialSelectionDone = useRef(false);
@@ -289,6 +302,7 @@ export default function SupplierFilesPage() {
     setProcessingResult(null);
     setSavedFileId(null);
     setUploadError(null);
+    setMultiFileProgress(null);
   }, []);
 
   // Handle period change - reset state
@@ -297,6 +311,7 @@ export default function SupplierFilesPage() {
     setProcessingResult(null);
     setSavedFileId(null);
     setUploadError(null);
+    setMultiFileProgress(null);
   }, []);
 
   // Handle overwrite cancel
@@ -481,59 +496,242 @@ export default function SupplierFilesPage() {
     }
   }, [processingResult, selectedSupplierId, selectedPeriodKey, saveToReviewQueueInternal]);
 
-  // Handle file upload
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    let file = event.target.files?.[0];
-    if (!file || !selectedSupplierId) return;
+  // Process a single file: upload, process, and optionally auto-save
+  const processSingleFile = useCallback(async (
+    file: File,
+    supplierId: string,
+    periodKey: string,
+    overwrite: boolean = false
+  ): Promise<{ success: boolean; result?: ProcessingResult; fileId?: string; error?: string; needsOverwrite?: boolean }> => {
+    let processedFile = file;
 
-    setIsUploading(true);
+    // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
+    if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
+      try {
+        processedFile = await convertXlsToXlsx(file);
+      } catch (conversionError) {
+        console.error("Failed to convert XLS to XLSX:", conversionError);
+        return { success: false, error: "שגיאה בהמרת הקובץ מ-XLS ל-XLSX" };
+      }
+    }
+
+    const formData = new FormData();
+    formData.append("file", processedFile);
+    formData.append("enableMatching", "true");
+
+    const response = await fetch(`/api/suppliers/${supplierId}/process-file`, {
+      method: "POST",
+      body: formData,
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: result.message || result.error || "Failed to process file" };
+    }
+
+    // Auto-save to review queue
+    const processingResult = result as ProcessingResult;
+    if (!processingResult.success || !processingResult.data.length) {
+      return { success: false, result: processingResult, error: "העיבוד נכשל" };
+    }
+
+    const period = getPeriodByKey(periodKey);
+    if (!period) {
+      return { success: false, result: processingResult, error: "תקופה לא תקינה" };
+    }
+
+    // Build franchiseeMatches and save
+    const franchiseeMatches = processingResult.data.map(row => {
+      const match = row.matchResult;
+      let matchType: "exact" | "fuzzy" | "manual" | "blacklisted" | "none" = "none";
+      if (row.isBlacklisted) {
+        matchType = "blacklisted";
+      } else if (row.manualMatch) {
+        matchType = "manual";
+      } else if (match?.matchedFranchisee) {
+        matchType = match.confidence === 1 ? "exact" : "fuzzy";
+      }
+      return {
+        originalName: row.franchisee,
+        rowNumber: row.rowNumber,
+        grossAmount: row.grossAmount,
+        netAmount: row.netAmount,
+        matchedFranchiseeId: row.manualMatch?.franchiseeId || match?.matchedFranchisee?.id || null,
+        matchedFranchiseeName: row.manualMatch?.franchiseeName || match?.matchedFranchisee?.name || null,
+        confidence: row.manualMatch ? 100 : (match?.confidence || 0) * 100,
+        matchType,
+        requiresReview: !row.isBlacklisted && !row.manualMatch && (match?.requiresReview || !match?.matchedFranchisee),
+        preCalculatedCommission: row.preCalculatedCommission,
+      };
+    });
+
+    const recalculatedStats = {
+      total: franchiseeMatches.length,
+      exactMatches: franchiseeMatches.filter(m => m.matchType === "exact" || m.matchType === "manual").length,
+      fuzzyMatches: franchiseeMatches.filter(m => m.matchType === "fuzzy").length,
+      unmatched: franchiseeMatches.filter(m => m.matchType === "none").length,
+      blacklisted: franchiseeMatches.filter(m => m.matchType === "blacklisted").length,
+    };
+
+    const processingResultForDB: SupplierFileProcessingResult = {
+      totalRows: processingResult.summary.totalRows,
+      processedRows: processingResult.summary.processedRows,
+      skippedRows: processingResult.summary.skippedRows,
+      totalGrossAmount: processingResult.summary.totalGrossAmount,
+      totalNetAmount: processingResult.summary.totalNetAmount,
+      vatAdjusted: processingResult.summary.vatIncluded,
+      matchStats: recalculatedStats,
+      franchiseeMatches,
+      processedAt: new Date().toISOString(),
+    };
+
+    const saveResponse = await fetch("/api/supplier-files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        supplierId,
+        fileName: processingResult.summary.fileName,
+        fileUrl: processingResult.fileUrl,
+        fileSize: processingResult.summary.fileSize,
+        processingResult: processingResultForDB,
+        periodStartDate: formatDateAsLocal(period.startDate),
+        periodEndDate: formatDateAsLocal(period.endDate),
+        overwrite,
+      }),
+    });
+
+    if (!saveResponse.ok) {
+      const error = await saveResponse.json();
+      if (saveResponse.status === 409) {
+        return { success: false, result: processingResult, needsOverwrite: true, error: "קובץ קיים כבר לזכיין זה" };
+      }
+      return { success: false, result: processingResult, error: error.error || "שגיאה בשמירה" };
+    }
+
+    const saveData = await saveResponse.json();
+    return { success: true, result: processingResult, fileId: saveData.file.id };
+  }, []);
+
+  // Handle file upload - supports single and multi-file
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files?.length || !selectedSupplierId || !selectedPeriodKey) return;
+
     setUploadError(null);
     setProcessingResult(null);
     setSavedFileId(null);
     setErrorsOpen(false);
     setWarningsOpen(false);
 
-    try {
-      // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
-      if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
-        try {
-          file = await convertXlsToXlsx(file);
-          toast.info("הקובץ הומר מ-XLS ל-XLSX");
-        } catch (conversionError) {
-          console.error("Failed to convert XLS to XLSX:", conversionError);
-          setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
+    if (files.length === 1 && !isMultiFile) {
+      // Single file - use original flow (allows manual matching before save)
+      let file = files[0];
+      setIsUploading(true);
+
+      try {
+        if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
+          try {
+            file = await convertXlsToXlsx(file);
+            toast.info("הקובץ הומר מ-XLS ל-XLSX");
+          } catch (conversionError) {
+            console.error("Failed to convert XLS to XLSX:", conversionError);
+            setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
+            return;
+          }
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("enableMatching", "true");
+
+        const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          setUploadError(result.message || result.error || "Failed to process file");
           return;
         }
+
+        setProcessingResult(result);
+        setExpandedResults(true);
+      } catch (error) {
+        setUploadError(error instanceof Error ? error.message : "Unknown error");
+      } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
       }
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("enableMatching", "true");
-
-      const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setUploadError(result.message || result.error || "Failed to process file");
-        return;
-      }
-
-      setProcessingResult(result);
-      setExpandedResults(true);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Unknown error");
-    } finally {
-      setIsUploading(false);
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      return;
     }
-  }, [selectedSupplierId]);
+
+    // Multi-file flow: process each file sequentially and auto-save
+    const fileArray = Array.from(files);
+    setIsUploading(true);
+    const progress = {
+      total: fileArray.length,
+      current: 0,
+      currentFileName: "",
+      succeeded: 0,
+      failed: 0,
+      results: [] as Array<{ fileName: string; success: boolean; error?: string; fileId?: string }>,
+    };
+    setMultiFileProgress({ ...progress });
+
+    let hasOverwritePrompt = false;
+    let shouldOverwriteAll = overwriteAllDuplicates;
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      progress.current = i + 1;
+      progress.currentFileName = file.name;
+      setMultiFileProgress({ ...progress });
+
+      let result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, shouldOverwriteAll);
+
+      // Handle duplicate - if first time, will need user choice
+      if (!result.success && result.needsOverwrite && !shouldOverwriteAll && !hasOverwritePrompt) {
+        // Ask once for all files - auto-overwrite for multi-file suppliers
+        hasOverwritePrompt = true;
+        shouldOverwriteAll = true;
+        setOverwriteAllDuplicates(true);
+        // Retry with overwrite
+        result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+      } else if (!result.success && result.needsOverwrite && shouldOverwriteAll) {
+        // Already decided to overwrite all
+        result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+      }
+
+      if (result.success) {
+        progress.succeeded++;
+        progress.results.push({ fileName: file.name, success: true, fileId: result.fileId });
+      } else {
+        progress.failed++;
+        progress.results.push({ fileName: file.name, success: false, error: result.error });
+      }
+      setMultiFileProgress({ ...progress });
+    }
+
+    // Summary toast
+    if (progress.succeeded > 0 && progress.failed === 0) {
+      toast.success(`${progress.succeeded} קבצים הועלו ונשמרו בהצלחה`);
+    } else if (progress.succeeded > 0 && progress.failed > 0) {
+      toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
+    } else {
+      toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    // Invalidate queries to update history
+    queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
+    queryClient.invalidateQueries({ queryKey: ["supplier-file-uploads"] });
+
+    setIsUploading(false);
+    setOverwriteAllDuplicates(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [selectedSupplierId, selectedPeriodKey, isMultiFile, overwriteAllDuplicates, processSingleFile, queryClient]);
 
   // Handle drag events
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -556,67 +754,132 @@ export default function SupplierFilesPage() {
 
     if (!selectedSupplierId || !selectedPeriodKey) return;
 
-    let file = e.dataTransfer.files?.[0];
-    if (!file) return;
+    const droppedFiles = e.dataTransfer.files;
+    if (!droppedFiles?.length) return;
 
-    // Validate file type
+    // Validate file types
     const expectedType = selectedSupplier?.fileMapping?.fileType;
-    const isExcel = file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls");
-    const isCsv = file.name.toLowerCase().endsWith(".csv");
+    for (let i = 0; i < droppedFiles.length; i++) {
+      const f = droppedFiles[i];
+      const isExcel = f.name.toLowerCase().endsWith(".xlsx") || f.name.toLowerCase().endsWith(".xls");
+      const isCsv = f.name.toLowerCase().endsWith(".csv");
+      const isZip = f.name.toLowerCase().endsWith(".zip");
 
-    if (expectedType === "csv" && !isCsv) {
-      setUploadError("יש להעלות קובץ CSV בלבד");
+      if (expectedType === "csv" && !isCsv && !isZip) {
+        setUploadError(`קובץ ${f.name}: יש להעלות קובץ CSV בלבד`);
+        return;
+      }
+      if (expectedType === "xlsx" && !isExcel && !isZip) {
+        setUploadError(`קובץ ${f.name}: יש להעלות קובץ Excel בלבד`);
+        return;
+      }
+    }
+
+    if (droppedFiles.length === 1 && !isMultiFile) {
+      // Single file - use original flow
+      let file = droppedFiles[0];
+      setIsUploading(true);
+      setUploadError(null);
+      setProcessingResult(null);
+      setSavedFileId(null);
+      setErrorsOpen(false);
+      setWarningsOpen(false);
+
+      try {
+        if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
+          try {
+            file = await convertXlsToXlsx(file);
+            toast.info("הקובץ הומר מ-XLS ל-XLSX");
+          } catch (conversionError) {
+            console.error("Failed to convert XLS to XLSX:", conversionError);
+            setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
+            return;
+          }
+        }
+
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("enableMatching", "true");
+
+        const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+          method: "POST",
+          body: formData,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          setUploadError(result.message || result.error || "Failed to process file");
+          return;
+        }
+
+        setProcessingResult(result);
+        setExpandedResults(true);
+      } catch (error) {
+        setUploadError(error instanceof Error ? error.message : "Unknown error");
+      } finally {
+        setIsUploading(false);
+      }
       return;
     }
-    if (expectedType === "xlsx" && !isExcel) {
-      setUploadError("יש להעלות קובץ Excel בלבד");
-      return;
-    }
 
+    // Multi-file drop: process each file sequentially and auto-save
+    const fileArray = Array.from(droppedFiles);
     setIsUploading(true);
     setUploadError(null);
     setProcessingResult(null);
     setSavedFileId(null);
-    setErrorsOpen(false);
-    setWarningsOpen(false);
 
-    try {
-      // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
-      if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
-        try {
-          file = await convertXlsToXlsx(file);
-          toast.info("הקובץ הומר מ-XLS ל-XLSX");
-        } catch (conversionError) {
-          console.error("Failed to convert XLS to XLSX:", conversionError);
-          setUploadError("שגיאה בהמרת הקובץ מ-XLS ל-XLSX");
-          return;
-        }
+    const progress = {
+      total: fileArray.length,
+      current: 0,
+      currentFileName: "",
+      succeeded: 0,
+      failed: 0,
+      results: [] as Array<{ fileName: string; success: boolean; error?: string; fileId?: string }>,
+    };
+    setMultiFileProgress({ ...progress });
+
+    let shouldOverwriteAll = false;
+
+    for (let i = 0; i < fileArray.length; i++) {
+      const file = fileArray[i];
+      progress.current = i + 1;
+      progress.currentFileName = file.name;
+      setMultiFileProgress({ ...progress });
+
+      let result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, shouldOverwriteAll);
+
+      if (!result.success && result.needsOverwrite && !shouldOverwriteAll) {
+        shouldOverwriteAll = true;
+        result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+      } else if (!result.success && result.needsOverwrite && shouldOverwriteAll) {
+        result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
       }
 
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("enableMatching", "true");
-
-      const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        setUploadError(result.message || result.error || "Failed to process file");
-        return;
+      if (result.success) {
+        progress.succeeded++;
+        progress.results.push({ fileName: file.name, success: true, fileId: result.fileId });
+      } else {
+        progress.failed++;
+        progress.results.push({ fileName: file.name, success: false, error: result.error });
       }
-
-      setProcessingResult(result);
-      setExpandedResults(true);
-    } catch (error) {
-      setUploadError(error instanceof Error ? error.message : "Unknown error");
-    } finally {
-      setIsUploading(false);
+      setMultiFileProgress({ ...progress });
     }
-  }, [selectedSupplierId, selectedPeriodKey, selectedSupplier]);
+
+    if (progress.succeeded > 0 && progress.failed === 0) {
+      toast.success(`${progress.succeeded} קבצים הועלו ונשמרו בהצלחה`);
+    } else if (progress.succeeded > 0 && progress.failed > 0) {
+      toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
+    } else {
+      toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
+    queryClient.invalidateQueries({ queryKey: ["supplier-file-uploads"] });
+
+    setIsUploading(false);
+  }, [selectedSupplierId, selectedPeriodKey, selectedSupplier, isMultiFile, processSingleFile, queryClient]);
 
   // Handle manual match save
   const handleSaveMatch = useCallback(async () => {
@@ -902,13 +1165,42 @@ export default function SupplierFilesPage() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={selectedSupplier?.fileMapping?.fileType === "csv" ? ".csv" : ".xlsx,.xls"}
+                accept={
+                  selectedSupplier?.fileMapping?.fileType === "csv"
+                    ? isMultiFile ? ".csv,.zip" : ".csv"
+                    : isMultiFile ? ".xlsx,.xls,.zip" : ".xlsx,.xls"
+                }
+                multiple={isMultiFile}
                 onChange={handleFileUpload}
                 disabled={isUploading || !selectedPeriodKey}
                 className="hidden"
               />
               <div className="flex flex-col items-center gap-1.5 text-center">
-                {isUploading ? (
+                {isUploading && multiFileProgress ? (
+                  <>
+                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                    <p className="text-sm font-medium">
+                      מעבד קובץ {multiFileProgress.current} מתוך {multiFileProgress.total}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate max-w-full">
+                      {multiFileProgress.currentFileName}
+                    </p>
+                    <div className="w-full bg-muted rounded-full h-1.5 mt-1">
+                      <div
+                        className="bg-primary h-1.5 rounded-full transition-all"
+                        style={{ width: `${(multiFileProgress.current / multiFileProgress.total) * 100}%` }}
+                      />
+                    </div>
+                    {(multiFileProgress.succeeded > 0 || multiFileProgress.failed > 0) && (
+                      <p className="text-xs text-muted-foreground">
+                        <span className="text-green-600">{multiFileProgress.succeeded} הצליחו</span>
+                        {multiFileProgress.failed > 0 && (
+                          <span className="text-destructive ms-2">{multiFileProgress.failed} נכשלו</span>
+                        )}
+                      </p>
+                    )}
+                  </>
+                ) : isUploading ? (
                   <>
                     <Loader2 className="h-8 w-8 text-primary animate-spin" />
                     <p className="text-sm font-medium">מעבד...</p>
@@ -917,10 +1209,10 @@ export default function SupplierFilesPage() {
                   <>
                     <Upload className={`h-8 w-8 ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
                     <p className="text-sm font-medium">
-                      {isDragging ? "שחרר כדי להעלות" : "גרור קובץ לכאן"}
+                      {isDragging ? "שחרר כדי להעלות" : isMultiFile ? "גרור קבצים לכאן" : "גרור קובץ לכאן"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      או לחץ לבחירת קובץ
+                      {isMultiFile ? "ניתן לבחור מספר קבצים בו-זמנית" : "או לחץ לבחירת קובץ"}
                     </p>
                   </>
                 )}
@@ -940,6 +1232,46 @@ export default function SupplierFilesPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Multi-File Upload Results */}
+      {multiFileProgress && !isUploading && multiFileProgress.results.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <FileUp className="h-5 w-5" />
+              תוצאות העלאה ({multiFileProgress.succeeded} הצליחו מתוך {multiFileProgress.total})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {multiFileProgress.results.map((r, i) => (
+                <div key={i} className={`flex items-center justify-between rounded-lg border px-3 py-2 text-sm ${
+                  r.success ? "bg-green-50/50 border-green-200" : "bg-red-50/50 border-red-200"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {r.success ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <XCircle className="h-4 w-4 text-destructive" />
+                    )}
+                    <span>{r.fileName}</span>
+                  </div>
+                  {r.success && r.fileId ? (
+                    <Link href={`/admin/supplier-files/review/${r.fileId}`}>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs">
+                        <Eye className="h-3 w-3 me-1" />
+                        צפייה
+                      </Button>
+                    </Link>
+                  ) : r.error ? (
+                    <span className="text-xs text-destructive">{r.error}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Upload History - Full Width */}
       {selectedSupplier && (

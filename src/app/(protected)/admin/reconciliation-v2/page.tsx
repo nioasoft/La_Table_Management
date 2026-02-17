@@ -20,6 +20,7 @@ export default function ReconciliationV2Page() {
     periodStartDate: string;
     periodEndDate: string;
     supplierFileId: string;
+    supplierFileIds: string[];
     hasExistingSession: boolean;
     existingSessionId: string | null;
   } | null>(null);
@@ -34,6 +35,7 @@ export default function ReconciliationV2Page() {
       periodStartDate: string;
       periodEndDate: string;
       supplierFileId: string;
+      supplierFileIds: string[];
       hasExistingSession: boolean;
       existingSessionId: string | null;
     }
@@ -56,6 +58,7 @@ export default function ReconciliationV2Page() {
       const session = await createSession.mutateAsync({
         supplierId,
         supplierFileId: periodData.supplierFileId,
+        supplierFileIds: periodData.supplierFileIds,
         periodStartDate: periodData.periodStartDate,
         periodEndDate: periodData.periodEndDate,
       });
@@ -80,6 +83,7 @@ export default function ReconciliationV2Page() {
       const session = await createSession.mutateAsync({
         supplierId,
         supplierFileId: periodData.supplierFileId,
+        supplierFileIds: periodData.supplierFileIds,
         periodStartDate: periodData.periodStartDate,
         periodEndDate: periodData.periodEndDate,
       });
