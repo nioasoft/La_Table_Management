@@ -216,7 +216,10 @@ export default function FileDetailsPage() {
     const matches = fileData?.supplierMatches || [];
     if (!searchQuery.trim()) return matches;
     const query = searchQuery.trim().toLowerCase();
-    return matches.filter((m) => m.bkmvName.toLowerCase().includes(query));
+    return matches.filter((m) =>
+      m.bkmvName.toLowerCase().includes(query) ||
+      m.matchedSupplierName?.toLowerCase().includes(query)
+    );
   }, [fileData?.supplierMatches, searchQuery]);
 
   // Review action mutation
