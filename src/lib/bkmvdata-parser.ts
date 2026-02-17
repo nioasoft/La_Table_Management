@@ -222,6 +222,20 @@ function parseB110Record(line: string): BkmvAccount | null {
     const accountDescription = extractField(line, B110_FIELDS.ACCOUNT_DESC);
     let accountName = extractField(line, B110_FIELDS.ACCOUNT_NAME);
 
+    // Handle names split across field boundary (pos 37-66 / pos 67-116).
+    // Some accounting software stores names starting near the end of the 30-char
+    // name field, continuing into the description field. This causes accountName
+    // to contain just 1-4 Hebrew chars (e.g., "א" instead of "אלי אברהמי שיווק בע"מ").
+    // Fix: read the combined name+description area and extract the full name.
+    const combinedNameArea = line.substring(
+      B110_FIELDS.ACCOUNT_NAME.start,
+      B110_FIELDS.ACCOUNT_DESC.start + B110_FIELDS.ACCOUNT_DESC.length
+    ).trim();
+    const combinedNameMatch = combinedNameArea.match(/^(.+?)\s{3,}/);
+    if (combinedNameMatch && combinedNameMatch[1].trim().length > (accountName?.length || 0)) {
+      accountName = combinedNameMatch[1].trim();
+    }
+
     // Some accounting systems (like the newer format) put the account name in the
     // description field instead of the name field. If accountName is empty or
     // only contains numbers/symbols, try to extract a meaningful name from description.
