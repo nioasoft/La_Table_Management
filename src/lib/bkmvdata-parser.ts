@@ -1218,6 +1218,25 @@ export const CATEGORY_ORDER: AccountCategory[] = [
   'expense',
 ];
 
+/** Extended category for tab navigation (includes virtual tabs) */
+export type CategoryTab = AccountCategory | 'all' | 'blacklisted';
+
+export const CATEGORY_TAB_ORDER: CategoryTab[] = [
+  'all',
+  'uncategorized',
+  'supplier',
+  'revenue',
+  'employee',
+  'expense',
+  'blacklisted',
+];
+
+export const CATEGORY_TAB_LABELS: Record<CategoryTab, string> = {
+  all: 'הכל',
+  ...CATEGORY_LABELS,
+  blacklisted: 'לא רלוונטי',
+};
+
 /**
  * Classified account - extends AllAccountSummary with classification info
  */

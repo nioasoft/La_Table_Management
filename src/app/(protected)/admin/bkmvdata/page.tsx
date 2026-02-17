@@ -72,6 +72,7 @@ import {
   BarChart3,
   DollarSign,
   Check,
+  Undo2,
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Supplier, Franchisee } from "@/db/schema";
@@ -85,15 +86,19 @@ import {
   getCategoryCounts,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
+  CATEGORY_TAB_ORDER,
+  CATEGORY_TAB_LABELS,
   type BkmvParseResult,
   type BkmvTransaction,
   type AccountCategory,
+  type CategoryTab,
   type ClassifiedAccount,
 } from "@/lib/bkmvdata-parser";
 import {
   matchBkmvSuppliers,
   type BkmvSupplierMatchingResult,
 } from "@/lib/supplier-matcher";
+import { normalizeName } from "@/lib/franchisee-matcher";
 import { upload } from "@vercel/blob/client";
 import { BkmvDataExplorer } from "@/components/bkmv-data-explorer";
 
@@ -199,7 +204,7 @@ export default function BkmvDataPage() {
 
   // Classification state
   const [classifiedAccounts, setClassifiedAccounts] = useState<Map<string, ClassifiedAccount>>(new Map());
-  const [activeCategory, setActiveCategory] = useState<AccountCategory>('uncategorized');
+  const [activeCategory, setActiveCategory] = useState<CategoryTab>('uncategorized');
 
   // History and upload state
   const [activeTab, setActiveTab] = useState<string>("upload");
@@ -324,6 +329,16 @@ export default function BkmvDataPage() {
     return new Set<string>(blacklistData.items.map((item: { normalizedName: string }) => item.normalizedName));
   }, [blacklistData]);
 
+  // Map normalized name -> blacklist ID for restoring
+  const blacklistIdMap = useMemo((): Map<string, string> => {
+    if (!blacklistData?.items) return new Map();
+    return new Map(
+      blacklistData.items.map((item: { id: string; normalizedName: string }) =>
+        [item.normalizedName, item.id]
+      )
+    );
+  }, [blacklistData]);
+
   // Fetch franchisees for filter dropdown
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
@@ -377,7 +392,7 @@ export default function BkmvDataPage() {
   const categoryAccounts = useMemo(() => {
     const accounts: ClassifiedAccount[] = [];
     for (const account of classifiedAccounts.values()) {
-      if (account.category === activeCategory) {
+      if (activeCategory === 'all' || account.category === activeCategory) {
         accounts.push(account);
       }
     }
@@ -432,6 +447,19 @@ export default function BkmvDataPage() {
       // Just refresh blacklist - the useEffect will re-run matching automatically
       refetchBlacklist();
     },
+  });
+
+  // Remove from blacklist mutation (for restoring blacklisted items)
+  const removeFromBlacklistMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/bkmvdata/blacklist?id=${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "שגיאה בהסרה מהרשימה");
+      }
+      return response.json();
+    },
+    onSuccess: () => { refetchBlacklist(); },
   });
 
   // Handle file selection
@@ -805,13 +833,16 @@ export default function BkmvDataPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blacklistedNames]);
 
-  // Handle quick-classify action (from uncategorized tab)
+  // Handle quick-classify action (from uncategorized or all tab)
   const handleQuickClassify = useCallback(async (
     accountKey: string,
     category: AccountCategory,
     accountName?: string
   ) => {
     if (!matchedFranchisee) return;
+
+    // Check previous category before optimistic update
+    const previousCategory = classifiedAccounts.get(accountKey)?.category;
 
     // Optimistic update
     setClassifiedAccounts(prev => {
@@ -836,8 +867,8 @@ export default function BkmvDataPage() {
       setError("שגיאה בשמירת הסיווג");
     }
 
-    // Re-run supplier matching if classification changed
-    if (parseResult && category === 'supplier') {
+    // Re-run supplier matching if supplier category is involved (to or from)
+    if (parseResult && (category === 'supplier' || previousCategory === 'supplier')) {
       // Need updated classifiedAccounts - use the optimistic state
       setTimeout(() => {
         setClassifiedAccounts(currentClassified => {
@@ -850,7 +881,7 @@ export default function BkmvDataPage() {
         });
       }, 0);
     }
-  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching]);
+  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts]);
 
   // Handle reclassify (move back to auto-detection / uncategorized)
   const handleReclassify = useCallback(async (accountKey: string) => {
@@ -957,6 +988,11 @@ export default function BkmvDataPage() {
       return true;
     });
   }, [matchingResults, filterStatus, searchQuery]);
+
+  // Blacklisted results from matching (for the blacklisted tab)
+  const blacklistedResults = useMemo(() => {
+    return matchingResults.filter(r => r.matchResult.matchType === "blacklisted");
+  }, [matchingResults]);
 
   // Summary stats
   const stats = useMemo(() => ({
@@ -1415,15 +1451,24 @@ export default function BkmvDataPage() {
           {/* Category Tabs */}
           <div className="mb-6">
             <div className="flex flex-wrap gap-2 mb-4">
-              {CATEGORY_ORDER.map((cat) => {
+              {CATEGORY_TAB_ORDER.map((cat) => {
                 const isActive = activeCategory === cat;
-                const count = categoryCounts[cat];
-                const colorMap: Record<AccountCategory, string> = {
+                // Compute count per tab
+                const count = cat === 'all'
+                  ? classifiedAccounts.size
+                  : cat === 'blacklisted'
+                  ? blacklistedResults.length
+                  : categoryCounts[cat];
+                // Hide blacklisted tab when empty
+                if (cat === 'blacklisted' && count === 0) return null;
+                const colorMap: Record<CategoryTab, string> = {
+                  all: isActive ? 'bg-cyan-200 text-cyan-900 ring-1 ring-cyan-400' : 'bg-cyan-50 text-cyan-600 hover:bg-cyan-100',
                   uncategorized: isActive ? 'bg-gray-200 text-gray-900 ring-1 ring-gray-400' : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
                   supplier: isActive ? 'bg-blue-200 text-blue-900 ring-1 ring-blue-400' : 'bg-blue-50 text-blue-600 hover:bg-blue-100',
                   revenue: isActive ? 'bg-green-200 text-green-900 ring-1 ring-green-400' : 'bg-green-50 text-green-600 hover:bg-green-100',
                   employee: isActive ? 'bg-purple-200 text-purple-900 ring-1 ring-purple-400' : 'bg-purple-50 text-purple-600 hover:bg-purple-100',
                   expense: isActive ? 'bg-orange-200 text-orange-900 ring-1 ring-orange-400' : 'bg-orange-50 text-orange-600 hover:bg-orange-100',
+                  blacklisted: isActive ? 'bg-red-200 text-red-900 ring-1 ring-red-400' : 'bg-red-50 text-red-600 hover:bg-red-100',
                 };
                 return (
                   <button
@@ -1431,11 +1476,117 @@ export default function BkmvDataPage() {
                     onClick={() => { setActiveCategory(cat); setAccountSearchQuery(""); }}
                     className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${colorMap[cat]}`}
                   >
-                    {CATEGORY_LABELS[cat]} ({count})
+                    {CATEGORY_TAB_LABELS[cat]} ({count})
                   </button>
                 );
               })}
             </div>
+
+            {/* ==================== ALL TAB ==================== */}
+            {activeCategory === 'all' && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg">כל החשבונות</CardTitle>
+                      <CardDescription>
+                        צפה בכל החשבונות מכל הקטגוריות ושנה סיווג לפי הצורך
+                      </CardDescription>
+                    </div>
+                    <div className="relative">
+                      <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        placeholder="חיפוש חשבון..."
+                        value={accountSearchQuery}
+                        onChange={(e) => setAccountSearchQuery(e.target.value)}
+                        className="ps-9 w-64"
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">שם חשבון</TableHead>
+                          <TableHead className="text-right">קוד</TableHead>
+                          <TableHead className="text-right">סוג (מקובץ)</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">קטגוריה</TableHead>
+                          <TableHead className="text-right">שנה סיווג</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {categoryAccounts.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                              אין חשבונות להצגה
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          categoryAccounts.map((account) => {
+                            const categoryBadgeColors: Record<AccountCategory, string> = {
+                              uncategorized: 'bg-gray-100 text-gray-700',
+                              supplier: 'bg-blue-100 text-blue-700',
+                              revenue: 'bg-green-100 text-green-700',
+                              employee: 'bg-purple-100 text-purple-700',
+                              expense: 'bg-orange-100 text-orange-700',
+                            };
+                            return (
+                              <TableRow key={account.accountCode}>
+                                <TableCell className="font-medium">{account.accountName}</TableCell>
+                                <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
+                                <TableCell className="text-sm text-muted-foreground">{account.accountType || '-'}</TableCell>
+                                <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
+                                <TableCell>{account.transactionCount}</TableCell>
+                                <TableCell>
+                                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${categoryBadgeColors[account.category]}`}>
+                                    {CATEGORY_LABELS[account.category]}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-1">
+                                    {(CATEGORY_ORDER as AccountCategory[])
+                                      .filter((cat) => cat !== account.category && cat !== 'uncategorized')
+                                      .map((cat) => (
+                                        <button
+                                          key={cat}
+                                          onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
+                                          disabled={classifyMutation.isPending}
+                                          className={`
+                                            px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
+                                            ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
+                                            ${cat === 'revenue' ? 'bg-green-50 text-green-700 hover:bg-green-200' : ''}
+                                            ${cat === 'employee' ? 'bg-purple-50 text-purple-700 hover:bg-purple-200' : ''}
+                                            ${cat === 'expense' ? 'bg-orange-50 text-orange-700 hover:bg-orange-200' : ''}
+                                          `}
+                                        >
+                                          {CATEGORY_LABELS[cat]}
+                                        </button>
+                                      ))}
+                                    {account.classificationSource === 'saved' && (
+                                      <button
+                                        onClick={() => handleReclassify(account.accountCode)}
+                                        disabled={reclassifyMutation.isPending}
+                                        className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
+                                      >
+                                        איפוס
+                                      </button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* ==================== UNCATEGORIZED TAB ==================== */}
             {activeCategory === 'uncategorized' && (
@@ -1884,17 +2035,32 @@ export default function BkmvDataPage() {
                                   )}
                                 </TableCell>
                                 <TableCell>
-                                  {account.classificationSource === 'saved' && (
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="text-muted-foreground hover:text-destructive"
-                                      onClick={() => handleReclassify(account.accountCode)}
-                                      disabled={reclassifyMutation.isPending}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  )}
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    {(['supplier', 'employee', 'expense'] as AccountCategory[]).map((cat) => (
+                                      <button
+                                        key={cat}
+                                        onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
+                                        disabled={classifyMutation.isPending}
+                                        className={`
+                                          px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
+                                          ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
+                                          ${cat === 'employee' ? 'bg-purple-50 text-purple-700 hover:bg-purple-200' : ''}
+                                          ${cat === 'expense' ? 'bg-orange-50 text-orange-700 hover:bg-orange-200' : ''}
+                                        `}
+                                      >
+                                        {CATEGORY_LABELS[cat]}
+                                      </button>
+                                    ))}
+                                    {account.classificationSource === 'saved' && (
+                                      <button
+                                        onClick={() => handleReclassify(account.accountCode)}
+                                        disabled={reclassifyMutation.isPending}
+                                        className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
+                                      >
+                                        איפוס
+                                      </button>
+                                    )}
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -1951,17 +2117,32 @@ export default function BkmvDataPage() {
                               <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
                               <TableCell>{account.transactionCount}</TableCell>
                               <TableCell>
-                                {account.classificationSource === 'saved' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-muted-foreground hover:text-destructive"
-                                    onClick={() => handleReclassify(account.accountCode)}
-                                    disabled={reclassifyMutation.isPending}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {(['supplier', 'revenue', 'expense'] as AccountCategory[]).map((cat) => (
+                                    <button
+                                      key={cat}
+                                      onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
+                                      disabled={classifyMutation.isPending}
+                                      className={`
+                                        px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
+                                        ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
+                                        ${cat === 'revenue' ? 'bg-green-50 text-green-700 hover:bg-green-200' : ''}
+                                        ${cat === 'expense' ? 'bg-orange-50 text-orange-700 hover:bg-orange-200' : ''}
+                                      `}
+                                    >
+                                      {CATEGORY_LABELS[cat]}
+                                    </button>
+                                  ))}
+                                  {account.classificationSource === 'saved' && (
+                                    <button
+                                      onClick={() => handleReclassify(account.accountCode)}
+                                      disabled={reclassifyMutation.isPending}
+                                      className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
+                                    >
+                                      איפוס
+                                    </button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))
@@ -2017,20 +2198,102 @@ export default function BkmvDataPage() {
                               <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
                               <TableCell>{account.transactionCount}</TableCell>
                               <TableCell>
-                                {account.classificationSource === 'saved' && (
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="text-muted-foreground hover:text-destructive"
-                                    onClick={() => handleReclassify(account.accountCode)}
-                                    disabled={reclassifyMutation.isPending}
-                                  >
-                                    <X className="h-4 w-4" />
-                                  </Button>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1">
+                                  {(['supplier', 'revenue', 'employee'] as AccountCategory[]).map((cat) => (
+                                    <button
+                                      key={cat}
+                                      onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
+                                      disabled={classifyMutation.isPending}
+                                      className={`
+                                        px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
+                                        ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
+                                        ${cat === 'revenue' ? 'bg-green-50 text-green-700 hover:bg-green-200' : ''}
+                                        ${cat === 'employee' ? 'bg-purple-50 text-purple-700 hover:bg-purple-200' : ''}
+                                      `}
+                                    >
+                                      {CATEGORY_LABELS[cat]}
+                                    </button>
+                                  ))}
+                                  {account.classificationSource === 'saved' && (
+                                    <button
+                                      onClick={() => handleReclassify(account.accountCode)}
+                                      disabled={reclassifyMutation.isPending}
+                                      className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
+                                    >
+                                      איפוס
+                                    </button>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
                           ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ==================== BLACKLISTED TAB ==================== */}
+            {activeCategory === 'blacklisted' && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Ban className="h-5 w-5" />
+                        שמות לא רלוונטיים
+                      </CardTitle>
+                      <CardDescription>
+                        שמות שסומנו כלא רלוונטיים להתאמות ספקים. לחץ &quot;שחזר&quot; כדי להחזיר להתאמה
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-right">שם בקובץ</TableHead>
+                          <TableHead className="text-right">סכום</TableHead>
+                          <TableHead className="text-right">עסקאות</TableHead>
+                          <TableHead className="text-right">פעולות</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {blacklistedResults.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                              אין שמות לא רלוונטיים בקובץ הנוכחי
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          blacklistedResults.map((result, index) => {
+                            const normalizedBkmvName = normalizeName(result.bkmvName);
+                            const blacklistId = blacklistIdMap.get(normalizedBkmvName);
+                            return (
+                              <TableRow key={index}>
+                                <TableCell className="font-medium">{result.bkmvName}</TableCell>
+                                <TableCell className="font-mono">{formatAmount(result.amount)}</TableCell>
+                                <TableCell>{result.transactionCount}</TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      if (blacklistId) removeFromBlacklistMutation.mutate(blacklistId);
+                                    }}
+                                    disabled={!blacklistId || removeFromBlacklistMutation.isPending}
+                                  >
+                                    <Undo2 className="h-4 w-4 ms-1" />
+                                    שחזר
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
                         )}
                       </TableBody>
                     </Table>
