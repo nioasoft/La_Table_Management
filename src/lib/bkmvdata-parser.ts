@@ -515,15 +515,26 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
   // Build mappings from B110 records:
   // 1. accountKey → accountSort (for filtering by account type)
   // 2. accountKey → accountName (for resolving numeric counterparty references)
+  // 3. accountName → accountSort (for resolving Hebrew counterparty names)
+  // 4. accountName → accountKey (for resolving Hebrew counterparty names)
   const accountKeyToSort = new Map<string, string>();
   const accountKeyToName = new Map<string, string>();
+  const accountNameToSort = new Map<string, string>();
+  const accountNameToKey = new Map<string, string>();
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
+    const name = account.accountName.trim();
     if (account.accountSort && key) {
       accountKeyToSort.set(key, account.accountSort);
     }
-    if (account.accountName && key) {
-      accountKeyToName.set(key, account.accountName.trim());
+    if (name && key) {
+      accountKeyToName.set(key, name);
+    }
+    if (name && account.accountSort) {
+      accountNameToSort.set(name, account.accountSort);
+    }
+    if (name && key) {
+      accountNameToKey.set(name, key);
     }
   }
 
@@ -553,6 +564,14 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
     const resolvedName = accountKeyToName.get(accountKey);
     if (resolvedName) {
       tx.counterpartyName = resolvedName;
+    }
+
+    // Fallback: if counterparty is a Hebrew name (not numeric), try matching by name
+    if (!tx.accountSort) {
+      tx.accountSort = accountNameToSort.get(counterparty) || '';
+    }
+    if (!tx.resolvedAccountKey) {
+      tx.resolvedAccountKey = accountNameToKey.get(counterparty) || '';
     }
   }
 
