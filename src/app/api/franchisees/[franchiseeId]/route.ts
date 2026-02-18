@@ -75,6 +75,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       notes,
       hashavshevetItemKey,
       isActive,
+      isKosher,
       // Status change logging fields
       statusChangeReason,
       statusChangeNotes,
@@ -131,6 +132,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (notes !== undefined) updateData.notes = notes;
     if (hashavshevetItemKey !== undefined) updateData.hashavshevetItemKey = hashavshevetItemKey;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (isKosher !== undefined) updateData.isKosher = isKosher;
 
     // Include status change logging fields if provided
     if (statusChangeReason !== undefined) updateData.statusChangeReason = statusChangeReason;

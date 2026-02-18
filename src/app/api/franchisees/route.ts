@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
       status,
       notes,
       isActive,
+      isKosher,
       category,
     } = body;
 
@@ -166,6 +167,7 @@ export async function POST(request: NextRequest) {
       status: status || "pending",
       notes: notes || null,
       isActive: isActive !== undefined ? isActive : true,
+      isKosher: isKosher !== undefined ? isKosher : true,
       category: category || "regular",
       createdBy: user.id,
     });

@@ -11,6 +11,7 @@ import {
   reconciliationComparison,
   reconciliationReviewQueue,
   supplier,
+  supplierBrand,
   supplierFileUpload,
   franchisee,
   uploadedFile,
@@ -260,12 +261,20 @@ export async function createReconciliationSession(
       name: supplier.name,
       code: supplier.code,
       vatExempt: supplier.vatExempt,
+      isKosher: supplier.isKosher,
     })
     .from(supplier)
     .where(eq(supplier.id, supplierId))
     .limit(1);
 
   if (!supplierData.length) return null;
+
+  // Fetch supplier's brand associations for compatible franchisee filtering
+  const supplierBrandRows = await database
+    .select({ brandId: supplierBrand.brandId })
+    .from(supplierBrand)
+    .where(eq(supplierBrand.supplierId, supplierId));
+  const brandIdSet = new Set(supplierBrandRows.map(sb => sb.brandId));
 
   // Determine which file IDs to load
   const fileIdsToLoad = (supplierFileIds && supplierFileIds.length > 0)
@@ -470,6 +479,37 @@ export async function createReconciliationSession(
         franchiseeAmount,
         supplierOriginalName: match.originalName,
         franchiseeFileId: franchiseeData?.fileId || null,
+      });
+    }
+  }
+
+  // Get all compatible franchisees (by brand + kosher) for zero-amount row generation
+  const compatConditions = [
+    eq(franchisee.isActive, true),
+    eq(franchisee.category, "regular"),
+  ];
+  if (brandIdSet.size > 0) {
+    compatConditions.push(inArray(franchisee.brandId, [...brandIdSet]));
+  }
+  // Non-kosher supplier: only show non-kosher franchisees
+  // Kosher supplier: show all franchisees (kosher + non-kosher)
+  if (!supplierData[0].isKosher) {
+    compatConditions.push(eq(franchisee.isKosher, false));
+  }
+  const allCompatible = await database
+    .select({ id: franchisee.id })
+    .from(franchisee)
+    .where(and(...compatConditions));
+
+  // Add zero-amount rows for compatible franchisees missing from supplier file
+  for (const f of allCompatible) {
+    if (!comparisonMap.has(f.id)) {
+      const bkmvData = franchiseeAmounts.get(f.id);
+      comparisonMap.set(f.id, {
+        supplierAmount: 0,
+        franchiseeAmount: bkmvData?.amount || 0,
+        supplierOriginalName: "",
+        franchiseeFileId: bkmvData?.fileId || null,
       });
     }
   }

@@ -126,6 +126,7 @@ interface SupplierFormData {
   vatExempt: boolean;
   isActive: boolean;
   isHidden: boolean;
+  isKosher: boolean;
   brandIds: string[];
   commissionExceptions: CommissionExceptionFormData[];
   bkmvAliases: string[];
@@ -158,6 +159,7 @@ const initialFormData: SupplierFormData = {
   vatExempt: false,
   isActive: true,
   isHidden: false,
+  isKosher: true,
   brandIds: [],
   commissionExceptions: [],
   bkmvAliases: [],
@@ -516,6 +518,7 @@ export default function AdminSuppliersPage() {
       vatExempt: supplier.vatExempt || false,
       isActive: supplier.isActive,
       isHidden: supplier.isHidden || false,
+      isKosher: supplier.isKosher ?? true,
       brandIds: supplier.brands?.map((b) => b.id) || [],
       commissionExceptions: commissionExceptionsToFormData(supplier.commissionExceptions as CommissionException[] | null | undefined),
       bkmvAliases: supplier.bkmvAliases || [],
@@ -727,6 +730,20 @@ export default function AdminSuppliersPage() {
                       />
                       <Label htmlFor="isHidden" className="cursor-pointer text-sm">
                         {he.admin.suppliers.form.fields.isHidden}
+                      </Label>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        id="isKosher"
+                        checked={formData.isKosher}
+                        onCheckedChange={(checked) =>
+                          setFormData({ ...formData, isKosher: checked as boolean })
+                        }
+                        disabled={isSubmitting}
+                      />
+                      <Label htmlFor="isKosher" className="cursor-pointer text-sm">
+                        כשר
                       </Label>
                     </div>
                   </div>
@@ -1434,6 +1451,9 @@ export default function AdminSuppliersPage() {
                       )}
                       {supplier.isHidden && (
                         <Badge variant="destructive" className="text-xs px-1.5 py-0">מוסתר</Badge>
+                      )}
+                      {!supplier.isKosher && (
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 border-orange-300 text-orange-600">לא כשר</Badge>
                       )}
                       {hasCommissionFromFile(supplier.code) ? (
                         <Badge variant="secondary" className="text-xs px-1.5 py-0">

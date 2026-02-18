@@ -588,6 +588,10 @@ export const supplier = pgTable(
     isHidden: boolean("is_hidden")
       .$default(() => false)
       .notNull(),
+    // Kosher flag: non-kosher suppliers only match non-kosher franchisees
+    isKosher: boolean("is_kosher")
+      .$default(() => true)
+      .notNull(),
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())
       .notNull(),
@@ -722,6 +726,10 @@ export const franchisee = pgTable(
     // Revenue account code from BKMVDATA - for auto-matching revenue accounts in future uploads
     revenueAccountCode: text("revenue_account_code"),
     isActive: boolean("is_active")
+      .$default(() => true)
+      .notNull(),
+    // Kosher flag: non-kosher suppliers only match non-kosher franchisees
+    isKosher: boolean("is_kosher")
       .$default(() => true)
       .notNull(),
     createdAt: timestamp("created_at")

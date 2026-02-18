@@ -98,6 +98,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       fiscalYearStartMonth,
       franchiseeFundEnabled,
       franchiseeFundPercentage,
+      isKosher,
       // Commission change logging fields
       commissionChangeReason,
       commissionChangeNotes,
@@ -147,6 +148,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (vatIncluded !== undefined) updateData.vatIncluded = vatIncluded;
     if (vatExempt !== undefined) updateData.vatExempt = vatExempt;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (isKosher !== undefined) updateData.isKosher = isKosher;
 
     // Handle file mapping update
     if (fileMapping !== undefined) {

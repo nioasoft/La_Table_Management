@@ -155,6 +155,13 @@
       "when": 1739959200000,
       "tag": "0045_comparison_notes",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1740045600000,
+      "tag": "0046_add_kosher_flag",
+      "breakpoints": true
     }
   ]
 }

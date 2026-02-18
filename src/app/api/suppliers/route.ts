@@ -86,6 +86,7 @@ export async function POST(request: NextRequest) {
       bkmvAliases,
       franchiseeFundEnabled,
       franchiseeFundPercentage,
+      isKosher,
     } = body;
 
     // Validate required fields
@@ -180,6 +181,7 @@ export async function POST(request: NextRequest) {
         ? String(franchiseeFundPercentage)
         : null,
       isActive: isActive !== undefined ? isActive : true,
+      isKosher: isKosher !== undefined ? isKosher : true,
       createdBy: user.id,
     });
 

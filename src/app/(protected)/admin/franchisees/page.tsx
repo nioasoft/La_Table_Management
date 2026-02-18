@@ -160,6 +160,7 @@ interface FranchiseeFormData {
   notes: string;
   hashavshevetItemKey: string;
   isActive: boolean;
+  isKosher: boolean;
 }
 
 const initialFormData: FranchiseeFormData = {
@@ -181,6 +182,7 @@ const initialFormData: FranchiseeFormData = {
   notes: "",
   hashavshevetItemKey: "",
   isActive: true,
+  isKosher: true,
 };
 
 export default function AdminFranchiseesPage() {
@@ -499,6 +501,7 @@ export default function AdminFranchiseesPage() {
       notes: franchisee.notes || "",
       hashavshevetItemKey: franchisee.hashavshevetItemKey || "",
       isActive: franchisee.isActive,
+      isKosher: franchisee.isKosher ?? true,
     });
     setShowForm(true);
     setFormError(null);
@@ -1485,6 +1488,21 @@ export default function AdminFranchiseesPage() {
                 <Label htmlFor="isActive">{he.admin.franchisees.form.fields.isActive}</Label>
               </div>
 
+              {/* Kosher Checkbox */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="isKosher"
+                  checked={formData.isKosher}
+                  onChange={(e) =>
+                    setFormData({ ...formData, isKosher: e.target.checked })
+                  }
+                  disabled={isSubmitting}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <Label htmlFor="isKosher">כשר</Label>
+              </div>
+
               <div className="flex justify-end gap-2 pt-4">
                 <Button
                   type="button"
@@ -1748,6 +1766,9 @@ function FranchiseeCard({
                 <Bell className="h-3 w-3 ml-1" />
                 {reminderCount} תזכורות
               </Badge>
+            )}
+            {!franchisee.isKosher && (
+              <Badge variant="outline" className="text-xs px-1.5 py-0 border-orange-300 text-orange-600">לא כשר</Badge>
             )}
             {franchisee.brand && (
               <Badge variant="outline" className="text-xs px-1.5 py-0">{franchisee.brand.nameHe}</Badge>
