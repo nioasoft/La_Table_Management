@@ -21,7 +21,14 @@ import {
   FileSpreadsheet,
   Download,
   ChevronDown,
+  CloudOff,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
 import Link from "next/link";
@@ -145,20 +152,35 @@ export function UploadHistoryPanel({
                     )}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0"
-                      onClick={() =>
-                        window.open(
-                          `/api/reports/supplier-files/${file.id}/download`,
-                          "_blank"
-                        )
-                      }
-                      title="הורד קובץ"
-                    >
-                      <Download className="h-4 w-4" />
-                    </Button>
+                    {file.fileUrl ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() =>
+                          window.open(
+                            `/api/reports/supplier-files/${file.id}/download`,
+                            "_blank"
+                          )
+                        }
+                        title="הורד קובץ"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    ) : (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="inline-flex items-center justify-center h-8 w-8">
+                              <CloudOff className="h-4 w-4 text-amber-500" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>קובץ לא נשמר באחסון. יש להעלות מחדש.</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </TableCell>
                 </TableRow>
               );

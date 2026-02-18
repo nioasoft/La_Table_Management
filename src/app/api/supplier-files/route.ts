@@ -109,7 +109,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate fileUrl if provided (must be from Vercel Blob Storage)
+    // fileUrl is required - files without a storage URL cannot be downloaded
+    if (!fileUrl) {
+      return NextResponse.json(
+        { error: "לא ניתן לשמור קובץ ללא קישור אחסון. יש לנסות להעלות שוב." },
+        { status: 400 }
+      );
+    }
+
+    // Validate fileUrl (must be from Vercel Blob Storage)
     if (fileUrl) {
       try {
         const url = new URL(fileUrl);

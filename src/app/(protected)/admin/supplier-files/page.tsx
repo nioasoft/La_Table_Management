@@ -69,6 +69,7 @@ import { toast } from "sonner";
 import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingResult } from "@/db/schema";
 import { formatCurrency } from "@/lib/translations";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { hasCustomParser } from "@/lib/custom-parsers/custom-parser-codes";
 import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox";
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
 import { PeriodSelector, type PeriodWithStatus } from "@/components/supplier-files/period-selector";
@@ -160,6 +161,8 @@ interface ProcessingResult {
   // File URL from Blob Storage (if upload succeeded)
   fileUrl?: string;
   storedFileName?: string;
+  // Flag to indicate if storage upload failed (processing succeeded but file not saved)
+  storageUploadFailed?: boolean;
 }
 
 export default function SupplierFilesPage() {
@@ -229,8 +232,8 @@ export default function SupplierFilesPage() {
       const response = await fetch("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
-      // Filter to only suppliers with file mapping
-      return data.suppliers.filter((s: SupplierWithMapping) => s.fileMapping !== null);
+      // Filter to suppliers with file mapping OR custom parser
+      return data.suppliers.filter((s: SupplierWithMapping) => s.fileMapping !== null || hasCustomParser(s.code));
     },
     enabled: !isPending && !!session,
   });
@@ -534,6 +537,11 @@ export default function SupplierFilesPage() {
     const processingResult = result as ProcessingResult;
     if (!processingResult.success || !processingResult.data.length) {
       return { success: false, result: processingResult, error: "העיבוד נכשל" };
+    }
+
+    // Block save if storage upload failed (file won't be downloadable)
+    if (processingResult.storageUploadFailed) {
+      return { success: false, result: processingResult, error: "שמירת הקובץ לאחסון נכשלה. יש לנסות שוב." };
     }
 
     const period = getPeriodByKey(periodKey);
@@ -1328,22 +1336,45 @@ export default function SupplierFilesPage() {
                   )}
                 </div>
 
+                {/* Storage Upload Failed Warning */}
+                {processingResult.storageUploadFailed && (
+                  <div className="flex items-center gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+                    <XCircle className="h-5 w-5 text-destructive shrink-0" />
+                    <div>
+                      <p className="font-medium text-sm text-destructive">
+                        שמירת הקובץ לאחסון נכשלה
+                      </p>
+                      <p className="text-xs text-destructive/80">
+                        הנתונים עובדו בהצלחה אך הקובץ לא נשמר. יש להעלות את הקובץ שוב.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Save to Review Queue */}
-                <div className={`flex items-center justify-between rounded-lg border p-3 ${canAutoApprove ? "bg-green-50 border-green-200" : "bg-muted/50"}`}>
+                <div className={`flex items-center justify-between rounded-lg border p-3 ${
+                  processingResult.storageUploadFailed
+                    ? "bg-muted/30 opacity-60"
+                    : canAutoApprove ? "bg-green-50 border-green-200" : "bg-muted/50"
+                }`}>
                   <div>
                     <p className="font-medium text-sm">
                       {savedFileId
                         ? "הקובץ נשמר"
-                        : canAutoApprove
-                          ? "כל השורות מותאמות - הקובץ יאושר אוטומטית"
-                          : "שמירה לתור הבדיקה"}
+                        : processingResult.storageUploadFailed
+                          ? "לא ניתן לשמור - הקובץ לא הועלה לאחסון"
+                          : canAutoApprove
+                            ? "כל השורות מותאמות - הקובץ יאושר אוטומטית"
+                            : "שמירה לתור הבדיקה"}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {savedFileId
                         ? "ניתן לצפות בקובץ בתור האישורים"
-                        : canAutoApprove
-                          ? "הקובץ יישמר ויאושר ללא צורך בבדיקה נוספת"
-                          : "שמור את הקובץ כדי לאפשר בדיקה ואישור"}
+                        : processingResult.storageUploadFailed
+                          ? "העלה את הקובץ מחדש כדי לשמור"
+                          : canAutoApprove
+                            ? "הקובץ יישמר ויאושר ללא צורך בבדיקה נוספת"
+                            : "שמור את הקובץ כדי לאפשר בדיקה ואישור"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1360,7 +1391,7 @@ export default function SupplierFilesPage() {
                         variant={canAutoApprove ? "default" : "secondary"}
                         className={canAutoApprove ? "bg-green-600 hover:bg-green-700" : ""}
                         onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey)}
-                        disabled={isSaving || !processingResult.success}
+                        disabled={isSaving || !processingResult.success || processingResult.storageUploadFailed}
                       >
                         {isSaving ? (
                           <>
