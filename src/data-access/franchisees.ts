@@ -61,6 +61,10 @@ export interface GetFranchiseesOptions {
   category?: FranchiseeCategory | "all";
   /** Filter by active status */
   isActive?: boolean;
+  /** Filter by brand ID */
+  brandId?: string;
+  /** Filter by franchisee status */
+  status?: FranchiseeStatus;
 }
 
 /**
@@ -124,7 +128,7 @@ export async function getOtherIncomeSources(): Promise<FranchiseeWithBrand[]> {
 export async function getFranchiseesWithContacts(
   options: GetFranchiseesOptions = {}
 ): Promise<FranchiseeWithBrandAndContacts[]> {
-  const { category = "regular", isActive } = options;
+  const { category = "regular", isActive, brandId, status } = options;
 
   const conditions = [];
 
@@ -136,6 +140,16 @@ export async function getFranchiseesWithContacts(
   // Filter by active status if specified
   if (isActive !== undefined) {
     conditions.push(eq(franchisee.isActive, isActive));
+  }
+
+  // Filter by brand ID if specified
+  if (brandId) {
+    conditions.push(eq(franchisee.brandId, brandId));
+  }
+
+  // Filter by status if specified
+  if (status) {
+    conditions.push(eq(franchisee.status, status));
   }
 
   const results = await database

@@ -5,9 +5,6 @@ import {
 } from "@/lib/api-middleware";
 import {
   getFranchiseesWithContacts,
-  getActiveFranchisees,
-  getFranchiseesByBrand,
-  getFranchiseesByStatus,
   getFranchiseeByCompanyId,
   createFranchisee,
   getFranchiseeStats,
@@ -74,12 +71,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (brandId) {
-      // Filter by brand
-      franchisees = await getFranchiseesByBrand(brandId, { category });
+      franchisees = await getFranchiseesWithContacts({ category, brandId });
     } else if (filter === "active") {
-      franchisees = await getActiveFranchisees({ category });
+      franchisees = await getFranchiseesWithContacts({ category, isActive: true });
     } else if (filter && ["pending", "inactive", "suspended", "terminated"].includes(filter)) {
-      franchisees = await getFranchiseesByStatus(filter as FranchiseeStatus, { category });
+      franchisees = await getFranchiseesWithContacts({ category, status: filter as FranchiseeStatus });
     } else {
       franchisees = await getFranchiseesWithContacts({ category });
     }
