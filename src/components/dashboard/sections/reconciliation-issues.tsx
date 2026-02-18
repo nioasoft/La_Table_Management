@@ -70,6 +70,7 @@ export function ReconciliationIssues() {
 
   return (
     <ActionSection
+      id="reconciliation-issues"
       title="בעיות התאמה"
       icon={<AlertTriangle className="h-4 w-4" />}
       count={totalIssues}

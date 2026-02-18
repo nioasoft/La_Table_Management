@@ -20,6 +20,7 @@ export function PendingApprovals() {
 
   return (
     <ActionSection
+      id="pending-approvals"
       title="ממתינים לאישור"
       icon={<FileCheck className="h-4 w-4" />}
       count={approvalCount}

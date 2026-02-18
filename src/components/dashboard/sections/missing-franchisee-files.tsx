@@ -37,6 +37,7 @@ export function MissingFranchiseeFiles() {
 
   return (
     <ActionSection
+      id="missing-franchisee-files"
       title="קבצי זכיינים חסרים"
       icon={<UserX className="h-4 w-4" />}
       count={missingFranchisees.length}

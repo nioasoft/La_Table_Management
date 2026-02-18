@@ -46,12 +46,16 @@ export async function GET(request: NextRequest) {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    // Calculate current period dates (current month)
+    // Use period params if provided, otherwise fall back to current month
+    const { searchParams } = new URL(request.url);
+    const periodStartParam = searchParams.get("periodStart");
+    const periodEndParam = searchParams.get("periodEnd");
+
     const now = new Date();
     const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const currentMonthStartStr = formatDateAsLocal(currentMonthStart);
-    const currentMonthEndStr = formatDateAsLocal(currentMonthEnd);
+    const currentMonthStartStr = periodStartParam || formatDateAsLocal(currentMonthStart);
+    const currentMonthEndStr = periodEndParam || formatDateAsLocal(currentMonthEnd);
 
     // Fetch all data in parallel
     const [

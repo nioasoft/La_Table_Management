@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 interface MetricCardProps {
   label: string;
   value: string | number;
@@ -7,6 +9,8 @@ interface MetricCardProps {
   icon?: React.ReactNode;
   colorClass?: string;
   accentColor?: "green" | "amber" | "red" | "blue" | "neutral";
+  href?: string;
+  scrollToId?: string;
 }
 
 const accentStyles = {
@@ -32,10 +36,25 @@ export function MetricCard({
   icon,
   colorClass = "text-foreground",
   accentColor = "neutral",
+  href,
+  scrollToId,
 }: MetricCardProps) {
-  return (
+  const isClickable = !!href || !!scrollToId;
+
+  const handleClick = () => {
+    if (scrollToId) {
+      document
+        .getElementById(scrollToId)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const content = (
     <div
-      className={`rounded-lg border border-t-2 p-3 transition-shadow hover:shadow-sm ${accentStyles[accentColor]}`}
+      className={`rounded-lg border border-t-2 p-3 transition-shadow hover:shadow-sm ${accentStyles[accentColor]} ${
+        isClickable ? "cursor-pointer hover:shadow-md hover:border-primary/30 transition-all" : ""
+      }`}
+      onClick={!href && scrollToId ? handleClick : undefined}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -59,4 +78,10 @@ export function MetricCard({
       )}
     </div>
   );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+
+  return content;
 }

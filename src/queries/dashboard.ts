@@ -55,11 +55,16 @@ export function useUploadStatus(periodStart?: string, periodEnd?: string) {
   });
 }
 
-export function useCommissionSettlementStatus() {
+export function useCommissionSettlementStatus(periodStart?: string, periodEnd?: string) {
   return useQuery({
-    queryKey: dashboardKeys.commissionSettlement(),
+    queryKey: [...dashboardKeys.commissionSettlement(), periodStart, periodEnd],
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/commission-settlement-status");
+      const params = new URLSearchParams();
+      if (periodStart) params.set("periodStart", periodStart);
+      if (periodEnd) params.set("periodEnd", periodEnd);
+      const qs = params.toString();
+      const url = `/api/dashboard/commission-settlement-status${qs ? `?${qs}` : ""}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error("Failed to fetch commission settlement status");
       return res.json();
     },

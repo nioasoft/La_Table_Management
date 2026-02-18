@@ -88,6 +88,7 @@ export function MissingSupplierFiles() {
 
   return (
     <ActionSection
+      id="missing-supplier-files"
       title="קבצי ספקים חסרים"
       icon={<FileX className="h-4 w-4" />}
       count={incompleteSuppliers.length}

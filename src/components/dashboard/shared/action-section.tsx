@@ -14,6 +14,7 @@ import { SectionEmptyState } from "./section-empty-state";
 import { SectionSkeleton } from "./section-skeleton";
 
 interface ActionSectionProps {
+  id?: string;
   title: string;
   icon: React.ReactNode;
   count: number;
@@ -40,6 +41,7 @@ const countBadgeColors = {
 };
 
 export function ActionSection({
+  id,
   title,
   icon,
   count,
@@ -58,7 +60,7 @@ export function ActionSection({
   // When empty and not loading, render ultra-compact inline
   if (!isLoading && count === 0) {
     return (
-      <div className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/30">
+      <div id={id} className="flex items-center justify-between py-1.5 px-3 rounded-md bg-muted/30">
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground/60">{icon}</span>
           <span className="text-xs text-muted-foreground">{title}</span>
@@ -70,6 +72,7 @@ export function ActionSection({
 
   return (
     <div
+      id={id}
       className={`rounded-lg border border-s-[3px] bg-card ${count > 0 ? borderColors[priority] : "border-s-transparent"}`}
     >
       <div className="px-3 py-2">
