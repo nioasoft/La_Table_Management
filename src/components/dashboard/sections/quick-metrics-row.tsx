@@ -32,10 +32,13 @@ export function QuickMetricsRow() {
   const uploadStatus = uploadStatusData as FranchiseeBkmvStatus | undefined;
   const commissionStatus = commissionStatusData?.data ?? null;
 
-  // --- Card 1: Supplier files ---
-  const reportPct = supplierCompleteness?.summary?.completionPercentage || 0;
-  const received = supplierCompleteness?.summary?.received || 0;
-  const totalExpected = supplierCompleteness?.summary?.totalExpectedFiles || 0;
+  // --- Card 1: Supplier files (count suppliers, not individual files) ---
+  const allSuppliers = supplierCompleteness?.suppliers ?? [];
+  const totalSuppliers = allSuppliers.length;
+  const completeSuppliers = allSuppliers.filter((s) => s.stats.missing === 0).length;
+  const reportPct = totalSuppliers > 0
+    ? Math.round((completeSuppliers / totalSuppliers) * 100)
+    : 0;
 
   const reportColorClass =
     reportPct >= 80
@@ -109,7 +112,7 @@ export function QuickMetricsRow() {
       <MetricCard
         label="קבצי ספקים"
         value={`${reportPct}%`}
-        subtitle={`${received}/${totalExpected} ספקים`}
+        subtitle={`${completeSuppliers}/${totalSuppliers} ספקים`}
         icon={<FileText className="h-5 w-5" />}
         colorClass={reportColorClass}
         accentColor={reportAccent}
