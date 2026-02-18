@@ -279,6 +279,15 @@ function parseB110Record(line: string): BkmvAccount | null {
       }
     }
 
+    // Format 4: sort code directly prefixed to Hebrew type text with no space
+    // e.g., "3ספקים זכאים" → sort=3, "11הוצאות" → sort=11
+    if (!accountSort) {
+      const prefixMatch = accountDescription.match(/^(\d{1,2})([א-ת])/);
+      if (prefixMatch) {
+        accountSort = prefixMatch[1];
+      }
+    }
+
     // Extract the 5-digit account code from accountKey
     // B100 accountCode is at positions 27-31, which is within B110 accountKey at offset 5
     // accountKey is 15 chars (positions 22-36), accountCode is 5 chars (positions 27-31)
@@ -326,6 +335,15 @@ function parseB110Record(line: string): BkmvAccount | null {
       // Account types are short Hebrew words like "ספקים", "עובדים", "בנק"
       if (newFormatType && /^[א-ת\s]+$/.test(newFormatType) && newFormatType.length <= 20) {
         accountType = newFormatType;
+      }
+    }
+
+    // Format: type is the Hebrew portion after leading sort digits in description
+    // e.g., "3ספקים זכאים" → "ספקים זכאים", "11הוצאות" → "הוצאות"
+    if (!isValidAccountType && (!accountType || !/^[א-ת\s"']+$/.test(accountType))) {
+      const prefixTypeMatch = accountDescription.match(/^\d{1,2}([א-ת].*)/);
+      if (prefixTypeMatch && prefixTypeMatch[1].trim().length >= 2) {
+        accountType = prefixTypeMatch[1].trim();
       }
     }
 
