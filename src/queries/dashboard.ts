@@ -8,7 +8,6 @@ export const dashboardKeys = {
   commissionSettlement: () => [...dashboardKeys.all, "commissionSettlement"] as const,
   upcomingReminders: () => [...dashboardKeys.all, "upcomingReminders"] as const,
   supplierCompleteness: () => [...dashboardKeys.all, "supplierCompleteness"] as const,
-  overdueSuppliers: () => [...dashboardKeys.all, "overdueSuppliers"] as const,
 };
 
 export function useDashboardStats() {
@@ -73,17 +72,6 @@ export function useUpcomingReminders(daysAhead = 30, limit = 10) {
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/upcoming-reminders?daysAhead=${daysAhead}&limit=${limit}`);
       if (!res.ok) throw new Error("Failed to fetch upcoming reminders");
-      return res.json();
-    },
-  });
-}
-
-export function useOverdueSuppliers() {
-  return useQuery({
-    queryKey: dashboardKeys.overdueSuppliers(),
-    queryFn: async () => {
-      const res = await fetch("/api/dashboard/overdue-suppliers");
-      if (!res.ok) throw new Error("Failed to fetch overdue suppliers");
       return res.json();
     },
   });

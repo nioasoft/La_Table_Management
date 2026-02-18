@@ -43,6 +43,8 @@ export interface ReportPeriodSelectorProps {
   showLabels?: boolean;
   /** Include the current (in-progress) period in the dropdown */
   includeCurrent?: boolean;
+  /** Restrict which period types are available (default: all) */
+  allowedPeriodTypes?: SettlementPeriodType[];
 }
 
 // Period type options
@@ -68,7 +70,11 @@ export function ReportPeriodSelector({
   layout = "horizontal",
   showLabels = true,
   includeCurrent = false,
+  allowedPeriodTypes,
 }: ReportPeriodSelectorProps) {
+  const periodTypes = allowedPeriodTypes
+    ? PERIOD_TYPES.filter((t) => allowedPeriodTypes.includes(t.value))
+    : PERIOD_TYPES;
   // Get available periods based on selected type
   const availablePeriods = useMemo((): SettlementPeriodInfo[] => {
     if (!periodType) return [];
@@ -118,7 +124,7 @@ export function ReportPeriodSelector({
             <SelectValue placeholder="בחר סוג תקופה" />
           </SelectTrigger>
           <SelectContent dir="rtl">
-            {PERIOD_TYPES.map((type) => (
+            {periodTypes.map((type) => (
               <SelectItem key={type.value} value={type.value} className="text-end">
                 {type.label}
               </SelectItem>

@@ -43,6 +43,7 @@ export function PeriodStatusHeader() {
             showCustomRange={false}
             periodsCount={8}
             includeCurrent
+            allowedPeriodTypes={["quarterly", "semi_annual", "annual"]}
           />
           {periodInfo && (
             <>

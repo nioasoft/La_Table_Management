@@ -37,7 +37,8 @@ function formatLocalDate(d: Date): string {
 }
 
 function getDefaultPeriod(): { type: SettlementPeriodType; key: string } {
-  const periods = getPeriodsForFrequency("quarterly", new Date(), 1, 1, true);
+  // Default to previous (completed) quarter, not current
+  const periods = getPeriodsForFrequency("quarterly", new Date(), 1, 1, false);
   const defaultPeriod = periods[0];
   return {
     type: "quarterly",
