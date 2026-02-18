@@ -671,6 +671,7 @@ export async function getSessionWithComparisons(sessionId: string): Promise<{
       reviewedBy: reconciliationComparison.reviewedBy,
       reviewedAt: reconciliationComparison.reviewedAt,
       reviewNotes: reconciliationComparison.reviewNotes,
+      notes: reconciliationComparison.notes,
       franchiseeName: franchisee.name,
       franchiseeCode: franchisee.code,
       brandName: sql<string | null>`(SELECT name_he FROM brand WHERE id = ${franchisee.brandId})`,
@@ -712,6 +713,21 @@ export async function updateComparisonStatus(
     await recalculateSessionStats(updated.sessionId);
   }
 
+  return updated || null;
+}
+
+/**
+ * Update comparison free-form notes (separate from review workflow)
+ */
+export async function updateComparisonNotes(
+  comparisonId: string,
+  notes: string | null
+) {
+  const [updated] = await database
+    .update(reconciliationComparison)
+    .set({ notes })
+    .where(eq(reconciliationComparison.id, comparisonId))
+    .returning();
   return updated || null;
 }
 

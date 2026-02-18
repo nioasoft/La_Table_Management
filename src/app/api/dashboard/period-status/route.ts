@@ -34,7 +34,7 @@ export type PeriodStatusResponse = {
   pendingActions: {
     total: number;
     items: Array<{
-      type: "discrepancy" | "approval" | "expiring_link";
+      type: "discrepancy" | "approval" | "pending_cross_ref" | "expiring_link";
       count: number;
       priority: "high" | "medium" | "low";
       description: string;
@@ -180,6 +180,16 @@ export async function GET(request: NextRequest) {
     // Calculate pending actions
     const pendingActionItems: PeriodStatusResponse["pendingActions"]["items"] =
       [];
+
+    // Pending cross-references (medium priority)
+    if (pending > 0) {
+      pendingActionItems.push({
+        type: "pending_cross_ref",
+        count: pending,
+        priority: "medium",
+        description: `${pending} הצלבות ממתינות להשוואה`,
+      });
+    }
 
     // Discrepancies (high priority)
     if (discrepancies > 0) {

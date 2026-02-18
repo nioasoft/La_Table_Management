@@ -2898,6 +2898,8 @@ export const reconciliationComparison = pgTable(
     }),
     reviewedAt: timestamp("reviewed_at"),
     reviewNotes: text("review_notes"),
+    // Free-form user notes (separate from review workflow notes)
+    notes: text("notes"),
   },
   (table) => [
     index("idx_reconciliation_comparison_session").on(table.sessionId),

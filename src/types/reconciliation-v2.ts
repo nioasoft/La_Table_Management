@@ -59,6 +59,7 @@ export interface ReconciliationComparison {
   reviewedBy: string | null;
   reviewedAt: Date | null;
   reviewNotes: string | null;
+  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

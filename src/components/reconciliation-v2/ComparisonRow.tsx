@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./StatusBadge";
+import { ComparisonNotes } from "./ComparisonNotes";
 import { cn } from "@/lib/utils";
 import { Check, AlertTriangle } from "lucide-react";
 import type { ReconciliationComparisonWithDetails } from "@/types/reconciliation-v2";
@@ -50,11 +51,18 @@ export function ComparisonRow({
     >
       {/* Franchisee Name */}
       <td className="px-4 py-3">
-        <div className="flex flex-col">
-          <span className="font-medium">{comparison.franchiseeName}</span>
-          <span className="text-xs text-muted-foreground">
-            {comparison.brandName || "-"}
-          </span>
+        <div className="flex items-center gap-1">
+          <div className="flex flex-col">
+            <span className="font-medium">{comparison.franchiseeName}</span>
+            <span className="text-xs text-muted-foreground">
+              {comparison.brandName || "-"}
+            </span>
+          </div>
+          <ComparisonNotes
+            comparisonId={comparison.id}
+            sessionId={comparison.sessionId}
+            notes={comparison.notes}
+          />
         </div>
       </td>
 

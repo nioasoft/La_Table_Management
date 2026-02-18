@@ -284,6 +284,42 @@ export function useCreateReconciliationSession() {
 }
 
 /**
+ * Update comparison free-form notes
+ */
+export function useUpdateComparisonNotes() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      comparisonId: string;
+      notes: string | null;
+      sessionId: string;
+    }) => {
+      const res = await fetch(
+        `/api/reconciliation-v2/comparisons/${data.comparisonId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes: data.notes }),
+        }
+      );
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "שגיאה בעדכון הערה");
+      }
+      return res.json();
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.sessionWithComparisons(
+          variables.sessionId
+        ),
+      });
+    },
+  });
+}
+
+/**
  * Update comparison status
  */
 export function useUpdateComparisonStatus() {

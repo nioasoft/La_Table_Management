@@ -90,10 +90,14 @@ export function QuickMetricsRow() {
   const discrepancyAccent: "green" | "amber" | "red" =
     discrepancies === 0 ? "green" : discrepancies <= 5 ? "amber" : "red";
 
-  // --- Card 5: Pending approvals ---
-  const pendingApproval =
+  // --- Card 5: Pending approvals (files + pending cross-refs) ---
+  const pendingApprovalFiles =
     periodStatus?.pendingActions?.items?.find((i) => i.type === "approval")
       ?.count || 0;
+  const pendingCrossRefs =
+    periodStatus?.pendingActions?.items?.find((i) => i.type === "pending_cross_ref")
+      ?.count || 0;
+  const pendingApproval = pendingApprovalFiles + pendingCrossRefs;
 
   // --- Card 6: Commission total ---
   const totalAmount = commissionStatus?.commissionSummary?.totalAmount || 0;
@@ -156,7 +160,13 @@ export function QuickMetricsRow() {
       <MetricCard
         label="ממתינים לאישור"
         value={pendingApproval}
-        subtitle="קבצים ממתינים לבדיקה"
+        subtitle={
+          pendingCrossRefs > 0 && pendingApprovalFiles > 0
+            ? `${pendingCrossRefs} הצלבות · ${pendingApprovalFiles} קבצים`
+            : pendingCrossRefs > 0
+              ? `${pendingCrossRefs} הצלבות ממתינות להשוואה`
+              : "קבצים ממתינים לבדיקה"
+        }
         icon={<Clock className="h-5 w-5" />}
         colorClass={
           pendingApproval > 0

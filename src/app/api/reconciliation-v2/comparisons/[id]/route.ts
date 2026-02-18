@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import {
   updateComparisonStatus,
+  updateComparisonNotes,
   addToReviewQueue,
 } from "@/data-access/reconciliation-v2";
 import type { ReconciliationComparisonStatus } from "@/db/schema";
@@ -32,6 +33,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         { error: "מזהה השוואה חסר" },
         { status: 400 }
       );
+    }
+
+    // Notes-only update (no status change required)
+    if (!status && "notes" in body) {
+      const result = await updateComparisonNotes(comparisonId, body.notes || null);
+      if (!result) {
+        return NextResponse.json(
+          { error: "שגיאה בעדכון הערה" },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ success: true, comparison: result });
     }
 
     if (!status) {
