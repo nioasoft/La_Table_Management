@@ -8,7 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ExcelExportButton } from "@/components/reports/report-export-button";
-import { Store, Building2, UserRound } from "lucide-react";
+import { Store, Building2, UserRound, MapPin } from "lucide-react";
 
 export default function ContactReportsPage() {
   return (
@@ -20,7 +20,7 @@ export default function ContactReportsPage() {
         </p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -71,6 +71,24 @@ export default function ContactReportsPage() {
             <ExcelExportButton
               endpoint="/api/reports/contacts/staff/export"
               reportType="staff-contacts"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <MapPin className="h-5 w-5 text-primary" />
+              <CardTitle>רשימת סניפים</CardTitle>
+            </div>
+            <CardDescription>
+              רשימת כל הסניפים עם ח.פ., כתובת ופרטי איש קשר
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ExcelExportButton
+              endpoint="/api/reports/contacts/franchisees/branches/export"
+              reportType="franchisee-branches"
             />
           </CardContent>
         </Card>
