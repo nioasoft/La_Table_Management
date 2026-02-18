@@ -533,9 +533,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       } catch (commissionError) {
         console.error("Failed to auto-create commissions:", commissionError);
+        const errorDetail = commissionError instanceof Error ? commissionError.message : String(commissionError);
         result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
           message: 'הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה',
-          details: 'הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה',
+          details: `הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה: ${errorDetail}`,
         }));
       }
     }

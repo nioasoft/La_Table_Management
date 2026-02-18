@@ -134,6 +134,13 @@
       "when": 1739700000000,
       "tag": "0042_add_handled_reminder_status",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1739786400000,
+      "tag": "0043_settlement_period_nullable_franchisee",
+      "breakpoints": true
     }
   ]
 }
