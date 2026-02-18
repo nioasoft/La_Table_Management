@@ -236,6 +236,11 @@ function parseB110Record(line: string): BkmvAccount | null {
       accountName = combinedNameMatch[1].trim();
     }
 
+    // Strip accounting annotations like *כ.אשראי* (credit card account marker)
+    // These are metadata annotations, not part of the supplier name, and would
+    // cause false matches with skip patterns in buildSupplierSummary
+    accountName = accountName.replace(/\s*\*כ\.[^*]*\*/, '').trim();
+
     // Some accounting systems (like the newer format) put the account name in the
     // description field instead of the name field. If accountName is empty or
     // only contains numbers/symbols, try to extract a meaningful name from description.
