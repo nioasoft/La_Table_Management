@@ -24,6 +24,7 @@ import {
   type ReconciliationComparisonStatus,
   type SupplierFileProcessingResult,
   type BkmvProcessingResult,
+  type SupplierFileMapping,
 } from "@/db/schema";
 import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, inArray } from "drizzle-orm";
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
@@ -140,6 +141,16 @@ export async function getSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
  * Returns only the LATEST file for each unique period
  */
 export async function getSupplierPeriods(supplierId: string): Promise<SupplierPeriod[]> {
+  // Determine if this is a multi-file supplier (e.g., דגי הקיבוצים)
+  const [supplierData] = await database
+    .select({ fileMapping: supplier.fileMapping })
+    .from(supplier)
+    .where(eq(supplier.id, supplierId))
+    .limit(1);
+
+  const fileMapping = supplierData?.fileMapping as SupplierFileMapping | null;
+  const isMultiFile = (fileMapping?.maxUploadFiles ?? 1) > 1;
+
   // Get all non-rejected supplier files for this supplier
   const files = await database
     .select({
@@ -168,10 +179,19 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     if (!latestByPeriod.has(periodKey)) {
       latestByPeriod.set(periodKey, file);
     }
-    // Collect all file IDs for this period
-    const existingIds = allFileIdsByPeriod.get(periodKey) || [];
-    existingIds.push(file.id);
-    allFileIdsByPeriod.set(periodKey, existingIds);
+    // Collect file IDs for this period based on supplier type
+    if (isMultiFile) {
+      // Multi-file suppliers: include ALL files for the period
+      const existingIds = allFileIdsByPeriod.get(periodKey) || [];
+      existingIds.push(file.id);
+      allFileIdsByPeriod.set(periodKey, existingIds);
+    } else {
+      // Single-file suppliers: only include the LATEST file per period
+      // (first encountered due to ORDER BY desc createdAt)
+      if (!allFileIdsByPeriod.has(periodKey)) {
+        allFileIdsByPeriod.set(periodKey, [file.id]);
+      }
+    }
   }
 
   // Check which periods already have sessions
