@@ -1,101 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle, Send } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ActionSection } from "../shared/action-section";
-import { ActionItemRow } from "../shared/action-item-row";
 import { CollapsibleContent } from "@/components/ui/collapsible";
-import { useOverdueSuppliers, dashboardKeys } from "@/queries/dashboard";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import type { OverdueSuppliersResponse } from "@/app/api/dashboard/overdue-suppliers/route";
+import { useOverdueSuppliers } from "@/queries/dashboard";
+import type {
+  OverdueSupplierGroup,
+  OverdueSuppliersResponse,
+} from "@/app/api/dashboard/overdue-suppliers/route";
 
-const MAX_PREVIEW = 5;
+const MAX_PREVIEW = 24; // 6 rows × 4 cols
 
-function daysSince(dateStr: string | null): number {
-  if (!dateStr) return 0;
-  const sent = new Date(dateStr);
-  const now = new Date();
-  return Math.floor((now.getTime() - sent.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function OverdueSupplierRow({
-  request,
-}: {
-  request: OverdueSuppliersResponse["requests"][number];
-}) {
-  const [isSending, setIsSending] = useState(false);
-  const queryClient = useQueryClient();
-  const days = daysSince(request.sentAt);
-
-  async function handleSendReminder(e: React.MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsSending(true);
-    try {
-      const res = await fetch(`/api/file-requests/${request.id}/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isReminder: true }),
-      });
-      if (!res.ok) throw new Error("Failed to send reminder");
-      toast.success(`תזכורת נשלחה ל-${request.supplierName}`);
-      queryClient.invalidateQueries({ queryKey: dashboardKeys.overdueSuppliers() });
-    } catch {
-      toast.error("שגיאה בשליחת תזכורת");
-    } finally {
-      setIsSending(false);
-    }
-  }
-
+function SupplierChip({ supplier }: { supplier: OverdueSupplierGroup }) {
   return (
-    <div className="flex items-center gap-1">
-      <div className="flex-1 min-w-0">
-        <ActionItemRow
-          icon={
-            <AlertTriangle
-              className={`h-3.5 w-3.5 ${
-                request.escalated
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-amber-600 dark:text-amber-400"
-              }`}
-            />
-          }
-          iconBgClass={
-            request.escalated
+    <Link href={`/admin/suppliers/${supplier.supplierId}`}>
+      <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/60 transition-colors group cursor-pointer">
+        <div
+          className={`h-6 w-6 rounded-md flex items-center justify-center shrink-0 ${
+            supplier.escalated
               ? "bg-red-100 dark:bg-red-900/50"
               : "bg-amber-100 dark:bg-amber-900/50"
-          }
-          title={request.supplierName}
-          subtitle={`${request.periodDescription} · ${request.reminderCount} תזכורות · ${days} ימים`}
-          badge={
-            request.escalated ? (
-              <Badge
-                variant="outline"
-                className="text-[10px] h-4 px-1.5 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
-              >
-                הועבר לטיפול
-              </Badge>
-            ) : undefined
-          }
-          href={`/admin/suppliers/${request.supplierId}`}
-        />
-      </div>
-      {!request.escalated && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-blue-600 shrink-0"
-          onClick={handleSendReminder}
-          disabled={isSending}
-          title="שלח תזכורת"
+          }`}
         >
-          <Send className="h-3.5 w-3.5" />
-        </Button>
-      )}
-    </div>
+          <AlertTriangle
+            className={`h-3 w-3 ${
+              supplier.escalated
+                ? "text-red-600 dark:text-red-400"
+                : "text-amber-600 dark:text-amber-400"
+            }`}
+          />
+        </div>
+        <span className="text-sm leading-tight truncate">
+          {supplier.supplierName}
+        </span>
+        <Badge
+          variant="outline"
+          className={`text-[10px] h-4 px-1.5 shrink-0 ${
+            supplier.escalated
+              ? "text-red-600 dark:text-red-400 border-red-200 dark:border-red-800"
+              : "text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800"
+          }`}
+        >
+          {supplier.pendingPeriods}
+        </Badge>
+      </div>
+    </Link>
   );
 }
 
@@ -103,11 +54,11 @@ export function OverdueSupplierRequests() {
   const { data, isLoading } = useOverdueSuppliers();
   const response = data as OverdueSuppliersResponse | undefined;
 
-  const requests = response?.requests || [];
-  const totalCount = requests.length;
+  const suppliers = response?.suppliers || [];
+  const totalCount = suppliers.length;
 
-  const previewItems = requests.slice(0, MAX_PREVIEW);
-  const expandedItems = requests.slice(MAX_PREVIEW);
+  const previewItems = suppliers.slice(0, MAX_PREVIEW);
+  const expandedItems = suppliers.slice(MAX_PREVIEW);
 
   return (
     <ActionSection
@@ -122,13 +73,17 @@ export function OverdueSupplierRequests() {
       isLoading={isLoading}
       totalItems={totalCount}
     >
-      {previewItems.map((request) => (
-        <OverdueSupplierRow key={request.id} request={request} />
-      ))}
-      <CollapsibleContent>
-        {expandedItems.map((request) => (
-          <OverdueSupplierRow key={request.id} request={request} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-2">
+        {previewItems.map((supplier) => (
+          <SupplierChip key={supplier.supplierId} supplier={supplier} />
         ))}
+      </div>
+      <CollapsibleContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-x-2">
+          {expandedItems.map((supplier) => (
+            <SupplierChip key={supplier.supplierId} supplier={supplier} />
+          ))}
+        </div>
       </CollapsibleContent>
     </ActionSection>
   );

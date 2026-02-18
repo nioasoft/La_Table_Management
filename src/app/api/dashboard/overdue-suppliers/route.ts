@@ -5,21 +5,18 @@ import {
 } from "@/lib/api-middleware";
 import { database } from "@/db";
 import { fileRequest, supplier } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
-export interface OverdueSupplierRequest {
-  id: string;
+export interface OverdueSupplierGroup {
   supplierId: string;
   supplierName: string;
-  recipientEmail: string;
-  sentAt: string | null;
-  reminderCount: number;
+  pendingPeriods: number;
+  oldestRequestId: string;
   escalated: boolean;
-  periodDescription: string;
 }
 
 export interface OverdueSuppliersResponse {
-  requests: OverdueSupplierRequest[];
+  suppliers: OverdueSupplierGroup[];
   total: number;
 }
 
@@ -53,24 +50,33 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(fileRequest.sentAt);
 
-    const requests: OverdueSupplierRequest[] = results.map((r) => {
+    // Group by supplier
+    const groupMap = new Map<string, OverdueSupplierGroup>();
+    for (const r of results) {
       const meta = r.metadata as Record<string, unknown> | null;
-      const reminders = (r.remindersSent || []) as string[];
-      return {
-        id: r.id,
-        supplierId: r.entityId,
-        supplierName: r.supplierName || r.recipientName || r.recipientEmail,
-        recipientEmail: r.recipientEmail,
-        sentAt: r.sentAt ? new Date(r.sentAt).toISOString() : null,
-        reminderCount: reminders.length,
-        escalated: !!(meta?.escalatedToAdmin),
-        periodDescription: (meta?.periodDescription as string) || "",
-      };
-    });
+      const supplierId = r.entityId;
+      const existing = groupMap.get(supplierId);
+      if (existing) {
+        existing.pendingPeriods += 1;
+        existing.escalated = existing.escalated || !!(meta?.escalatedToAdmin);
+      } else {
+        groupMap.set(supplierId, {
+          supplierId,
+          supplierName: r.supplierName || r.recipientName || r.recipientEmail,
+          pendingPeriods: 1,
+          oldestRequestId: r.id,
+          escalated: !!(meta?.escalatedToAdmin),
+        });
+      }
+    }
+
+    const suppliers = Array.from(groupMap.values()).sort(
+      (a, b) => b.pendingPeriods - a.pendingPeriods
+    );
 
     return NextResponse.json({
-      requests,
-      total: requests.length,
+      suppliers,
+      total: suppliers.length,
     } satisfies OverdueSuppliersResponse);
   } catch (error) {
     console.error("Error fetching overdue suppliers:", error);
