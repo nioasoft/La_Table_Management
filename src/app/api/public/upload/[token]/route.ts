@@ -34,6 +34,7 @@ import { requiresCustomParser } from "@/lib/custom-parsers";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload, findDuplicateSupplierFiles, reviewSupplierFile } from "@/data-access/supplier-file-uploads";
+import { deleteCommissionsBySourceFile } from "@/data-access/commissions";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
 /**
@@ -727,9 +728,13 @@ export async function POST(
                 );
               }
 
-              // If replaceFileId is provided, mark old record(s) as rejected
+              // If replaceFileId is provided, clean up old commissions and mark old record as rejected
               if (replaceFileId) {
                 console.log("[Upload Route] Replacing file:", replaceFileId);
+                const deletedCount = await deleteCommissionsBySourceFile(replaceFileId);
+                if (deletedCount > 0) {
+                  console.log(`[Upload Route] Deleted ${deletedCount} commissions from replaced file ${replaceFileId}`);
+                }
                 await reviewSupplierFile(
                   replaceFileId,
                   "reject",

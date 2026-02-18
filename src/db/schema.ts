@@ -1686,6 +1686,10 @@ export const commission = pgTable(
       precision: 12,
       scale: 2,
     }).notNull(),
+    sourceFileId: text("source_file_id").references(
+      () => supplierFileUpload.id,
+      { onDelete: "set null" }
+    ),
     invoiceNumber: text("invoice_number"),
     invoiceDate: date("invoice_date"),
     notes: text("notes"),
@@ -1716,6 +1720,7 @@ export const commission = pgTable(
     index("idx_commission_supplier_period").on(table.supplierId, table.periodStartDate),
     index("idx_commission_franchisee_status").on(table.franchiseeId, table.status),
     index("idx_commission_status_period").on(table.status, table.periodStartDate),
+    index("idx_commission_source_file").on(table.sourceFileId),
   ]
 );
 

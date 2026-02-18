@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
         periodStartDate: body.periodStartDate,
         periodEndDate: body.periodEndDate,
         settlementPeriodId: body.settlementPeriodId,
+        sourceFileId: body.sourceFileId,
         transactions: body.transactions,
         createdBy: user.id,
       };

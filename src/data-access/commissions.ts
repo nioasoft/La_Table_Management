@@ -144,6 +144,7 @@ export async function getCommissionsWithDetails(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -237,6 +238,7 @@ export async function getCommissionsWithDetailsPaginated(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -691,6 +693,7 @@ export async function getSupplierCommissionsWithDetails(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -1115,6 +1118,7 @@ export async function getCommissionWithDetailsById(id: string): Promise<Commissi
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -1182,6 +1186,25 @@ export async function deleteCommission(id: string): Promise<boolean> {
 }
 
 /**
+ * Delete all calculated/pending commissions associated with a specific source file.
+ * Used when a supplier file is replaced or re-uploaded.
+ * Does NOT delete approved/paid commissions (those require manual review).
+ */
+export async function deleteCommissionsBySourceFile(
+  sourceFileId: string
+): Promise<number> {
+  const result = await database
+    .delete(commission)
+    .where(
+      and(
+        eq(commission.sourceFileId, sourceFileId),
+        inArray(commission.status, ["calculated", "pending"])
+      )
+    );
+  return result.rowCount ?? 0;
+}
+
+/**
  * Get commissions by supplier ID
  */
 export async function getCommissionsBySupplierId(supplierId: string): Promise<Commission[]> {
@@ -1219,6 +1242,7 @@ export interface CommissionCalculationInput {
   netAmount: number;
   vatAdjusted: boolean;
   settlementPeriodId?: string;
+  sourceFileId?: string;
   notes?: string;
   metadata?: Record<string, unknown>;
   createdBy?: string;
@@ -1288,6 +1312,7 @@ export async function calculateAndCreateCommission(
       vatAdjusted: input.vatAdjusted,
       commissionRate: commissionRate.toString(),
       commissionAmount: commissionAmount.toString(),
+      sourceFileId: input.sourceFileId || null,
       notes: input.notes || null,
       metadata: input.metadata || null,
       calculatedAt: new Date(),
@@ -1328,6 +1353,7 @@ export interface BatchCommissionInput {
   periodStartDate: string;
   periodEndDate: string;
   settlementPeriodId?: string;
+  sourceFileId?: string;
   transactions: Array<{
     franchiseeId: string;
     grossAmount: number;
@@ -1364,6 +1390,33 @@ export async function calculateBatchCommissions(
   input: BatchCommissionInput,
   auditContext?: AuditContext
 ): Promise<BatchCommissionResult> {
+  // Auto-cleanup: delete existing calculated/pending commissions for this supplier+period
+  // This prevents duplicates when re-processing files
+  const existingCommissions = await database
+    .select({ id: commission.id, sourceFileId: commission.sourceFileId })
+    .from(commission)
+    .where(and(
+      eq(commission.supplierId, input.supplierId),
+      eq(commission.periodStartDate, input.periodStartDate),
+      eq(commission.periodEndDate, input.periodEndDate),
+      inArray(commission.status, ["calculated", "pending"])
+    ));
+
+  if (existingCommissions.length > 0) {
+    // Always delete ALL existing calculated/pending commissions for this supplier+period.
+    // This handles both cases:
+    // 1. Same file processed twice (same sourceFileId) → prevents duplicates
+    // 2. Different file replacing old one (different sourceFileId) → cleans up old data
+    // 3. Legacy commissions with no sourceFileId → cleaned up on re-process
+    const deleteIds = existingCommissions.map(c => c.id);
+    await database
+      .delete(commission)
+      .where(inArray(commission.id, deleteIds));
+    console.log(
+      `[Commission Dedup] Deleted ${deleteIds.length} existing commissions for supplier ${input.supplierId} period ${input.periodStartDate}-${input.periodEndDate}`
+    );
+  }
+
   const commissions: Commission[] = [];
   const errors: Array<{ franchiseeId: string; error: string }> = [];
 
@@ -1383,6 +1436,7 @@ export async function calculateBatchCommissions(
         netAmount: transaction.netAmount,
         vatAdjusted: transaction.vatAdjusted,
         settlementPeriodId: input.settlementPeriodId,
+        sourceFileId: input.sourceFileId,
         notes: transaction.notes,
         metadata: transaction.metadata,
         createdBy: input.createdBy,
@@ -1681,6 +1735,7 @@ export async function getCommissionsGroupedByBrand(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -1991,6 +2046,7 @@ export async function getBrandCommissionsWithDetails(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
@@ -2396,6 +2452,7 @@ export async function getFranchiseeCommissionsWithDetails(
       invoiceDate: commission.invoiceDate,
       notes: commission.notes,
       metadata: commission.metadata,
+      sourceFileId: commission.sourceFileId,
       calculatedAt: commission.calculatedAt,
       approvedAt: commission.approvedAt,
       approvedBy: commission.approvedBy,
