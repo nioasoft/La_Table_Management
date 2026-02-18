@@ -365,6 +365,12 @@ export async function sendFileRequestEmail(
     ? `${baseUrl}/upload/${request.uploadLink.token}`
     : null;
 
+  // Extract extra variables from file request metadata
+  const meta = request.metadata as Record<string, unknown> | null;
+  const metaVariables: Record<string, string> = {};
+  if (meta?.brandNames) metaVariables.brand_names = String(meta.brandNames);
+  if (meta?.periodDescription) metaVariables.period = String(meta.periodDescription);
+
   const templateVariables: Record<string, string> = {
     recipient_name: request.recipientName || request.recipientEmail,
     entity_name: request.entityName || "Unknown",
@@ -372,6 +378,7 @@ export async function sendFileRequestEmail(
     upload_link: uploadUrl || "",
     due_date: request.dueDate || "",
     description: request.description || "",
+    ...metaVariables,
     ...variables,
   };
 
