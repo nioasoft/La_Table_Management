@@ -51,18 +51,11 @@ export function ComparisonRow({
     >
       {/* Franchisee Name */}
       <td className="px-4 py-3">
-        <div className="flex items-center gap-1">
-          <div className="flex flex-col">
-            <span className="font-medium">{comparison.franchiseeName}</span>
-            <span className="text-xs text-muted-foreground">
-              {comparison.brandName || "-"}
-            </span>
-          </div>
-          <ComparisonNotes
-            comparisonId={comparison.id}
-            sessionId={comparison.sessionId}
-            notes={comparison.notes}
-          />
+        <div className="flex flex-col">
+          <span className="font-medium">{comparison.franchiseeName}</span>
+          <span className="text-xs text-muted-foreground">
+            {comparison.brandName || "-"}
+          </span>
         </div>
       </td>
 
@@ -93,39 +86,46 @@ export function ComparisonRow({
 
       {/* Actions */}
       <td className="px-4 py-3">
-        {needsReview && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onApprove?.(comparison.id)}
-              disabled={isUpdating}
-              className="h-8"
-            >
-              <Check className="h-4 w-4 me-1" />
-              אישור
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onSendToReview?.(comparison.id)}
-              disabled={isUpdating}
-              className="h-8"
-            >
-              <AlertTriangle className="h-4 w-4 me-1" />
-              לבדיקה
-            </Button>
-          </div>
-        )}
-        {isApproved && (
-          <span className="text-sm text-green-600 flex items-center gap-1">
-            <Check className="h-4 w-4" />
-            מאושר
-          </span>
-        )}
-        {inQueue && (
-          <span className="text-sm text-blue-600">בתור בדיקה</span>
-        )}
+        <div className="flex items-center gap-2">
+          {needsReview && (
+            <>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onApprove?.(comparison.id)}
+                disabled={isUpdating}
+                className="h-8"
+              >
+                <Check className="h-4 w-4 me-1" />
+                אישור
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onSendToReview?.(comparison.id)}
+                disabled={isUpdating}
+                className="h-8"
+              >
+                <AlertTriangle className="h-4 w-4 me-1" />
+                לבדיקה
+              </Button>
+            </>
+          )}
+          {isApproved && (
+            <span className="text-sm text-green-600 flex items-center gap-1">
+              <Check className="h-4 w-4" />
+              מאושר
+            </span>
+          )}
+          {inQueue && (
+            <span className="text-sm text-blue-600">בתור בדיקה</span>
+          )}
+          <ComparisonNotes
+            comparisonId={comparison.id}
+            sessionId={comparison.sessionId}
+            notes={comparison.notes}
+          />
+        </div>
       </td>
     </tr>
   );
