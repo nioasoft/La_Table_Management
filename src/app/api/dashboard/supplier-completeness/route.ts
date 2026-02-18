@@ -190,16 +190,17 @@ export async function GET(request: NextRequest) {
       const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
       const supplierFiles = fileMap.get(supplier.id) || new Map();
 
-      // Filter to only include periods that have ended
-      let applicablePeriods = periods.filter(p => p.endDate < now);
-
-      // If a selected period range is provided, only keep periods that overlap with it
+      // When a specific period is selected, use overlap filter only.
+      // Otherwise, default to periods that have already ended.
+      let applicablePeriods: SettlementPeriodInfo[];
       if (periodStart && periodEnd) {
         const selStart = new Date(periodStart);
         const selEnd = new Date(periodEnd);
-        applicablePeriods = applicablePeriods.filter(p =>
+        applicablePeriods = periods.filter(p =>
           p.startDate <= selEnd && p.endDate >= selStart
         );
+      } else {
+        applicablePeriods = periods.filter(p => p.endDate < now);
       }
 
       const periodStatuses: PeriodStatus[] = applicablePeriods.map(period => {
