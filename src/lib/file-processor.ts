@@ -52,6 +52,9 @@ export interface FileProcessingResult {
     vatAdjusted: boolean;
     /** Product names extracted from file (for syncing to supplier_product table) */
     extractedProducts?: string[];
+    /** When true, parser handled partial VAT internally (gross != net intentionally).
+     *  Prevents the blanket grossAmount=netAmount override for vatExempt suppliers. */
+    hasPartialVat?: boolean;
   };
 }
 
@@ -575,9 +578,10 @@ export async function processSupplierFile(
       // Post-process custom parser results for VAT-exempt suppliers
       // Custom parsers independently calculate gross = net * 1.18,
       // but for exempt suppliers gross should equal net.
-      // Skip blanket post-processing when vatProducts is provided -
-      // the parser already handled per-item VAT correctly.
-      if (vatExempt && !vatProducts?.size && result.success && result.data.length > 0) {
+      // Skip blanket post-processing when:
+      // - vatProducts is provided (parser handled per-item VAT, e.g., ale-ale)
+      // - hasPartialVat is set (parser handled partial VAT internally, e.g., makati)
+      if (vatExempt && !vatProducts?.size && !result.summary.hasPartialVat && result.success && result.data.length > 0) {
         let totalGross = 0;
         let totalNet = 0;
         for (const row of result.data) {

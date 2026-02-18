@@ -74,6 +74,7 @@ const supplierConfigs: Record<
       columnMappings: { franchiseeColumn: "B", amountColumn: "E" },
       headerRow: 4,
       dataStartRow: 5,
+      customParser: true,
     },
   },
   ASPIRIT: {
