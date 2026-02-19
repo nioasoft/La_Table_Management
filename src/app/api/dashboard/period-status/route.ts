@@ -82,7 +82,6 @@ export async function GET(request: NextRequest) {
       database
         .select({
           totalFranchisees: sql<number>`coalesce(sum(${reconciliationSession.totalFranchisees}), 0)::int`,
-          matchedCount: sql<number>`coalesce(sum(${reconciliationSession.matchedCount}), 0)::int`,
           needsReviewCount: sql<number>`coalesce(sum(${reconciliationSession.needsReviewCount}), 0)::int`,
           approvedCount: sql<number>`coalesce(sum(${reconciliationSession.approvedCount}), 0)::int`,
           toReviewQueueCount: sql<number>`coalesce(sum(${reconciliationSession.toReviewQueueCount}), 0)::int`,
@@ -134,14 +133,13 @@ export async function GET(request: NextRequest) {
     // Extract V2 aggregated stats
     const stats = sessionStats[0];
     const totalFranchisees = stats?.totalFranchisees ?? 0;
-    const matchedCount = stats?.matchedCount ?? 0;
     const approvedCount = stats?.approvedCount ?? 0;
     const needsReviewCount = stats?.needsReviewCount ?? 0;
     const toReviewQueueCount = stats?.toReviewQueueCount ?? 0;
 
     // Map V2 stats to existing response structure
-    // matched = auto_approved (matchedCount) + manually_approved (approvedCount)
-    const matched = matchedCount + approvedCount;
+    // approvedCount already includes both auto_approved + manually_approved
+    const matched = approvedCount;
     // discrepancies = items needing manual review
     const discrepancies = needsReviewCount;
     // pending = escalated items in review queue
@@ -173,24 +171,13 @@ export async function GET(request: NextRequest) {
     const pendingActionItems: PeriodStatusResponse["pendingActions"]["items"] =
       [];
 
-    // Unresolved V2 items (needs_review + review_queue) - medium priority
-    const unresolvedCount = needsReviewCount + toReviewQueueCount;
-    if (unresolvedCount > 0) {
+    // Items in review queue awaiting resolution (medium priority)
+    if (toReviewQueueCount > 0) {
       pendingActionItems.push({
         type: "pending_cross_ref",
-        count: unresolvedCount,
+        count: toReviewQueueCount,
         priority: "medium",
-        description: `${unresolvedCount} פריטים ממתינים לבדיקה`,
-      });
-    }
-
-    // Discrepancies (high priority)
-    if (discrepancies > 0) {
-      pendingActionItems.push({
-        type: "discrepancy",
-        count: discrepancies,
-        priority: "high",
-        description: `${discrepancies} פערים דורשים בדיקה`,
+        description: `${toReviewQueueCount} פריטים בתור לבדיקה`,
       });
     }
 
