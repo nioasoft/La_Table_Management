@@ -57,6 +57,8 @@ interface SupplierBreakdownEntry {
   supplierName: string;
   supplierId: string | null;
   amount: number;
+  amountBeforeVat: number;
+  isVatExempt: boolean;
   transactionCount: number;
   isSmallSupplier: boolean;
 }
@@ -73,7 +75,9 @@ interface CommissionRevenueRow {
   brandName: string;
   totalRevenue: number;
   totalSupplierPurchases: number;
+  totalSupplierPurchasesBeforeVat: number;
   supplierPurchasesPercentage: number | null;
+  supplierPurchasesPercentageBeforeVat: number | null;
   supplierBreakdown: SupplierBreakdownEntry[];
   revenueBreakdown: RevenueBreakdownEntry[];
 }
@@ -83,7 +87,9 @@ interface CommissionRevenueReport {
   summary: {
     totalRevenue: number;
     totalSupplierPurchases: number;
+    totalSupplierPurchasesBeforeVat: number;
     avgPercent: number;
+    avgPercentBeforeVat: number;
     count: number;
   };
   year: number;
@@ -548,6 +554,9 @@ export default function CommissionRevenuePage() {
                   <p className="text-2xl font-bold">
                     {formatCurrency(report.summary.totalSupplierPurchases)}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    לפני מע״מ: {formatCurrency(report.summary.totalSupplierPurchasesBeforeVat)}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -563,6 +572,9 @@ export default function CommissionRevenuePage() {
                   </p>
                   <p className="text-2xl font-bold text-violet-600">
                     {report.summary.avgPercent}%
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    לפני מע״מ: {report.summary.avgPercentBeforeVat}%
                   </p>
                 </div>
               </CardContent>
@@ -600,8 +612,10 @@ export default function CommissionRevenuePage() {
                     <TableHead>קוד</TableHead>
                     <TableHead>מותג</TableHead>
                     <TableHead className="text-start">מחזור (₪)</TableHead>
-                    <TableHead className="text-start">קניות מספקים (₪)</TableHead>
-                    <TableHead className="text-start">אחוז קניות (%)</TableHead>
+                    <TableHead className="text-start">קניות כולל מע״מ (₪)</TableHead>
+                    <TableHead className="text-start">אחוז כולל מע״מ (%)</TableHead>
+                    <TableHead className="text-start">קניות לפני מע״מ (₪)</TableHead>
+                    <TableHead className="text-start">אחוז לפני מע״מ (%)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -653,12 +667,20 @@ export default function CommissionRevenuePage() {
                               ? `${row.supplierPurchasesPercentage}%`
                               : "N/A"}
                           </TableCell>
+                          <TableCell className="text-start">
+                            {formatCurrency(row.totalSupplierPurchasesBeforeVat)}
+                          </TableCell>
+                          <TableCell className="text-start">
+                            {row.supplierPurchasesPercentageBeforeVat !== null
+                              ? `${row.supplierPurchasesPercentageBeforeVat}%`
+                              : "N/A"}
+                          </TableCell>
                         </TableRow>
 
                         {/* Expanded Drill-Down */}
                         {isExpanded && (
                           <TableRow>
-                            <TableCell colSpan={7} className="bg-muted/20 p-4">
+                            <TableCell colSpan={9} className="bg-muted/20 p-4">
                               <div className="flex flex-wrap gap-8">
                                 {/* Supplier Breakdown */}
                                 {row.supplierBreakdown.length > 0 && (
@@ -673,7 +695,10 @@ export default function CommissionRevenuePage() {
                                             ספק
                                           </TableHead>
                                           <TableHead className="text-xs text-start">
-                                            סכום (₪)
+                                            סכום כולל מע״מ (₪)
+                                          </TableHead>
+                                          <TableHead className="text-xs text-start">
+                                            סכום לפני מע״מ (₪)
                                           </TableHead>
                                           <TableHead className="text-xs text-start">
                                             עסקאות
@@ -693,6 +718,14 @@ export default function CommissionRevenuePage() {
                                               <TableCell className="py-1 text-xs text-start">
                                                 {formatCurrency(
                                                   supplier.amount
+                                                )}
+                                              </TableCell>
+                                              <TableCell className="py-1 text-xs text-start">
+                                                {formatCurrency(
+                                                  supplier.amountBeforeVat
+                                                )}
+                                                {supplier.isVatExempt && (
+                                                  <span className="ms-1 text-muted-foreground">(פטור)</span>
                                                 )}
                                               </TableCell>
                                               <TableCell className="py-1 text-xs text-start">
@@ -776,6 +809,14 @@ export default function CommissionRevenuePage() {
                     <TableCell className="text-start">
                       {report.summary.totalRevenue > 0
                         ? `${Math.round((report.summary.totalSupplierPurchases / report.summary.totalRevenue) * 100 * 100) / 100}%`
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell className="text-start">
+                      {formatCurrency(report.summary.totalSupplierPurchasesBeforeVat)}
+                    </TableCell>
+                    <TableCell className="text-start">
+                      {report.summary.totalRevenue > 0
+                        ? `${Math.round((report.summary.totalSupplierPurchasesBeforeVat / report.summary.totalRevenue) * 100 * 100) / 100}%`
                         : "N/A"}
                     </TableCell>
                   </TableRow>

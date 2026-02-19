@@ -10,6 +10,8 @@ import {
 import { eq, and, inArray, gte, lte, isNotNull, desc } from "drizzle-orm";
 import { normalizeName, generateNameVariants } from "@/lib/franchisee-matcher";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
+import { getVatRateForDate } from "@/data-access/vatRates";
+import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
 
 // ============================================================================
 // TYPES
@@ -26,6 +28,8 @@ export interface SupplierBreakdownEntry {
   supplierName: string;
   supplierId: string | null;
   amount: number;
+  amountBeforeVat: number;
+  isVatExempt: boolean;
   transactionCount: number;
   isSmallSupplier: boolean;
 }
@@ -41,8 +45,10 @@ export interface CommissionRevenueRow {
   code: string;
   brandName: string;
   totalRevenue: number; // Revenue from BKMV files (turnover)
-  totalSupplierPurchases: number; // Purchases from BKMVDATA (matched + small suppliers)
-  supplierPurchasesPercentage: number | null; // null when revenue is 0
+  totalSupplierPurchases: number; // Purchases from BKMVDATA (matched + small suppliers) - including VAT
+  totalSupplierPurchasesBeforeVat: number; // Purchases excluding VAT
+  supplierPurchasesPercentage: number | null; // null when revenue is 0 (including VAT)
+  supplierPurchasesPercentageBeforeVat: number | null; // null when revenue is 0 (before VAT)
   supplierBreakdown: SupplierBreakdownEntry[];
   revenueBreakdown: RevenueBreakdownEntry[];
 }
@@ -52,7 +58,9 @@ export interface CommissionRevenueReport {
   summary: {
     totalRevenue: number;
     totalSupplierPurchases: number;
+    totalSupplierPurchasesBeforeVat: number;
     avgPercent: number;
+    avgPercentBeforeVat: number;
     count: number;
   };
   year: number;
@@ -205,8 +213,19 @@ export async function getCommissionRevenueReport(
       name: supplier.name,
       code: supplier.code,
       bkmvAliases: supplier.bkmvAliases,
+      vatExempt: supplier.vatExempt,
     })
     .from(supplier);
+
+  // Build vatExempt lookup map
+  const supplierVatExemptMap = new Map<string, boolean>();
+  for (const s of allSuppliers) {
+    supplierVatExemptMap.set(s.id, s.vatExempt);
+  }
+
+  // Get VAT rate for the period
+  const periodDate = new Date(year, startMonth - 1, 1);
+  const vatRate = await getVatRateForDate(periodDate);
 
   const supplierExactVariants = new Map<string, Set<string>>();
   for (const s of allSuppliers) {
@@ -236,6 +255,7 @@ export async function getCommissionRevenueReport(
   // Build purchases map from BKMVDATA
   // Also collect per-supplier detail for breakdown
   const purchasesMap = new Map<string, number>();
+  const purchasesBeforeVatMap = new Map<string, number>();
   const purchasesDetailMap = new Map<string, Map<string, SupplierBreakdownEntry>>();
 
   type MonthlyBreakdownEntry = {
@@ -264,6 +284,16 @@ export async function getCommissionRevenueReport(
         const prev = purchasesMap.get(fId) || 0;
         purchasesMap.set(fId, prev + entry.amount);
 
+        // Compute before-VAT amount
+        const isVatExempt = entry.supplierId
+          ? (supplierVatExemptMap.get(entry.supplierId) ?? false)
+          : false;
+        const amountBeforeVat = isVatExempt
+          ? entry.amount
+          : calculateNetFromGross(entry.amount, vatRate);
+        const prevBeforeVat = purchasesBeforeVatMap.get(fId) || 0;
+        purchasesBeforeVatMap.set(fId, prevBeforeVat + amountBeforeVat);
+
         // Collect per-supplier detail
         if (!purchasesDetailMap.has(fId)) {
           purchasesDetailMap.set(fId, new Map());
@@ -273,12 +303,15 @@ export async function getCommissionRevenueReport(
         const existing = supplierMap.get(key);
         if (existing) {
           existing.amount += entry.amount;
+          existing.amountBeforeVat += amountBeforeVat;
           existing.transactionCount += entry.transactionCount;
         } else {
           supplierMap.set(key, {
             supplierName: entry.supplierName,
             supplierId: isExactMatch ? entry.supplierId : null,
             amount: entry.amount,
+            amountBeforeVat,
+            isVatExempt,
             transactionCount: entry.transactionCount,
             isSmallSupplier: isSmall,
           });
@@ -330,15 +363,20 @@ export async function getCommissionRevenueReport(
 
     const revenue = revenueMap.get(f.id) || 0;
     const supplierPurchases = purchasesMap.get(f.id) || 0;
+    const supplierPurchasesBeforeVat = purchasesBeforeVatMap.get(f.id) || 0;
 
     if (revenue === 0 && supplierPurchases === 0) continue;
 
     let supplierPurchasesPercentage: number | null;
+    let supplierPurchasesPercentageBeforeVat: number | null;
     if (revenue > 0) {
       supplierPurchasesPercentage =
         Math.round((supplierPurchases / revenue) * 100 * 100) / 100;
+      supplierPurchasesPercentageBeforeVat =
+        Math.round((supplierPurchasesBeforeVat / revenue) * 100 * 100) / 100;
     } else {
       supplierPurchasesPercentage = null;
+      supplierPurchasesPercentageBeforeVat = null;
     }
 
     // Build supplier breakdown sorted by amount desc
@@ -347,7 +385,8 @@ export async function getCommissionRevenueReport(
       ? Array.from(supplierDetail.values())
           .map((e) => ({
             ...e,
-            amount: Math.round(e.amount * 100) / 100,
+            amount: roundToTwoDecimals(e.amount),
+            amountBeforeVat: roundToTwoDecimals(e.amountBeforeVat),
           }))
           .sort((a, b) => b.amount - a.amount)
       : [];
@@ -368,9 +407,11 @@ export async function getCommissionRevenueReport(
       name: f.name,
       code: f.code,
       brandName: f.brandId ? brandNames.get(f.brandId) || "" : "",
-      totalRevenue: Math.round(revenue * 100) / 100,
-      totalSupplierPurchases: Math.round(supplierPurchases * 100) / 100,
+      totalRevenue: roundToTwoDecimals(revenue),
+      totalSupplierPurchases: roundToTwoDecimals(supplierPurchases),
+      totalSupplierPurchasesBeforeVat: roundToTwoDecimals(supplierPurchasesBeforeVat),
       supplierPurchasesPercentage,
+      supplierPurchasesPercentageBeforeVat,
       supplierBreakdown,
       revenueBreakdown,
     });
@@ -385,6 +426,10 @@ export async function getCommissionRevenueReport(
     (sum, r) => sum + r.totalSupplierPurchases,
     0
   );
+  const totalSupplierPurchasesBeforeVat = rows.reduce(
+    (sum, r) => sum + r.totalSupplierPurchasesBeforeVat,
+    0
+  );
   const rowsWithRevenue = rows.filter((r) => r.totalRevenue > 0);
   const avgPercent =
     rowsWithRevenue.length > 0
@@ -397,13 +442,26 @@ export async function getCommissionRevenueReport(
             100
         ) / 100
       : 0;
+  const avgPercentBeforeVat =
+    rowsWithRevenue.length > 0
+      ? Math.round(
+          (rowsWithRevenue.reduce(
+            (sum, r) => sum + (r.supplierPurchasesPercentageBeforeVat || 0),
+            0
+          ) /
+            rowsWithRevenue.length) *
+            100
+        ) / 100
+      : 0;
 
   return {
     rows,
     summary: {
-      totalRevenue: Math.round(totalRevenue * 100) / 100,
-      totalSupplierPurchases: Math.round(totalSupplierPurchases * 100) / 100,
+      totalRevenue: roundToTwoDecimals(totalRevenue),
+      totalSupplierPurchases: roundToTwoDecimals(totalSupplierPurchases),
+      totalSupplierPurchasesBeforeVat: roundToTwoDecimals(totalSupplierPurchasesBeforeVat),
       avgPercent,
+      avgPercentBeforeVat,
       count: rows.length,
     },
     year,
@@ -427,7 +485,9 @@ function emptyReport(
     summary: {
       totalRevenue: 0,
       totalSupplierPurchases: 0,
+      totalSupplierPurchasesBeforeVat: 0,
       avgPercent: 0,
+      avgPercentBeforeVat: 0,
       count: 0,
     },
     year,

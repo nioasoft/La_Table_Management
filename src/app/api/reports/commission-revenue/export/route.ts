@@ -86,8 +86,10 @@ export async function GET(request: NextRequest) {
       "קוד",
       "מותג",
       "מחזור (₪)",
-      "קניות מספקים (₪)",
-      "אחוז קניות (%)",
+      "קניות כולל מע״מ (₪)",
+      "אחוז כולל מע״מ (%)",
+      "קניות לפני מע״מ (₪)",
+      "אחוז לפני מע״מ (%)",
     ];
 
     const rows: (string | number)[][] = [];
@@ -102,6 +104,10 @@ export async function GET(request: NextRequest) {
         row.supplierPurchasesPercentage !== null
           ? Math.round(row.supplierPurchasesPercentage * 100) / 100
           : "N/A",
+        Math.round(row.totalSupplierPurchasesBeforeVat * 100) / 100,
+        row.supplierPurchasesPercentageBeforeVat !== null
+          ? Math.round(row.supplierPurchasesPercentageBeforeVat * 100) / 100
+          : "N/A",
       ]);
     }
 
@@ -115,6 +121,15 @@ export async function GET(request: NextRequest) {
           ) / 100
         : "N/A";
 
+    const overallPercentBeforeVat =
+      report.summary.totalRevenue > 0
+        ? Math.round(
+            (report.summary.totalSupplierPurchasesBeforeVat / report.summary.totalRevenue) *
+              100 *
+              100
+          ) / 100
+        : "N/A";
+
     rows.push([
       "סה״כ",
       "",
@@ -122,6 +137,8 @@ export async function GET(request: NextRequest) {
       Math.round(report.summary.totalRevenue * 100) / 100,
       Math.round(report.summary.totalSupplierPurchases * 100) / 100,
       overallPercent,
+      Math.round(report.summary.totalSupplierPurchasesBeforeVat * 100) / 100,
+      overallPercentBeforeVat,
     ]);
 
     // Create workbook
@@ -135,8 +152,10 @@ export async function GET(request: NextRequest) {
       { wch: 10 }, // Code
       { wch: 15 }, // Brand
       { wch: 18 }, // Revenue
-      { wch: 18 }, // Purchases
-      { wch: 12 }, // Percentage
+      { wch: 20 }, // Purchases incl. VAT
+      { wch: 16 }, // Percentage incl. VAT
+      { wch: 20 }, // Purchases before VAT
+      { wch: 16 }, // Percentage before VAT
     ];
 
     // Set RTL direction
