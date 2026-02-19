@@ -8,6 +8,8 @@ import {
   type SupplierFileProcessingResult,
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or } from "drizzle-orm";
+import { getVatRateForDate } from "@/data-access/vatRates";
+import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
 
 // ============================================================================
 // TYPES
@@ -21,9 +23,13 @@ export interface FranchiseeFundReportFilters {
 
 export interface FranchiseeFundCell {
   grossAmount: number;
+  netAmount: number; // grossAmount before VAT
   totalCommission: number;
+  totalCommissionBeforeVat: number;
   regularCommission: number;
+  regularCommissionBeforeVat: number;
   fundAmount: number;
+  fundAmountBeforeVat: number;
 }
 
 export interface FranchiseeFundSupplierRow {
@@ -32,12 +38,17 @@ export interface FranchiseeFundSupplierRow {
   supplierCode: string;
   totalCommissionRate: number;
   fundRate: number;
+  isVatExempt: boolean;
   cells: Record<string, FranchiseeFundCell>; // franchiseeId -> cell
   totals: {
     grossAmount: number;
+    netAmount: number;
     totalCommission: number;
+    totalCommissionBeforeVat: number;
     regularCommission: number;
+    regularCommissionBeforeVat: number;
     fundAmount: number;
+    fundAmountBeforeVat: number;
   };
 }
 
@@ -46,7 +57,9 @@ export interface FranchiseeFundFranchiseeColumn {
   franchiseeName: string;
   franchiseeCode: string;
   totalCommissions: number;
+  totalCommissionsBeforeVat: number;
   totalFund: number;
+  totalFundBeforeVat: number;
 }
 
 export interface FranchiseeFundReport {
@@ -58,7 +71,9 @@ export interface FranchiseeFundReport {
   franchisees: FranchiseeFundFranchiseeColumn[];
   grandTotals: {
     totalCommissions: number;
+    totalCommissionsBeforeVat: number;
     totalFund: number;
+    totalFundBeforeVat: number;
   };
   generatedAt: string;
 }
@@ -134,6 +149,7 @@ export async function getFranchiseeFundReport(
       code: supplier.code,
       defaultCommissionRate: supplier.defaultCommissionRate,
       franchiseeFundPercentage: supplier.franchiseeFundPercentage,
+      vatExempt: supplier.vatExempt,
     })
     .from(supplier)
     .where(
@@ -166,7 +182,9 @@ export async function getFranchiseeFundReport(
       franchisees: [],
       grandTotals: {
         totalCommissions: 0,
+        totalCommissionsBeforeVat: 0,
         totalFund: 0,
+        totalFundBeforeVat: 0,
       },
       generatedAt: new Date().toISOString(),
     };
@@ -178,6 +196,11 @@ export async function getFranchiseeFundReport(
   for (const s of fundSuppliers) {
     supplierMap.set(s.id, s);
   }
+
+  // Get VAT rate for the quarter start date
+  const quarterStartMonth = (quarter - 1) * 3; // 0, 3, 6, 9
+  const periodDate = new Date(year, quarterStartMonth, 1);
+  const vatRate = await getVatRateForDate(periodDate);
 
   // Query supplier file uploads for the quarter
   // Files overlap with the quarter if: file.start <= quarterEnd AND file.end >= quarterStart
@@ -221,7 +244,9 @@ export async function getFranchiseeFundReport(
       franchisees: [],
       grandTotals: {
         totalCommissions: 0,
+        totalCommissionsBeforeVat: 0,
         totalFund: 0,
+        totalFundBeforeVat: 0,
       },
       generatedAt: new Date().toISOString(),
     };
@@ -254,7 +279,9 @@ export async function getFranchiseeFundReport(
       name: string;
       code: string;
       totalCommissions: number;
+      totalCommissionsBeforeVat: number;
       totalFund: number;
+      totalFundBeforeVat: number;
     }
   >();
 
@@ -287,10 +314,21 @@ export async function getFranchiseeFundReport(
 
       const grossAmount = Number(match.grossAmount || 0);
 
-      // Calculate commission and fund amounts
+      // Calculate net amount (before VAT)
+      const isVatExempt = supplierData.vatExempt;
+      const netAmount = isVatExempt
+        ? grossAmount
+        : calculateNetFromGross(grossAmount, vatRate);
+
+      // Calculate commission and fund amounts (on gross)
       const totalCommission = (grossAmount * totalCommissionRate) / 100;
       const fundAmount = (grossAmount * fundRate) / 100;
       const regularCommission = totalCommission - fundAmount;
+
+      // Calculate before-VAT commission and fund amounts (on net)
+      const totalCommissionBeforeVat = (netAmount * totalCommissionRate) / 100;
+      const fundAmountBeforeVat = (netAmount * fundRate) / 100;
+      const regularCommissionBeforeVat = totalCommissionBeforeVat - fundAmountBeforeVat;
 
       // Initialize or get supplier row
       if (!supplierRowsMap.has(file.supplierId)) {
@@ -300,12 +338,17 @@ export async function getFranchiseeFundReport(
           supplierCode: supplierData.code,
           totalCommissionRate,
           fundRate,
+          isVatExempt,
           cells: {},
           totals: {
             grossAmount: 0,
+            netAmount: 0,
             totalCommission: 0,
+            totalCommissionBeforeVat: 0,
             regularCommission: 0,
+            regularCommissionBeforeVat: 0,
             fundAmount: 0,
+            fundAmountBeforeVat: 0,
           },
         });
       }
@@ -316,23 +359,35 @@ export async function getFranchiseeFundReport(
       if (!supplierRow.cells[match.matchedFranchiseeId]) {
         supplierRow.cells[match.matchedFranchiseeId] = {
           grossAmount: 0,
+          netAmount: 0,
           totalCommission: 0,
+          totalCommissionBeforeVat: 0,
           regularCommission: 0,
+          regularCommissionBeforeVat: 0,
           fundAmount: 0,
+          fundAmountBeforeVat: 0,
         };
       }
 
       const cell = supplierRow.cells[match.matchedFranchiseeId];
       cell.grossAmount += grossAmount;
+      cell.netAmount += netAmount;
       cell.totalCommission += totalCommission;
+      cell.totalCommissionBeforeVat += totalCommissionBeforeVat;
       cell.regularCommission += regularCommission;
+      cell.regularCommissionBeforeVat += regularCommissionBeforeVat;
       cell.fundAmount += fundAmount;
+      cell.fundAmountBeforeVat += fundAmountBeforeVat;
 
       // Update supplier totals
       supplierRow.totals.grossAmount += grossAmount;
+      supplierRow.totals.netAmount += netAmount;
       supplierRow.totals.totalCommission += totalCommission;
+      supplierRow.totals.totalCommissionBeforeVat += totalCommissionBeforeVat;
       supplierRow.totals.regularCommission += regularCommission;
+      supplierRow.totals.regularCommissionBeforeVat += regularCommissionBeforeVat;
       supplierRow.totals.fundAmount += fundAmount;
+      supplierRow.totals.fundAmountBeforeVat += fundAmountBeforeVat;
 
       // Track franchisee
       if (!franchiseeMap.has(match.matchedFranchiseeId)) {
@@ -341,12 +396,16 @@ export async function getFranchiseeFundReport(
           name: fDetail.name,
           code: fDetail.code,
           totalCommissions: 0,
+          totalCommissionsBeforeVat: 0,
           totalFund: 0,
+          totalFundBeforeVat: 0,
         });
       }
       const fData = franchiseeMap.get(match.matchedFranchiseeId)!;
       fData.totalCommissions += totalCommission;
+      fData.totalCommissionsBeforeVat += totalCommissionBeforeVat;
       fData.totalFund += fundAmount;
+      fData.totalFundBeforeVat += fundAmountBeforeVat;
     }
   }
 
@@ -361,7 +420,9 @@ export async function getFranchiseeFundReport(
       franchiseeName: f.name,
       franchiseeCode: f.code,
       totalCommissions: f.totalCommissions,
+      totalCommissionsBeforeVat: f.totalCommissionsBeforeVat,
       totalFund: f.totalFund,
+      totalFundBeforeVat: f.totalFundBeforeVat,
     }))
     .sort((a, b) =>
       a.franchiseeName.localeCompare(b.franchiseeName, "he")
@@ -373,8 +434,16 @@ export async function getFranchiseeFundReport(
       (sum, s) => sum + s.totals.totalCommission,
       0
     ),
+    totalCommissionsBeforeVat: supplierRows.reduce(
+      (sum, s) => sum + s.totals.totalCommissionBeforeVat,
+      0
+    ),
     totalFund: supplierRows.reduce(
       (sum, s) => sum + s.totals.fundAmount,
+      0
+    ),
+    totalFundBeforeVat: supplierRows.reduce(
+      (sum, s) => sum + s.totals.fundAmountBeforeVat,
       0
     ),
   };

@@ -74,12 +74,17 @@ export async function GET(request: NextRequest) {
       "קוד ספק",
       "% עמלה כוללת",
       "% קרן",
+      "פטור מע״מ",
       ...report.franchisees.flatMap((f) => [
-        `${f.franchiseeName} - עמלה`,
-        `${f.franchiseeName} - קרן`,
+        `${f.franchiseeName} - עמלה כולל מע״מ`,
+        `${f.franchiseeName} - קרן כולל מע״מ`,
+        `${f.franchiseeName} - עמלה לפני מע״מ`,
+        `${f.franchiseeName} - קרן לפני מע״מ`,
       ]),
-      "סה״כ עמלה",
-      "סה״כ קרן",
+      "סה״כ עמלה כולל מע״מ",
+      "סה״כ קרן כולל מע״מ",
+      "סה״כ עמלה לפני מע״מ",
+      "סה״כ קרן לפני מע״מ",
     ];
 
     // Data rows
@@ -91,6 +96,7 @@ export async function GET(request: NextRequest) {
         supplier.supplierCode,
         supplier.totalCommissionRate,
         supplier.fundRate,
+        supplier.isVatExempt ? "כן" : "לא",
       ];
 
       // Add data for each franchisee
@@ -99,7 +105,11 @@ export async function GET(request: NextRequest) {
         if (cell) {
           row.push(Math.round(cell.totalCommission * 100) / 100);
           row.push(Math.round(cell.fundAmount * 100) / 100);
+          row.push(Math.round(cell.totalCommissionBeforeVat * 100) / 100);
+          row.push(Math.round(cell.fundAmountBeforeVat * 100) / 100);
         } else {
+          row.push(0);
+          row.push(0);
           row.push(0);
           row.push(0);
         }
@@ -108,6 +118,8 @@ export async function GET(request: NextRequest) {
       // Add totals
       row.push(Math.round(supplier.totals.totalCommission * 100) / 100);
       row.push(Math.round(supplier.totals.fundAmount * 100) / 100);
+      row.push(Math.round(supplier.totals.totalCommissionBeforeVat * 100) / 100);
+      row.push(Math.round(supplier.totals.fundAmountBeforeVat * 100) / 100);
 
       rows.push(row);
     }
@@ -118,15 +130,20 @@ export async function GET(request: NextRequest) {
       "",
       "",
       "",
+      "",
     ];
 
     for (const f of report.franchisees) {
       totalsRow.push(Math.round(f.totalCommissions * 100) / 100);
       totalsRow.push(Math.round(f.totalFund * 100) / 100);
+      totalsRow.push(Math.round(f.totalCommissionsBeforeVat * 100) / 100);
+      totalsRow.push(Math.round(f.totalFundBeforeVat * 100) / 100);
     }
 
     totalsRow.push(Math.round(report.grandTotals.totalCommissions * 100) / 100);
     totalsRow.push(Math.round(report.grandTotals.totalFund * 100) / 100);
+    totalsRow.push(Math.round(report.grandTotals.totalCommissionsBeforeVat * 100) / 100);
+    totalsRow.push(Math.round(report.grandTotals.totalFundBeforeVat * 100) / 100);
 
     rows.push(totalsRow);
 
@@ -141,17 +158,22 @@ export async function GET(request: NextRequest) {
       { wch: 12 }, // Supplier code
       { wch: 12 }, // Total commission rate
       { wch: 8 },  // Fund rate
+      { wch: 10 }, // VAT exempt
     ];
 
-    // Add widths for franchisee columns
+    // Add widths for franchisee columns (4 per franchisee)
     for (let i = 0; i < report.franchisees.length; i++) {
-      colWidths.push({ wch: 15 }); // Commission
-      colWidths.push({ wch: 12 }); // Fund
+      colWidths.push({ wch: 15 }); // Commission incl. VAT
+      colWidths.push({ wch: 12 }); // Fund incl. VAT
+      colWidths.push({ wch: 15 }); // Commission before VAT
+      colWidths.push({ wch: 12 }); // Fund before VAT
     }
 
     // Totals columns
-    colWidths.push({ wch: 15 }); // Total commission
-    colWidths.push({ wch: 12 }); // Total fund
+    colWidths.push({ wch: 15 }); // Total commission incl. VAT
+    colWidths.push({ wch: 12 }); // Total fund incl. VAT
+    colWidths.push({ wch: 15 }); // Total commission before VAT
+    colWidths.push({ wch: 12 }); // Total fund before VAT
 
     ws["!cols"] = colWidths;
 

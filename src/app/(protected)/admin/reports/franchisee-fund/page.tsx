@@ -52,9 +52,13 @@ interface Brand {
 
 interface FranchiseeFundCell {
   grossAmount: number;
+  netAmount: number;
   totalCommission: number;
+  totalCommissionBeforeVat: number;
   regularCommission: number;
+  regularCommissionBeforeVat: number;
   fundAmount: number;
+  fundAmountBeforeVat: number;
 }
 
 interface FranchiseeFundSupplierRow {
@@ -63,12 +67,17 @@ interface FranchiseeFundSupplierRow {
   supplierCode: string;
   totalCommissionRate: number;
   fundRate: number;
+  isVatExempt: boolean;
   cells: Record<string, FranchiseeFundCell>;
   totals: {
     grossAmount: number;
+    netAmount: number;
     totalCommission: number;
+    totalCommissionBeforeVat: number;
     regularCommission: number;
+    regularCommissionBeforeVat: number;
     fundAmount: number;
+    fundAmountBeforeVat: number;
   };
 }
 
@@ -77,7 +86,9 @@ interface FranchiseeFundFranchiseeColumn {
   franchiseeName: string;
   franchiseeCode: string;
   totalCommissions: number;
+  totalCommissionsBeforeVat: number;
   totalFund: number;
+  totalFundBeforeVat: number;
 }
 
 interface FranchiseeFundReport {
@@ -89,7 +100,9 @@ interface FranchiseeFundReport {
   franchisees: FranchiseeFundFranchiseeColumn[];
   grandTotals: {
     totalCommissions: number;
+    totalCommissionsBeforeVat: number;
     totalFund: number;
+    totalFundBeforeVat: number;
   };
   generatedAt: string;
 }
@@ -433,6 +446,9 @@ export default function FranchiseeFundReportPage() {
                   <p className="text-2xl font-bold">
                     {formatCurrency(report.grandTotals.totalCommissions)}
                   </p>
+                  <p className="text-xs text-muted-foreground">
+                    לפני מע״מ: {formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -446,6 +462,9 @@ export default function FranchiseeFundReportPage() {
                   <p className="text-sm text-muted-foreground">סה״כ קרן</p>
                   <p className="text-2xl font-bold text-amber-600">
                     {formatCurrency(report.grandTotals.totalFund)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    לפני מע״מ: {formatCurrency(report.grandTotals.totalFundBeforeVat)}
                   </p>
                 </div>
               </CardContent>
@@ -471,7 +490,7 @@ export default function FranchiseeFundReportPage() {
             <CardHeader>
               <CardTitle>פירוט לפי ספק וזכיין</CardTitle>
               <CardDescription>
-                כל תא מציג: עמלה כוללת / קרן זכיינים
+                כל תא מציג: עמלה כוללת / קרן זכיינים (מעל הקו: כולל מע״מ, מתחת: לפני מע״מ)
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -540,6 +559,10 @@ export default function FranchiseeFundReportPage() {
                               <div className="text-amber-600">
                                 {formatCurrency(cell.fundAmount)}
                               </div>
+                              <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
+                                <div>{formatCurrency(cell.totalCommissionBeforeVat)}</div>
+                                <div>{formatCurrency(cell.fundAmountBeforeVat)}</div>
+                              </div>
                             </div>
                           </TableCell>
                         );
@@ -551,6 +574,10 @@ export default function FranchiseeFundReportPage() {
                           </div>
                           <div className="text-amber-600">
                             {formatCurrency(supplier.totals.fundAmount)}
+                          </div>
+                          <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
+                            <div>{formatCurrency(supplier.totals.totalCommissionBeforeVat)}</div>
+                            <div>{formatCurrency(supplier.totals.fundAmountBeforeVat)}</div>
                           </div>
                         </div>
                       </TableCell>
@@ -570,6 +597,10 @@ export default function FranchiseeFundReportPage() {
                           <div className="text-amber-600">
                             {formatCurrency(f.totalFund)}
                           </div>
+                          <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
+                            <div>{formatCurrency(f.totalCommissionsBeforeVat)}</div>
+                            <div>{formatCurrency(f.totalFundBeforeVat)}</div>
+                          </div>
                         </div>
                       </TableCell>
                     ))}
@@ -580,6 +611,10 @@ export default function FranchiseeFundReportPage() {
                         </div>
                         <div className="text-amber-600">
                           {formatCurrency(report.grandTotals.totalFund)}
+                        </div>
+                        <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
+                          <div>{formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}</div>
+                          <div>{formatCurrency(report.grandTotals.totalFundBeforeVat)}</div>
                         </div>
                       </div>
                     </TableCell>
