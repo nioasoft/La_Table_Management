@@ -33,6 +33,9 @@ export function ComparisonRow({
   isUpdating,
 }: ComparisonRowProps) {
   const absoluteDiff = parseFloat(comparison.absoluteDifference || "0");
+  const supplierAmt = parseFloat(String(comparison.supplierAmount || "0"));
+  const franchiseeAmt = parseFloat(String(comparison.franchiseeAmount || "0"));
+  const isZeroZero = supplierAmt === 0 && franchiseeAmt === 0;
   const isWithinThreshold = absoluteDiff <= RECONCILIATION_THRESHOLD;
   const isApproved =
     comparison.status === "auto_approved" ||
@@ -44,7 +47,9 @@ export function ComparisonRow({
     <tr
       className={cn(
         "border-b transition-colors",
-        isApproved && "bg-green-50/50 dark:bg-green-950/20",
+        isZeroZero
+          ? "bg-slate-50/70 dark:bg-slate-800/20 text-muted-foreground"
+          : isApproved && "bg-green-50/50 dark:bg-green-950/20",
         needsReview && "bg-amber-50/50 dark:bg-amber-950/20",
         inQueue && "bg-blue-50/50 dark:bg-blue-950/20"
       )}
@@ -73,7 +78,9 @@ export function ComparisonRow({
       <td
         className={cn(
           "px-4 py-3 text-start font-mono font-medium",
-          isWithinThreshold ? "text-green-600" : "text-red-600"
+          isZeroZero
+            ? "text-muted-foreground"
+            : isWithinThreshold ? "text-green-600" : "text-red-600"
         )}
       >
         {formatCurrency(comparison.difference)}
@@ -112,9 +119,12 @@ export function ComparisonRow({
             </>
           )}
           {isApproved && (
-            <span className="text-sm text-green-600 flex items-center gap-1">
+            <span className={cn(
+              "text-sm flex items-center gap-1",
+              isZeroZero ? "text-muted-foreground" : "text-green-600"
+            )}>
               <Check className="h-4 w-4" />
-              מאושר
+              {isZeroZero ? "ללא נתונים" : "מאושר"}
             </span>
           )}
           {inQueue && (
