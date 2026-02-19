@@ -442,12 +442,9 @@ export default function FranchiseeFundReportPage() {
                   <Coins className="h-6 w-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">סה״כ עמלות</p>
+                  <p className="text-sm text-muted-foreground">סה״כ עמלות (לפני מע״מ)</p>
                   <p className="text-2xl font-bold">
-                    {formatCurrency(report.grandTotals.totalCommissions)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    לפני מע״מ: {formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}
+                    {formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}
                   </p>
                 </div>
               </CardContent>
@@ -459,12 +456,9 @@ export default function FranchiseeFundReportPage() {
                   <PiggyBank className="h-6 w-6 text-amber-500" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">סה״כ קרן</p>
+                  <p className="text-sm text-muted-foreground">סה״כ קרן (לפני מע״מ)</p>
                   <p className="text-2xl font-bold text-amber-600">
-                    {formatCurrency(report.grandTotals.totalFund)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    לפני מע״מ: {formatCurrency(report.grandTotals.totalFundBeforeVat)}
+                    {formatCurrency(report.grandTotals.totalFundBeforeVat)}
                   </p>
                 </div>
               </CardContent>
@@ -490,7 +484,7 @@ export default function FranchiseeFundReportPage() {
             <CardHeader>
               <CardTitle>פירוט לפי ספק וזכיין</CardTitle>
               <CardDescription>
-                כל תא מציג: עמלה כוללת / קרן זכיינים (מעל הקו: כולל מע״מ, מתחת: לפני מע״מ)
+                כל תא מציג: עמלה כוללת / קרן זכיינים (לפני מע״מ)
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -554,14 +548,10 @@ export default function FranchiseeFundReportPage() {
                           >
                             <div className="text-xs">
                               <div>
-                                {formatCurrency(cell.totalCommission)}
+                                {formatCurrency(cell.totalCommissionBeforeVat)}
                               </div>
                               <div className="text-amber-600">
-                                {formatCurrency(cell.fundAmount)}
-                              </div>
-                              <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
-                                <div>{formatCurrency(cell.totalCommissionBeforeVat)}</div>
-                                <div>{formatCurrency(cell.fundAmountBeforeVat)}</div>
+                                {formatCurrency(cell.fundAmountBeforeVat)}
                               </div>
                             </div>
                           </TableCell>
@@ -570,14 +560,10 @@ export default function FranchiseeFundReportPage() {
                       <TableCell className="text-center">
                         <div className="text-xs font-medium">
                           <div>
-                            {formatCurrency(supplier.totals.totalCommission)}
+                            {formatCurrency(supplier.totals.totalCommissionBeforeVat)}
                           </div>
                           <div className="text-amber-600">
-                            {formatCurrency(supplier.totals.fundAmount)}
-                          </div>
-                          <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
-                            <div>{formatCurrency(supplier.totals.totalCommissionBeforeVat)}</div>
-                            <div>{formatCurrency(supplier.totals.fundAmountBeforeVat)}</div>
+                            {formatCurrency(supplier.totals.fundAmountBeforeVat)}
                           </div>
                         </div>
                       </TableCell>
@@ -593,13 +579,9 @@ export default function FranchiseeFundReportPage() {
                     {report.franchisees.map((f) => (
                       <TableCell key={f.franchiseeId} className="text-center">
                         <div className="text-xs">
-                          <div>{formatCurrency(f.totalCommissions)}</div>
+                          <div>{formatCurrency(f.totalCommissionsBeforeVat)}</div>
                           <div className="text-amber-600">
-                            {formatCurrency(f.totalFund)}
-                          </div>
-                          <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
-                            <div>{formatCurrency(f.totalCommissionsBeforeVat)}</div>
-                            <div>{formatCurrency(f.totalFundBeforeVat)}</div>
+                            {formatCurrency(f.totalFundBeforeVat)}
                           </div>
                         </div>
                       </TableCell>
@@ -607,14 +589,10 @@ export default function FranchiseeFundReportPage() {
                     <TableCell className="text-center">
                       <div className="text-xs">
                         <div>
-                          {formatCurrency(report.grandTotals.totalCommissions)}
+                          {formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}
                         </div>
                         <div className="text-amber-600">
-                          {formatCurrency(report.grandTotals.totalFund)}
-                        </div>
-                        <div className="mt-0.5 border-t border-dashed pt-0.5 text-muted-foreground">
-                          <div>{formatCurrency(report.grandTotals.totalCommissionsBeforeVat)}</div>
-                          <div>{formatCurrency(report.grandTotals.totalFundBeforeVat)}</div>
+                          {formatCurrency(report.grandTotals.totalFundBeforeVat)}
                         </div>
                       </div>
                     </TableCell>
