@@ -41,6 +41,11 @@ export type PeriodStatusResponse = {
       description: string;
     }>;
   };
+  pendingApprovalDetails: Array<{
+    sessionId: string;
+    supplierId: string;
+    supplierName: string;
+  }>;
 };
 
 /**
@@ -76,8 +81,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Build filter for completed (pending approval) sessions
+    const completedSessionConditions = [
+      eq(reconciliationSession.status, "completed"),
+    ];
+    if (filterByPeriod) {
+      completedSessionConditions.push(
+        lte(reconciliationSession.periodStartDate, periodEnd!),
+        gte(reconciliationSession.periodEndDate, periodStart!),
+      );
+    }
+
     // Fetch V2 reconciliation stats and file requests in parallel
-    const [sessionStats, discrepancyRows, fileRequests] = await Promise.all([
+    const [sessionStats, discrepancyRows, fileRequests, completedSessions] = await Promise.all([
       // Aggregate counts from reconciliation_session
       database
         .select({
@@ -128,6 +144,17 @@ export async function GET(request: NextRequest) {
             gte(fileRequest.createdAt, currentMonthStart),
           ),
         ),
+
+      // Get sessions with status "completed" (pending file approval)
+      database
+        .select({
+          sessionId: reconciliationSession.id,
+          supplierId: reconciliationSession.supplierId,
+          supplierName: supplier.name,
+        })
+        .from(reconciliationSession)
+        .innerJoin(supplier, eq(reconciliationSession.supplierId, supplier.id))
+        .where(and(...completedSessionConditions)),
     ]);
 
     // Extract V2 aggregated stats
@@ -171,6 +198,16 @@ export async function GET(request: NextRequest) {
     const pendingActionItems: PeriodStatusResponse["pendingActions"]["items"] =
       [];
 
+    // Sessions completed but not yet file-approved (high priority)
+    if (completedSessions.length > 0) {
+      pendingActionItems.push({
+        type: "approval",
+        count: completedSessions.length,
+        priority: "high",
+        description: `${completedSessions.length} קבצים ממתינים לאישור`,
+      });
+    }
+
     // Items in review queue awaiting resolution (medium priority)
     if (toReviewQueueCount > 0) {
       pendingActionItems.push({
@@ -208,9 +245,16 @@ export async function GET(request: NextRequest) {
       }),
     };
 
+    const pendingApprovalDetails = completedSessions.map((s) => ({
+      sessionId: s.sessionId,
+      supplierId: s.supplierId,
+      supplierName: s.supplierName ?? "לא ידוע",
+    }));
+
     const response: PeriodStatusResponse = {
       crossReferenceStatus,
       pendingActions,
+      pendingApprovalDetails,
     };
 
     return NextResponse.json({ data: response });

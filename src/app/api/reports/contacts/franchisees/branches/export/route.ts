@@ -43,7 +43,11 @@ export async function GET(request: NextRequest) {
       let contactPhone = "-";
       let contactEmail = "-";
 
-      const primaryContact = f.contacts?.find((c) => c.isPrimary);
+      const primaryContact =
+        f.contacts?.find((c) => c.isPrimary) ??
+        f.contacts?.find((c) => c.role === "owner") ??
+        f.contacts?.[0] ??
+        null;
       if (primaryContact) {
         contactName = primaryContact.name || "-";
         contactPhone = primaryContact.phone || "-";
