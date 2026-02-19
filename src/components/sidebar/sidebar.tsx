@@ -45,6 +45,7 @@ import {
   Archive,
   PiggyBank,
   UserRound,
+  Coins,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -198,6 +199,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: "אחוז קניות ממחזור",
                 href: "/admin/reports/commission-revenue",
                 icon: <Percent className="h-4 w-4" />,
+              },
+              {
+                label: "עמלות ספקים",
+                href: "/admin/reports/supplier-commission",
+                icon: <Coins className="h-4 w-4" />,
               },
             ],
           },

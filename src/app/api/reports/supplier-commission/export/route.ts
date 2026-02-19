@@ -1,0 +1,187 @@
+import { NextRequest, NextResponse } from "next/server";
+import {
+  requireAdminOrSuperUser,
+  isAuthError,
+} from "@/lib/api-middleware";
+import {
+  getSupplierCommissionReport,
+  type SupplierCommissionReportFilters,
+} from "@/data-access/supplier-commission-report";
+import * as XLSX from "xlsx";
+
+/**
+ * GET /api/reports/supplier-commission/export - Export supplier commission matrix to Excel
+ *
+ * Query parameters:
+ * - year: number (required)
+ * - quarter: 1|2|3|4 (required)
+ * - brandId: string (optional)
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const authResult = await requireAdminOrSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+
+    const searchParams = request.nextUrl.searchParams;
+
+    const yearStr = searchParams.get("year");
+    const quarterStr = searchParams.get("quarter");
+
+    if (!yearStr || !quarterStr) {
+      return NextResponse.json(
+        { error: "year and quarter are required" },
+        { status: 400 }
+      );
+    }
+
+    const year = parseInt(yearStr, 10);
+    const quarter = parseInt(quarterStr, 10) as 1 | 2 | 3 | 4;
+
+    if (isNaN(year) || year < 2020 || year > 2100) {
+      return NextResponse.json(
+        { error: "Invalid year" },
+        { status: 400 }
+      );
+    }
+
+    if (![1, 2, 3, 4].includes(quarter)) {
+      return NextResponse.json(
+        { error: "Quarter must be 1, 2, 3, or 4" },
+        { status: 400 }
+      );
+    }
+
+    const filters: SupplierCommissionReportFilters = {
+      year,
+      quarter,
+      brandId: searchParams.get("brandId") || undefined,
+    };
+
+    const report = await getSupplierCommissionReport(filters);
+
+    if (report.suppliers.length === 0) {
+      return NextResponse.json(
+        { error: "אין נתונים לייצוא" },
+        { status: 400 }
+      );
+    }
+
+    // Build Excel headers
+    const headers = [
+      "ספק",
+      "קוד ספק",
+      "% עמלה",
+      "פטור מע״מ",
+      ...report.franchisees.map((f) => f.franchiseeName),
+      "סה״כ עמלות (לפני מע״מ)",
+      "% ממחזור",
+    ];
+
+    // Data rows
+    const rows: (string | number)[][] = [];
+
+    for (const sup of report.suppliers) {
+      const row: (string | number)[] = [
+        sup.supplierName,
+        sup.supplierCode,
+        sup.commissionRate,
+        sup.isVatExempt ? "כן" : "לא",
+      ];
+
+      // Add commission amount before VAT for each franchisee
+      for (const f of report.franchisees) {
+        const cell = sup.cells[f.franchiseeId];
+        if (cell) {
+          row.push(Math.round(cell.commissionAmountBeforeVat * 100) / 100);
+        } else {
+          row.push(0);
+        }
+      }
+
+      // Total commission before VAT
+      row.push(sup.totalCommissionBeforeVat);
+      // % of turnover
+      row.push(sup.percentOfTurnover != null ? sup.percentOfTurnover : 0);
+
+      rows.push(row);
+    }
+
+    // Totals row
+    const totalsRow: (string | number)[] = ["סה״כ", "", "", ""];
+
+    for (const f of report.franchisees) {
+      totalsRow.push(f.totalCommissionBeforeVat);
+    }
+
+    totalsRow.push(report.grandTotals.totalCommissionBeforeVat);
+    totalsRow.push(
+      report.grandTotals.overallPercentOfTurnover != null
+        ? report.grandTotals.overallPercentOfTurnover
+        : 0
+    );
+
+    rows.push(totalsRow);
+
+    // BKMV revenue row
+    const revenueRow: (string | number)[] = ["מחזור (BKMV)", "", "", ""];
+
+    for (const f of report.franchisees) {
+      revenueRow.push(f.bkmvRevenue);
+    }
+
+    revenueRow.push(report.grandTotals.totalBkmvRevenue);
+    revenueRow.push("");
+
+    rows.push(revenueRow);
+
+    // Create workbook
+    const wb = XLSX.utils.book_new();
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Set column widths
+    const colWidths = [
+      { wch: 25 }, // Supplier name
+      { wch: 12 }, // Supplier code
+      { wch: 10 }, // Commission rate
+      { wch: 10 }, // VAT exempt
+    ];
+
+    // Franchisee columns
+    for (let i = 0; i < report.franchisees.length; i++) {
+      colWidths.push({ wch: 15 });
+    }
+
+    // Summary columns
+    colWidths.push({ wch: 20 }); // Total commissions
+    colWidths.push({ wch: 12 }); // % of turnover
+
+    ws["!cols"] = colWidths;
+
+    // Set RTL direction for Hebrew
+    ws["!dir"] = "rtl";
+
+    XLSX.utils.book_append_sheet(wb, ws, "עמלות ספקים");
+
+    // Generate buffer
+    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+    // Create filename
+    const brandSuffix = report.brandName ? `-${report.brandName}` : "";
+    const filename = `supplier-commissions-${year}-Q${quarter}${brandSuffix}.xlsx`;
+
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}"`,
+      },
+    });
+  } catch (error) {
+    console.error("Error exporting supplier commission report:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
