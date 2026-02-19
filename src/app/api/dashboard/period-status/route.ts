@@ -5,12 +5,13 @@ import {
 } from "@/lib/api-middleware";
 import { database } from "@/db";
 import {
-  crossReference,
+  reconciliationSession,
+  reconciliationComparison,
+  supplier,
+  franchisee,
   fileRequest,
-  supplierFileUpload,
 } from "@/db/schema";
-import { eq, and, gte, sql, or } from "drizzle-orm";
-import type { CrossReferenceComparisonMetadata } from "@/data-access/crossReferences";
+import { eq, and, gte, lte, sql, or, inArray } from "drizzle-orm";
 
 /**
  * Response type for period status dashboard widget
@@ -43,30 +44,12 @@ export type PeriodStatusResponse = {
 };
 
 /**
- * Check whether two date ranges overlap.
- * Ranges are inclusive: [startA, endA] overlaps [startB, endB]
- * iff startA <= endB AND endA >= startB.
- */
-function periodsOverlap(
-  startA: string,
-  endA: string,
-  startB: string,
-  endB: string
-): boolean {
-  return startA <= endB && endA >= startB;
-}
-
-/**
  * GET /api/dashboard/period-status
- * Returns cross-reference status and pending actions for the dashboard.
+ * Returns reconciliation V2 status and pending actions for the dashboard.
  *
  * Optional query params:
- * - periodStart (YYYY-MM-DD): filter cross-references whose period overlaps
- * - periodEnd   (YYYY-MM-DD): filter cross-references whose period overlaps
- *
- * When both are provided, only cross-references with metadata period dates
- * overlapping the given range are included. Otherwise, ALL active cross-references
- * are returned (backward compatible).
+ * - periodStart (YYYY-MM-DD): filter sessions whose period overlaps
+ * - periodEnd   (YYYY-MM-DD): filter sessions whose period overlaps
  */
 export async function GET(request: NextRequest) {
   try {
@@ -82,20 +65,57 @@ export async function GET(request: NextRequest) {
     const currentYear = now.getFullYear();
     const currentMonthStart = new Date(currentYear, now.getMonth(), 1);
 
-    // Fetch all data in parallel
-    const [crossReferences, fileRequests, needsReviewCount] = await Promise.all([
-      // Get ALL active cross-references
+    // Build V2 session filter conditions
+    const sessionConditions = [
+      inArray(reconciliationSession.status, ["in_progress", "completed", "file_approved"]),
+    ];
+    if (filterByPeriod) {
+      sessionConditions.push(
+        lte(reconciliationSession.periodStartDate, periodEnd!),
+        gte(reconciliationSession.periodEndDate, periodStart!),
+      );
+    }
+
+    // Fetch V2 reconciliation stats and file requests in parallel
+    const [sessionStats, discrepancyRows, fileRequests] = await Promise.all([
+      // Aggregate counts from reconciliation_session
       database
-        .select()
-        .from(crossReference)
+        .select({
+          totalFranchisees: sql<number>`coalesce(sum(${reconciliationSession.totalFranchisees}), 0)::int`,
+          matchedCount: sql<number>`coalesce(sum(${reconciliationSession.matchedCount}), 0)::int`,
+          needsReviewCount: sql<number>`coalesce(sum(${reconciliationSession.needsReviewCount}), 0)::int`,
+          approvedCount: sql<number>`coalesce(sum(${reconciliationSession.approvedCount}), 0)::int`,
+          toReviewQueueCount: sql<number>`coalesce(sum(${reconciliationSession.toReviewQueueCount}), 0)::int`,
+        })
+        .from(reconciliationSession)
+        .where(and(...sessionConditions)),
+
+      // Get top 10 needs_review comparisons for discrepancy details
+      database
+        .select({
+          comparisonId: reconciliationComparison.id,
+          supplierName: supplier.name,
+          franchiseeName: franchisee.name,
+          supplierAmount: reconciliationComparison.supplierAmount,
+          franchiseeAmount: reconciliationComparison.franchiseeAmount,
+          difference: reconciliationComparison.difference,
+        })
+        .from(reconciliationComparison)
+        .innerJoin(
+          reconciliationSession,
+          eq(reconciliationComparison.sessionId, reconciliationSession.id),
+        )
+        .innerJoin(supplier, eq(reconciliationSession.supplierId, supplier.id))
+        .innerJoin(franchisee, eq(reconciliationComparison.franchiseeId, franchisee.id))
         .where(
           and(
-            eq(crossReference.referenceType, "amount_comparison"),
-            eq(crossReference.isActive, true)
-          )
-        ),
+            eq(reconciliationComparison.status, "needs_review"),
+            ...sessionConditions,
+          ),
+        )
+        .limit(10),
 
-      // Get recent file requests
+      // Get recent file requests (for expiring links)
       database
         .select()
         .from(fileRequest)
@@ -104,72 +124,44 @@ export async function GET(request: NextRequest) {
             or(
               eq(fileRequest.status, "pending"),
               eq(fileRequest.status, "sent"),
-              eq(fileRequest.status, "submitted")
+              eq(fileRequest.status, "submitted"),
             ),
-            gte(fileRequest.createdAt, currentMonthStart)
-          )
+            gte(fileRequest.createdAt, currentMonthStart),
+          ),
         ),
-
-      // Count supplier files pending review
-      database
-        .select({ count: sql<number>`count(*)::int` })
-        .from(supplierFileUpload)
-        .where(eq(supplierFileUpload.processingStatus, "needs_review")),
     ]);
 
-    // Filter cross-references by period if requested
-    const filteredCrossRefs = filterByPeriod
-      ? crossReferences.filter((cr) => {
-          const metadata = cr.metadata as CrossReferenceComparisonMetadata;
-          const crStart = metadata?.periodStartDate;
-          const crEnd = metadata?.periodEndDate;
-          if (!crStart || !crEnd) return false;
-          return periodsOverlap(crStart, crEnd, periodStart!, periodEnd!);
-        })
-      : crossReferences;
+    // Extract V2 aggregated stats
+    const stats = sessionStats[0];
+    const totalFranchisees = stats?.totalFranchisees ?? 0;
+    const matchedCount = stats?.matchedCount ?? 0;
+    const approvedCount = stats?.approvedCount ?? 0;
+    const needsReviewCount = stats?.needsReviewCount ?? 0;
+    const toReviewQueueCount = stats?.toReviewQueueCount ?? 0;
 
-    // Process cross-reference status
-    let matched = 0;
-    let discrepancies = 0;
-    let pending = 0;
-
-    for (const cr of filteredCrossRefs) {
-      const metadata = cr.metadata as CrossReferenceComparisonMetadata;
-      const status = metadata?.matchStatus || "pending";
-      if (status === "matched") {
-        matched++;
-      } else if (status === "discrepancy") {
-        discrepancies++;
-      } else {
-        pending++;
-      }
-    }
-
-    const totalCrossRefs = filteredCrossRefs.length;
+    // Map V2 stats to existing response structure
+    // matched = auto_approved (matchedCount) + manually_approved (approvedCount)
+    const matched = matchedCount + approvedCount;
+    // discrepancies = items needing manual review
+    const discrepancies = needsReviewCount;
+    // pending = escalated items in review queue
+    const pending = toReviewQueueCount;
+    const total = totalFranchisees;
     const matchedPercentage =
-      totalCrossRefs > 0 ? Math.round((matched / totalCrossRefs) * 100) : 0;
+      total > 0 ? Math.round((matched / total) * 100) : 0;
 
-    // Extract top 10 discrepancy details
-    const discrepancyDetails = filteredCrossRefs
-      .filter((cr) => {
-        const metadata = cr.metadata as CrossReferenceComparisonMetadata;
-        return metadata?.matchStatus === "discrepancy";
-      })
-      .slice(0, 10)
-      .map((cr) => {
-        const metadata = cr.metadata as CrossReferenceComparisonMetadata;
-        return {
-          crossRefId: cr.id,
-          supplierName: metadata?.supplierName || "לא ידוע",
-          franchiseeName: metadata?.franchiseeName || "לא ידוע",
-          supplierAmount: parseFloat(metadata?.supplierAmount || "0"),
-          franchiseeAmount: parseFloat(metadata?.franchiseeAmount || "0"),
-          difference: parseFloat(metadata?.difference || "0"),
-        };
-      });
+    // Map discrepancy details
+    const discrepancyDetails = discrepancyRows.map((row) => ({
+      crossRefId: row.comparisonId,
+      supplierName: row.supplierName ?? "לא ידוע",
+      franchiseeName: row.franchiseeName ?? "לא ידוע",
+      supplierAmount: parseFloat(row.supplierAmount || "0"),
+      franchiseeAmount: parseFloat(row.franchiseeAmount || "0"),
+      difference: parseFloat(row.difference || "0"),
+    }));
 
     const crossReferenceStatus: PeriodStatusResponse["crossReferenceStatus"] = {
-      total: totalCrossRefs,
+      total,
       matched,
       discrepancies,
       pending,
@@ -181,13 +173,14 @@ export async function GET(request: NextRequest) {
     const pendingActionItems: PeriodStatusResponse["pendingActions"]["items"] =
       [];
 
-    // Pending cross-references (medium priority)
-    if (pending > 0) {
+    // Unresolved V2 items (needs_review + review_queue) - medium priority
+    const unresolvedCount = needsReviewCount + toReviewQueueCount;
+    if (unresolvedCount > 0) {
       pendingActionItems.push({
         type: "pending_cross_ref",
-        count: pending,
+        count: unresolvedCount,
         priority: "medium",
-        description: `${pending} הצלבות ממתינות להשוואה`,
+        description: `${unresolvedCount} פריטים ממתינים לבדיקה`,
       });
     }
 
@@ -201,23 +194,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Files pending review (high priority)
-    const pendingReview = needsReviewCount[0]?.count || 0;
-    if (pendingReview > 0) {
-      pendingActionItems.push({
-        type: "approval",
-        count: pendingReview,
-        priority: "high",
-        description: `${pendingReview} קבצים ממתינים לבדיקה`,
-      });
-    }
-
     // Expiring upload links (low priority)
     const expiringLinks = fileRequests.filter((fr) => {
       if (!fr.dueDate) return false;
       const dueDate = new Date(fr.dueDate);
       const daysUntilDue = Math.ceil(
-        (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+        (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
       );
       return daysUntilDue <= 3 && daysUntilDue > 0;
     }).length;
@@ -249,7 +231,7 @@ export async function GET(request: NextRequest) {
     console.error("Error fetching period status:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
