@@ -433,7 +433,7 @@ export async function createReconciliationSession(
   const partialVatMap = new Map<string, number>();
   if (supplierData[0].vatExempt) {
     for (const match of processingResult.franchiseeMatches) {
-      if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
+      if (!match.matchedFranchiseeId || match.matchType === "blacklisted" || match.matchType === "fuzzy" || match.matchType === "none") continue;
       const partialVat = match.grossAmount - match.netAmount;
       if (partialVat > 0) {
         const existing = partialVatMap.get(match.matchedFranchiseeId) || 0;
@@ -455,7 +455,7 @@ export async function createReconciliationSession(
   >();
 
   for (const match of processingResult.franchiseeMatches) {
-    if (!match.matchedFranchiseeId || match.matchType === "blacklisted") continue;
+    if (!match.matchedFranchiseeId || match.matchType === "blacklisted" || match.matchType === "fuzzy" || match.matchType === "none") continue;
 
     // For vatExempt suppliers: use netAmount (raw from file, no VAT).
     // For normal suppliers: use netAmount for comparison against BKMV net.

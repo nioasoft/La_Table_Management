@@ -228,7 +228,7 @@ export async function getFranchiseeFundReport(
     const result = file.processingResult as SupplierFileProcessingResult | null;
     if (!result?.franchiseeMatches) continue;
     for (const match of result.franchiseeMatches) {
-      if (match.matchedFranchiseeId && match.matchType !== "blacklisted") {
+      if (match.matchedFranchiseeId && match.matchType !== "blacklisted" && match.matchType !== "fuzzy" && match.matchType !== "none") {
         allFranchiseeIds.add(match.matchedFranchiseeId);
       }
     }
@@ -304,7 +304,7 @@ export async function getFranchiseeFundReport(
     for (const match of result.franchiseeMatches) {
       // Skip unmatched, blacklisted, or review-required entries
       if (!match.matchedFranchiseeId) continue;
-      if (match.matchType === "blacklisted") continue;
+      if (match.matchType === "blacklisted" || match.matchType === "fuzzy" || match.matchType === "none") continue;
 
       const fDetail = franchiseeDetailMap.get(match.matchedFranchiseeId);
       if (!fDetail) continue;
