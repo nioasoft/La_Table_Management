@@ -1767,9 +1767,6 @@ function FranchiseeCard({
                 {reminderCount} תזכורות
               </Badge>
             )}
-            {!franchisee.isKosher && (
-              <Badge variant="outline" className="text-xs px-1.5 py-0 border-orange-300 text-orange-600">לא כשר</Badge>
-            )}
             {franchisee.brand && (
               <Badge variant="outline" className="text-xs px-1.5 py-0">{franchisee.brand.nameHe}</Badge>
             )}

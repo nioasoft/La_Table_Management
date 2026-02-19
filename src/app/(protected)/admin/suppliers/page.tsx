@@ -1452,9 +1452,6 @@ export default function AdminSuppliersPage() {
                       {supplier.isHidden && (
                         <Badge variant="destructive" className="text-xs px-1.5 py-0">מוסתר</Badge>
                       )}
-                      {!supplier.isKosher && (
-                        <Badge variant="outline" className="text-xs px-1.5 py-0 border-orange-300 text-orange-600">לא כשר</Badge>
-                      )}
                       {hasCommissionFromFile(supplier.code) ? (
                         <Badge variant="secondary" className="text-xs px-1.5 py-0">
                           <FileText className="h-3 w-3 me-1" />
