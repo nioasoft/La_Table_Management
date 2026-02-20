@@ -127,13 +127,15 @@ export async function POST(request: NextRequest) {
         }
 
         // Build supplier ID map, applying manual overrides
+        // Only include exact matches (confidence === 1) or manual overrides — fuzzy matches should not be stored
         const supplierIdMap = new Map<string, string | null>();
         for (const r of matchResults) {
           const manual = manualOverrides.get(r.bkmvName);
           if (manual) {
             supplierIdMap.set(r.bkmvName, manual.matchedSupplierId);
           } else {
-            supplierIdMap.set(r.bkmvName, r.matchResult.matchedSupplier?.id || null);
+            const isExact = r.matchResult.matchedSupplier && r.matchResult.confidence === 1;
+            supplierIdMap.set(r.bkmvName, isExact ? r.matchResult.matchedSupplier!.id : null);
           }
         }
 

@@ -97,10 +97,11 @@ async function migrateFile(
     blacklistedNames
   );
 
-  // Build supplier ID map
+  // Build supplier ID map — only exact matches (confidence === 1)
   const supplierIdMap = new Map<string, string | null>();
   for (const r of matchResults) {
-    supplierIdMap.set(r.bkmvName, r.matchResult.matchedSupplier?.id || null);
+    const isExact = r.matchResult.matchedSupplier && r.matchResult.confidence === 1;
+    supplierIdMap.set(r.bkmvName, isExact ? r.matchResult.matchedSupplier!.id : null);
   }
 
   // Build monthly breakdown

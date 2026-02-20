@@ -196,9 +196,12 @@ export async function POST(request: NextRequest) {
     const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
 
     // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)
+    // Only include exact matches (confidence === 1) — fuzzy matches should not be stored
+    // as supplier associations in the year table to avoid false cross-references
     const supplierIdMap = new Map<string, string | null>();
     for (const r of matchResults) {
-      supplierIdMap.set(r.bkmvName, r.matchResult.matchedSupplier?.id || null);
+      const isExact = r.matchResult.matchedSupplier && r.matchResult.confidence === 1;
+      supplierIdMap.set(r.bkmvName, isExact ? r.matchResult.matchedSupplier!.id : null);
     }
 
     // Build monthly breakdown for precise period matching
