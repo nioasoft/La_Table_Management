@@ -223,7 +223,14 @@ export function DocumentManager({
 
     try {
       // Step 1: Upload file directly to Vercel Blob (bypasses serverless function body limit)
-      const blob = await upload(uploadForm.file.name, uploadForm.file, {
+      const ext = uploadForm.file.name.includes(".")
+        ? uploadForm.file.name.substring(uploadForm.file.name.lastIndexOf("."))
+        : "";
+      const baseName = uploadForm.file.name.includes(".")
+        ? uploadForm.file.name.substring(0, uploadForm.file.name.lastIndexOf("."))
+        : uploadForm.file.name;
+      const uniqueName = `${baseName}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
+      const blob = await upload(uniqueName, uploadForm.file, {
         access: "public",
         handleUploadUrl: "/api/documents/upload-url",
       });
