@@ -350,7 +350,7 @@ export async function createReconciliationSession(
   // Step 2: Collect franchisee IDs from supplier file that are NOT in year table
   const supplierFranchiseeIds = new Set<string>();
   for (const match of processingResult.franchiseeMatches) {
-    if (match.matchedFranchiseeId && match.matchType !== "blacklisted") {
+    if (match.matchedFranchiseeId && match.matchType !== "blacklisted" && match.matchType !== "fuzzy" && match.matchType !== "none") {
       supplierFranchiseeIds.add(match.matchedFranchiseeId);
     }
   }
@@ -488,15 +488,19 @@ export async function createReconciliationSession(
     eq(franchisee.isActive, true),
     eq(franchisee.category, "regular"),
   ];
-  if (brandIdSet.size > 0) {
+  if (brandIdSet.size === 0) {
+    // No brand associations configured — skip compatible franchisee generation
+    // to avoid adding ALL franchisees from all brands as zero-amount rows
+  } else {
     compatConditions.push(inArray(franchisee.brandId, [...brandIdSet]));
+
+    // Non-kosher supplier: only show non-kosher franchisees
+    // Kosher supplier: show all franchisees (kosher + non-kosher)
+    if (!supplierData[0].isKosher) {
+      compatConditions.push(eq(franchisee.isKosher, false));
+    }
   }
-  // Non-kosher supplier: only show non-kosher franchisees
-  // Kosher supplier: show all franchisees (kosher + non-kosher)
-  if (!supplierData[0].isKosher) {
-    compatConditions.push(eq(franchisee.isKosher, false));
-  }
-  const allCompatible = await database
+  const allCompatible = brandIdSet.size === 0 ? [] : await database
     .select({ id: franchisee.id })
     .from(franchisee)
     .where(and(...compatConditions));
