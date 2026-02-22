@@ -495,11 +495,11 @@ export default function SupplierCommissionReportPage() {
                 עמלות לפני מע״מ לפי ספק וסניף
               </CardDescription>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible">
               <Table>
-                <TableHeader>
+                <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
                   <TableRow>
-                    <TableHead className="sticky start-0 bg-background">
+                    <TableHead className="sticky start-0 z-20 bg-background">
                       ספק
                     </TableHead>
                     <TableHead className="text-center">% עמלה</TableHead>
@@ -584,44 +584,6 @@ export default function SupplierCommissionReportPage() {
                     <TableCell className="text-center">
                       {formatCurrency(
                         report.grandTotals.totalCommissionBeforeVat
-                      )}
-                    </TableCell>
-                  </TableRow>
-
-                  {/* % of Turnover Row */}
-                  <TableRow className="bg-amber-50/50">
-                    <TableCell className="sticky start-0 bg-amber-50/50 font-bold">
-                      % ממחזור
-                    </TableCell>
-                    <TableCell />
-                    {report.franchisees.map((f) => {
-                      const pct =
-                        f.bkmvRevenue > 0
-                          ? Math.round(
-                              (f.totalCommissionBeforeVat / f.bkmvRevenue) *
-                                10000
-                            ) / 100
-                          : null;
-                      return (
-                        <TableCell
-                          key={f.franchiseeId}
-                          className="text-center"
-                        >
-                          {pct != null ? (
-                            <Badge variant="secondary">{pct}%</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                      );
-                    })}
-                    <TableCell className="text-center">
-                      {report.grandTotals.overallPercentOfTurnover != null ? (
-                        <Badge variant="default">
-                          {report.grandTotals.overallPercentOfTurnover}%
-                        </Badge>
-                      ) : (
-                        "-"
                       )}
                     </TableCell>
                   </TableRow>
