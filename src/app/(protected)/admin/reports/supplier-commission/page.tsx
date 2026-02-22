@@ -516,9 +516,6 @@ export default function SupplierCommissionReportPage() {
                     <TableHead className="text-center font-bold">
                       סה״כ
                     </TableHead>
-                    <TableHead className="text-center font-bold">
-                      % ממחזור
-                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -567,15 +564,6 @@ export default function SupplierCommissionReportPage() {
                       <TableCell className="text-center font-medium">
                         {formatCurrency(sup.totalCommissionBeforeVat)}
                       </TableCell>
-                      <TableCell className="text-center">
-                        {sup.percentOfTurnover != null ? (
-                          <Badge variant="secondary">
-                            {sup.percentOfTurnover}%
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
                     </TableRow>
                   ))}
 
@@ -598,6 +586,35 @@ export default function SupplierCommissionReportPage() {
                         report.grandTotals.totalCommissionBeforeVat
                       )}
                     </TableCell>
+                  </TableRow>
+
+                  {/* % of Turnover Row */}
+                  <TableRow className="bg-amber-50/50">
+                    <TableCell className="sticky start-0 bg-amber-50/50 font-bold">
+                      % ממחזור
+                    </TableCell>
+                    <TableCell />
+                    {report.franchisees.map((f) => {
+                      const pct =
+                        f.bkmvRevenue > 0
+                          ? Math.round(
+                              (f.totalCommissionBeforeVat / f.bkmvRevenue) *
+                                10000
+                            ) / 100
+                          : null;
+                      return (
+                        <TableCell
+                          key={f.franchiseeId}
+                          className="text-center"
+                        >
+                          {pct != null ? (
+                            <Badge variant="secondary">{pct}%</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      );
+                    })}
                     <TableCell className="text-center">
                       {report.grandTotals.overallPercentOfTurnover != null ? (
                         <Badge variant="default">
@@ -606,6 +623,29 @@ export default function SupplierCommissionReportPage() {
                       ) : (
                         "-"
                       )}
+                    </TableCell>
+                  </TableRow>
+
+                  {/* BKMV Revenue Row */}
+                  <TableRow className="bg-blue-50/50">
+                    <TableCell className="sticky start-0 bg-blue-50/50 font-bold">
+                      מחזור (BKMV)
+                    </TableCell>
+                    <TableCell />
+                    {report.franchisees.map((f) => (
+                      <TableCell
+                        key={f.franchiseeId}
+                        className="text-center text-xs"
+                      >
+                        {f.bkmvRevenue > 0 ? (
+                          formatCurrency(f.bkmvRevenue)
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-center font-medium">
+                      {formatCurrency(report.grandTotals.totalBkmvRevenue)}
                     </TableCell>
                   </TableRow>
                 </TableBody>

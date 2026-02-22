@@ -74,7 +74,6 @@ export async function GET(request: NextRequest) {
       "פטור מע״מ",
       ...report.franchisees.map((f) => f.franchiseeName),
       "סה״כ עמלות (לפני מע״מ)",
-      "% ממחזור",
     ];
 
     // Data rows
@@ -100,8 +99,6 @@ export async function GET(request: NextRequest) {
 
       // Total commission before VAT
       row.push(sup.totalCommissionBeforeVat);
-      // % of turnover
-      row.push(sup.percentOfTurnover != null ? sup.percentOfTurnover : 0);
 
       rows.push(row);
     }
@@ -114,13 +111,28 @@ export async function GET(request: NextRequest) {
     }
 
     totalsRow.push(report.grandTotals.totalCommissionBeforeVat);
-    totalsRow.push(
+
+    rows.push(totalsRow);
+
+    // % of turnover row (per franchisee)
+    const pctRow: (string | number)[] = ["% ממחזור", "", "", ""];
+
+    for (const f of report.franchisees) {
+      pctRow.push(
+        f.bkmvRevenue > 0
+          ? Math.round((f.totalCommissionBeforeVat / f.bkmvRevenue) * 10000) /
+              100
+          : 0
+      );
+    }
+
+    pctRow.push(
       report.grandTotals.overallPercentOfTurnover != null
         ? report.grandTotals.overallPercentOfTurnover
         : 0
     );
 
-    rows.push(totalsRow);
+    rows.push(pctRow);
 
     // BKMV revenue row
     const revenueRow: (string | number)[] = ["מחזור (BKMV)", "", "", ""];
@@ -130,7 +142,6 @@ export async function GET(request: NextRequest) {
     }
 
     revenueRow.push(report.grandTotals.totalBkmvRevenue);
-    revenueRow.push("");
 
     rows.push(revenueRow);
 
@@ -154,7 +165,6 @@ export async function GET(request: NextRequest) {
 
     // Summary columns
     colWidths.push({ wch: 20 }); // Total commissions
-    colWidths.push({ wch: 12 }); // % of turnover
 
     ws["!cols"] = colWidths;
 
