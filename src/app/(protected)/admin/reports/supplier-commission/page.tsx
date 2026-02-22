@@ -497,9 +497,9 @@ export default function SupplierCommissionReportPage() {
             </CardHeader>
             <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
+                <TableHeader className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
                   <TableRow>
-                    <TableHead className="sticky start-0 z-20 bg-background">
+                    <TableHead className="sticky start-0 z-30 bg-background">
                       ספק
                     </TableHead>
                     <TableHead className="text-center">% עמלה</TableHead>
@@ -521,7 +521,7 @@ export default function SupplierCommissionReportPage() {
                 <TableBody>
                   {report.suppliers.map((sup) => (
                     <TableRow key={sup.supplierId}>
-                      <TableCell className="sticky start-0 z-10 bg-background">
+                      <TableCell className="sticky start-0 z-20 bg-background">
                         <div>
                           <div className="font-medium">{sup.supplierName}</div>
                           <div className="text-xs text-muted-foreground">
@@ -569,7 +569,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* Totals Row */}
                   <TableRow className="bg-muted/50 font-bold">
-                    <TableCell className="sticky start-0 z-10 bg-muted/50">
+                    <TableCell className="sticky start-0 z-20 bg-muted/50">
                       סה״כ
                     </TableCell>
                     <TableCell />
@@ -590,7 +590,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* % of Turnover Row */}
                   <TableRow className="bg-amber-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-amber-50/50 font-bold">
+                    <TableCell className="sticky start-0 z-20 bg-amber-50/50 font-bold">
                       % ממחזור
                     </TableCell>
                     <TableCell />
@@ -628,7 +628,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* BKMV Revenue Row */}
                   <TableRow className="bg-blue-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-blue-50/50 font-bold">
+                    <TableCell className="sticky start-0 z-20 bg-blue-50/50 font-bold">
                       מחזור (BKMV)
                     </TableCell>
                     <TableCell />
