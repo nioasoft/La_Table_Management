@@ -569,7 +569,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* Totals Row */}
                   <TableRow className="bg-muted/50 font-bold">
-                    <TableCell className="sticky start-0 z-10 bg-muted/50">
+                    <TableCell className="sticky start-0 z-10 bg-muted">
                       סה״כ
                     </TableCell>
                     <TableCell />
@@ -590,7 +590,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* % of Turnover Row */}
                   <TableRow className="bg-amber-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-amber-50/50 font-bold">
+                    <TableCell className="sticky start-0 z-10 bg-amber-50 font-bold">
                       % ממחזור
                     </TableCell>
                     <TableCell />
@@ -628,7 +628,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* BKMV Revenue Row */}
                   <TableRow className="bg-blue-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-blue-50/50 font-bold">
+                    <TableCell className="sticky start-0 z-10 bg-blue-50 font-bold">
                       מחזור (BKMV)
                     </TableCell>
                     <TableCell />
