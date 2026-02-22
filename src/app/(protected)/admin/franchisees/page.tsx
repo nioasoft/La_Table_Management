@@ -1519,21 +1519,6 @@ export default function AdminFranchiseesPage() {
                 />
               </div>
 
-              {/* Active Checkbox */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="isActive"
-                  checked={formData.isActive}
-                  onChange={(e) =>
-                    setFormData({ ...formData, isActive: e.target.checked })
-                  }
-                  disabled={isSubmitting}
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <Label htmlFor="isActive">{he.admin.franchisees.form.fields.isActive}</Label>
-              </div>
-
               {/* Kosher Checkbox */}
               <div className="flex items-center gap-2">
                 <input

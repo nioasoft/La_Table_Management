@@ -623,10 +623,6 @@ export function FranchiseeDetailCard({
                       {statusLabels[franchisee.status]}
                     </Badge>
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">פעיל</p>
-                    <p className="font-medium">{franchisee.isActive ? "כן" : "לא"}</p>
-                  </div>
                 </CardContent>
               </Card>
 
