@@ -938,6 +938,15 @@ export const he = {
         terminated: "סיום",
       },
 
+      // Franchisee detail page
+      detail: {
+        backToFranchisees: "חזרה לזכיינים",
+        editFranchisee: "ערוך זכיין",
+        error: "שגיאה",
+        franchiseeNotFound: "הזכיין לא נמצא",
+        failedToLoad: "נכשלה טעינת פרטי הזכיין",
+      },
+
       confirmDelete:
         "האם אתה בטוח שברצונך למחוק זכיין זה? פעולה זו לא ניתנת לביטול.",
     },

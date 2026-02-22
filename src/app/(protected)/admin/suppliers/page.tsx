@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -196,6 +196,8 @@ export default function AdminSuppliersPage() {
   const [showSecondaryContact, setShowSecondaryContact] = useState(false);
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [archiveConfirmText, setArchiveConfirmText] = useState("");
+  const [editSupplierDocuments, setEditSupplierDocuments] = useState<DocumentWithUploader[]>([]);
+  const [loadingEditDocs, setLoadingEditDocs] = useState(false);
   const { data: session, isPending } = authClient.useSession();
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -256,6 +258,25 @@ export default function AdminSuppliersPage() {
   });
 
   const brands: Brand[] = brandsData?.brands || [];
+
+  // Fetch documents when editing a supplier
+  const editingSupplierId = editingSupplier?.id;
+  useEffect(() => {
+    if (!editingSupplierId) {
+      setEditSupplierDocuments([]);
+      return;
+    }
+    setLoadingEditDocs(true);
+    fetch(`/api/documents/supplier/${editingSupplierId}`)
+      .then((res) => res.json())
+      .then((data) => setEditSupplierDocuments(data.documents || []))
+      .catch(() => setEditSupplierDocuments([]))
+      .finally(() => setLoadingEditDocs(false));
+  }, [editingSupplierId]);
+
+  const handleEditDocsChange = useCallback((docs: DocumentWithUploader[]) => {
+    setEditSupplierDocuments(docs);
+  }, []);
 
   const fetchCommissionHistory = async (supplierId: string) => {
     try {
@@ -1337,7 +1358,44 @@ export default function AdminSuppliersPage() {
                 </CollapsibleContent>
               </Collapsible>
 
-              {/* ═══ 8. ארכיון ═══ */}
+              {/* ═══ 8. הסכמים ומסמכים ═══ */}
+              {editingSupplier ? (
+                <Collapsible defaultOpen={editSupplierDocuments.length > 0}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                    <FileText className="h-4 w-4" />
+                    <span className="text-sm font-medium">הסכמים ומסמכים</span>
+                    {editSupplierDocuments.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">{editSupplierDocuments.length}</Badge>
+                    )}
+                    <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">
+                    {loadingEditDocs ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <DocumentManager
+                        entityType="supplier"
+                        entityId={editingSupplier.id}
+                        entityName={editingSupplier.name}
+                        documents={editSupplierDocuments}
+                        onDocumentsChange={handleEditDocsChange}
+                        canUpload={userRole === "super_user" || userRole === "admin"}
+                        canDelete={userRole === "super_user"}
+                        canEdit={userRole === "super_user" || userRole === "admin"}
+                      />
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                <div className="border border-dashed rounded-lg p-4 text-sm text-muted-foreground text-center">
+                  <FileText className="h-5 w-5 mx-auto mb-2 opacity-50" />
+                  ניתן להעלות הסכמים ומסמכים לאחר יצירת הספק
+                </div>
+              )}
+
+              {/* ═══ 9. ארכיון ═══ */}
               {editingSupplier && userRole === "super_user" && (
                 <Collapsible open={showArchiveConfirm} onOpenChange={setShowArchiveConfirm}>
                   <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border border-destructive/30 bg-destructive/5 hover:bg-destructive/10 transition-colors text-destructive">

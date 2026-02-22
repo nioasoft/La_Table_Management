@@ -882,9 +882,9 @@ export default function SupplierCardPage() {
               entityName={supplier.name}
               documents={documents}
               onDocumentsChange={handleDocumentsChange}
-              canUpload={userRole === "super_user" || userRole === "admin"}
-              canDelete={userRole === "super_user"}
-              canEdit={userRole === "super_user" || userRole === "admin"}
+              canUpload={false}
+              canDelete={false}
+              canEdit={false}
             />
           )}
         </TabsContent>

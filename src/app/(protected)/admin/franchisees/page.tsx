@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -67,7 +67,6 @@ import {
 } from "@/components/ui/collapsible";
 import { AliasManager } from "@/components/alias-manager";
 import { DocumentManager } from "@/components/document-manager";
-import { FranchiseeDetailCard } from "@/components/franchisee-detail-card";
 import { ImportantDatesManager } from "@/components/important-dates-manager";
 import { he } from "@/lib/translations/he";
 
@@ -220,8 +219,9 @@ export default function AdminFranchiseesPage() {
     Record<string, StatusHistoryEntry[]>
   >({});
 
-  // Detail card state
-  const [detailViewFranchisee, setDetailViewFranchisee] = useState<FranchiseeWithBrandAndContacts | null>(null);
+  // Edit dialog documents state
+  const [editFranchiseeDocuments, setEditFranchiseeDocuments] = useState<DocumentWithUploader[]>([]);
+  const [loadingEditDocs, setLoadingEditDocs] = useState(false);
 
   // Contact form state (for edit form)
   const [showContactFormInEdit, setShowContactFormInEdit] = useState(false);
@@ -283,6 +283,25 @@ export default function AdminFranchiseesPage() {
 
   const franchisees: FranchiseeWithBrandAndContacts[] = franchiseesData?.franchisees || [];
   const stats = franchiseesData?.stats || null;
+
+  // Fetch documents when editing a franchisee
+  const editingFranchiseeId = editingFranchisee?.id;
+  useEffect(() => {
+    if (!editingFranchiseeId) {
+      setEditFranchiseeDocuments([]);
+      return;
+    }
+    setLoadingEditDocs(true);
+    fetch(`/api/documents/franchisee/${editingFranchiseeId}`)
+      .then((res) => res.json())
+      .then((data) => setEditFranchiseeDocuments(data.documents || []))
+      .catch(() => setEditFranchiseeDocuments([]))
+      .finally(() => setLoadingEditDocs(false));
+  }, [editingFranchiseeId]);
+
+  const handleEditDocsChange = useCallback((docs: DocumentWithUploader[]) => {
+    setEditFranchiseeDocuments(docs);
+  }, []);
 
   // Keep editingFranchisee contacts in sync after contact mutations
   const editingId = editingFranchisee?.id;
@@ -630,16 +649,6 @@ export default function AdminFranchiseesPage() {
     } else {
       fetchStatusHistory(franchiseeId);
     }
-  };
-
-  // Open detail view
-  const handleViewDetails = (franchisee: FranchiseeWithBrandAndContacts) => {
-    setDetailViewFranchisee(franchisee);
-  };
-
-  // Close detail view
-  const handleCloseDetails = () => {
-    setDetailViewFranchisee(null);
   };
 
   const cancelForm = () => {
@@ -1458,6 +1467,43 @@ export default function AdminFranchiseesPage() {
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Documents Section */}
+              {editingFranchisee ? (
+                <Collapsible defaultOpen={editFranchiseeDocuments.length > 0}>
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 rounded-md border bg-muted/50 hover:bg-muted transition-colors">
+                    <FileText className="h-4 w-4" />
+                    <span className="text-sm font-medium">הסכמים ומסמכים</span>
+                    {editFranchiseeDocuments.length > 0 && (
+                      <Badge variant="secondary" className="text-xs">{editFranchiseeDocuments.length}</Badge>
+                    )}
+                    <ChevronDown className="h-4 w-4 ms-auto transition-transform data-[state=open]:rotate-180" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-3">
+                    {loadingEditDocs ? (
+                      <div className="flex items-center justify-center py-6">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <DocumentManager
+                        entityType="franchisee"
+                        entityId={editingFranchisee.id}
+                        entityName={editingFranchisee.name}
+                        documents={editFranchiseeDocuments}
+                        onDocumentsChange={handleEditDocsChange}
+                        canUpload={userRole === "super_user" || userRole === "admin"}
+                        canDelete={userRole === "super_user"}
+                        canEdit={userRole === "super_user" || userRole === "admin"}
+                      />
+                    )}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : (
+                <div className="border border-dashed rounded-lg p-4 text-sm text-muted-foreground text-center">
+                  <FileText className="h-5 w-5 mx-auto mb-2 opacity-50" />
+                  ניתן להעלות הסכמים ומסמכים לאחר יצירת הזכיין
+                </div>
+              )}
+
               {/* Notes */}
               <div className="space-y-2">
                 <Label htmlFor="notes">{he.admin.franchisees.form.fields.notes}</Label>
@@ -1573,7 +1619,6 @@ export default function AdminFranchiseesPage() {
                 isHistoryExpanded={expandedHistoryId === franchisee.id}
                 isLoadingHistory={loadingHistoryId === franchisee.id}
                 onToggleHistory={() => toggleHistoryExpanded(franchisee.id)}
-                onViewDetails={handleViewDetails}
                 reminderCount={reminderCounts[franchisee.id] || 0}
               />
             ))
@@ -1685,17 +1730,6 @@ export default function AdminFranchiseesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Franchisee Detail Card Dialog */}
-      {detailViewFranchisee && (
-        <FranchiseeDetailCard
-          franchisee={detailViewFranchisee}
-          isOpen={!!detailViewFranchisee}
-          onClose={handleCloseDetails}
-          userRole={userRole}
-          onEdit={handleEdit}
-          onStatusChange={openStatusChangeModal}
-        />
-      )}
     </div>
   );
 }
@@ -1719,8 +1753,6 @@ interface FranchiseeCardProps {
   isHistoryExpanded: boolean;
   isLoadingHistory: boolean;
   onToggleHistory: () => void;
-  // Detail view props
-  onViewDetails: (franchisee: FranchiseeWithBrandAndContacts) => void;
   // Reminder count for badges
   reminderCount: number;
 }
@@ -1739,7 +1771,6 @@ function FranchiseeCard({
   isHistoryExpanded,
   isLoadingHistory,
   onToggleHistory,
-  onViewDetails,
   reminderCount,
 }: FranchiseeCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -1780,15 +1811,11 @@ function FranchiseeCard({
         </div>
 
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-7 px-2"
-            onClick={() => onViewDetails(franchisee)}
-            title={he.common.viewDetails}
-          >
-            <Eye className="h-3.5 w-3.5" />
-          </Button>
+          <Link href={`/admin/franchisees/${franchisee.id}`} title={he.common.viewDetails}>
+            <Button size="sm" variant="ghost" className="h-7 px-2">
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
           <Button
             size="sm"
             variant="ghost"
