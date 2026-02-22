@@ -495,7 +495,7 @@ export default function SupplierCommissionReportPage() {
                 עמלות לפני מע״מ לפי ספק וסניף
               </CardDescription>
             </CardHeader>
-            <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible">
+            <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible [contain:inline-size]">
               <Table>
                 <TableHeader className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
                   <TableRow>
