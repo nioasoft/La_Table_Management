@@ -101,7 +101,7 @@ function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main
         className={cn(
-          "transition-[margin] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "transition-[margin] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)] overflow-x-hidden",
           isCollapsed ? "lg:ms-16" : "lg:ms-64"
         )}
       >

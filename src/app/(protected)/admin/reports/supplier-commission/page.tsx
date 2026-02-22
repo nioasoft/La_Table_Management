@@ -488,14 +488,14 @@ export default function SupplierCommissionReportPage() {
           </div>
 
           {/* Matrix Table */}
-          <Card className="overflow-hidden">
+          <Card>
             <CardHeader>
               <CardTitle>מטריצת עמלות ספקים</CardTitle>
               <CardDescription>
                 עמלות לפני מע״מ לפי ספק וסניף
               </CardDescription>
             </CardHeader>
-            <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible [contain:inline-size]">
+            <CardContent className="max-h-[70vh] overflow-auto [&>div]:overflow-visible">
               <Table>
                 <TableHeader className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
                   <TableRow>
