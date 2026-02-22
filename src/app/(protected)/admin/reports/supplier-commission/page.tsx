@@ -488,7 +488,7 @@ export default function SupplierCommissionReportPage() {
           </div>
 
           {/* Matrix Table */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>מטריצת עמלות ספקים</CardTitle>
               <CardDescription>
