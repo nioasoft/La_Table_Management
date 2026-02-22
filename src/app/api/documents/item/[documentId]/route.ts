@@ -96,7 +96,7 @@ export async function PATCH(
     if (documentType !== undefined) {
       if (!isValidDocumentType(documentType)) {
         return NextResponse.json(
-          { error: "Invalid document type. Must be one of: agreement, correspondence, invoice, other" },
+          { error: "Invalid document type" },
           { status: 400 }
         );
       }

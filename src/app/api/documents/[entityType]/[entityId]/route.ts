@@ -120,7 +120,7 @@ async function handleJsonUpload(
   }
   if (!documentType || !isValidDocumentType(documentType)) {
     return NextResponse.json(
-      { error: "Invalid document type. Must be one of: agreement, correspondence, invoice, other" },
+      { error: "Invalid document type" },
       { status: 400 }
     );
   }
@@ -187,7 +187,7 @@ async function handleMultipartUpload(
   }
   if (!documentType || !isValidDocumentType(documentType)) {
     return NextResponse.json(
-      { error: "Invalid document type. Must be one of: agreement, correspondence, invoice, other" },
+      { error: "Invalid document type" },
       { status: 400 }
     );
   }

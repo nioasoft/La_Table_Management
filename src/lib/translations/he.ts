@@ -3019,6 +3019,9 @@ export const he = {
         agreement: "הסכם",
         correspondence: "התכתבות",
         invoice: "חשבונית",
+        price_list: "מחירונים",
+        rental_agreement: "הסכם שכירות",
+        franchise_agreement: "הסכם זכיינות",
         other: "אחר",
       },
 

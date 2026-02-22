@@ -10,7 +10,7 @@ import {
 import { eq, desc, and, or } from "drizzle-orm";
 
 // Document types supported by the system
-export type DocumentType = "agreement" | "correspondence" | "invoice" | "other";
+export type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "other";
 
 // Entity types that can have documents
 export type DocumentEntityType = "supplier" | "franchisee" | "brand";
@@ -292,7 +292,7 @@ export async function updateDocumentStatus(
  * Validate document type
  */
 export function isValidDocumentType(type: string): type is DocumentType {
-  return ["agreement", "correspondence", "invoice", "other"].includes(type);
+  return ["agreement", "correspondence", "invoice", "price_list", "rental_agreement", "franchise_agreement", "other"].includes(type);
 }
 
 /**
@@ -303,6 +303,9 @@ export function getDocumentTypeLabel(type: DocumentType): string {
     agreement: "Agreement",
     correspondence: "Correspondence",
     invoice: "Invoice",
+    price_list: "Price List",
+    rental_agreement: "Rental Agreement",
+    franchise_agreement: "Franchise Agreement",
     other: "Other",
   };
   return labels[type] || type;
@@ -316,6 +319,9 @@ export function getDocumentTypeLabelHe(type: DocumentType): string {
     agreement: "הסכם",
     correspondence: "התכתבות",
     invoice: "חשבונית",
+    price_list: "מחירונים",
+    rental_agreement: "הסכם שכירות",
+    franchise_agreement: "הסכם זכיינות",
     other: "אחר",
   };
   return labels[type] || type;

@@ -49,15 +49,36 @@ import { he } from "@/lib/translations/he";
 
 const t = he.components.documentManager;
 
-// Document type options
-const DOCUMENT_TYPES = [
+// Base document types (shared across all entities)
+const BASE_DOCUMENT_TYPES = [
   { value: "agreement", label: t.documentTypes.agreement },
   { value: "correspondence", label: t.documentTypes.correspondence },
   { value: "invoice", label: t.documentTypes.invoice },
   { value: "other", label: t.documentTypes.other },
 ] as const;
 
-type DocumentType = (typeof DOCUMENT_TYPES)[number]["value"];
+// Entity-specific document types
+const ENTITY_DOCUMENT_TYPES: Record<string, readonly { value: string; label: string }[]> = {
+  supplier: [
+    { value: "agreement", label: t.documentTypes.agreement },
+    { value: "price_list", label: t.documentTypes.price_list },
+    { value: "correspondence", label: t.documentTypes.correspondence },
+    { value: "invoice", label: t.documentTypes.invoice },
+    { value: "other", label: t.documentTypes.other },
+  ],
+  franchisee: [
+    { value: "agreement", label: t.documentTypes.agreement },
+    { value: "rental_agreement", label: t.documentTypes.rental_agreement },
+    { value: "franchise_agreement", label: t.documentTypes.franchise_agreement },
+    { value: "correspondence", label: t.documentTypes.correspondence },
+    { value: "invoice", label: t.documentTypes.invoice },
+    { value: "other", label: t.documentTypes.other },
+  ],
+  brand: [...BASE_DOCUMENT_TYPES],
+};
+
+// All possible document type values
+type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "other";
 
 // Extended document type with uploader info
 interface DocumentWithUploader extends Document {
@@ -103,10 +124,20 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// All document type labels for display (covers all entity types)
+const ALL_DOCUMENT_TYPE_LABELS: Record<string, string> = {
+  agreement: t.documentTypes.agreement,
+  correspondence: t.documentTypes.correspondence,
+  invoice: t.documentTypes.invoice,
+  price_list: t.documentTypes.price_list,
+  rental_agreement: t.documentTypes.rental_agreement,
+  franchise_agreement: t.documentTypes.franchise_agreement,
+  other: t.documentTypes.other,
+};
+
 // Get document type label
 function getDocumentTypeLabel(type: string): string {
-  const docType = DOCUMENT_TYPES.find((dt) => dt.value === type);
-  return docType?.label || type;
+  return ALL_DOCUMENT_TYPE_LABELS[type] || type;
 }
 
 // Get status label in Hebrew
@@ -156,11 +187,14 @@ export function DocumentManager({
   const [isEditing, setIsEditing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Get document types for this entity
+  const documentTypes = ENTITY_DOCUMENT_TYPES[entityType] || BASE_DOCUMENT_TYPES;
+
   // Upload form state
   const [uploadForm, setUploadForm] = useState({
     name: "",
     description: "",
-    documentType: "other" as DocumentType,
+    documentType: "agreement" as DocumentType,
     file: null as File | null,
   });
 
@@ -177,7 +211,7 @@ export function DocumentManager({
     setUploadForm({
       name: "",
       description: "",
-      documentType: "other",
+      documentType: "agreement",
       file: null,
     });
     setUploadError(null);
@@ -424,7 +458,7 @@ export function DocumentManager({
                         <SelectValue placeholder={t.uploadDialog.typePlaceholder} />
                       </SelectTrigger>
                       <SelectContent>
-                        {DOCUMENT_TYPES.map((type) => (
+                        {documentTypes.map((type) => (
                           <SelectItem key={type.value} value={type.value}>
                             {type.label}
                           </SelectItem>
@@ -623,7 +657,7 @@ export function DocumentManager({
                     <SelectValue placeholder={t.uploadDialog.typePlaceholder} />
                   </SelectTrigger>
                   <SelectContent>
-                    {DOCUMENT_TYPES.map((type) => (
+                    {documentTypes.map((type) => (
                       <SelectItem key={type.value} value={type.value}>
                         {type.label}
                       </SelectItem>
