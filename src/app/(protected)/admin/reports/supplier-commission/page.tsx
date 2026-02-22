@@ -588,6 +588,44 @@ export default function SupplierCommissionReportPage() {
                     </TableCell>
                   </TableRow>
 
+                  {/* % of Turnover Row */}
+                  <TableRow className="bg-amber-50/50">
+                    <TableCell className="sticky start-0 bg-amber-50/50 font-bold">
+                      % ממחזור
+                    </TableCell>
+                    <TableCell />
+                    {report.franchisees.map((f) => {
+                      const pct =
+                        f.bkmvRevenue > 0
+                          ? Math.round(
+                              (f.totalCommissionBeforeVat / f.bkmvRevenue) *
+                                10000
+                            ) / 100
+                          : null;
+                      return (
+                        <TableCell
+                          key={f.franchiseeId}
+                          className="text-center"
+                        >
+                          {pct != null ? (
+                            <Badge variant="secondary">{pct}%</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                    <TableCell className="text-center">
+                      {report.grandTotals.overallPercentOfTurnover != null ? (
+                        <Badge variant="default">
+                          {report.grandTotals.overallPercentOfTurnover}%
+                        </Badge>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                  </TableRow>
+
                   {/* BKMV Revenue Row */}
                   <TableRow className="bg-blue-50/50">
                     <TableCell className="sticky start-0 bg-blue-50/50 font-bold">
