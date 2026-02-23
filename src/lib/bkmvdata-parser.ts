@@ -241,6 +241,12 @@ function parseB110Record(line: string): BkmvAccount | null {
     // cause false matches with skip patterns in buildSupplierSummary
     accountName = accountName.replace(/\s*\*כ\.[^*]*\*/, '').trim();
 
+    // Strip embedded accountKey from name (extended format: "הכנסות מהסעדה000000002100010")
+    // The 15-digit accountKey appears at the end of the name text in the description
+    if (accountName && accountKey) {
+      accountName = accountName.replace(accountKey, '').trim().replace(/\.+$/, '');
+    }
+
     // Some accounting systems (like the newer format) put the account name in the
     // description field instead of the name field. If accountName is empty or
     // only contains numbers/symbols, try to extract a meaningful name from description.
@@ -345,6 +351,13 @@ function parseB110Record(line: string): BkmvAccount | null {
       if (prefixTypeMatch && prefixTypeMatch[1].trim().length >= 2) {
         accountType = prefixTypeMatch[1].trim();
       }
+    }
+
+    // When accountType is empty (common in extended format files),
+    // use the cleaned name - it often contains classifiable keywords
+    // e.g., "הכנסות מהסעדה" → autoClassifyAccount finds "הכנסות" → revenue
+    if (!isValidAccountType && (!accountType || accountType.length < 2)) {
+      accountType = accountName;
     }
 
     return {
@@ -548,10 +561,18 @@ export function parseBkmvData(content: string | Buffer): BkmvParseResult {
 
     // Try to find the account key - could be the full counterparty value or just the first number
     let accountKey = counterparty;
-    const numericMatch = counterparty.match(/^(\d+)/);
-    if (numericMatch) {
-      // For numeric counterparties (like "65" or "40           1"), use the first number
-      accountKey = numericMatch[1];
+
+    // For 27-char all-numeric counterparties (composite key format):
+    // First 15 chars = counterparty B110 accountKey
+    // Last 12 chars = reference to the other account in the journal entry
+    if (/^\d{27}$/.test(counterparty)) {
+      accountKey = counterparty.substring(0, 15);
+    } else {
+      const numericMatch = counterparty.match(/^(\d+)/);
+      if (numericMatch) {
+        // For numeric counterparties (like "65" or "40           1"), use the first number
+        accountKey = numericMatch[1];
+      }
     }
 
     // Get account sort from B110
