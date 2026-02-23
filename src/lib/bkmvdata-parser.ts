@@ -1451,18 +1451,24 @@ export function filterSuppliersByClassification(
     }
   }
 
-  // If no sort codes found for this category, return empty
-  if (targetSortCodes.size === 0) {
-    return new Map();
+  // Collect accountKeys (accountCode) for target category — used as fallback
+  // when accountSort is empty (common in extended format BKMVDATA files)
+  const targetAccountKeys = new Set<string>();
+  for (const account of classifiedAccounts.values()) {
+    if (account.category === category) {
+      targetAccountKeys.add(account.accountCode);
+    }
   }
 
-  // Filter supplier summary by those sort codes
+  // Filter supplier summary by sort codes OR resolvedAccountKey
   const filtered = new Map<string, SupplierPurchaseSummary>();
   for (const [key, summary] of supplierSummary.entries()) {
-    const hasMatchingSort = summary.transactions.some(
-      tx => targetSortCodes.has(tx.accountSort)
+    const hasMatch = summary.transactions.some(
+      tx =>
+        (tx.accountSort && targetSortCodes.has(tx.accountSort)) ||
+        (tx.resolvedAccountKey && targetAccountKeys.has(tx.resolvedAccountKey))
     );
-    if (hasMatchingSort) {
+    if (hasMatch) {
       filtered.set(key, summary);
     }
   }
