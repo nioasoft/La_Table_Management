@@ -6,6 +6,7 @@ import {
 } from "@/lib/api-middleware";
 import {
   getFranchiseeById,
+  getFranchiseeByIdWithContacts,
   updateFranchisee,
   deleteFranchisee,
   isFranchiseeCodeUnique,
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const { franchiseeId } = await context.params;
 
-    const franchisee = await getFranchiseeById(franchiseeId);
+    const franchisee = await getFranchiseeByIdWithContacts(franchiseeId);
     if (!franchisee) {
       return NextResponse.json(
         { error: "Franchisee not found" },

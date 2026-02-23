@@ -408,6 +408,26 @@ export async function getFranchiseeById(
 }
 
 /**
+ * Get a single franchisee by ID with brand info and contacts
+ */
+export async function getFranchiseeByIdWithContacts(
+  id: string
+): Promise<FranchiseeWithBrandAndContacts | null> {
+  const result = await getFranchiseeById(id);
+  if (!result) return null;
+
+  const contacts = await database
+    .select()
+    .from(contact)
+    .where(eq(contact.franchiseeId, id));
+
+  return {
+    ...result,
+    contacts,
+  };
+}
+
+/**
  * Get a single franchisee by code
  */
 export async function getFranchiseeByCode(
