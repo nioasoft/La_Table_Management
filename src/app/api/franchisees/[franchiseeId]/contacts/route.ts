@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       role: (role as ContactRole) || "other",
       notes: notes || null,
       isPrimary: isPrimary || false,
-      ownershipPercentage: role === "owner" && ownershipPercentage != null
+      ownershipPercentage: role === "owner" && ownershipPercentage
         ? String(ownershipPercentage)
         : null,
       isActive: true,

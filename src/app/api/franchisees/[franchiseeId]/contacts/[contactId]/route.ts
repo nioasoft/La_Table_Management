@@ -42,7 +42,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       ...(notes !== undefined && { notes: notes || null }),
       ...(isPrimary !== undefined && { isPrimary }),
       ...(ownershipPercentage !== undefined && {
-        ownershipPercentage: role === "owner" && ownershipPercentage != null
+        ownershipPercentage: role === "owner" && ownershipPercentage
           ? String(ownershipPercentage)
           : null,
       }),
