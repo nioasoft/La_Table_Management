@@ -768,15 +768,28 @@ export default function BkmvDataPage() {
       bkmvAliases: [...existingAliases, alias],
     });
 
-    // Re-run matching with updated suppliers
-    if (parseResult) {
+    // Re-run matching with updated suppliers (use classification-filtered summary like initial load)
+    if (parseResult && classifiedAccounts.size > 0) {
       const updatedSuppliers = suppliers.map(s =>
         s.id === supplierId
           ? { ...s, bkmvAliases: [...existingAliases, alias] }
           : s
       );
+
+      let summaryToUse = parseResult.supplierSummary;
+      if (isDateFiltered && filterStartDate && filterEndDate) {
+        const [sY, sM, sD] = filterStartDate.split('-').map(Number);
+        const [eY, eM, eD] = filterEndDate.split('-').map(Number);
+        summaryToUse = getSupplierSummaryForPeriod(
+          parseResult,
+          new Date(sY, sM - 1, sD),
+          new Date(eY, eM - 1, eD)
+        );
+      }
+      const supplierFiltered = filterSuppliersByClassification(summaryToUse, classifiedAccounts, 'supplier');
+
       const matches = matchBkmvSuppliers(
-        parseResult.supplierSummary,
+        supplierFiltered,
         updatedSuppliers,
         { minConfidence: 0.6, reviewThreshold: 0.85 },
         blacklistedNames,
@@ -784,7 +797,7 @@ export default function BkmvDataPage() {
       );
       setMatchingResults(matches);
     }
-  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames, smallSupplierNames]);
+  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames, smallSupplierNames, classifiedAccounts, isDateFiltered, filterStartDate, filterEndDate]);
 
   // Helper to re-run supplier matching with current classification and date filters
   const reRunSupplierMatching = useCallback((
