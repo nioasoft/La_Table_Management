@@ -2781,6 +2781,122 @@ export type UpdateStaffContactData = Partial<Omit<CreateStaffContactData, "id" |
 export type StaffRole = (typeof staffRoleEnum.enumValues)[number];
 
 // ============================================================================
+// CLIENT TABLES (Client/Platform Management Module)
+// ============================================================================
+
+export const client = pgTable(
+  "client",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    name: text("name").notNull(),
+    companyId: text("company_id"),
+    email: text("email"),
+    contactName: text("contact_name"),
+    hashavshevetName: text("hashavshevet_name"),
+    posTerminalCommission: decimal("pos_terminal_commission", {
+      precision: 5,
+      scale: 2,
+    }),
+    dineInCommission: decimal("dine_in_commission", {
+      precision: 5,
+      scale: 2,
+    }),
+    deliveryCommission: decimal("delivery_commission", {
+      precision: 5,
+      scale: 2,
+    }),
+    takeawayCommission: decimal("takeaway_commission", {
+      precision: 5,
+      scale: 2,
+    }),
+    eventsCommission: decimal("events_commission", {
+      precision: 5,
+      scale: 2,
+    }),
+    additionalBenefits: text("additional_benefits"),
+    invoiceGeneration: boolean("invoice_generation")
+      .notNull()
+      .$default(() => false),
+    notes: text("notes"),
+    isActive: boolean("is_active")
+      .notNull()
+      .$default(() => true),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_client_is_active").on(table.isActive),
+    index("idx_client_name").on(table.name),
+  ]
+);
+
+export const clientFranchisee = pgTable(
+  "client_franchisee",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => client.id, { onDelete: "cascade" }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("idx_client_franchisee_client").on(table.clientId),
+    index("idx_client_franchisee_franchisee").on(table.franchiseeId),
+    uniqueIndex("idx_client_franchisee_unique").on(
+      table.clientId,
+      table.franchiseeId
+    ),
+  ]
+);
+
+// Client relations
+export const clientRelations = relations(client, ({ many, one }) => ({
+  clientFranchisees: many(clientFranchisee),
+  createdByUser: one(user, {
+    fields: [client.createdBy],
+    references: [user.id],
+  }),
+}));
+
+export const clientFranchiseeRelations = relations(
+  clientFranchisee,
+  ({ one }) => ({
+    client: one(client, {
+      fields: [clientFranchisee.clientId],
+      references: [client.id],
+    }),
+    franchisee: one(franchisee, {
+      fields: [clientFranchisee.franchiseeId],
+      references: [franchisee.id],
+    }),
+  })
+);
+
+// Client types
+export type Client = typeof client.$inferSelect;
+export type CreateClientData = typeof client.$inferInsert;
+export type UpdateClientData = Partial<
+  Omit<CreateClientData, "id" | "createdAt">
+>;
+export type ClientFranchisee = typeof clientFranchisee.$inferSelect;
+
+// ============================================================================
 // RECONCILIATION V2 TABLES (Supplier Reconciliation Module)
 // ============================================================================
 
