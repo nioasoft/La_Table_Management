@@ -1393,6 +1393,31 @@ export function autoClassifyAccount(accountType: string): AccountCategory {
 }
 
 /**
+ * Fallback classification based on accountKey numeric prefix.
+ * Used when autoClassifyAccount returns 'uncategorized' — common in extended format
+ * BKMVDATA files where accountType field is empty and the fallback accountName
+ * is a proper name (e.g., "יוניקו טקסטיל") rather than a classification keyword.
+ *
+ * Israeli chart of accounts standard ranges:
+ * 21x = Revenue, 23x/28x = Expenses, 71x-72x = Suppliers/Creditors
+ */
+function classifyByAccountKeyPrefix(accountKey: string): AccountCategory {
+  if (!accountKey) return 'uncategorized';
+
+  const stripped = accountKey.replace(/^0+/, '');
+  if (!stripped) return 'uncategorized';
+
+  const prefix = parseInt(stripped.substring(0, 2), 10);
+  if (isNaN(prefix)) return 'uncategorized';
+
+  if (prefix === 21) return 'revenue';
+  if (prefix === 23 || prefix === 28) return 'expense';
+  if (prefix >= 71 && prefix <= 72) return 'supplier';
+
+  return 'uncategorized';
+}
+
+/**
  * Classify all accounts from a BKMV parse result.
  * Merges saved DB classifications (highest priority) with auto-classifications.
  *
@@ -1419,7 +1444,17 @@ export function classifyAccounts(
     }
 
     // Auto-classify from accountType
-    const autoCategory = autoClassifyAccount(account.accountType);
+    let autoCategory = autoClassifyAccount(account.accountType);
+
+    // Fallback: when text-based classification fails (common in extended format
+    // where accountType = supplier name), try classifying by accountKey prefix
+    if (autoCategory === 'uncategorized') {
+      const prefixCategory = classifyByAccountKeyPrefix(key);
+      if (prefixCategory !== 'uncategorized') {
+        autoCategory = prefixCategory;
+      }
+    }
+
     result.set(key, {
       ...account,
       category: autoCategory,
