@@ -242,8 +242,11 @@ function parseB110Record(line: string): BkmvAccount | null {
     accountName = accountName.replace(/\s*\*כ\.[^*]*\*/, '').trim();
 
     // Strip embedded accountKey from name (extended format: "הכנסות מהסעדה000000002100010")
-    // The 15-digit accountKey appears at the end of the name text in the description
-    if (accountName && accountKey) {
+    // The 15-digit accountKey appears at the end of the name text in the description.
+    // Only strip when accountKey is numeric — Hebrew/text accountKeys are natural identifiers
+    // that form part of the account name (e.g., key="אמריקן" in name="אמריקן אקספרס").
+    // Stripping Hebrew keys destroys 746/926 account names in text-key format files.
+    if (accountName && accountKey && /^\d+$/.test(accountKey)) {
       accountName = accountName.replace(accountKey, '').trim().replace(/\.+$/, '');
     }
 
@@ -253,10 +256,13 @@ function parseB110Record(line: string): BkmvAccount | null {
     // Example: NAME="כ" + DESC=". נ דגי הקבוצים בע"מ000000007200109"
     // Fix: use the raw combined name+description area (preserves inter-field spacing)
     // and strip the embedded accountKey.
+    // Guard: only expand if the result has NO 3+ space gaps — gaps indicate that the
+    // short name is legitimate and the extra text is just the description/type field
+    // (e.g., "ויזה" should NOT become "ויזה                    המחאות לגביה").
     if (accountName && accountName.length <= 4 && /[א-ת]/.test(accountName)) {
       // combinedNameArea was already extracted above from raw line (preserves spaces)
       const withoutKey = combinedNameArea.replace(/0{6,}\d+/, '').trim().replace(/\.+$/, '');
-      if (withoutKey.length > accountName.length) {
+      if (withoutKey.length > accountName.length && !/\s{3,}/.test(withoutKey)) {
         accountName = withoutKey;
       }
     }
