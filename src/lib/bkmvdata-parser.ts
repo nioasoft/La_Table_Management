@@ -247,6 +247,20 @@ function parseB110Record(line: string): BkmvAccount | null {
       accountName = accountName.replace(accountKey, '').trim().replace(/\.+$/, '');
     }
 
+    // Handle short names (1-4 Hebrew chars) caused by name spilling across field boundary.
+    // When the name is right-aligned in the 30-char name field, only the last 1-4 chars
+    // fit, and the rest continues into the description field with no gap.
+    // Example: NAME="כ" + DESC=". נ דגי הקבוצים בע"מ000000007200109"
+    // Fix: use the raw combined name+description area (preserves inter-field spacing)
+    // and strip the embedded accountKey.
+    if (accountName && accountName.length <= 4 && /[א-ת]/.test(accountName)) {
+      // combinedNameArea was already extracted above from raw line (preserves spaces)
+      const withoutKey = combinedNameArea.replace(/0{6,}\d+/, '').trim().replace(/\.+$/, '');
+      if (withoutKey.length > accountName.length) {
+        accountName = withoutKey;
+      }
+    }
+
     // Some accounting systems (like the newer format) put the account name in the
     // description field instead of the name field. If accountName is empty or
     // only contains numbers/symbols, try to extract a meaningful name from description.
