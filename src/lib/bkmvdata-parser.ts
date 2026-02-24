@@ -1508,6 +1508,27 @@ export function filterSuppliersByClassification(
     }
   }
 
+  // Ensure ALL accounts classified as this category appear in results.
+  // Handles extended format BKMVDATA where credit-to-supplier transactions
+  // have expense counterparties, so the supplier name never appears in
+  // supplierSummary. Creates synthetic entries from classified account data.
+  for (const [, account] of classifiedAccounts.entries()) {
+    if (account.category !== category) continue;
+
+    const accountName = account.accountName;
+    if (!accountName) continue;
+
+    // Skip if already represented in filtered results
+    if (filtered.has(accountName)) continue;
+
+    filtered.set(accountName, {
+      supplierName: accountName,
+      totalAmount: account.totalAmount,
+      transactionCount: account.transactionCount,
+      transactions: [],
+    });
+  }
+
   return filtered;
 }
 
