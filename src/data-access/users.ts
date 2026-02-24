@@ -7,7 +7,7 @@ import {
   type UserPermissions,
   DEFAULT_PERMISSIONS,
 } from "@/db/schema";
-import { eq, desc, and, isNull, isNotNull } from "drizzle-orm";
+import { eq, desc, and, isNull, isNotNull, count as countFn } from "drizzle-orm";
 import {
   logUserApproval,
   logUserSuspension,
@@ -63,6 +63,18 @@ export async function getPendingUsers(): Promise<User[]> {
     .from(user)
     .where(eq(user.status, "pending"))
     .orderBy(desc(user.createdAt)) as unknown as Promise<User[]>;
+}
+
+/**
+ * Get count of pending users (for sidebar badge)
+ */
+export async function getPendingUsersCount(): Promise<number> {
+  const result = await database
+    .select({ count: countFn() })
+    .from(user)
+    .where(eq(user.status, "pending"));
+
+  return result[0]?.count || 0;
 }
 
 /**

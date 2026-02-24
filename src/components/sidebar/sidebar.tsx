@@ -65,6 +65,7 @@ interface NavItem {
   href?: string;
   icon: React.ReactNode;
   children?: NavChild[];
+  badge?: number | null;
 }
 
 interface SidebarProps {
@@ -99,6 +100,20 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
   });
 
   const filesNeedingReviewCount = reviewData?.count || 0;
+
+  // Fetch count of pending users for badge
+  const { data: pendingUsersData } = useQuery({
+    queryKey: ["users", "pending", "count"],
+    queryFn: async () => {
+      const response = await fetch("/api/users/pending/count");
+      if (!response.ok) return { count: 0 };
+      return response.json();
+    },
+    enabled: isSuperUserOrAdmin,
+    staleTime: 30000,
+  });
+
+  const pendingUsersCount = pendingUsersData?.count || 0;
 
   const handleSignOut = async () => {
     await authClient.signOut();
@@ -210,11 +225,13 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
           {
             label: he.sidebar.navigation.settings,
             icon: <Settings className="h-5 w-5" />,
+            badge: pendingUsersCount > 0 ? pendingUsersCount : null,
             children: [
               {
                 label: he.sidebar.subNavigation.users,
                 href: "/admin/users",
                 icon: <Users className="h-4 w-4" />,
+                badge: pendingUsersCount > 0 ? pendingUsersCount : null,
               },
               {
                 label: he.sidebar.subNavigation.communications,
@@ -364,6 +381,10 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                         <span className="absolute inset-y-1 start-0 w-[3px] rounded-full bg-sidebar-primary/50" />
                       )}
                       {item.icon}
+                      {/* Badge dot for collapsed mode */}
+                      {item.badge != null && (
+                        <span className="absolute top-1.5 end-1.5 h-2 w-2 rounded-full bg-destructive" />
+                      )}
                     </button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -423,6 +444,14 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
             )}
             {item.icon}
             <span className="flex-1 text-start">{item.label}</span>
+            {item.badge != null && (
+              <Badge
+                variant="destructive"
+                className="h-5 min-w-5 px-1.5 text-xs font-medium"
+              >
+                {item.badge}
+              </Badge>
+            )}
             {expandedSections.includes(item.label) ? (
               <ChevronUp className="h-4 w-4 transition-transform duration-200" />
             ) : (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +60,7 @@ type FilterTab = "all" | "pending" | "active" | "suspended";
 
 export default function AdminUsersPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(true);
   const [users, setUsers] = useState<UserWithExtras[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserWithExtras[]>([]);
@@ -166,8 +168,9 @@ export default function AdminUsersPage() {
         throw new Error(data.error || "Failed to approve user");
       }
 
-      // Refresh the list
+      // Refresh the list and sidebar badge
       await fetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["users", "pending", "count"] });
     } catch (error) {
       console.error("Error approving user:", error);
       alert(error instanceof Error ? error.message : "שגיאה באישור המשתמש");
@@ -202,6 +205,7 @@ export default function AdminUsersPage() {
       setUserToReject(null);
       setRejectReason("");
       await fetchUsers();
+      queryClient.invalidateQueries({ queryKey: ["users", "pending", "count"] });
     } catch (error) {
       console.error("Error rejecting user:", error);
       alert(error instanceof Error ? error.message : "שגיאה בדחיית המשתמש");
