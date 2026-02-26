@@ -111,7 +111,6 @@ export default function SessionsListPage() {
           <SelectContent>
             <SelectItem value="all">כל הסטטוסים</SelectItem>
             <SelectItem value="in_progress">בתהליך</SelectItem>
-            <SelectItem value="completed">הושלם</SelectItem>
             <SelectItem value="file_approved">קובץ אושר</SelectItem>
             <SelectItem value="file_rejected">קובץ נדחה</SelectItem>
           </SelectContent>
