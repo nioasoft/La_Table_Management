@@ -7,6 +7,7 @@ import {
   supplierFileUpload,
   uploadedFile,
   type SupplierFileProcessingResult,
+  type SupplierFileMapping,
   type BkmvProcessingResult,
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or, isNotNull, desc } from "drizzle-orm";
@@ -160,7 +161,10 @@ export async function getSupplierCommissionReport(
       name: supplier.name,
       code: supplier.code,
       defaultCommissionRate: supplier.defaultCommissionRate,
+      commissionType: supplier.commissionType,
       vatExempt: supplier.vatExempt,
+      vatIncluded: supplier.vatIncluded,
+      fileMapping: supplier.fileMapping,
     })
     .from(supplier)
     .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
@@ -194,11 +198,14 @@ export async function getSupplierCommissionReport(
   const periodDate = new Date(year, quarterStartMonth, 1);
   const vatRate = await getVatRateForDate(periodDate);
 
-  // Query supplier file uploads for the quarter
-  const fileRecords = await database
+  // Query supplier file uploads for the quarter (ordered by newest first for dedup)
+  const rawFileRecords = await database
     .select({
       supplierId: supplierFileUpload.supplierId,
       processingResult: supplierFileUpload.processingResult,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
     })
     .from(supplierFileUpload)
     .where(
@@ -211,7 +218,34 @@ export async function getSupplierCommissionReport(
         lte(supplierFileUpload.periodStartDate, quarterEnd),
         gte(supplierFileUpload.periodEndDate, quarterStart)
       )
-    );
+    )
+    .orderBy(desc(supplierFileUpload.createdAt));
+
+  // Deduplicate files per supplier per period
+  // Single-file suppliers: keep only the latest file per (supplier, period)
+  // Multi-file suppliers: keep all files per period
+  const fileRecords: typeof rawFileRecords = [];
+  const seenSupplierPeriods = new Set<string>();
+
+  for (const file of rawFileRecords) {
+    const sData = supplierMap.get(file.supplierId);
+    if (!sData) continue;
+
+    const fm = sData.fileMapping as SupplierFileMapping | null;
+    const isMultiFile = (fm?.maxUploadFiles ?? 1) > 1;
+
+    if (isMultiFile) {
+      // Multi-file suppliers: include ALL files for the period
+      fileRecords.push(file);
+    } else {
+      // Single-file suppliers: only the latest per (supplier, periodStart, periodEnd)
+      const periodKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
+      if (!seenSupplierPeriods.has(periodKey)) {
+        seenSupplierPeriods.add(periodKey);
+        fileRecords.push(file);
+      }
+    }
+  }
 
   // Collect all matched franchisee IDs
   const allFranchiseeIds = new Set<string>();
@@ -270,22 +304,27 @@ export async function getSupplierCommissionReport(
     )
     .orderBy(desc(uploadedFile.createdAt));
 
-  // Aggregate revenue per franchisee (latest file per franchisee only)
+  // Aggregate revenue per franchisee per month (latest file per month wins)
+  // This handles franchisees who upload monthly files separately instead of one quarterly file
   const revenueMap = new Map<string, number>();
-  const seenBkmvFranchisees = new Set<string>();
+  const seenFranchiseeMonths = new Map<string, Set<string>>();
 
   for (const file of bkmvFiles) {
     const fId = file.franchiseeId!;
-    if (seenBkmvFranchisees.has(fId)) continue;
-    seenBkmvFranchisees.add(fId);
-
     const result = file.processingResult as BkmvProcessingResult | null;
     if (!result?.revenueMonthlyBreakdown) continue;
+
+    if (!seenFranchiseeMonths.has(fId)) {
+      seenFranchiseeMonths.set(fId, new Set());
+    }
+    const seenMonths = seenFranchiseeMonths.get(fId)!;
 
     for (const [month, amount] of Object.entries(
       result.revenueMonthlyBreakdown
     )) {
-      if (months.includes(month)) {
+      // Only include months in the requested quarter, and only the latest file per month
+      if (months.includes(month) && !seenMonths.has(month)) {
+        seenMonths.add(month);
         const prev = revenueMap.get(fId) || 0;
         revenueMap.set(fId, prev + (amount as number));
       }
@@ -329,6 +368,11 @@ export async function getSupplierCommissionReport(
     if (!supplierData) continue;
 
     const commissionRate = Number(supplierData.defaultCommissionRate || 0);
+    const commissionType = supplierData.commissionType || "percentage";
+    const isVatExempt = supplierData.vatExempt;
+
+    // For per_item suppliers, use processedRows from file processing result
+    const processedRows = result.processedRows || 0;
 
     for (const match of result.franchiseeMatches) {
       if (!match.matchedFranchiseeId) continue;
@@ -348,14 +392,42 @@ export async function getSupplierCommissionReport(
       const grossAmount = Number(match.grossAmount || 0);
 
       // Calculate net amount (before VAT)
-      const isVatExempt = supplierData.vatExempt;
+      // grossAmount from file processing already accounts for vatIncluded:
+      // - If vatIncluded=true: grossAmount = original amount (includes VAT)
+      // - If vatIncluded=false: grossAmount = original * (1 + VAT) (VAT was added)
       const netAmount = isVatExempt
         ? grossAmount
         : calculateNetFromGross(grossAmount, vatRate);
 
-      // Commission amounts
-      const commissionAmount = (grossAmount * commissionRate) / 100;
-      const commissionAmountBeforeVat = (netAmount * commissionRate) / 100;
+      // Commission amounts depend on commission type
+      let commissionAmount: number;
+      let commissionAmountBeforeVat: number;
+
+      if (commissionType === "per_item") {
+        // Per-item commission: rate is ₪ per item, not a percentage
+        // Use pre-calculated commission from match if available, otherwise estimate
+        const matchCommission = Number(match.preCalculatedCommission || 0);
+        if (matchCommission > 0) {
+          commissionAmount = matchCommission;
+          commissionAmountBeforeVat = isVatExempt
+            ? matchCommission
+            : calculateNetFromGross(matchCommission, vatRate);
+        } else {
+          // Fallback: distribute file-level per-item commission proportionally
+          // Total file commission = processedRows * rate
+          const totalFileCommission = processedRows * commissionRate;
+          const totalFileGross = result.totalGrossAmount || 1;
+          const proportion = totalFileGross > 0 ? grossAmount / totalFileGross : 0;
+          commissionAmount = totalFileCommission * proportion;
+          commissionAmountBeforeVat = isVatExempt
+            ? commissionAmount
+            : calculateNetFromGross(commissionAmount, vatRate);
+        }
+      } else {
+        // Percentage commission
+        commissionAmount = (grossAmount * commissionRate) / 100;
+        commissionAmountBeforeVat = (netAmount * commissionRate) / 100;
+      }
 
       // Initialize or get supplier row
       if (!supplierRowsMap.has(file.supplierId)) {

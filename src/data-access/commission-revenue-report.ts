@@ -154,23 +154,26 @@ export async function getCommissionRevenueReport(
     .orderBy(desc(uploadedFile.createdAt));
 
   // Aggregate revenue by franchiseeId from BKMV files
-  // Per franchisee, only use the LATEST file (first encountered due to desc order)
+  // Per franchisee per month, only use the LATEST file (first encountered due to desc order)
+  // This handles franchisees who upload monthly files separately instead of one quarterly file
   const revenueMap = new Map<string, number>();
   const revenueDetailMap = new Map<string, Map<string, number>>();
-  const seenFranchiseeIds = new Set<string>();
+  const seenFranchiseeMonths = new Map<string, Set<string>>();
 
   for (const file of bkmvFiles) {
     const fId = file.franchiseeId!;
-
-    // Skip if we already processed a newer file for this franchisee
-    if (seenFranchiseeIds.has(fId)) continue;
-    seenFranchiseeIds.add(fId);
-
     const result = file.processingResult as BkmvProcessingResult | null;
     if (!result?.revenueMonthlyBreakdown) continue;
 
+    if (!seenFranchiseeMonths.has(fId)) {
+      seenFranchiseeMonths.set(fId, new Set());
+    }
+    const seenMonths = seenFranchiseeMonths.get(fId)!;
+
     for (const [month, amount] of Object.entries(result.revenueMonthlyBreakdown)) {
-      if (months.includes(month)) {
+      // Only include months in requested range, and only the latest file per month
+      if (months.includes(month) && !seenMonths.has(month)) {
+        seenMonths.add(month);
         const prev = revenueMap.get(fId) || 0;
         revenueMap.set(fId, prev + (amount as number));
 
@@ -179,7 +182,7 @@ export async function getCommissionRevenueReport(
           revenueDetailMap.set(fId, new Map());
         }
         const monthMap = revenueDetailMap.get(fId)!;
-        monthMap.set(month, (monthMap.get(month) || 0) + (amount as number));
+        monthMap.set(month, (amount as number));
       }
     }
   }

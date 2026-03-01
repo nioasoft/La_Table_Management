@@ -35,7 +35,7 @@ function SupplierChip({ supplier }: { supplier: SupplierEntry }) {
   const Icon = hasMissing ? FileX : Clock;
 
   return (
-    <Link href={`/admin/suppliers/${supplier.supplier.id}`}>
+    <Link href={`/admin/supplier-files?supplierId=${supplier.supplier.id}`}>
       <div className="flex items-center gap-2 py-1.5 px-2 rounded-md hover:bg-muted/60 transition-colors group cursor-pointer">
         <div
           className={`h-6 w-6 rounded-md flex items-center justify-center shrink-0 ${colorClasses.iconBg}`}
