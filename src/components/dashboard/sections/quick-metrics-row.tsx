@@ -8,7 +8,7 @@ import {
   Clock,
   TrendingUp,
 } from "lucide-react";
-import { MetricCard } from "../shared/metric-card";
+import { MetricCard, MetricCardSkeleton } from "../shared/metric-card";
 import {
   useSupplierCompleteness,
   usePeriodStatus,
@@ -22,10 +22,10 @@ import { useDashboardPeriod } from "../dashboard-period-context";
 
 export function QuickMetricsRow() {
   const { year, startDate, endDate } = useDashboardPeriod();
-  const { data: supplierData } = useSupplierCompleteness(year, startDate, endDate);
-  const { data: periodStatusData } = usePeriodStatus(startDate, endDate);
-  const { data: uploadStatusData } = useUploadStatus(startDate, endDate);
-  const { data: commissionStatusData } = useCommissionSettlementStatus(startDate, endDate);
+  const { data: supplierData, isLoading: supplierLoading } = useSupplierCompleteness(year, startDate, endDate);
+  const { data: periodStatusData, isLoading: periodLoading } = usePeriodStatus(startDate, endDate);
+  const { data: uploadStatusData, isLoading: uploadLoading } = useUploadStatus(startDate, endDate);
+  const { data: commissionStatusData, isLoading: commissionLoading } = useCommissionSettlementStatus(startDate, endDate);
 
   const supplierCompleteness = supplierData as SupplierCompletenessResponse | undefined;
   const periodStatus = (periodStatusData?.data as PeriodStatusResponse) ?? null;
@@ -113,80 +113,104 @@ export function QuickMetricsRow() {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
       {/* 1 - Supplier files */}
-      <MetricCard
-        label="קבצי ספקים"
-        value={`${reportPct}%`}
-        subtitle={`${completeSuppliers}/${totalSuppliers} ספקים`}
-        icon={<FileText className="h-5 w-5" />}
-        colorClass={reportColorClass}
-        accentColor={reportAccent}
-        scrollToId="missing-supplier-files"
-      />
+      {supplierLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="קבצי ספקים"
+          value={`${reportPct}%`}
+          subtitle={`${completeSuppliers}/${totalSuppliers} ספקים`}
+          icon={<FileText className="h-5 w-5" />}
+          colorClass={reportColorClass}
+          accentColor={reportAccent}
+          scrollToId="missing-supplier-files"
+        />
+      )}
 
       {/* 2 - Franchisee files */}
-      <MetricCard
-        label="קבצי זכיינים"
-        value={`${franchiseesWithFile}/${totalFranchisees}`}
-        subtitle={`${franchiseesWithFile} מתוך ${totalFranchisees} שלחו`}
-        icon={<Users className="h-5 w-5" />}
-        colorClass={franchiseeColorClass}
-        accentColor={franchiseeAccent}
-        scrollToId="missing-franchisee-files"
-      />
+      {uploadLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="קבצי זכיינים"
+          value={`${franchiseesWithFile}/${totalFranchisees}`}
+          subtitle={`${franchiseesWithFile} מתוך ${totalFranchisees} שלחו`}
+          icon={<Users className="h-5 w-5" />}
+          colorClass={franchiseeColorClass}
+          accentColor={franchiseeAccent}
+          scrollToId="missing-franchisee-files"
+        />
+      )}
 
       {/* 3 - Match percentage */}
-      <MetricCard
-        label="אחוז התאמה"
-        value={`${matchPct}%`}
-        subtitle={`${matched} תואמים · ${discrepancies} פערים`}
-        icon={<CheckCircle2 className="h-5 w-5" />}
-        colorClass={matchColorClass}
-        accentColor={matchAccent}
-        scrollToId="reconciliation-issues"
-      />
+      {periodLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="אחוז התאמה"
+          value={`${matchPct}%`}
+          subtitle={`${matched} תואמים · ${discrepancies} פערים`}
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          colorClass={matchColorClass}
+          accentColor={matchAccent}
+          scrollToId="reconciliation-issues"
+        />
+      )}
 
       {/* 4 - Discrepancies */}
-      <MetricCard
-        label="פערים"
-        value={discrepancies}
-        subtitle="פערים דורשים בדיקה"
-        icon={<AlertTriangle className="h-5 w-5" />}
-        colorClass={discrepancyColorClass}
-        accentColor={discrepancyAccent}
-        scrollToId="reconciliation-issues"
-      />
+      {periodLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="פערים"
+          value={discrepancies}
+          subtitle="פערים דורשים בדיקה"
+          icon={<AlertTriangle className="h-5 w-5" />}
+          colorClass={discrepancyColorClass}
+          accentColor={discrepancyAccent}
+          scrollToId="reconciliation-issues"
+        />
+      )}
 
       {/* 5 - Pending approvals */}
-      <MetricCard
-        label="ממתינים לאישור"
-        value={pendingApproval}
-        subtitle={
-          pendingCrossRefs > 0 && pendingApprovalFiles > 0
-            ? `${pendingCrossRefs} הצלבות · ${pendingApprovalFiles} קבצים`
-            : pendingCrossRefs > 0
-              ? `${pendingCrossRefs} הצלבות ממתינות להשוואה`
-              : "קבצים ממתינים לבדיקה"
-        }
-        icon={<Clock className="h-5 w-5" />}
-        colorClass={
-          pendingApproval > 0
-            ? "text-amber-600 dark:text-amber-400"
-            : "text-muted-foreground"
-        }
-        accentColor={pendingApproval > 0 ? "amber" : "neutral"}
-        scrollToId="pending-approvals"
-      />
+      {periodLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="ממתינים לאישור"
+          value={pendingApproval}
+          subtitle={
+            pendingCrossRefs > 0 && pendingApprovalFiles > 0
+              ? `${pendingCrossRefs} הצלבות · ${pendingApprovalFiles} קבצים`
+              : pendingCrossRefs > 0
+                ? `${pendingCrossRefs} הצלבות ממתינות להשוואה`
+                : "קבצים ממתינים לבדיקה"
+          }
+          icon={<Clock className="h-5 w-5" />}
+          colorClass={
+            pendingApproval > 0
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground"
+          }
+          accentColor={pendingApproval > 0 ? "amber" : "neutral"}
+          scrollToId="pending-approvals"
+        />
+      )}
 
       {/* 6 - Commission total */}
-      <MetricCard
-        label="סכום עמלות"
-        value={formatCurrency(totalAmount)}
-        subtitle={`${commissionStatus?.commissionSummary?.pendingCount || 0} ממתין · ${commissionStatus?.commissionSummary?.approvedCount || 0} מאושר · ${commissionStatus?.commissionSummary?.paidCount || 0} שולם`}
-        icon={<TrendingUp className="h-5 w-5" />}
-        colorClass="text-green-600 dark:text-green-400"
-        accentColor="green"
-        href="/admin/commissions"
-      />
+      {commissionLoading ? (
+        <MetricCardSkeleton />
+      ) : (
+        <MetricCard
+          label="סכום עמלות"
+          value={formatCurrency(totalAmount)}
+          subtitle={`${commissionStatus?.commissionSummary?.pendingCount || 0} ממתין · ${commissionStatus?.commissionSummary?.approvedCount || 0} מאושר · ${commissionStatus?.commissionSummary?.paidCount || 0} שולם`}
+          icon={<TrendingUp className="h-5 w-5" />}
+          colorClass="text-green-600 dark:text-green-400"
+          accentColor="green"
+          href="/admin/commissions"
+        />
+      )}
     </div>
   );
 }

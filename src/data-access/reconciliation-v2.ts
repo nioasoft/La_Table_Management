@@ -14,6 +14,7 @@ import {
   supplierBrand,
   supplierFileUpload,
   franchisee,
+  brand,
   uploadedFile,
   user,
   type ReconciliationSession,
@@ -718,10 +719,11 @@ export async function getSessionWithComparisons(sessionId: string): Promise<{
       notes: reconciliationComparison.notes,
       franchiseeName: franchisee.name,
       franchiseeCode: franchisee.code,
-      brandName: sql<string | null>`(SELECT name_he FROM brand WHERE id = ${franchisee.brandId})`,
+      brandName: brand.nameHe,
     })
     .from(reconciliationComparison)
     .innerJoin(franchisee, eq(reconciliationComparison.franchiseeId, franchisee.id))
+    .leftJoin(brand, eq(franchisee.brandId, brand.id))
     .where(eq(reconciliationComparison.sessionId, sessionId))
     .orderBy(desc(reconciliationComparison.absoluteDifference));
 
@@ -1099,28 +1101,32 @@ export async function getReconciliationHistory(filters?: {
  * Recalculate session statistics after comparison updates
  */
 async function recalculateSessionStats(sessionId: string): Promise<void> {
-  const comparisons = await database
+  const statRows = await database
     .select({
       status: reconciliationComparison.status,
+      count: sql<number>`count(*)::int`,
     })
     .from(reconciliationComparison)
-    .where(eq(reconciliationComparison.sessionId, sessionId));
+    .where(eq(reconciliationComparison.sessionId, sessionId))
+    .groupBy(reconciliationComparison.status);
 
   let matchedCount = 0;
   let needsReviewCount = 0;
   let approvedCount = 0;
   let toReviewQueueCount = 0;
+  let totalFranchisees = 0;
 
-  for (const c of comparisons) {
-    if (c.status === "auto_approved") {
-      matchedCount++;
-      approvedCount++;
-    } else if (c.status === "manually_approved") {
-      approvedCount++;
-    } else if (c.status === "needs_review") {
-      needsReviewCount++;
-    } else if (c.status === "sent_to_review_queue") {
-      toReviewQueueCount++;
+  for (const row of statRows) {
+    totalFranchisees += row.count;
+    if (row.status === "auto_approved") {
+      matchedCount += row.count;
+      approvedCount += row.count;
+    } else if (row.status === "manually_approved") {
+      approvedCount += row.count;
+    } else if (row.status === "needs_review") {
+      needsReviewCount += row.count;
+    } else if (row.status === "sent_to_review_queue") {
+      toReviewQueueCount += row.count;
     }
   }
 
@@ -1133,7 +1139,7 @@ async function recalculateSessionStats(sessionId: string): Promise<void> {
   await database
     .update(reconciliationSession)
     .set({
-      totalFranchisees: comparisons.length,
+      totalFranchisees,
       matchedCount,
       needsReviewCount,
       approvedCount,

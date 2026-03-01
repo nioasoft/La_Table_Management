@@ -3,7 +3,7 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import { getAllSupplierFileUploadsForYear } from "@/data-access/supplier-file-uploads";
+import { getSupplierFileUploadSummariesForYear } from "@/data-access/supplier-file-uploads";
 import { getSuppliersWithBrands, type SupplierWithBrands } from "@/data-access/suppliers";
 import { getPeriodsForYear, type SettlementPeriodInfo } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -125,8 +125,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get all file uploads for the year
-    const allFiles = await getAllSupplierFileUploadsForYear(year);
+    // Get lightweight file upload summaries for the year (omits heavy JSONB)
+    const allFiles = await getSupplierFileUploadSummariesForYear(year);
 
     // Build a map of supplier -> period -> file
     const fileMap = new Map<string, Map<string, { id: string; fileName: string; status: SupplierFileProcessingStatus }>>();

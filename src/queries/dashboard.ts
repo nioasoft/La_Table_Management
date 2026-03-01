@@ -19,6 +19,8 @@ export function useDashboardStats() {
       const data = await res.json();
       return data.stats;
     },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
@@ -35,6 +37,8 @@ export function usePeriodStatus(periodStart?: string, periodEnd?: string) {
       if (!res.ok) throw new Error("Failed to fetch period status");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
@@ -51,6 +55,8 @@ export function useUploadStatus(periodStart?: string, periodEnd?: string) {
       if (!res.ok) throw new Error("Failed to fetch upload status");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
     enabled: !!periodStart && !!periodEnd,
   });
 }
@@ -68,6 +74,8 @@ export function useCommissionSettlementStatus(periodStart?: string, periodEnd?: 
       if (!res.ok) throw new Error("Failed to fetch commission settlement status");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
@@ -79,6 +87,8 @@ export function useUpcomingReminders(daysAhead = 30, limit = 10) {
       if (!res.ok) throw new Error("Failed to fetch upcoming reminders");
       return res.json();
     },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
@@ -95,5 +105,6 @@ export function useSupplierCompleteness(year?: number, periodStart?: string, per
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }

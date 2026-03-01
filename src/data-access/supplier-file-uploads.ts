@@ -740,6 +740,35 @@ export async function getSupplierFileUploadsBySupplierAndYear(
 }
 
 /**
+ * Lightweight version for dashboard supplier-completeness.
+ * Omits heavy processingResult JSONB and other unused columns.
+ */
+export async function getSupplierFileUploadSummariesForYear(
+  year: number
+) {
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+
+  return database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      originalFileName: supplierFileUpload.originalFileName,
+      processingStatus: supplierFileUpload.processingStatus,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+    })
+    .from(supplierFileUpload)
+    .where(
+      and(
+        gte(supplierFileUpload.periodStartDate, yearStart),
+        lte(supplierFileUpload.periodEndDate, yearEnd)
+      )
+    )
+    .orderBy(desc(supplierFileUpload.periodStartDate));
+}
+
+/**
  * Get all supplier files for a specific year (all suppliers).
  * Used for the completeness dashboard.
  */

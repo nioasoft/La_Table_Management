@@ -417,20 +417,14 @@ export async function getComparisonsByPeriod(
     .where(
       and(
         eq(crossReference.referenceType, "amount_comparison"),
-        eq(crossReference.isActive, true)
+        eq(crossReference.isActive, true),
+        sql`${crossReference.metadata}->>'periodStartDate' = ${periodStartDate}`,
+        sql`${crossReference.metadata}->>'periodEndDate' = ${periodEndDate}`
       )
     )
     .orderBy(desc(crossReference.createdAt));
 
-  // Filter by period dates in metadata
   return results
-    .filter((row) => {
-      const metadata = row.crossRef.metadata as CrossReferenceComparisonMetadata;
-      return (
-        metadata?.periodStartDate === periodStartDate &&
-        metadata?.periodEndDate === periodEndDate
-      );
-    })
     .map((row) => ({
       ...row.crossRef,
       supplierInfo: row.supplierName
@@ -475,17 +469,14 @@ export async function getDiscrepancies(): Promise<CrossReferenceWithDetails[]> {
     .where(
       and(
         eq(crossReference.referenceType, "amount_comparison"),
-        eq(crossReference.isActive, true)
+        eq(crossReference.isActive, true),
+        sql`${crossReference.metadata}->>'matchStatus' = 'discrepancy'`,
+        sql`(${crossReference.metadata}->>'manualReview')::boolean IS DISTINCT FROM false`
       )
     )
     .orderBy(desc(crossReference.createdAt));
 
-  // Filter by discrepancy status in metadata
   return results
-    .filter((row) => {
-      const metadata = row.crossRef.metadata as CrossReferenceComparisonMetadata;
-      return metadata?.matchStatus === "discrepancy" && metadata?.manualReview !== false;
-    })
     .map((row) => ({
       ...row.crossRef,
       supplierInfo: row.supplierName
@@ -595,37 +586,43 @@ export async function getReconciliationStats(): Promise<{
   pending: number;
   bySupplier: Record<string, { matched: number; discrepancy: number }>;
 }> {
-  const allComparisons = await getCrossReferencesByType("amount_comparison");
+  const rows = await database
+    .select({
+      sourceId: crossReference.sourceId,
+      matchStatus: sql<string>`coalesce(${crossReference.metadata}->>'matchStatus', 'pending')`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(crossReference)
+    .where(eq(crossReference.referenceType, "amount_comparison"))
+    .groupBy(crossReference.sourceId, sql`${crossReference.metadata}->>'matchStatus'`);
 
   const stats = {
-    total: allComparisons.length,
+    total: 0,
     matched: 0,
     discrepancies: 0,
     pending: 0,
     bySupplier: {} as Record<string, { matched: number; discrepancy: number }>,
   };
 
-  for (const comp of allComparisons) {
-    const metadata = comp.metadata as CrossReferenceComparisonMetadata;
-    const status = metadata?.matchStatus || "pending";
-    const supplierId = comp.sourceId;
+  for (const row of rows) {
+    stats.total += row.count;
+    const status = row.matchStatus || "pending";
 
     if (status === "matched") {
-      stats.matched++;
+      stats.matched += row.count;
     } else if (status === "discrepancy") {
-      stats.discrepancies++;
+      stats.discrepancies += row.count;
     } else {
-      stats.pending++;
+      stats.pending += row.count;
     }
 
-    // Track by supplier
-    if (!stats.bySupplier[supplierId]) {
-      stats.bySupplier[supplierId] = { matched: 0, discrepancy: 0 };
+    if (!stats.bySupplier[row.sourceId]) {
+      stats.bySupplier[row.sourceId] = { matched: 0, discrepancy: 0 };
     }
     if (status === "matched") {
-      stats.bySupplier[supplierId].matched++;
+      stats.bySupplier[row.sourceId].matched += row.count;
     } else if (status === "discrepancy") {
-      stats.bySupplier[supplierId].discrepancy++;
+      stats.bySupplier[row.sourceId].discrepancy += row.count;
     }
   }
 
@@ -674,45 +671,44 @@ export async function performBulkComparison(
     crossReferences: [] as CrossReference[],
   };
 
-  // For each commission, create a cross-reference
-  // Note: In a real scenario, you'd compare supplier-reported vs franchisee-reported amounts
-  // Here we're using the commission gross amount as the supplier amount
-  // The franchisee amount would come from a separate source (e.g., franchisee's own report)
-  for (const comm of commissions) {
-    // For demo purposes, simulate franchisee-reported amount with slight variation
-    // In production, this would come from actual franchisee reports
-    const supplierAmount = parseFloat(comm.grossAmount || "0");
-
-    // Check if cross-reference already exists
-    const existingRefs = await database
-      .select()
-      .from(crossReference)
-      .where(
-        and(
-          eq(crossReference.sourceType, "supplier"),
-          eq(crossReference.sourceId, comm.supplierId),
-          eq(crossReference.targetType, "franchisee"),
-          eq(crossReference.targetId, comm.franchiseeId),
-          eq(crossReference.referenceType, "amount_comparison")
+  // Batch fetch ALL existing cross-references for the involved suppliers
+  const supplierIds = [...new Set(commissions.map((c) => c.supplierId))];
+  const existingRefs = supplierIds.length > 0
+    ? await database
+        .select()
+        .from(crossReference)
+        .where(
+          and(
+            eq(crossReference.sourceType, "supplier"),
+            inArray(crossReference.sourceId, supplierIds),
+            eq(crossReference.targetType, "franchisee"),
+            eq(crossReference.referenceType, "amount_comparison")
+          )
         )
-      );
+    : [];
 
-    const existingForPeriod = existingRefs.filter((ref) => {
-      const metadata = ref.metadata as CrossReferenceComparisonMetadata;
-      return (
-        metadata?.periodStartDate === periodStartDate &&
-        metadata?.periodEndDate === periodEndDate
-      );
-    });
+  // Build a Set for O(1) lookup: "supplierId-franchiseeId" for matching period
+  const existingSet = new Set<string>();
+  for (const ref of existingRefs) {
+    const metadata = ref.metadata as CrossReferenceComparisonMetadata;
+    if (
+      metadata?.periodStartDate === periodStartDate &&
+      metadata?.periodEndDate === periodEndDate
+    ) {
+      existingSet.add(`${ref.sourceId}-${ref.targetId}`);
+    }
+  }
 
-    if (existingForPeriod.length === 0) {
-      // No existing cross-reference, create one with supplier amount
-      // Franchisee amount defaults to 0 until franchisee report is uploaded
+  for (const comm of commissions) {
+    const supplierAmount = parseFloat(comm.grossAmount || "0");
+    const key = `${comm.supplierId}-${comm.franchiseeId}`;
+
+    if (!existingSet.has(key)) {
       const crossRef = await createComparisonCrossReference(
         comm.supplierId,
         comm.franchiseeId,
         supplierAmount,
-        0, // Franchisee amount - to be filled in when franchisee reports
+        0,
         periodStartDate,
         periodEndDate,
         threshold,

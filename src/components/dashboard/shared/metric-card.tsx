@@ -85,3 +85,18 @@ export function MetricCard({
 
   return content;
 }
+
+export function MetricCardSkeleton() {
+  return (
+    <div className="rounded-lg border border-t-2 border-t-border bg-card p-3 animate-pulse">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="h-3 w-16 rounded bg-muted" />
+          <div className="h-6 w-12 rounded bg-muted mt-1.5" />
+        </div>
+        <div className="h-5 w-5 rounded bg-muted shrink-0 mt-0.5" />
+      </div>
+      <div className="h-3 w-24 rounded bg-muted mt-2" />
+    </div>
+  );
+}
