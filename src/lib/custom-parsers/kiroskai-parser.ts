@@ -9,7 +9,7 @@
  *
  * Key columns:
  *   - Column B (1): Franchisee name ("שם הלקוח")
- *   - Column I (8): Total amount ("סכום כולל") - for cross-reference
+ *   - Column I (8): Total amount ("סכום כולל") - before VAT, for cross-reference
  *   - Column J (9): Pre-calculated commission ("עמלה")
  */
 
@@ -151,9 +151,9 @@ export function parseKiroskaiFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      // Total amount appears to include VAT, so calculate net
-      const grossAmount = roundToTwoDecimals(totalAmount);
-      const netAmount = roundToTwoDecimals(totalAmount / (1 + VAT_RATE));
+      // Total amount is before VAT (net), so calculate gross by adding VAT
+      const netAmount = roundToTwoDecimals(totalAmount);
+      const grossAmount = roundToTwoDecimals(totalAmount * (1 + VAT_RATE));
       const preCalculatedCommission = roundToTwoDecimals(commission);
 
       data.push({
@@ -161,7 +161,7 @@ export function parseKiroskaiFile(buffer: Buffer): FileProcessingResult {
         date: null,
         grossAmount,
         netAmount,
-        originalAmount: grossAmount,
+        originalAmount: netAmount,
         rowNumber: rowNumber++,
         preCalculatedCommission,
       });
