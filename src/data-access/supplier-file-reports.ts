@@ -243,14 +243,18 @@ export async function getSupplierFilesReport(
     const isMultiFile = (fm?.maxUploadFiles ?? 1) > 1;
     const dedupKey = `${file.supplierId}|${file.periodStartDate}|${file.periodEndDate}`;
 
+    // Skip rejected files in dedup unless explicitly filtering by status
+    // (When status filter is set, the query already filters, so we respect whatever comes back)
+    const isApproved = file.processingStatus === "approved" || file.processingStatus === "auto_approved";
+    if (!filters.status && !isApproved) continue;
+
     if (isMultiFile) {
-      // Only merge approved/auto_approved files for multi-file suppliers
-      if (file.processingStatus === "approved" || file.processingStatus === "auto_approved") {
-        const bucket = multiFileBuckets.get(dedupKey) ?? [];
-        bucket.push(file);
-        multiFileBuckets.set(dedupKey, bucket);
-      }
+      // Multi-file suppliers: merge all approved files for same supplier+period
+      const bucket = multiFileBuckets.get(dedupKey) ?? [];
+      bucket.push(file);
+      multiFileBuckets.set(dedupKey, bucket);
     } else {
+      // Single-file suppliers: keep only the latest file per supplier+period
       const existing = dedupMap.get(dedupKey);
       if (!existing || file.createdAt > existing.createdAt) {
         dedupMap.set(dedupKey, file);
