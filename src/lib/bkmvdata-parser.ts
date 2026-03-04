@@ -1801,11 +1801,19 @@ export function buildAllAccountsSummary(
   // use B110 value (same logic as buildRevenueSummary). This handles
   // accounting systems that only record aggregate journal entries in B100.
 
-  // Pre-compute allMonths once (avoid O(accounts × transactions) nested loop)
-  const allMonths = new Set<string>();
-  for (const tx of transactions) {
-    allMonths.add(formatYearMonth(tx.documentDate));
+  // Total months in the file (unfiltered) — needed for B110 proration
+  const allFileMonths = new Set<string>();
+  for (const tx of result.transactions) {
+    allFileMonths.add(formatYearMonth(tx.documentDate));
   }
+
+  // Months in the filtered range (may be same as allFileMonths if no filter)
+  const filteredMonths = new Set<string>();
+  for (const tx of transactions) {
+    filteredMonths.add(formatYearMonth(tx.documentDate));
+  }
+
+  const isFiltered = startDate !== undefined && endDate !== undefined;
 
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
@@ -1826,15 +1834,21 @@ export function buildAllAccountsSummary(
             existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
           }
         }
-        existing.totalAmount = b110Credit;
+        // Use sum of (filtered) monthly breakdown, not the full annual B110 value
+        existing.totalAmount = Object.values(existing.monthlyBreakdown)
+          .reduce((sum, val) => sum + val, 0);
       } else {
-        // No B100 transactions — create entry from B110
+        // No B100 transactions — create entry from B110, prorated to filtered period
         const info = accountKeyToInfo.get(key);
         if (info) {
-          const monthCount = allMonths.size || 1;
-          const perMonth = b110Credit / monthCount;
+          const totalMonthCount = allFileMonths.size || 1;
+          const filteredMonthCount = filteredMonths.size || 1;
+          const proratedAmount = isFiltered
+            ? b110Credit * (filteredMonthCount / totalMonthCount)
+            : b110Credit;
+          const perMonth = proratedAmount / filteredMonthCount;
           const monthlyBreakdown: Record<string, number> = {};
-          for (const month of allMonths) {
+          for (const month of filteredMonths) {
             monthlyBreakdown[month] = perMonth;
           }
           summary.set(key, {
@@ -1842,7 +1856,7 @@ export function buildAllAccountsSummary(
             accountName: info.accountName,
             accountType: info.accountType,
             accountSort: info.accountSort,
-            totalAmount: b110Credit,
+            totalAmount: proratedAmount,
             transactionCount: 0,
             monthlyBreakdown,
           });
