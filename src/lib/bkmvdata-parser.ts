@@ -1712,11 +1712,11 @@ export function buildAllAccountsSummary(
   endDate?: Date,
 ): Map<string, AllAccountSummary> {
   const summary = new Map<string, AllAccountSummary>();
+  const isFiltered = startDate !== undefined && endDate !== undefined;
 
-  // Optionally filter transactions by date range
-  const transactions = (startDate && endDate)
-    ? filterTransactionsByPeriod(result.transactions, startDate, endDate)
-    : result.transactions;
+  // ALWAYS build from ALL transactions so B110 fallback sees full-year B100 sums.
+  // Date filtering is applied as a post-processing step after B110 correction.
+  const transactions = result.transactions;
 
   // Build lookup map from B110 accountKey (trimmed) → account info
   type AccountInfo = { accountKey: string; accountName: string; accountType: string; accountSort: string };
@@ -1756,7 +1756,7 @@ export function buildAllAccountsSummary(
     }
   }
 
-  // Match each B100 transaction to a B110 account
+  // Match each B100 transaction to a B110 account (full year — not filtered)
   for (const tx of transactions) {
     if (tx.amount === 0) continue;
 
@@ -1800,20 +1800,13 @@ export function buildAllAccountsSummary(
   // B110 fallback: for accounts where B110 credit turnover >> B100 sum,
   // use B110 value (same logic as buildRevenueSummary). This handles
   // accounting systems that only record aggregate journal entries in B100.
+  // Uses full-year B100 sums → correct scale ratio.
 
-  // Total months in the file (unfiltered) — needed for B110 proration
-  const allFileMonths = new Set<string>();
-  for (const tx of result.transactions) {
-    allFileMonths.add(formatYearMonth(tx.documentDate));
-  }
-
-  // Months in the filtered range (may be same as allFileMonths if no filter)
-  const filteredMonths = new Set<string>();
+  // Pre-compute allMonths once (avoid O(accounts × transactions) nested loop)
+  const allMonths = new Set<string>();
   for (const tx of transactions) {
-    filteredMonths.add(formatYearMonth(tx.documentDate));
+    allMonths.add(formatYearMonth(tx.documentDate));
   }
-
-  const isFiltered = startDate !== undefined && endDate !== undefined;
 
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
@@ -1834,21 +1827,15 @@ export function buildAllAccountsSummary(
             existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
           }
         }
-        // Use sum of (filtered) monthly breakdown, not the full annual B110 value
-        existing.totalAmount = Object.values(existing.monthlyBreakdown)
-          .reduce((sum, val) => sum + val, 0);
+        existing.totalAmount = b110Credit;
       } else {
-        // No B100 transactions — create entry from B110, prorated to filtered period
+        // No B100 transactions — create entry from B110, distributed across all months
         const info = accountKeyToInfo.get(key);
         if (info) {
-          const totalMonthCount = allFileMonths.size || 1;
-          const filteredMonthCount = filteredMonths.size || 1;
-          const proratedAmount = isFiltered
-            ? b110Credit * (filteredMonthCount / totalMonthCount)
-            : b110Credit;
-          const perMonth = proratedAmount / filteredMonthCount;
+          const monthCount = allMonths.size || 1;
+          const perMonth = b110Credit / monthCount;
           const monthlyBreakdown: Record<string, number> = {};
-          for (const month of filteredMonths) {
+          for (const month of allMonths) {
             monthlyBreakdown[month] = perMonth;
           }
           summary.set(key, {
@@ -1856,11 +1843,38 @@ export function buildAllAccountsSummary(
             accountName: info.accountName,
             accountType: info.accountType,
             accountSort: info.accountSort,
-            totalAmount: proratedAmount,
+            totalAmount: b110Credit,
             transactionCount: 0,
             monthlyBreakdown,
           });
         }
+      }
+    }
+  }
+
+  // Post-process: if date filter is active, trim each account to only the filtered months.
+  // B110 correction was applied on full-year data (correct ratio), now we slice to the period.
+  if (isFiltered) {
+    const filteredMonths = new Set<string>();
+    for (const tx of filterTransactionsByPeriod(result.transactions, startDate!, endDate!)) {
+      filteredMonths.add(formatYearMonth(tx.documentDate));
+    }
+
+    for (const account of summary.values()) {
+      const trimmed: Record<string, number> = {};
+      for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
+        if (filteredMonths.has(month)) {
+          trimmed[month] = amount;
+        }
+      }
+      account.monthlyBreakdown = trimmed;
+      account.totalAmount = Object.values(trimmed).reduce((sum, val) => sum + val, 0);
+    }
+
+    // Remove accounts with zero total after filtering
+    for (const [key, account] of summary) {
+      if (account.totalAmount === 0) {
+        summary.delete(key);
       }
     }
   }
