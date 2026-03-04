@@ -317,7 +317,7 @@ export async function getFranchiseeFundReport(
       // Calculate net amount (before VAT)
       const isVatExempt = supplierData.vatExempt;
       const netAmount = isVatExempt
-        ? grossAmount
+        ? Number(match.netAmount || match.grossAmount || 0)
         : calculateNetFromGross(grossAmount, vatRate);
 
       // Calculate commission and fund amounts (on gross)
