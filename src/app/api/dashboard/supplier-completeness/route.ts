@@ -198,9 +198,9 @@ export async function GET(request: NextRequest) {
       // Determine applicable periods based on mode
       let applicablePeriods: SettlementPeriodInfo[];
       if (currentDue) {
-        // "Current due" mode: get the 2 most recent completed periods per supplier's own frequency.
-        // This handles cross-frequency (monthly vs quarterly) and cross-year boundaries automatically.
-        applicablePeriods = getPeriodsForFrequency(frequency, now, 2, fiscalYearStartMonth, false);
+        // "Current due" mode: get only the most recent completed period per supplier's own frequency.
+        // E.g., on March 4: monthly → Feb 2026, quarterly → Q4 2025 (Q1 not ended yet).
+        applicablePeriods = getPeriodsForFrequency(frequency, now, 1, fiscalYearStartMonth, false);
       } else if (periodStart && periodEnd) {
         // Period filter mode: filter by overlap with selected period
         const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
