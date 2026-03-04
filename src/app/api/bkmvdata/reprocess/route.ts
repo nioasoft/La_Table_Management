@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { parseBkmvData, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
@@ -177,6 +177,26 @@ export async function POST(request: NextRequest) {
           const fuzzyMatches = nonBlacklisted.filter(m => m.matchedSupplierId && m.confidence < 1).length;
           const unmatched = nonBlacklisted.filter(m => !m.matchedSupplierId).length;
 
+          // Rebuild revenue from re-parsed data (uses B110 credit turnover fallback)
+          const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
+
+          // Preserve confirmed revenue account codes from existing result
+          const confirmedCodes = existingResult.confirmedRevenueAccountCodes
+            ?? (existingResult.confirmedRevenueAccountCode ? [existingResult.confirmedRevenueAccountCode] : undefined);
+
+          // Mark confirmed accounts
+          if (confirmedCodes) {
+            const confirmedSet = new Set(confirmedCodes);
+            for (const ra of revenueAccounts) {
+              ra.isConfirmed = confirmedSet.has(ra.accountCode);
+            }
+          }
+
+          const revenueMonthlyBreakdown = buildRevenueMonthlyBreakdown(
+            parseResult.revenueSummary,
+            confirmedCodes
+          );
+
           const updatedResult: BkmvProcessingResult = {
             ...existingResult,
             supplierMatches: newSupplierMatches,
@@ -187,6 +207,8 @@ export async function POST(request: NextRequest) {
               unmatched,
             },
             monthlyBreakdown,
+            revenueAccounts,
+            revenueMonthlyBreakdown,
           };
 
           await database

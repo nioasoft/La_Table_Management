@@ -51,6 +51,9 @@ export interface BkmvAccount {
   accountDescription: string;
   accountType: string;       // e.g., "ספקים" for suppliers
   accountSort: string;       // Account sort/classification (e.g., "200" for suppliers)
+  openingBalance: number;    // B110 pos 277-291: sign + 14 digits (agorot → shekels)
+  debitTurnover: number;     // B110 pos 292-306: cumulative debit turnover
+  creditTurnover: number;    // B110 pos 307-321: cumulative credit turnover
 }
 
 /**
@@ -72,6 +75,7 @@ export interface RevenueAccountSummary {
   totalAmount: number;
   transactionCount: number;
   monthlyBreakdown: Record<string, number>; // YYYY-MM -> amount
+  b110CreditTurnover?: number; // Raw B110 credit turnover when used as fallback
 }
 
 /**
@@ -135,6 +139,9 @@ const B110_FIELDS = {
   ACCOUNT_NAME: { start: 37, length: 30 },     // Account name
   ACCOUNT_DESC: { start: 67, length: 50 },     // Account description
   ACCOUNT_TYPE: { start: 200, length: 30 },    // Account type (e.g., "ספקים")
+  OPENING_BALANCE: { start: 277, length: 15 }, // sign + 14 digits (agorot)
+  DEBIT_TURNOVER: { start: 292, length: 15 },  // cumulative debit turnover
+  CREDIT_TURNOVER: { start: 307, length: 15 }, // cumulative credit turnover
 };
 
 // ============================================================================
@@ -380,6 +387,25 @@ function parseB110Record(line: string): BkmvAccount | null {
       accountType = accountName;
     }
 
+    // Parse B110 balance fields (pos 277-321): sign + 14 digits in agorot
+    let openingBalance = 0;
+    let debitTurnover = 0;
+    let creditTurnover = 0;
+    if (line.length >= 322) {
+      const obField = extractField(line, B110_FIELDS.OPENING_BALANCE);
+      const dtField = extractField(line, B110_FIELDS.DEBIT_TURNOVER);
+      const ctField = extractField(line, B110_FIELDS.CREDIT_TURNOVER);
+      if (obField.length > 1) {
+        openingBalance = parseAmount(obField.substring(1), obField.charAt(0));
+      }
+      if (dtField.length > 1) {
+        debitTurnover = parseAmount(dtField.substring(1), dtField.charAt(0));
+      }
+      if (ctField.length > 1) {
+        creditTurnover = parseAmount(ctField.substring(1), ctField.charAt(0));
+      }
+    }
+
     return {
       companyId: extractField(line, B110_FIELDS.COMPANY_ID),
       accountKey,
@@ -388,6 +414,9 @@ function parseB110Record(line: string): BkmvAccount | null {
       accountDescription: accountDescription,
       accountType,
       accountSort,
+      openingBalance,
+      debitTurnover,
+      creditTurnover,
     };
   } catch (error) {
     console.error('Error parsing B110 record:', error);
@@ -770,6 +799,68 @@ function buildRevenueSummary(result: BkmvParseResult): void {
         transactionCount: 1,
         monthlyBreakdown: { [monthKey]: tx.amount },
       });
+    }
+  }
+
+  // B110 fallback: many accounting systems only include aggregate journal entries
+  // in B100 (not individual POS transactions), so B100 sums can be ~1% of actual
+  // revenue. The real annual turnover is in B110 credit turnover (pos 307-321).
+  // When B110 credit turnover is significantly larger than B100 sum, use it instead.
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!revenueAccountCodes.has(key)) continue;
+    if (account.creditTurnover <= 0) continue;
+
+    const existing = summary.get(key);
+    const b100Sum = existing ? Math.abs(existing.totalAmount) : 0;
+    const b110Credit = Math.abs(account.creditTurnover);
+
+    // Only use B110 when there's a clear gap (B110 > 2x B100)
+    if (b110Credit > b100Sum * 2) {
+      if (existing) {
+        // Scale monthly breakdown proportionally so months sum to B110 total
+        const monthlyKeys = Object.keys(existing.monthlyBreakdown);
+        if (monthlyKeys.length > 0 && b100Sum > 0) {
+          const scaleFactor = b110Credit / b100Sum;
+          for (const month of monthlyKeys) {
+            existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
+          }
+        } else if (monthlyKeys.length === 0) {
+          // No monthly data from B100 — distribute evenly across all months in file
+          const allMonths = new Set<string>();
+          for (const tx of result.transactions) {
+            allMonths.add(formatYearMonth(tx.documentDate));
+          }
+          const monthCount = allMonths.size || 1;
+          const perMonth = b110Credit / monthCount;
+          for (const month of allMonths) {
+            existing.monthlyBreakdown[month] = perMonth;
+          }
+        }
+        existing.totalAmount = b110Credit;
+        existing.b110CreditTurnover = b110Credit;
+      } else {
+        // No B100 transactions at all for this revenue account — create from B110
+        const info = accountCodeToInfo.get(key);
+        const allMonths = new Set<string>();
+        for (const tx of result.transactions) {
+          allMonths.add(formatYearMonth(tx.documentDate));
+        }
+        const monthCount = allMonths.size || 1;
+        const perMonth = b110Credit / monthCount;
+        const monthlyBreakdown: Record<string, number> = {};
+        for (const month of allMonths) {
+          monthlyBreakdown[month] = perMonth;
+        }
+        summary.set(key, {
+          accountCode: key,
+          accountName: info?.accountName || key,
+          totalAmount: b110Credit,
+          transactionCount: 0,
+          monthlyBreakdown,
+          b110CreditTurnover: b110Credit,
+        });
+      }
     }
   }
 
@@ -1590,6 +1681,7 @@ export function convertRevenueSummaryToArray(
   transactionCount: number;
   isConfirmed: boolean;
   monthlyBreakdown: Record<string, number>;
+  b110CreditTurnover?: number;
 }> {
   return Array.from(revenueSummary.values())
     .map(account => ({
@@ -1599,6 +1691,7 @@ export function convertRevenueSummaryToArray(
       transactionCount: account.transactionCount,
       isConfirmed: false,
       monthlyBreakdown: account.monthlyBreakdown,
+      ...(account.b110CreditTurnover != null ? { b110CreditTurnover: account.b110CreditTurnover } : {}),
     }))
     .sort((a, b) => Math.abs(b.totalAmount) - Math.abs(a.totalAmount));
 }

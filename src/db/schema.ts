@@ -1516,6 +1516,7 @@ export type BkmvProcessingResult = {
     transactionCount: number;
     isConfirmed: boolean;
     monthlyBreakdown?: Record<string, number>;
+    b110CreditTurnover?: number; // Raw B110 credit turnover when B110 fallback was used
   }>;
   /** Monthly revenue breakdown - YYYY-MM -> amount */
   revenueMonthlyBreakdown?: Record<string, number>;
