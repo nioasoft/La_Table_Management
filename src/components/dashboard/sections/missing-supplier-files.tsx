@@ -7,7 +7,7 @@ import { ActionSection } from "../shared/action-section";
 import { CollapsibleContent } from "@/components/ui/collapsible";
 import { useSupplierCompleteness } from "@/queries/dashboard";
 import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-completeness/route";
-import { useDashboardPeriod } from "../dashboard-period-context";
+
 
 const MAX_PREVIEW = 24; // 6 rows of 4
 
@@ -64,8 +64,13 @@ function SupplierChip({ supplier }: { supplier: SupplierEntry }) {
 }
 
 export function MissingSupplierFiles() {
-  const { year, startDate, endDate } = useDashboardPeriod();
-  const { data, isLoading } = useSupplierCompleteness(year, startDate, endDate);
+  // Use currentDue mode: checks each supplier against their own frequency's
+  // most recent completed period(s), independent of the dashboard period selector.
+  // This ensures monthly suppliers show as missing when a new month opens,
+  // quarterly suppliers when a new quarter opens, etc.
+  const { data, isLoading } = useSupplierCompleteness(
+    undefined, undefined, undefined, true
+  );
   const response = data as SupplierCompletenessResponse | undefined;
 
   const incompleteSuppliers = (

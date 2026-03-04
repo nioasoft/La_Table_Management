@@ -5,7 +5,7 @@ import {
 } from "@/lib/api-middleware";
 import { getSupplierFileUploadSummariesForYear } from "@/data-access/supplier-file-uploads";
 import { getSuppliersWithBrands, type SupplierWithBrands } from "@/data-access/suppliers";
-import { getPeriodsForYear, type SettlementPeriodInfo } from "@/lib/settlement-periods";
+import { getPeriodsForYear, getPeriodsForFrequency, type SettlementPeriodInfo } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import type { SettlementPeriodType } from "@/db/schema";
 import { requiresCustomParser } from "@/lib/custom-parsers";
@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
     const frequencyFilter = searchParams.get("frequency") as SettlementPeriodType | undefined;
     const periodStart = searchParams.get("periodStart") || undefined;
     const periodEnd = searchParams.get("periodEnd") || undefined;
+    const currentDue = searchParams.get("currentDue") === "true";
 
     // Get all active suppliers with brands
     const allSuppliers = await getSuppliersWithBrands(true);
@@ -126,7 +127,12 @@ export async function GET(request: NextRequest) {
     }
 
     // Get lightweight file upload summaries for the year (omits heavy JSONB)
-    const allFiles = await getSupplierFileUploadSummariesForYear(year);
+    // When currentDue mode, load both current and previous year to handle cross-year boundaries
+    // (e.g., quarterly Q4 2025 for year 2026)
+    const currentYearFiles = await getSupplierFileUploadSummariesForYear(year);
+    const allFiles = currentDue
+      ? [...currentYearFiles, ...await getSupplierFileUploadSummariesForYear(year - 1)]
+      : currentYearFiles;
 
     // Build a map of supplier -> period -> file
     const fileMap = new Map<string, Map<string, { id: string; fileName: string; status: SupplierFileProcessingStatus }>>();
@@ -187,19 +193,25 @@ export async function GET(request: NextRequest) {
         ? (rawFrequency as SettlementPeriodType)
         : "quarterly";
       const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
-      const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
       const supplierFiles = fileMap.get(supplier.id) || new Map();
 
-      // When a specific period is selected, use overlap filter only.
-      // Otherwise, default to periods that have already ended.
+      // Determine applicable periods based on mode
       let applicablePeriods: SettlementPeriodInfo[];
-      if (periodStart && periodEnd) {
+      if (currentDue) {
+        // "Current due" mode: get the 2 most recent completed periods per supplier's own frequency.
+        // This handles cross-frequency (monthly vs quarterly) and cross-year boundaries automatically.
+        applicablePeriods = getPeriodsForFrequency(frequency, now, 2, fiscalYearStartMonth, false);
+      } else if (periodStart && periodEnd) {
+        // Period filter mode: filter by overlap with selected period
+        const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
         const selStart = new Date(periodStart);
         const selEnd = new Date(periodEnd);
         applicablePeriods = periods.filter(p =>
           p.startDate <= selEnd && p.endDate >= selStart
         );
       } else {
+        // Default: all completed periods for the year
+        const periods = getPeriodsForYear(frequency, year, fiscalYearStartMonth);
         applicablePeriods = periods.filter(p => p.endDate < now);
       }
 

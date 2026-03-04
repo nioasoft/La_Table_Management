@@ -92,14 +92,23 @@ export function useUpcomingReminders(daysAhead = 30, limit = 10) {
   });
 }
 
-export function useSupplierCompleteness(year?: number, periodStart?: string, periodEnd?: string) {
+export function useSupplierCompleteness(
+  year?: number,
+  periodStart?: string,
+  periodEnd?: string,
+  currentDue?: boolean
+) {
   const currentYear = year || new Date().getFullYear();
   return useQuery({
-    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear, periodStart, periodEnd],
+    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear, periodStart, periodEnd, currentDue],
     queryFn: async () => {
       const params = new URLSearchParams({ year: String(currentYear) });
-      if (periodStart) params.set("periodStart", periodStart);
-      if (periodEnd) params.set("periodEnd", periodEnd);
+      if (currentDue) {
+        params.set("currentDue", "true");
+      } else {
+        if (periodStart) params.set("periodStart", periodStart);
+        if (periodEnd) params.set("periodEnd", periodEnd);
+      }
       const res = await fetch(`/api/dashboard/supplier-completeness?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch supplier completeness");
       return res.json();
