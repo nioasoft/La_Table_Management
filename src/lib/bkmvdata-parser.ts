@@ -1798,6 +1798,57 @@ export function buildAllAccountsSummary(
     }
   }
 
+  // B110 fallback: for accounts where B110 credit turnover >> B100 sum,
+  // use B110 value (same logic as buildRevenueSummary). This handles
+  // accounting systems that only record aggregate journal entries in B100.
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!key || account.creditTurnover <= 0) continue;
+
+    const existing = summary.get(key);
+    const b100Sum = existing ? Math.abs(existing.totalAmount) : 0;
+    const b110Credit = Math.abs(account.creditTurnover);
+
+    // Only apply when there's a clear gap (B110 > 2x B100)
+    if (b110Credit > b100Sum * 2) {
+      if (existing) {
+        // Scale monthly breakdown proportionally
+        const monthlyKeys = Object.keys(existing.monthlyBreakdown);
+        if (monthlyKeys.length > 0 && b100Sum > 0) {
+          const scaleFactor = b110Credit / b100Sum;
+          for (const month of monthlyKeys) {
+            existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
+          }
+        }
+        existing.totalAmount = b110Credit;
+      } else {
+        // No B100 transactions — create entry from B110
+        const info = accountKeyToInfo.get(key);
+        if (info) {
+          const allMonths = new Set<string>();
+          for (const tx of transactions) {
+            allMonths.add(formatYearMonth(tx.documentDate));
+          }
+          const monthCount = allMonths.size || 1;
+          const perMonth = b110Credit / monthCount;
+          const monthlyBreakdown: Record<string, number> = {};
+          for (const month of allMonths) {
+            monthlyBreakdown[month] = perMonth;
+          }
+          summary.set(key, {
+            accountCode: key,
+            accountName: info.accountName,
+            accountType: info.accountType,
+            accountSort: info.accountSort,
+            totalAmount: b110Credit,
+            transactionCount: 0,
+            monthlyBreakdown,
+          });
+        }
+      }
+    }
+  }
+
   return summary;
 }
 
