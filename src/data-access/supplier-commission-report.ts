@@ -396,7 +396,7 @@ export async function getSupplierCommissionReport(
       // - If vatIncluded=true: grossAmount = original amount (includes VAT)
       // - If vatIncluded=false: grossAmount = original * (1 + VAT) (VAT was added)
       const netAmount = isVatExempt
-        ? grossAmount
+        ? Number(match.netAmount || match.grossAmount || 0)
         : calculateNetFromGross(grossAmount, vatRate);
 
       // Commission amounts depend on commission type
@@ -408,20 +408,21 @@ export async function getSupplierCommissionReport(
         // Use pre-calculated commission from match if available, otherwise estimate
         const matchCommission = Number(match.preCalculatedCommission || 0);
         if (matchCommission > 0) {
-          commissionAmount = matchCommission;
-          commissionAmountBeforeVat = isVatExempt
+          // preCalculatedCommission is net (e.g., capsules × ₪rate) = commission before VAT
+          commissionAmountBeforeVat = matchCommission;
+          commissionAmount = isVatExempt
             ? matchCommission
-            : calculateNetFromGross(matchCommission, vatRate);
+            : matchCommission * (1 + vatRate);
         } else {
           // Fallback: distribute file-level per-item commission proportionally
-          // Total file commission = processedRows * rate
+          // Total file commission = processedRows * rate (net)
           const totalFileCommission = processedRows * commissionRate;
           const totalFileGross = result.totalGrossAmount || 1;
           const proportion = totalFileGross > 0 ? grossAmount / totalFileGross : 0;
-          commissionAmount = totalFileCommission * proportion;
-          commissionAmountBeforeVat = isVatExempt
-            ? commissionAmount
-            : calculateNetFromGross(commissionAmount, vatRate);
+          commissionAmountBeforeVat = totalFileCommission * proportion;
+          commissionAmount = isVatExempt
+            ? commissionAmountBeforeVat
+            : commissionAmountBeforeVat * (1 + vatRate);
         }
       } else {
         // Percentage commission
