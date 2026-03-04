@@ -425,8 +425,19 @@ export async function getSupplierCommissionReport(
         }
       } else {
         // Percentage commission
-        commissionAmount = (grossAmount * commissionRate) / 100;
-        commissionAmountBeforeVat = (netAmount * commissionRate) / 100;
+        // Use supplier's pre-calculated commission when available
+        // (e.g., for suppliers with variable rates per product like Avrahami)
+        const matchCommission = Number(match.preCalculatedCommission || 0);
+        if (matchCommission > 0) {
+          // preCalculatedCommission is calculated on net sale amounts = commission before VAT
+          commissionAmountBeforeVat = matchCommission;
+          commissionAmount = isVatExempt
+            ? matchCommission
+            : matchCommission * (1 + vatRate);
+        } else {
+          commissionAmount = (grossAmount * commissionRate) / 100;
+          commissionAmountBeforeVat = (netAmount * commissionRate) / 100;
+        }
       }
 
       // Initialize or get supplier row
