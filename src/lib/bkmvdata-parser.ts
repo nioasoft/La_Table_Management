@@ -806,6 +806,13 @@ function buildRevenueSummary(result: BkmvParseResult): void {
   // in B100 (not individual POS transactions), so B100 sums can be ~1% of actual
   // revenue. The real annual turnover is in B110 credit turnover (pos 307-321).
   // When B110 credit turnover is significantly larger than B100 sum, use it instead.
+
+  // Pre-compute allMonths once (avoid O(accounts × transactions) nested loop)
+  const allMonths = new Set<string>();
+  for (const tx of result.transactions) {
+    allMonths.add(formatYearMonth(tx.documentDate));
+  }
+
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
     if (!revenueAccountCodes.has(key)) continue;
@@ -827,10 +834,6 @@ function buildRevenueSummary(result: BkmvParseResult): void {
           }
         } else if (monthlyKeys.length === 0) {
           // No monthly data from B100 — distribute evenly across all months in file
-          const allMonths = new Set<string>();
-          for (const tx of result.transactions) {
-            allMonths.add(formatYearMonth(tx.documentDate));
-          }
           const monthCount = allMonths.size || 1;
           const perMonth = b110Credit / monthCount;
           for (const month of allMonths) {
@@ -842,10 +845,6 @@ function buildRevenueSummary(result: BkmvParseResult): void {
       } else {
         // No B100 transactions at all for this revenue account — create from B110
         const info = accountCodeToInfo.get(key);
-        const allMonths = new Set<string>();
-        for (const tx of result.transactions) {
-          allMonths.add(formatYearMonth(tx.documentDate));
-        }
         const monthCount = allMonths.size || 1;
         const perMonth = b110Credit / monthCount;
         const monthlyBreakdown: Record<string, number> = {};
@@ -1801,6 +1800,13 @@ export function buildAllAccountsSummary(
   // B110 fallback: for accounts where B110 credit turnover >> B100 sum,
   // use B110 value (same logic as buildRevenueSummary). This handles
   // accounting systems that only record aggregate journal entries in B100.
+
+  // Pre-compute allMonths once (avoid O(accounts × transactions) nested loop)
+  const allMonths = new Set<string>();
+  for (const tx of transactions) {
+    allMonths.add(formatYearMonth(tx.documentDate));
+  }
+
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
     if (!key || account.creditTurnover <= 0) continue;
@@ -1825,10 +1831,6 @@ export function buildAllAccountsSummary(
         // No B100 transactions — create entry from B110
         const info = accountKeyToInfo.get(key);
         if (info) {
-          const allMonths = new Set<string>();
-          for (const tx of transactions) {
-            allMonths.add(formatYearMonth(tx.documentDate));
-          }
           const monthCount = allMonths.size || 1;
           const perMonth = b110Credit / monthCount;
           const monthlyBreakdown: Record<string, number> = {};
