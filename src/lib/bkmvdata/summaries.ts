@@ -60,6 +60,7 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
   const revenueAccountCodes = new Set<string>();
   const accountCodeToInfo = new Map<string, { accountKey: string; accountName: string }>();
 
+  // Primary: detect revenue accounts by accountType
   for (const account of result.accounts) {
     if (account.accountType && (account.accountType.includes('הכנסות') || (account.accountType.includes('מכירות') && !account.accountType.includes('עלות מכירות')))) {
       const key = account.accountKey.trim();
@@ -69,6 +70,27 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
           accountKey: key,
           accountName: account.accountName || key,
         });
+      }
+    }
+  }
+
+  // Fallback: if no revenue accounts found by type, detect by account name
+  // (e.g. unknown-d files where accountType is "צאות" but name is "הכנסות")
+  if (revenueAccountCodes.size === 0) {
+    for (const account of result.accounts) {
+      if (
+        account.accountName &&
+        account.accountName.startsWith('הכנסות') &&
+        !account.accountName.includes('זקופות')
+      ) {
+        const key = account.accountKey.trim();
+        if (key) {
+          revenueAccountCodes.add(key);
+          accountCodeToInfo.set(key, {
+            accountKey: key,
+            accountName: account.accountName || key,
+          });
+        }
       }
     }
   }

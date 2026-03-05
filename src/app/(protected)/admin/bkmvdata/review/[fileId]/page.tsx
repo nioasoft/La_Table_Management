@@ -1,6 +1,7 @@
 "use client";
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { toast } from "sonner";
 import { useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -452,6 +453,10 @@ export default function FileDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+      toast.success("חשבונות הכנסות אושרו בהצלחה");
+    },
+    onError: () => {
+      toast.error("שגיאה באישור חשבונות הכנסות");
     },
   });
 

@@ -994,6 +994,23 @@ export default function BkmvDataPage() {
         items,
       });
 
+      // Also save as franchisee revenue codes so the processing pipeline can auto-confirm
+      try {
+        await fetchWithTimeout(`/api/franchisees/${matchedFranchisee.id}/revenue-codes`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            codes: items.map(i => ({
+              accountCode: i.accountKey,
+              accountName: i.accountName || i.accountKey,
+            })),
+          }),
+        });
+      } catch {
+        // Non-critical — classification was saved, revenue codes are a bonus
+        console.error('Failed to save franchisee revenue codes');
+      }
+
       // Update local state
       setClassifiedAccounts(prev => {
         const next = new Map(prev);
