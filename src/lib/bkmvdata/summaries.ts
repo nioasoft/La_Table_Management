@@ -171,7 +171,44 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {
-      // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across months
+      // B100 by code matched < 50% of B110 — try matching by account name
+      // (some software puts account name in counterpartyName instead of code)
+      const accountName = account.accountName?.trim();
+      if (accountName) {
+        const nameBreakdown: Record<string, number> = {};
+        let nameSum = 0;
+        let nameCount = 0;
+        for (const tx of result.transactions) {
+          if (tx.amount === 0) continue;
+          if (tx.counterpartyName.trim() === accountName) {
+            const monthKey = formatYearMonth(tx.documentDate);
+            nameBreakdown[monthKey] = (nameBreakdown[monthKey] || 0) + tx.amount;
+            nameSum += tx.amount;
+            nameCount++;
+          }
+        }
+
+        // If name-matched sum is close to B110 (within 20%), use real monthly data
+        if (nameCount > 0 && Math.abs(nameSum) >= b110Credit * 0.8) {
+          if (existing) {
+            existing.monthlyBreakdown = nameBreakdown;
+            existing.totalAmount = nameSum;
+            existing.transactionCount = nameCount;
+          } else {
+            const info = accountCodeToInfo.get(key);
+            summary.set(key, {
+              accountCode: key,
+              accountName: info?.accountName || key,
+              totalAmount: nameSum,
+              transactionCount: nameCount,
+              monthlyBreakdown: nameBreakdown,
+            });
+          }
+          continue; // skip even distribution
+        }
+      }
+
+      // Fallback: distribute B110 total evenly across months
       const monthCount = allMonths.size || 1;
       const perMonth = b110Credit / monthCount;
       const evenBreakdown: Record<string, number> = {};
