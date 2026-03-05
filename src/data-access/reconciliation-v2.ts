@@ -484,7 +484,21 @@ export async function createReconciliationSession(
     }
   }
 
-  // Get all compatible franchisees (by brand + kosher) for zero-amount row generation
+  // Pass 1: Always include franchisees with actual BKMV data for this supplier
+  // This ensures franchisees who bought from the supplier appear even if
+  // the supplier didn't report them (supplierAmount=0, franchiseeAmount=BKMV)
+  for (const [fId, bkmvData] of franchiseeAmounts) {
+    if (!comparisonMap.has(fId)) {
+      comparisonMap.set(fId, {
+        supplierAmount: 0,
+        franchiseeAmount: bkmvData.amount,
+        supplierOriginalName: "",
+        franchiseeFileId: bkmvData.fileId,
+      });
+    }
+  }
+
+  // Pass 2: Get all compatible franchisees (by brand + kosher) for zero-amount row generation
   const compatConditions = [
     eq(franchisee.isActive, true),
     eq(franchisee.category, "regular"),
