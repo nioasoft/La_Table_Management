@@ -59,5 +59,8 @@ next-env.d.ts
 .goose/
 .opencode/
 
+# Raw data (large files, not tracked in git)
+raw_data/
+
 # Misc
 .cache
