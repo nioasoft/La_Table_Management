@@ -10,7 +10,8 @@ import {
 } from "@/data-access/uploadLinks";
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
-import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile, getFranchiseeRevenueAccount } from "@/data-access/franchisees";
+import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
 import type { BkmvProcessingResult, SupplierFileMapping, SupplierFileProcessingResult } from "@/db/schema";
 import {
   uploadDocument,
@@ -343,23 +344,23 @@ export async function POST(
           // Extract revenue accounts from the parsed data
           const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
 
-          // Check if franchisee has a saved revenue account code for auto-matching
-          const savedRevenueAccountCode = await getFranchiseeRevenueAccount(link.entityId);
-          let confirmedRevenueAccountCode: string | null = null;
+          // Check if franchisee has saved revenue account codes for auto-matching
+          const savedRevenueCodes = await getFranchiseeRevenueCodesList(link.entityId);
+          const confirmedRevenueAccountCodes: string[] = [];
 
-          // If a saved account code exists and matches one of the found accounts, mark it as confirmed
-          if (savedRevenueAccountCode) {
-            const matchingAccount = revenueAccounts.find(a => a.accountCode === savedRevenueAccountCode);
+          // Mark all saved codes that match found accounts as confirmed
+          for (const savedCode of savedRevenueCodes) {
+            const matchingAccount = revenueAccounts.find(a => a.accountCode === savedCode);
             if (matchingAccount) {
               matchingAccount.isConfirmed = true;
-              confirmedRevenueAccountCode = savedRevenueAccountCode;
+              confirmedRevenueAccountCodes.push(savedCode);
             }
           }
 
-          // Build revenue monthly breakdown (using confirmed account if available)
+          // Build revenue monthly breakdown (using all confirmed accounts)
           const revenueMonthlyBreakdown = buildRevenueMonthlyBreakdown(
             parseResult.revenueSummary,
-            confirmedRevenueAccountCode
+            confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : null
           );
 
           // Prepare processing result for storage
@@ -391,7 +392,8 @@ export async function POST(
             monthlyBreakdown,
             revenueAccounts: revenueAccounts.length > 0 ? revenueAccounts : undefined,
             revenueMonthlyBreakdown: Object.keys(revenueMonthlyBreakdown).length > 0 ? revenueMonthlyBreakdown : undefined,
-            confirmedRevenueAccountCode,
+            confirmedRevenueAccountCodes: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : undefined,
+            confirmedRevenueAccountCode: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes[0] : null,
             processedAt: new Date().toISOString(),
           };
 

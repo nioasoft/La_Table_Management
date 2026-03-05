@@ -41,7 +41,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
@@ -159,7 +158,7 @@ export default function FileDetailsPage() {
   // Status filter state
   const [matchFilter, setMatchFilter] = useState<string>("all");
   // Revenue account state
-  const [selectedRevenueAccount, setSelectedRevenueAccount] = useState<string>("");
+  const [selectedRevenueAccounts, setSelectedRevenueAccounts] = useState<Set<string>>(new Set());
   const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
   // Date filter state
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
@@ -444,16 +443,16 @@ export default function FileDetailsPage() {
 
   // Revenue confirmation mutation
   const revenueConfirmMutation = useMutation({
-    mutationFn: async ({ accountCode, saveToFranchisee }: { accountCode: string; saveToFranchisee: boolean }) => {
+    mutationFn: async ({ accountCodes, saveToFranchisee }: { accountCodes: string[]; saveToFranchisee: boolean }) => {
       const response = await fetch(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          revenueAccountCode: accountCode,
+          revenueAccountCodes: accountCodes,
           saveRevenueToFranchisee: saveToFranchisee,
         }),
       });
-      if (!response.ok) throw new Error("Failed to confirm revenue account");
+      if (!response.ok) throw new Error("Failed to confirm revenue accounts");
       return response.json();
     },
     onSuccess: () => {
@@ -495,12 +494,12 @@ export default function FileDetailsPage() {
   }, [smallSupplierMatch, smallSupplierNotes, smallSupplierMutation]);
 
   const handleConfirmRevenue = useCallback(() => {
-    if (!selectedRevenueAccount) return;
+    if (selectedRevenueAccounts.size === 0) return;
     revenueConfirmMutation.mutate({
-      accountCode: selectedRevenueAccount,
+      accountCodes: Array.from(selectedRevenueAccounts),
       saveToFranchisee: saveRevenueToFranchisee,
     });
-  }, [selectedRevenueAccount, saveRevenueToFranchisee, revenueConfirmMutation]);
+  }, [selectedRevenueAccounts, saveRevenueToFranchisee, revenueConfirmMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -822,51 +821,67 @@ export default function FileDetailsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="px-4 pb-3 pt-0">
-            <RadioGroup
-              value={selectedRevenueAccount || processingResult?.confirmedRevenueAccountCode || ""}
-              onValueChange={setSelectedRevenueAccount}
-              className="space-y-2"
-            >
-              {filteredRevenueAccounts.map((account) => (
-                <div
-                  key={account.accountCode}
-                  className={`flex items-center gap-3 p-2 rounded border text-sm ${
-                    account.isConfirmed ? "bg-green-50 border-green-200" : "bg-muted/30"
-                  }`}
-                >
-                  <RadioGroupItem
-                    value={account.accountCode}
-                    id={`revenue-${account.accountCode}`}
-                    disabled={isReviewed}
-                  />
-                  <Label
-                    htmlFor={`revenue-${account.accountCode}`}
-                    className="flex-1 flex items-center justify-between cursor-pointer"
+            <div className="space-y-2">
+              {filteredRevenueAccounts.map((account) => {
+                const isSelected = selectedRevenueAccounts.has(account.accountCode)
+                  || (selectedRevenueAccounts.size === 0 && account.isConfirmed);
+                return (
+                  <div
+                    key={account.accountCode}
+                    className={`flex items-center gap-3 p-2 rounded border text-sm ${
+                      account.isConfirmed ? "bg-green-50 border-green-200" : "bg-muted/30"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-semibold">
-                        {formatAmount(account.totalAmount)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        ({account.transactionCount} עסקאות)
-                      </span>
-                      {account.isConfirmed && (
-                        <Badge variant="success" className="gap-1 text-xs">
-                          <Check className="h-3 w-3" />
-                          מאושר
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{account.accountName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        (קוד: {account.accountCode})
-                      </span>
-                    </div>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
+                    <Checkbox
+                      id={`revenue-${account.accountCode}`}
+                      checked={isSelected}
+                      disabled={isReviewed}
+                      onCheckedChange={(checked) => {
+                        setSelectedRevenueAccounts(prev => {
+                          // On first interaction, initialize from confirmed state
+                          const next = new Set(
+                            prev.size === 0
+                              ? filteredRevenueAccounts.filter(a => a.isConfirmed).map(a => a.accountCode)
+                              : prev
+                          );
+                          if (checked) {
+                            next.add(account.accountCode);
+                          } else {
+                            next.delete(account.accountCode);
+                          }
+                          return next;
+                        });
+                      }}
+                    />
+                    <Label
+                      htmlFor={`revenue-${account.accountCode}`}
+                      className="flex-1 flex items-center justify-between cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-semibold">
+                          {formatAmount(account.totalAmount)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          ({account.transactionCount} עסקאות)
+                        </span>
+                        {account.isConfirmed && (
+                          <Badge variant="success" className="gap-1 text-xs">
+                            <Check className="h-3 w-3" />
+                            מאושר
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{account.accountName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          (קוד: {account.accountCode})
+                        </span>
+                      </div>
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
 
             {!isReviewed && (
               <div className="mt-3 flex items-center justify-between">
@@ -882,7 +897,7 @@ export default function FileDetailsPage() {
                 </div>
                 <Button
                   onClick={handleConfirmRevenue}
-                  disabled={!selectedRevenueAccount || revenueConfirmMutation.isPending}
+                  disabled={selectedRevenueAccounts.size === 0 || revenueConfirmMutation.isPending}
                   size="sm"
                   className="h-7 text-xs"
                 >
@@ -891,7 +906,7 @@ export default function FileDetailsPage() {
                   ) : (
                     <Check className="h-3.5 w-3.5 ms-1.5" />
                   )}
-                  אשר חשבון
+                  אשר חשבונות
                 </Button>
               </div>
             )}

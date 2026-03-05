@@ -8,7 +8,7 @@ import {
   getUploadLinkById,
   updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
-import { getFranchiseeById, updateFranchiseeRevenueAccount } from "@/data-access/franchisees";
+import { getFranchiseeById } from "@/data-access/franchisees";
 import { getSupplierById, updateSupplier } from "@/data-access/suppliers";
 import type { BkmvProcessingResult } from "@/db/schema";
 
@@ -146,8 +146,8 @@ export async function PATCH(
     const { fileId } = await params;
     const body = await request.json();
 
-    // Check if this is a revenue confirmation request
-    if (body.revenueAccountCode !== undefined) {
+    // Check if this is a revenue confirmation request (supports both single and multi-account)
+    if (body.revenueAccountCode !== undefined || body.revenueAccountCodes !== undefined) {
       return handleRevenueConfirmation(fileId, body);
     }
 
@@ -293,14 +293,22 @@ export async function PATCH(
 }
 
 /**
- * Handle revenue account confirmation
+ * Handle revenue account confirmation (supports multi-account)
  */
 async function handleRevenueConfirmation(
   fileId: string,
-  body: { revenueAccountCode: string | null; saveRevenueToFranchisee?: boolean }
+  body: {
+    revenueAccountCode?: string | null;
+    revenueAccountCodes?: string[];
+    saveRevenueToFranchisee?: boolean;
+  }
 ): Promise<NextResponse> {
   try {
-    const { revenueAccountCode, saveRevenueToFranchisee } = body;
+    const { saveRevenueToFranchisee } = body;
+
+    // Normalize to array of codes (support both single and multi-account)
+    const accountCodes: string[] = body.revenueAccountCodes
+      ?? (body.revenueAccountCode ? [body.revenueAccountCode] : []);
 
     // Get file
     const file = await getUploadedFileById(fileId);
@@ -319,31 +327,32 @@ async function handleRevenueConfirmation(
       );
     }
 
-    // Validate the account code exists in the revenue accounts
-    if (revenueAccountCode) {
+    // Validate all account codes exist in the revenue accounts
+    const confirmedCodesSet = new Set(accountCodes);
+    for (const code of accountCodes) {
       const validAccount = processingResult.revenueAccounts?.find(
-        a => a.accountCode === revenueAccountCode
+        a => a.accountCode === code
       );
       if (!validAccount) {
         return NextResponse.json(
-          { error: "Invalid revenue account code" },
+          { error: `Invalid revenue account code: ${code}` },
           { status: 400 }
         );
       }
     }
 
-    // Update the revenue accounts - mark the selected one as confirmed
+    // Update the revenue accounts - mark selected ones as confirmed
     const updatedRevenueAccounts = processingResult.revenueAccounts?.map(account => ({
       ...account,
-      isConfirmed: account.accountCode === revenueAccountCode,
+      isConfirmed: confirmedCodesSet.has(account.accountCode),
     }));
 
-    // Build revenueMonthlyBreakdown from the confirmed account's monthlyBreakdown
+    // Build revenueMonthlyBreakdown from ALL confirmed accounts' monthlyBreakdowns
     let revenueMonthlyBreakdown: Record<string, number> | undefined;
-    if (revenueAccountCode && processingResult.revenueAccounts) {
+    if (accountCodes.length > 0 && processingResult.revenueAccounts) {
       const breakdown: Record<string, number> = {};
       for (const account of processingResult.revenueAccounts) {
-        if (account.accountCode !== revenueAccountCode) continue;
+        if (!confirmedCodesSet.has(account.accountCode)) continue;
         if (account.monthlyBreakdown) {
           for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
             breakdown[month] = (breakdown[month] || 0) + amount;
@@ -358,7 +367,8 @@ async function handleRevenueConfirmation(
     const updatedResult: BkmvProcessingResult = {
       ...processingResult,
       revenueAccounts: updatedRevenueAccounts,
-      confirmedRevenueAccountCode: revenueAccountCode,
+      confirmedRevenueAccountCodes: accountCodes.length > 0 ? accountCodes : undefined,
+      confirmedRevenueAccountCode: accountCodes.length > 0 ? accountCodes[0] : null,
       revenueMonthlyBreakdown,
     };
 
@@ -369,19 +379,29 @@ async function handleRevenueConfirmation(
       updatedResult
     );
 
-    // Optionally save revenue account to franchisee for future auto-matching
-    if (saveRevenueToFranchisee && file.franchiseeId) {
-      await updateFranchiseeRevenueAccount(file.franchiseeId, revenueAccountCode);
+    // Optionally save revenue accounts to franchisee for future auto-matching
+    if (saveRevenueToFranchisee && file.franchiseeId && accountCodes.length > 0) {
+      const { setFranchiseeRevenueCodes } = await import("@/data-access/franchisee-revenue-codes");
+      const codesToSave = accountCodes.map(code => {
+        const account = updatedRevenueAccounts?.find(a => a.accountCode === code);
+        return {
+          accountCode: code,
+          accountName: account?.accountName || null,
+        };
+      });
+      await setFranchiseeRevenueCodes(file.franchiseeId, codesToSave);
     }
 
-    const accountName = updatedRevenueAccounts?.find(a => a.accountCode === revenueAccountCode)?.accountName;
+    const confirmedNames = accountCodes
+      .map(code => updatedRevenueAccounts?.find(a => a.accountCode === code)?.accountName || code)
+      .join(", ");
 
     return NextResponse.json({
       success: true,
       message: saveRevenueToFranchisee
-        ? `חשבון הכנסות "${accountName || revenueAccountCode}" אושר ונשמר לזכיין`
-        : `חשבון הכנסות "${accountName || revenueAccountCode}" אושר`,
-      confirmedRevenueAccountCode: revenueAccountCode,
+        ? `חשבונות הכנסות "${confirmedNames}" אושרו ונשמרו לזכיין`
+        : `חשבונות הכנסות "${confirmedNames}" אושרו`,
+      confirmedRevenueAccountCodes: accountCodes,
     });
   } catch (error) {
     console.error("Error confirming revenue account:", error);

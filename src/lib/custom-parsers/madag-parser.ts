@@ -8,10 +8,9 @@
  *   - Row 2: Headers (מק"ט, תאור מוצר, מטבע, הכנסה, יח', כמות, סה"כ חיוב לקוח בגין עמלות)
  *   - Row 3+: Customer header "מס. לקוח: XXXXX, שם לקוח: <name>" followed by product rows
  *
- * Two important values per customer:
+ * Important value per customer:
  *   - Column 3 "הכנסה" (sale amount) - used for cross-reference with franchisee
- *   - Column 6 "סה"כ חיוב לקוח בגין עמלות" - only used if non-zero, otherwise commission
- *     is calculated using supplier's rate (currently files have empty column 6)
+ *   - Column 6 is ignored — Madag uses a fixed 10% commission rate configured in supplier settings
  */
 
 import * as XLSX from "xlsx";
@@ -69,12 +68,11 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
     let currentCustomer = "";
     let totalGrossAmount = 0;
     let totalNetAmount = 0;
-    let totalPreCalculatedCommission = 0;
     let processedRows = 0;
     let skippedRows = 0;
 
-    // Aggregated amounts per customer: { sale: number, commission: number }
-    const customerAmounts: Map<string, { sale: number; commission: number }> = new Map();
+    // Aggregated sale amounts per customer
+    const customerAmounts: Map<string, number> = new Map();
 
     // Start from row 3 (after headers)
     for (let i = 3; i < rawData.length; i++) {
@@ -111,34 +109,23 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      const existing = customerAmounts.get(currentCustomer) || { sale: 0, commission: 0 };
+      const existing = customerAmounts.get(currentCustomer) || 0;
 
       // Column 3 (index 3) "הכנסה" - sale amount for cross-reference
       const saleValue = row[3];
       if (saleValue !== null && saleValue !== undefined && saleValue !== "") {
         const sale = parseFloat(String(saleValue).replace(/[,₪\s]/g, ""));
         if (!isNaN(sale)) {
-          existing.sale += sale;
+          customerAmounts.set(currentCustomer, existing + sale);
         }
       }
-
-      // Column 6 (index 6) "סה"כ חיוב לקוח בגין עמלות" - pre-calculated commission
-      const commissionValue = row[6];
-      if (commissionValue !== null && commissionValue !== undefined && commissionValue !== "") {
-        const commission = parseFloat(String(commissionValue).replace(/[,₪\s]/g, ""));
-        if (!isNaN(commission)) {
-          existing.commission += commission;
-        }
-      }
-
-      customerAmounts.set(currentCustomer, existing);
     }
 
     // Convert aggregated data to ParsedRowData
     let rowNumber = 1;
-    for (const [customer, amounts] of customerAmounts.entries()) {
+    for (const [customer, saleAmount] of customerAmounts.entries()) {
       // Skip if sale amount is zero or negative
-      if (amounts.sale <= 0) {
+      if (saleAmount <= 0) {
         skippedRows++;
         continue;
       }
@@ -150,13 +137,8 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Sale amount is used for cross-reference (what franchisee reports)
-      const netAmount = roundToTwoDecimals(amounts.sale);
-      const grossAmount = roundToTwoDecimals(amounts.sale * (1 + VAT_RATE));
-      // Only set preCalculatedCommission if it's a positive value
-      // If 0 or empty, leave undefined so calculation falls back to supplier rate
-      const preCalculatedCommission = amounts.commission > 0
-        ? roundToTwoDecimals(amounts.commission)
-        : undefined;
+      const netAmount = roundToTwoDecimals(saleAmount);
+      const grossAmount = roundToTwoDecimals(saleAmount * (1 + VAT_RATE));
 
       data.push({
         franchisee: customer,
@@ -165,12 +147,10 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
         netAmount,
         originalAmount: netAmount,
         rowNumber: rowNumber++,
-        preCalculatedCommission,
       });
 
       totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
-      totalPreCalculatedCommission += preCalculatedCommission ?? 0;
       processedRows++;
     }
 
@@ -195,8 +175,7 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
       processedRows,
       skippedRows,
       totalGrossAmount,
-      totalNetAmount,
-      totalPreCalculatedCommission
+      totalNetAmount
     );
   } catch (error) {
     errors.push(
@@ -220,8 +199,7 @@ function createResult(
   processedRows = 0,
   skippedRows = 0,
   totalGrossAmount = 0,
-  totalNetAmount = 0,
-  _totalPreCalculatedCommission = 0
+  totalNetAmount = 0
 ): FileProcessingResult {
   return {
     success,
