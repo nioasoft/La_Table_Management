@@ -61,6 +61,7 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
   const accountCodeToInfo = new Map<string, { accountKey: string; accountName: string }>();
 
   // Primary: detect revenue accounts by accountType
+  let detectedByName = false;
   for (const account of result.accounts) {
     if (account.accountType && (account.accountType.includes('הכנסות') || (account.accountType.includes('מכירות') && !account.accountType.includes('עלות מכירות')))) {
       const key = account.accountKey.trim();
@@ -90,6 +91,7 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
             accountKey: key,
             accountName: account.accountName || key,
           });
+          detectedByName = true;
         }
       }
     }
@@ -100,6 +102,15 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     return;
   }
 
+  // Build reverse lookup: accountName → accountInfo
+  // Only used when revenue was detected by name (unknown-d files use account
+  // name as counterpartyName in B100 transactions instead of account code)
+  const accountNameToInfo = detectedByName
+    ? new Map(Array.from(accountCodeToInfo.values())
+        .filter(info => info.accountName && info.accountName !== info.accountKey)
+        .map(info => [info.accountName, info] as const))
+    : null;
+
   for (const tx of result.transactions) {
     const normalizedCode = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
 
@@ -109,6 +120,10 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
       const counterparty = tx.counterpartyName.trim();
       if (revenueAccountCodes.has(counterparty)) {
         accountInfo = accountCodeToInfo.get(counterparty);
+      }
+      // Fallback: match counterpartyName against revenue account names
+      if (!accountInfo && accountNameToInfo) {
+        accountInfo = accountNameToInfo.get(counterparty);
       }
     }
 
