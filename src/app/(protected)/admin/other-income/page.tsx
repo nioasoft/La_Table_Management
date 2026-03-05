@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -176,6 +177,7 @@ export default function OtherIncomePage() {
     },
     onError: (error: Error) => {
       setFormError(error.message);
+      toast.error("שגיאה ביצירת מקור הכנסה: " + error.message);
     },
   });
 
@@ -204,6 +206,7 @@ export default function OtherIncomePage() {
     },
     onError: (error: Error) => {
       setFormError(error.message);
+      toast.error("שגיאה בעדכון מקור הכנסה: " + error.message);
     },
   });
 

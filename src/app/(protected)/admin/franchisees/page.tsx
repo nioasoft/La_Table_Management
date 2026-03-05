@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -440,6 +441,7 @@ export default function AdminFranchiseesPage() {
     },
     onError: (error: Error) => {
       setFormError(error.message);
+      toast.error("שגיאה ביצירת זכיין: " + error.message);
     },
   });
 
@@ -473,6 +475,7 @@ export default function AdminFranchiseesPage() {
     },
     onError: (error: Error) => {
       setFormError(error.message);
+      toast.error("שגיאה בעדכון זכיין: " + error.message);
     },
   });
 
