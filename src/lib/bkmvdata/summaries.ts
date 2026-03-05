@@ -134,36 +134,26 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {
+      // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across months
+      const monthCount = allMonths.size || 1;
+      const perMonth = b110Credit / monthCount;
+      const evenBreakdown: Record<string, number> = {};
+      for (const month of allMonths) {
+        evenBreakdown[month] = perMonth;
+      }
+
       if (existing) {
-        const monthlyKeys = Object.keys(existing.monthlyBreakdown);
-        if (monthlyKeys.length > 0 && b100Sum > 0) {
-          const scaleFactor = b110Credit / b100Sum;
-          for (const month of monthlyKeys) {
-            existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
-          }
-        } else if (monthlyKeys.length === 0) {
-          const monthCount = allMonths.size || 1;
-          const perMonth = b110Credit / monthCount;
-          for (const month of allMonths) {
-            existing.monthlyBreakdown[month] = perMonth;
-          }
-        }
+        existing.monthlyBreakdown = evenBreakdown;
         existing.totalAmount = b110Credit;
         existing.b110CreditTurnover = b110Credit;
       } else {
         const info = accountCodeToInfo.get(key);
-        const monthCount = allMonths.size || 1;
-        const perMonth = b110Credit / monthCount;
-        const monthlyBreakdown: Record<string, number> = {};
-        for (const month of allMonths) {
-          monthlyBreakdown[month] = perMonth;
-        }
         summary.set(key, {
           accountCode: key,
           accountName: info?.accountName || key,
           totalAmount: b110Credit,
           transactionCount: 0,
-          monthlyBreakdown,
+          monthlyBreakdown: evenBreakdown,
           b110CreditTurnover: b110Credit,
         });
       }
@@ -270,24 +260,20 @@ export function buildAllAccountsSummary(
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {
+      // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across months
+      const monthCount = allMonths.size || 1;
+      const perMonth = b110Credit / monthCount;
+      const evenBreakdown: Record<string, number> = {};
+      for (const month of allMonths) {
+        evenBreakdown[month] = perMonth;
+      }
+
       if (existing) {
-        const monthlyKeys = Object.keys(existing.monthlyBreakdown);
-        if (monthlyKeys.length > 0 && b100Sum > 0) {
-          const scaleFactor = b110Credit / b100Sum;
-          for (const month of monthlyKeys) {
-            existing.monthlyBreakdown[month] = existing.monthlyBreakdown[month] * scaleFactor;
-          }
-        }
+        existing.monthlyBreakdown = evenBreakdown;
         existing.totalAmount = b110Credit;
       } else {
         const info = accountKeyToInfo.get(key);
         if (info) {
-          const monthCount = allMonths.size || 1;
-          const perMonth = b110Credit / monthCount;
-          const monthlyBreakdown: Record<string, number> = {};
-          for (const month of allMonths) {
-            monthlyBreakdown[month] = perMonth;
-          }
           summary.set(key, {
             accountCode: key,
             accountName: info.accountName,
@@ -295,7 +281,7 @@ export function buildAllAccountsSummary(
             accountSort: info.accountSort,
             totalAmount: b110Credit,
             transactionCount: 0,
-            monthlyBreakdown,
+            monthlyBreakdown: evenBreakdown,
           });
         }
       }
