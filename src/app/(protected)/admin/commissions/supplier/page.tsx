@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -226,7 +227,7 @@ export default function SupplierCommissionReportPage() {
       if (showComparison && compareStartDate) params.append("compareStartDate", compareStartDate);
       if (showComparison && compareEndDate) params.append("compareEndDate", compareEndDate);
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/supplier/${selectedSupplierId}?${params.toString()}`
       );
       if (!response.ok) throw new Error("Failed to fetch report");
@@ -251,7 +252,7 @@ export default function SupplierCommissionReportPage() {
       if (showComparison && compareStartDate) params.append("compareStartDate", compareStartDate);
       if (showComparison && compareEndDate) params.append("compareEndDate", compareEndDate);
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/supplier/${selectedSupplierId}/export?${params.toString()}`
       );
 

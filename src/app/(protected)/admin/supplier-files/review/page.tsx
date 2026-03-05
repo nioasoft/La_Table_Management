@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -91,19 +92,13 @@ export default function SupplierFilesReviewPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/supplier-files/review");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch files needing review
   const { data: reviewData, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["supplier-files", "review"],
     queryFn: async () => {
-      const response = await fetch("/api/supplier-files/review");
+      const response = await fetchWithTimeout("/api/supplier-files/review");
       if (!response.ok) throw new Error("Failed to fetch review queue");
       return response.json();
     },
@@ -116,7 +111,7 @@ export default function SupplierFilesReviewPage() {
   // Review action mutation
   const reviewMutation = useMutation({
     mutationFn: async ({ fileId, action, notes }: { fileId: string; action: "approve" | "reject"; notes: string }) => {
-      const response = await fetch("/api/supplier-files/review", {
+      const response = await fetchWithTimeout("/api/supplier-files/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId, action, notes }),

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const franchiseeReminderKeys = {
@@ -10,7 +11,7 @@ export function useFranchiseeReminders() {
   return useQuery({
     queryKey: franchiseeReminderKeys.lists(),
     queryFn: async () => {
-      const res = await fetch("/api/franchisee-reminders");
+      const res = await fetchWithTimeout("/api/franchisee-reminders");
       if (!res.ok) throw new Error("Failed to fetch franchisee reminders");
       const data = await res.json();
       return data.reminders;
@@ -22,7 +23,7 @@ export function useCreateFranchiseeReminder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/franchisee-reminders", {
+      const res = await fetchWithTimeout("/api/franchisee-reminders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -40,7 +41,7 @@ export function useUpdateFranchiseeReminder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/franchisee-reminders/${id}`, {
+      const res = await fetchWithTimeout(`/api/franchisee-reminders/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -58,7 +59,7 @@ export function useDeleteFranchiseeReminder() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/franchisee-reminders/${id}`, {
+      const res = await fetchWithTimeout(`/api/franchisee-reminders/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete franchisee reminder");

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -228,7 +229,7 @@ export default function CommissionsReportPage() {
     setIsLoading(true);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/commissions/report${queryString ? `?${queryString}` : ""}`);
+      const response = await fetchWithTimeout(`/api/commissions/report${queryString ? `?${queryString}` : ""}`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch report");

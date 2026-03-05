@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -134,7 +135,7 @@ export default function AdminUsersPage() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/users?filter=all&stats=true`);
+      const response = await fetchWithTimeout(`/api/users?filter=all&stats=true`);
       if (!response.ok) {
         throw new Error("Failed to fetch users");
       }
@@ -157,7 +158,7 @@ export default function AdminUsersPage() {
 
     try {
       setApprovingUserId(userId);
-      const response = await fetch(`/api/users/${userId}/approve`, {
+      const response = await fetchWithTimeout(`/api/users/${userId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
@@ -190,7 +191,7 @@ export default function AdminUsersPage() {
 
     try {
       setRejectingUserId(userToReject.id);
-      const response = await fetch(`/api/users/${userToReject.id}/reject`, {
+      const response = await fetchWithTimeout(`/api/users/${userToReject.id}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: rejectReason }),
@@ -220,7 +221,7 @@ export default function AdminUsersPage() {
     }
 
     try {
-      const response = await fetch(`/api/users/${userId}`, {
+      const response = await fetchWithTimeout(`/api/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "suspended" }),
@@ -240,7 +241,7 @@ export default function AdminUsersPage() {
 
   const handleReactivate = async (userId: string) => {
     try {
-      const response = await fetch(`/api/users/${userId}`, {
+      const response = await fetchWithTimeout(`/api/users/${userId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "active" }),
@@ -268,7 +269,7 @@ export default function AdminUsersPage() {
 
     try {
       setIsDeleting(true);
-      const response = await fetch(`/api/users/${userToDelete.id}`, {
+      const response = await fetchWithTimeout(`/api/users/${userToDelete.id}`, {
         method: "DELETE",
       });
 
@@ -299,7 +300,7 @@ export default function AdminUsersPage() {
 
     try {
       setIsChangingRole(true);
-      const response = await fetch(`/api/users/${userForRoleChange.id}`, {
+      const response = await fetchWithTimeout(`/api/users/${userForRoleChange.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
 import { parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fetch file from Vercel Blob
-    const blobResponse = await fetch(blobUrl);
+    const blobResponse = await fetchWithTimeout(blobUrl);
     if (!blobResponse.ok) {
       return NextResponse.json(
         { error: "Failed to fetch file from storage" },

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -234,7 +235,7 @@ export default function FranchiseePurchaseReportPage() {
     setIsLoading(true);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/franchisee/${selectedFranchisee}${queryString ? `?${queryString}` : ""}`
       );
 
@@ -259,7 +260,7 @@ export default function FranchiseePurchaseReportPage() {
     setIsExporting(true);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/franchisee/${selectedFranchisee}/export${queryString ? `?${queryString}` : ""}`
       );
 

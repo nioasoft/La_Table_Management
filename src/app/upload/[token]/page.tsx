@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useEffect, useCallback, use } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,7 +105,7 @@ export default function PublicUploadPage({
   useEffect(() => {
     async function fetchUploadLink() {
       try {
-        const response = await fetch(`/api/public/upload/${token}`);
+        const response = await fetchWithTimeout(`/api/public/upload/${token}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -223,7 +224,7 @@ export default function PublicUploadPage({
       formData.append("replaceFileId", replaceFileId);
     }
 
-    const response = await fetch(`/api/public/upload/${token}`, {
+    const response = await fetchWithTimeout(`/api/public/upload/${token}`, {
       method: "POST",
       body: formData,
     });

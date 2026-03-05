@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Component, useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {
   Sidebar,
@@ -14,11 +14,57 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { UserRole, UserStatus } from "@/db/schema";
 import { cn } from "@/lib/utils";
 
+class ErrorBoundary extends Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("ErrorBoundary caught:", error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 p-8 text-center" dir="rtl">
+          <h2 className="text-xl font-semibold">אירעה שגיאה</h2>
+          <p className="text-muted-foreground">משהו השתבש. נסו לרענן את הדף.</p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false });
+              window.location.reload();
+            }}
+            className="rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"
+          >
+            רענן דף
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const { data: session, isPending } = authClient.useSession();
   const { isCollapsed } = useSidebar();
+
+  // Close mobile sidebar on navigation
+  useEffect(() => {
+    setIsMobileSidebarOpen(false);
+  }, [pathname]);
 
   const userStatus = session
     ? (session.user as { status?: UserStatus })?.status
@@ -105,7 +151,7 @@ function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
           isCollapsed ? "lg:ms-16" : "lg:ms-64"
         )}
       >
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>
   );

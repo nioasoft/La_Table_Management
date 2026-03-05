@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -104,7 +105,7 @@ export default function SupplierFilesByFranchiseePage() {
         endDate,
       });
       if (brandId && brandId !== "all") params.append("brandId", brandId);
-      const response = await fetch(`/api/supplier-files/by-franchisee?${params}`);
+      const response = await fetchWithTimeout(`/api/supplier-files/by-franchisee?${params}`);
       if (!response.ok) throw new Error("Failed to fetch franchisee breakdown");
       return response.json();
     },
@@ -114,7 +115,7 @@ export default function SupplierFilesByFranchiseePage() {
   const { data: brandsData } = useQuery({
     queryKey: ["brands"],
     queryFn: async () => {
-      const response = await fetch("/api/brands");
+      const response = await fetchWithTimeout("/api/brands");
       if (!response.ok) throw new Error("Failed to fetch brands");
       return response.json();
     },

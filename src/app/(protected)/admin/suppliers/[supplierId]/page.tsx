@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -230,7 +231,7 @@ export default function SupplierCardPage() {
   // Fetch supplier details
   const fetchSupplier = async () => {
     try {
-      const response = await fetch(`/api/suppliers/${supplierId}`);
+      const response = await fetchWithTimeout(`/api/suppliers/${supplierId}`);
       if (!response.ok) {
         if (response.status === 404) {
           setError(he.admin.suppliers.detail.supplierNotFound);
@@ -250,7 +251,7 @@ export default function SupplierCardPage() {
   const fetchCommissionHistory = async () => {
     setLoadingStates((prev) => ({ ...prev, commissionHistory: true }));
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/suppliers/${supplierId}/commission-history`
       );
       if (!response.ok) throw new Error("Failed to fetch commission history");
@@ -267,7 +268,7 @@ export default function SupplierCardPage() {
   const fetchDocuments = async () => {
     setLoadingStates((prev) => ({ ...prev, documents: true }));
     try {
-      const response = await fetch(`/api/documents/supplier/${supplierId}`);
+      const response = await fetchWithTimeout(`/api/documents/supplier/${supplierId}`);
       if (!response.ok) throw new Error("Failed to fetch documents");
       const data = await response.json();
       setDocuments(data.documents || []);
@@ -282,7 +283,7 @@ export default function SupplierCardPage() {
   const fetchUploadLinks = async () => {
     setLoadingStates((prev) => ({ ...prev, uploadLinks: true }));
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/upload-links/entity/supplier/${supplierId}`
       );
       if (!response.ok) throw new Error("Failed to fetch upload links");
@@ -299,7 +300,7 @@ export default function SupplierCardPage() {
   const fetchCrossReferences = async () => {
     setLoadingStates((prev) => ({ ...prev, crossReferences: true }));
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/reconciliation?supplierId=${supplierId}`
       );
       if (!response.ok) throw new Error("Failed to fetch cross-references");

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -99,7 +100,7 @@ export default function ApprovalPage() {
   const fetchApprovalSummary = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/approve`);
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/approve`);
       if (!response.ok) {
         throw new Error("Failed to fetch approval summary");
       }
@@ -141,7 +142,7 @@ export default function ApprovalPage() {
 
     setIsApproving(true);
     try {
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/approve`, {
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });

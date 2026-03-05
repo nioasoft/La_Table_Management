@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const commissionKeys = {
@@ -21,7 +22,7 @@ export function useCommissions(params?: { supplierId?: string; franchiseeId?: st
     queryKey: [...commissionKeys.lists(), params],
     queryFn: async () => {
       const url = `/api/commissions${queryParams.toString() ? `?${queryParams}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch commissions");
       return res.json();
     },
@@ -32,7 +33,7 @@ export function useCommissionsBySupplier(supplierId: string) {
   return useQuery({
     queryKey: commissionKeys.bySupplier(supplierId),
     queryFn: async () => {
-      const res = await fetch(`/api/commissions/supplier/${supplierId}`);
+      const res = await fetchWithTimeout(`/api/commissions/supplier/${supplierId}`);
       if (!res.ok) throw new Error("Failed to fetch supplier commissions");
       return res.json();
     },
@@ -44,7 +45,7 @@ export function useCommissionsByFranchisee(franchiseeId: string) {
   return useQuery({
     queryKey: commissionKeys.byFranchisee(franchiseeId),
     queryFn: async () => {
-      const res = await fetch(`/api/commissions/franchisee/${franchiseeId}`);
+      const res = await fetchWithTimeout(`/api/commissions/franchisee/${franchiseeId}`);
       if (!res.ok) throw new Error("Failed to fetch franchisee commissions");
       return res.json();
     },
@@ -56,7 +57,7 @@ export function useCommissionsByBrand(brandId: string) {
   return useQuery({
     queryKey: commissionKeys.byBrand(brandId),
     queryFn: async () => {
-      const res = await fetch(`/api/commissions/brand/${brandId}`);
+      const res = await fetchWithTimeout(`/api/commissions/brand/${brandId}`);
       if (!res.ok) throw new Error("Failed to fetch brand commissions");
       return res.json();
     },
@@ -68,7 +69,7 @@ export function useInvoiceCommissions() {
   return useQuery({
     queryKey: commissionKeys.invoice(),
     queryFn: async () => {
-      const res = await fetch("/api/commissions/invoice");
+      const res = await fetchWithTimeout("/api/commissions/invoice");
       if (!res.ok) throw new Error("Failed to fetch invoice commissions");
       return res.json();
     },
@@ -79,7 +80,7 @@ export function useCreateCommission() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/commissions", {
+      const res = await fetchWithTimeout("/api/commissions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -97,7 +98,7 @@ export function useUpdateCommission() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/commissions/${id}`, {
+      const res = await fetchWithTimeout(`/api/commissions/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

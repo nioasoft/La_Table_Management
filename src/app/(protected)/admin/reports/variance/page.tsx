@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -263,7 +264,7 @@ export default function VarianceReportPage() {
     setError(null);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/commissions/variance?${queryString}`);
+      const response = await fetchWithTimeout(`/api/commissions/variance?${queryString}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch report");

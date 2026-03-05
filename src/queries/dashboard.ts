@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery } from "@tanstack/react-query";
 
 export const dashboardKeys = {
@@ -14,7 +15,7 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: dashboardKeys.stats(),
     queryFn: async () => {
-      const res = await fetch("/api/dashboard/stats");
+      const res = await fetchWithTimeout("/api/dashboard/stats");
       if (!res.ok) throw new Error("Failed to fetch dashboard stats");
       const data = await res.json();
       return data.stats;
@@ -33,7 +34,7 @@ export function usePeriodStatus(periodStart?: string, periodEnd?: string) {
       if (periodEnd) params.set("periodEnd", periodEnd);
       const qs = params.toString();
       const url = `/api/dashboard/period-status${qs ? `?${qs}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch period status");
       return res.json();
     },
@@ -51,7 +52,7 @@ export function useUploadStatus(periodStart?: string, periodEnd?: string) {
       if (periodEnd) params.set("periodEnd", periodEnd);
       const qs = params.toString();
       const url = `/api/dashboard/upload-status${qs ? `?${qs}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch upload status");
       return res.json();
     },
@@ -70,7 +71,7 @@ export function useCommissionSettlementStatus(periodStart?: string, periodEnd?: 
       if (periodEnd) params.set("periodEnd", periodEnd);
       const qs = params.toString();
       const url = `/api/dashboard/commission-settlement-status${qs ? `?${qs}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch commission settlement status");
       return res.json();
     },
@@ -83,7 +84,7 @@ export function useUpcomingReminders(daysAhead = 30, limit = 10) {
   return useQuery({
     queryKey: [...dashboardKeys.upcomingReminders(), daysAhead, limit],
     queryFn: async () => {
-      const res = await fetch(`/api/dashboard/upcoming-reminders?daysAhead=${daysAhead}&limit=${limit}`);
+      const res = await fetchWithTimeout(`/api/dashboard/upcoming-reminders?daysAhead=${daysAhead}&limit=${limit}`);
       if (!res.ok) throw new Error("Failed to fetch upcoming reminders");
       return res.json();
     },
@@ -109,7 +110,7 @@ export function useSupplierCompleteness(
         if (periodStart) params.set("periodStart", periodStart);
         if (periodEnd) params.set("periodEnd", periodEnd);
       }
-      const res = await fetch(`/api/dashboard/supplier-completeness?${params.toString()}`);
+      const res = await fetchWithTimeout(`/api/dashboard/supplier-completeness?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch supplier completeness");
       return res.json();
     },

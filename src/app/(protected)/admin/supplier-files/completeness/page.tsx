@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -109,7 +110,7 @@ export default function SupplierCompletenessPage() {
     queryFn: async () => {
       const params = new URLSearchParams({ year: year.toString() });
       if (brandId && brandId !== "all") params.append("brandId", brandId);
-      const response = await fetch(`/api/dashboard/supplier-completeness?${params}`);
+      const response = await fetchWithTimeout(`/api/dashboard/supplier-completeness?${params}`);
       if (!response.ok) throw new Error("Failed to fetch completeness data");
       return response.json();
     },
@@ -119,7 +120,7 @@ export default function SupplierCompletenessPage() {
   const { data: brandsData } = useQuery({
     queryKey: ["brands"],
     queryFn: async () => {
-      const response = await fetch("/api/brands");
+      const response = await fetchWithTimeout("/api/brands");
       if (!response.ok) throw new Error("Failed to fetch brands");
       return response.json();
     },

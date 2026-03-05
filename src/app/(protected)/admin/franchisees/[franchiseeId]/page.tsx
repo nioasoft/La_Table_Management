@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -293,7 +294,7 @@ export default function FranchiseeDetailPage() {
   useEffect(() => {
     const fetchFranchisee = async () => {
       try {
-        const response = await fetch(`/api/franchisees/${franchiseeId}`);
+        const response = await fetchWithTimeout(`/api/franchisees/${franchiseeId}`);
         if (!response.ok) {
           if (response.status === 404) {
             setError(he.admin.franchisees.detail.franchiseeNotFound);
@@ -319,7 +320,7 @@ export default function FranchiseeDetailPage() {
     if (documentsLoaded) return;
     try {
       setIsLoadingDocuments(true);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/documents/franchisee/${franchiseeId}`
       );
       if (!response.ok) throw new Error("Failed to fetch documents");
@@ -338,7 +339,7 @@ export default function FranchiseeDetailPage() {
     if (historyLoaded) return;
     try {
       setIsLoadingHistory(true);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/status-history`
       );
       if (!response.ok) throw new Error("Failed to fetch status history");
@@ -357,7 +358,7 @@ export default function FranchiseeDetailPage() {
     if (remindersLoaded) return;
     try {
       setIsLoadingReminders(true);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisee-reminders?franchiseeId=${franchiseeId}`
       );
       if (!response.ok) throw new Error("Failed to fetch reminders");
@@ -376,7 +377,7 @@ export default function FranchiseeDetailPage() {
     if (purchasesLoaded) return;
     try {
       setIsLoadingPurchases(true);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/franchisee/${franchiseeId}`
       );
       if (!response.ok) throw new Error("Failed to fetch purchase history");
@@ -398,7 +399,7 @@ export default function FranchiseeDetailPage() {
     if (revenueCodesLoaded) return;
     try {
       setIsLoadingRevenueCodes(true);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/revenue-codes?details=true`
       );
       if (!response.ok) throw new Error("Failed to fetch revenue codes");
@@ -417,7 +418,7 @@ export default function FranchiseeDetailPage() {
     async (accountCode: string) => {
       setRemovingRevenueCode(accountCode);
       try {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/franchisees/${franchiseeId}/revenue-codes`,
           {
             method: "DELETE",
@@ -473,7 +474,7 @@ export default function FranchiseeDetailPage() {
     setIsContactSubmitting(true);
     try {
       if (editingContactId) {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/franchisees/${franchiseeId}/contacts/${editingContactId}`,
           {
             method: "PATCH",
@@ -483,7 +484,7 @@ export default function FranchiseeDetailPage() {
         );
         if (!response.ok) throw new Error("Failed to update contact");
       } else {
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/franchisees/${franchiseeId}/contacts`,
           {
             method: "POST",
@@ -497,7 +498,7 @@ export default function FranchiseeDetailPage() {
       // Refresh franchisee data
       queryClient.invalidateQueries({ queryKey: ["franchisees"] });
       // Re-fetch the franchisee to get updated contacts
-      const response = await fetch(`/api/franchisees/${franchiseeId}`);
+      const response = await fetchWithTimeout(`/api/franchisees/${franchiseeId}`);
       if (response.ok) {
         const data = await response.json();
         setFranchisee(data.franchisee);
@@ -513,7 +514,7 @@ export default function FranchiseeDetailPage() {
   const handleDeleteContact = async (contactId: string) => {
     setDeletingContactId(contactId);
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/contacts/${contactId}`,
         { method: "DELETE" }
       );
@@ -521,7 +522,7 @@ export default function FranchiseeDetailPage() {
 
       queryClient.invalidateQueries({ queryKey: ["franchisees"] });
       // Re-fetch the franchisee to get updated contacts
-      const refetchResponse = await fetch(`/api/franchisees/${franchiseeId}`);
+      const refetchResponse = await fetchWithTimeout(`/api/franchisees/${franchiseeId}`);
       if (refetchResponse.ok) {
         const data = await refetchResponse.json();
         setFranchisee(data.franchisee);

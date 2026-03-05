@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -144,7 +145,7 @@ export default function SettlementDetailPage() {
   const fetchSettlement = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/settlements/${settlementId}?details=true`);
+      const response = await fetchWithTimeout(`/api/settlements/${settlementId}?details=true`);
       if (!response.ok) {
         if (response.status === 404) {
           toast.error("תקופת התחשבנות לא נמצאה");
@@ -166,7 +167,7 @@ export default function SettlementDetailPage() {
 
   const handleStatusChange = async (newStatus: string) => {
     try {
-      const response = await fetch(`/api/settlements/${settlementId}/status`, {
+      const response = await fetchWithTimeout(`/api/settlements/${settlementId}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: newStatus }),

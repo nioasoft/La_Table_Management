@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -223,7 +224,7 @@ export default function ReconciliationPage() {
 
   const fetchSuppliers = async () => {
     try {
-      const response = await fetch("/api/suppliers?filter=active");
+      const response = await fetchWithTimeout("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
       setSuppliers(data.suppliers || []);
@@ -234,7 +235,7 @@ export default function ReconciliationPage() {
 
   const fetchFranchisees = async () => {
     try {
-      const response = await fetch("/api/franchisees?filter=active");
+      const response = await fetchWithTimeout("/api/franchisees?filter=active");
       if (!response.ok) throw new Error("Failed to fetch franchisees");
       const data = await response.json();
       setFranchisees(data.franchisees || []);
@@ -256,7 +257,7 @@ export default function ReconciliationPage() {
     e.preventDefault();
     try {
       setIsComparing(true);
-      const response = await fetch("/api/reconciliation/compare", {
+      const response = await fetchWithTimeout("/api/reconciliation/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -309,7 +310,7 @@ export default function ReconciliationPage() {
 
     try {
       setIsUpdating(true);
-      const response = await fetch(`/api/reconciliation/${selectedEntry.crossReferenceId}`, {
+      const response = await fetchWithTimeout(`/api/reconciliation/${selectedEntry.crossReferenceId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -377,7 +378,7 @@ export default function ReconciliationPage() {
 
     try {
       setIsBulkApproving(true);
-      const response = await fetch("/api/reconciliation/bulk-approve", {
+      const response = await fetchWithTimeout("/api/reconciliation/bulk-approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { formatCurrency } from "@/lib/translations";
 import { useRouter } from "next/navigation";
@@ -207,7 +208,7 @@ export default function BrandCommissionReportPage() {
       if (supplierId) params.append("supplierId", supplierId);
       if (status) params.append("status", status);
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/brand/${selectedBrandId}?${params.toString()}`
       );
       if (!response.ok) throw new Error("Failed to fetch report");
@@ -230,7 +231,7 @@ export default function BrandCommissionReportPage() {
       if (supplierId) params.append("supplierId", supplierId);
       if (status) params.append("status", status);
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/brand/${selectedBrandId}/export?${params.toString()}`
       );
 

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 /**
  * TanStack Query Hooks for Reconciliation V2 Module
  */
@@ -41,7 +42,7 @@ export const reconciliationV2Keys = {
 // ============================================================================
 
 async function fetchSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
-  const res = await fetch("/api/reconciliation-v2/suppliers");
+  const res = await fetchWithTimeout("/api/reconciliation-v2/suppliers");
   if (!res.ok) throw new Error("Failed to fetch suppliers");
   return res.json();
 }
@@ -49,7 +50,7 @@ async function fetchSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
 async function fetchSupplierPeriods(
   supplierId: string
 ): Promise<SupplierPeriod[]> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `/api/reconciliation-v2/suppliers/${supplierId}/periods`
   );
   if (!res.ok) throw new Error("Failed to fetch periods");
@@ -59,7 +60,7 @@ async function fetchSupplierPeriods(
 async function fetchSession(
   sessionId: string
 ): Promise<ReconciliationSessionWithDetails> {
-  const res = await fetch(`/api/reconciliation-v2/sessions/${sessionId}`);
+  const res = await fetchWithTimeout(`/api/reconciliation-v2/sessions/${sessionId}`);
   if (!res.ok) throw new Error("Failed to fetch session");
   return res.json();
 }
@@ -68,7 +69,7 @@ async function fetchSessionWithComparisons(sessionId: string): Promise<{
   session: ReconciliationSessionWithDetails;
   comparisons: ReconciliationComparisonWithDetails[];
 }> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `/api/reconciliation-v2/sessions/${sessionId}?include=comparisons`
   );
   if (!res.ok) throw new Error("Failed to fetch session with comparisons");
@@ -76,13 +77,13 @@ async function fetchSessionWithComparisons(sessionId: string): Promise<{
 }
 
 async function fetchReviewQueueItems(): Promise<ReconciliationReviewQueueItem[]> {
-  const res = await fetch("/api/reconciliation-v2/review-queue");
+  const res = await fetchWithTimeout("/api/reconciliation-v2/review-queue");
   if (!res.ok) throw new Error("Failed to fetch review queue");
   return res.json();
 }
 
 async function fetchReviewQueueCount(): Promise<number> {
-  const res = await fetch("/api/reconciliation-v2/review-queue/count");
+  const res = await fetchWithTimeout("/api/reconciliation-v2/review-queue/count");
   if (!res.ok) throw new Error("Failed to fetch review queue count");
   const data = await res.json();
   return data.count;
@@ -106,7 +107,7 @@ async function fetchHistory(filters?: {
   if (filters?.limit) params.set("limit", String(filters.limit));
   if (filters?.offset) params.set("offset", String(filters.offset));
 
-  const res = await fetch(`/api/reconciliation-v2/history?${params.toString()}`);
+  const res = await fetchWithTimeout(`/api/reconciliation-v2/history?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch history");
   return res.json();
 }
@@ -121,7 +122,7 @@ async function fetchSessionsList(filters?: {
   if (filters?.supplierId) params.set("supplierId", filters.supplierId);
   if (filters?.limit) params.set("limit", String(filters.limit));
 
-  const res = await fetch(`/api/reconciliation-v2/sessions?${params.toString()}`);
+  const res = await fetchWithTimeout(`/api/reconciliation-v2/sessions?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch sessions");
   return res.json();
 }
@@ -257,7 +258,7 @@ export function useCreateReconciliationSession() {
       periodStartDate: string;
       periodEndDate: string;
     }) => {
-      const res = await fetch("/api/reconciliation-v2/sessions", {
+      const res = await fetchWithTimeout("/api/reconciliation-v2/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -295,7 +296,7 @@ export function useUpdateComparisonNotes() {
       notes: string | null;
       sessionId: string;
     }) => {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/reconciliation-v2/comparisons/${data.comparisonId}`,
         {
           method: "PATCH",
@@ -331,7 +332,7 @@ export function useUpdateComparisonStatus() {
       status: ReconciliationComparisonStatus;
       notes?: string;
     }) => {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/reconciliation-v2/comparisons/${data.comparisonId}`,
         {
           method: "PATCH",
@@ -364,7 +365,7 @@ export function useBulkApproveComparisons() {
 
   return useMutation({
     mutationFn: async (data: { comparisonIds: string[] }) => {
-      const res = await fetch("/api/reconciliation-v2/comparisons/bulk-approve", {
+      const res = await fetchWithTimeout("/api/reconciliation-v2/comparisons/bulk-approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -391,7 +392,7 @@ export function useAddToReviewQueue() {
 
   return useMutation({
     mutationFn: async (data: { comparisonId: string; sessionId: string }) => {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/reconciliation-v2/comparisons/${data.comparisonId}`,
         {
           method: "PATCH",
@@ -427,7 +428,7 @@ export function useResolveReviewQueueItem() {
 
   return useMutation({
     mutationFn: async (data: { queueItemId: string; notes?: string }) => {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/reconciliation-v2/review-queue/${data.queueItemId}`,
         {
           method: "PATCH",
@@ -463,7 +464,7 @@ export function useApproveSessionFile() {
 
   return useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await fetch(`/api/reconciliation-v2/sessions/${sessionId}`, {
+      const res = await fetchWithTimeout(`/api/reconciliation-v2/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "approve" }),
@@ -497,7 +498,7 @@ export function useRejectSessionFile() {
       reason: string;
       sendEmail?: boolean;
     }) => {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `/api/reconciliation-v2/sessions/${data.sessionId}/reject-email`,
         {
           method: "POST",
@@ -533,7 +534,7 @@ export function useDeleteReconciliationSession() {
 
   return useMutation({
     mutationFn: async (sessionId: string) => {
-      const res = await fetch(`/api/reconciliation-v2/sessions/${sessionId}`, {
+      const res = await fetchWithTimeout(`/api/reconciliation-v2/sessions/${sessionId}`, {
         method: "DELETE",
       });
       if (!res.ok) {

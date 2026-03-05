@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery } from "@tanstack/react-query";
 import type { FranchiseeBkmvYear } from "@/db/schema";
 
@@ -23,7 +24,7 @@ interface BkmvYearSummary {
 async function fetchBkmvYears(
   franchiseeId: string
 ): Promise<BkmvYearSummary[]> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `/api/bkmvdata/years?franchiseeId=${encodeURIComponent(franchiseeId)}`
   );
   if (!res.ok) throw new Error("Failed to fetch BKMV years");
@@ -35,7 +36,7 @@ async function fetchBkmvYearData(
   franchiseeId: string,
   year: number
 ): Promise<FranchiseeBkmvYear> {
-  const res = await fetch(
+  const res = await fetchWithTimeout(
     `/api/bkmvdata/years?franchiseeId=${encodeURIComponent(franchiseeId)}&year=${year}`
   );
   if (!res.ok) throw new Error("Failed to fetch BKMV year data");

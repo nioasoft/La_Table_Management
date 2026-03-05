@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -115,7 +116,7 @@ export default function ReconciliationPage() {
   const fetchReconciliationData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reconcile`);
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reconcile`);
       if (!response.ok) {
         throw new Error("Failed to fetch reconciliation data");
       }
@@ -154,7 +155,7 @@ export default function ReconciliationPage() {
   const handleRunReconciliation = async () => {
     setIsRunning(true);
     try {
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reconcile`, {
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reconcile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ threshold: 10 }),

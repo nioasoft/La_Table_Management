@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -580,7 +581,7 @@ export default function SupplierFilesReportPage() {
     setError(null);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/reports/supplier-files${queryString ? `?${queryString}` : ""}`, {
+      const response = await fetchWithTimeout(`/api/reports/supplier-files${queryString ? `?${queryString}` : ""}`, {
         cache: "no-store",
       });
       if (!response.ok) {

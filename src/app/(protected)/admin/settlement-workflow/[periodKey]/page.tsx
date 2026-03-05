@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useMemo } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter, useParams } from "next/navigation";
@@ -116,7 +117,7 @@ export default function PeriodWorkflowPage() {
     try {
       setIsLoading(true);
       // Fetch suppliers for this period frequency
-      const response = await fetch(`/api/settlements/periods?frequency=${periodType}&includeFileRequests=true&periodKey=${encodeURIComponent(periodKey)}`);
+      const response = await fetchWithTimeout(`/api/settlements/periods?frequency=${periodType}&includeFileRequests=true&periodKey=${encodeURIComponent(periodKey)}`);
       if (!response.ok) {
         throw new Error("Failed to fetch suppliers");
       }
@@ -159,7 +160,7 @@ export default function PeriodWorkflowPage() {
       throw new Error("לספק זה לא מוגדר אימייל");
     }
 
-    const response = await fetch("/api/file-requests", {
+    const response = await fetchWithTimeout("/api/file-requests", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

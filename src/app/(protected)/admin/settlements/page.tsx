@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -144,7 +145,7 @@ export default function SettlementsPage() {
   const fetchPeriods = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch("/api/settlements/periods");
+      const response = await fetchWithTimeout("/api/settlements/periods");
       if (!response.ok) {
         throw new Error("Failed to fetch periods");
       }

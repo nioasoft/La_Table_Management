@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -278,7 +279,7 @@ export default function HashavshevetExportPage() {
 
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/reports/hashavshevet?${queryString}`);
+      const response = await fetchWithTimeout(`/api/reports/hashavshevet?${queryString}`);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -318,7 +319,7 @@ export default function HashavshevetExportPage() {
     try {
       const queryString = buildQueryString();
       const docNumParam = startDocNumber ? `&startDocNumber=${startDocNumber}` : "";
-      const response = await fetch(`/api/reports/hashavshevet/export?${queryString}${docNumParam}`);
+      const response = await fetchWithTimeout(`/api/reports/hashavshevet/export?${queryString}${docNumParam}`);
 
       if (!response.ok) {
         throw new Error("Failed to export");

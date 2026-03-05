@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -192,7 +193,7 @@ export default function InvoiceReportPage() {
   // Fetch suppliers for dropdown
   const fetchSuppliers = useCallback(async () => {
     try {
-      const response = await fetch("/api/suppliers?filter=active");
+      const response = await fetchWithTimeout("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
       setSuppliers(data.suppliers || []);
@@ -238,7 +239,7 @@ export default function InvoiceReportPage() {
       });
       if (status && status !== "all") params.append("status", status);
 
-      const response = await fetch(`/api/reports/invoice?${params.toString()}`);
+      const response = await fetchWithTimeout(`/api/reports/invoice?${params.toString()}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "שגיאה בטעינת נתוני החשבונית");

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -392,7 +393,7 @@ export default function FilesReportPage() {
     setError(null);
     try {
       const queryString = buildApiQueryString();
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/reports/files${queryString ? `?${queryString}` : ""}`,
         { signal: controller.signal }
       );

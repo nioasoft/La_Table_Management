@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -260,7 +261,7 @@ export default function DiscrepancyResolutionPage() {
     try {
       setIsRequestingFile(true);
 
-      const response = await fetch("/api/file-requests", {
+      const response = await fetchWithTimeout("/api/file-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -285,7 +286,7 @@ export default function DiscrepancyResolutionPage() {
       const data = await response.json();
 
       // Update cross-reference with file request ID
-      await fetch(`/api/reconciliation/${crossRefId}`, {
+      await fetchWithTimeout(`/api/reconciliation/${crossRefId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -314,7 +315,7 @@ export default function DiscrepancyResolutionPage() {
       const newStatus = approvalAction === "approve" ? "matched" : "discrepancy";
       const defaultNote = approvalAction === "approve" ? t.approvalDialog.approve : t.approvalDialog.reject;
 
-      const response = await fetch(`/api/reconciliation/${crossRefId}`, {
+      const response = await fetchWithTimeout(`/api/reconciliation/${crossRefId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

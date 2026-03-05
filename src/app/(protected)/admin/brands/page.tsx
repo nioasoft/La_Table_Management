@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -72,19 +73,13 @@ export default function AdminBrandsPage() {
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/brands");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch brands with TanStack Query
   const { data: brandsData, isLoading } = useQuery({
     queryKey: ["brands", "list", { filter: "all" }],
     queryFn: async () => {
-      const response = await fetch("/api/brands?filter=all");
+      const response = await fetchWithTimeout("/api/brands?filter=all");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
@@ -98,7 +93,7 @@ export default function AdminBrandsPage() {
   // Create brand mutation
   const createBrand = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const response = await fetch("/api/brands", {
+      const response = await fetchWithTimeout("/api/brands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -123,7 +118,7 @@ export default function AdminBrandsPage() {
   // Update brand mutation
   const updateBrand = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
-      const response = await fetch(`/api/brands/${id}`, {
+      const response = await fetchWithTimeout(`/api/brands/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -148,7 +143,7 @@ export default function AdminBrandsPage() {
   // Toggle status mutation
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      const response = await fetch(`/api/brands/${id}`, {
+      const response = await fetchWithTimeout(`/api/brands/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),

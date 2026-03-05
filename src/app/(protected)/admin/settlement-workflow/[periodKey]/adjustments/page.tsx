@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -146,7 +147,7 @@ export default function AdjustmentsPage() {
   const fetchAdjustments = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`);
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`);
       if (!response.ok) {
         throw new Error("Failed to fetch adjustments");
       }
@@ -229,7 +230,7 @@ export default function AdjustmentsPage() {
     try {
       if (editingAdjustment) {
         // Update existing
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`,
           {
             method: "PATCH",
@@ -254,7 +255,7 @@ export default function AdjustmentsPage() {
         toast.success("ההתאמה עודכנה בהצלחה");
       } else {
         // Create new
-        const response = await fetch(
+        const response = await fetchWithTimeout(
           `/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`,
           {
             method: "POST",
@@ -290,7 +291,7 @@ export default function AdjustmentsPage() {
 
   const handleApprove = async (adjustmentId: string) => {
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`,
         {
           method: "PATCH",
@@ -319,7 +320,7 @@ export default function AdjustmentsPage() {
     if (!confirm("האם למחוק את ההתאמה?")) return;
 
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/settlement-workflow/${encodeURIComponent(periodKey)}/adjustments`,
         {
           method: "PATCH",

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { StaffRole } from "@/db/schema";
 
@@ -21,7 +22,7 @@ async function fetchStaffContacts(filters?: StaffContactFilters) {
   if (filters?.role) params.set("role", filters.role);
 
   const url = `/api/staff-contacts${params.toString() ? `?${params}` : ""}`;
-  const res = await fetch(url);
+  const res = await fetchWithTimeout(url);
   if (!res.ok) throw new Error("Failed to fetch staff contacts");
   const data = await res.json();
   return data.staffContacts;
@@ -40,7 +41,7 @@ export function useCreateStaffContact() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/staff-contacts", {
+      const res = await fetchWithTimeout("/api/staff-contacts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -67,7 +68,7 @@ export function useUpdateStaffContact() {
       id: string;
       data: Record<string, unknown>;
     }) => {
-      const res = await fetch(`/api/staff-contacts/${id}`, {
+      const res = await fetchWithTimeout(`/api/staff-contacts/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -88,7 +89,7 @@ export function useDeleteStaffContact() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/staff-contacts/${id}`, {
+      const res = await fetchWithTimeout(`/api/staff-contacts/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) {

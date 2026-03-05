@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -75,19 +76,13 @@ export default function AdminVatRatesPage() {
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/vat-rates");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch VAT rates
   const { data: ratesData, isLoading } = useQuery({
     queryKey: ["vat-rates", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/vat-rates?stats=true");
+      const response = await fetchWithTimeout("/api/vat-rates?stats=true");
       if (!response.ok) {
         throw new Error("Failed to fetch VAT rates");
       }
@@ -102,7 +97,7 @@ export default function AdminVatRatesPage() {
   // Create mutation
   const createRate = useMutation({
     mutationFn: async (data: VatRateFormData) => {
-      const response = await fetch("/api/vat-rates", {
+      const response = await fetchWithTimeout("/api/vat-rates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -132,7 +127,7 @@ export default function AdminVatRatesPage() {
   // Update mutation
   const updateRate = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: VatRateFormData }) => {
-      const response = await fetch(`/api/vat-rates/${id}`, {
+      const response = await fetchWithTimeout(`/api/vat-rates/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -162,7 +157,7 @@ export default function AdminVatRatesPage() {
   // Delete mutation
   const deleteRate = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/vat-rates/${id}`, {
+      const response = await fetchWithTimeout(`/api/vat-rates/${id}`, {
         method: "DELETE",
       });
       if (!response.ok) {

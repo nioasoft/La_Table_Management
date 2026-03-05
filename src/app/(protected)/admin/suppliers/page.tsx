@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -202,19 +203,13 @@ export default function AdminSuppliersPage() {
 
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/suppliers");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch suppliers with TanStack Query
   const { data: suppliersData, isLoading, refetch: fetchSuppliers } = useQuery({
     queryKey: ["suppliers", "list", { filter, stats: true }],
     queryFn: async () => {
-      const response = await fetch(`/api/suppliers?filter=${filter}&stats=true`);
+      const response = await fetchWithTimeout(`/api/suppliers?filter=${filter}&stats=true`);
       if (!response.ok) {
         throw new Error("Failed to fetch suppliers");
       }
@@ -248,7 +243,7 @@ export default function AdminSuppliersPage() {
   const { data: brandsData } = useQuery({
     queryKey: ["brands", "list", { filter: "active" }],
     queryFn: async () => {
-      const response = await fetch("/api/brands?filter=active");
+      const response = await fetchWithTimeout("/api/brands?filter=active");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
@@ -281,7 +276,7 @@ export default function AdminSuppliersPage() {
   const fetchCommissionHistory = async (supplierId: string) => {
     try {
       setLoadingHistoryId(supplierId);
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/suppliers/${supplierId}/commission-history`
       );
       if (!response.ok) {
@@ -327,7 +322,7 @@ export default function AdminSuppliersPage() {
   const fetchSupplierDocuments = async (supplierId: string) => {
     try {
       setLoadingDocumentsId(supplierId);
-      const response = await fetch(`/api/documents/supplier/${supplierId}`);
+      const response = await fetchWithTimeout(`/api/documents/supplier/${supplierId}`);
       if (!response.ok) {
         throw new Error("Failed to fetch documents");
       }
@@ -370,7 +365,7 @@ export default function AdminSuppliersPage() {
         defaultCommissionRate: data.defaultCommissionRate || null,
         commissionExceptions: formDataToCommissionExceptions(data.commissionExceptions),
       };
-      const response = await fetch("/api/suppliers", {
+      const response = await fetchWithTimeout("/api/suppliers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(submitData),
@@ -410,7 +405,7 @@ export default function AdminSuppliersPage() {
         }),
       };
 
-      const response = await fetch(`/api/suppliers/${id}`, {
+      const response = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(submitData),
@@ -436,7 +431,7 @@ export default function AdminSuppliersPage() {
   // Archive supplier mutation (soft delete)
   const archiveSupplier = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/suppliers/${id}`, {
+      const response = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isArchived: true, isActive: false, isHidden: true }),
@@ -459,7 +454,7 @@ export default function AdminSuppliersPage() {
   // Toggle status mutation
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      const response = await fetch(`/api/suppliers/${id}`, {
+      const response = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive }),
@@ -481,7 +476,7 @@ export default function AdminSuppliersPage() {
   // Toggle hidden mutation
   const toggleHiddenMutation = useMutation({
     mutationFn: async ({ id, isHidden }: { id: string; isHidden: boolean }) => {
-      const response = await fetch(`/api/suppliers/${id}`, {
+      const response = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isHidden }),

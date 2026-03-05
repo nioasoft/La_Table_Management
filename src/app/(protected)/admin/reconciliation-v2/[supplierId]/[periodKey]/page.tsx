@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { use, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -81,7 +82,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
     // We'll use the period as the session ID lookup
     const fetchSession = async () => {
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `/api/reconciliation-v2/sessions?supplierId=${supplierId}&periodStart=${periodStartDate}&periodEnd=${periodEndDate}`
         );
         if (res.ok) {
@@ -101,7 +102,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
     const findSession = async () => {
       try {
         // Get supplier periods to find the session ID
-        const periodsRes = await fetch(
+        const periodsRes = await fetchWithTimeout(
           `/api/reconciliation-v2/suppliers/${supplierId}/periods`
         );
         if (periodsRes.ok) {

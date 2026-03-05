@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -100,7 +101,7 @@ export default function RevenueDataReportPage() {
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees");
+      const response = await fetchWithTimeout("/api/franchisees");
       if (!response.ok) throw new Error("Failed to fetch franchisees");
       return response.json();
     },
@@ -129,7 +130,7 @@ export default function RevenueDataReportPage() {
       if (filterYear) {
         params.set("year", filterYear);
       }
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/reports/revenue-data?${params.toString()}`
       );
       if (!response.ok) throw new Error("Failed to fetch revenue data");

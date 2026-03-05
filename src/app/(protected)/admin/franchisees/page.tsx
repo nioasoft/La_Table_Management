@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -253,13 +254,7 @@ export default function AdminFranchiseesPage() {
     ? (session.user as { role?: string })?.role
     : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/franchisees");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch franchisees with TanStack Query
   const { data: franchiseesData, isLoading } = useQuery({
@@ -272,7 +267,7 @@ export default function AdminFranchiseesPage() {
       if (filterStatus && filterStatus !== "all") {
         url += `&filter=${filterStatus}`;
       }
-      const response = await fetch(url);
+      const response = await fetchWithTimeout(url);
       if (!response.ok) {
         throw new Error("Failed to fetch franchisees");
       }
@@ -326,7 +321,7 @@ export default function AdminFranchiseesPage() {
   const { data: brandsData } = useQuery({
     queryKey: ["brands", "list", { filter: "active" }],
     queryFn: async () => {
-      const response = await fetch("/api/brands?filter=active");
+      const response = await fetchWithTimeout("/api/brands?filter=active");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
@@ -341,7 +336,7 @@ export default function AdminFranchiseesPage() {
   const { data: reminderCountsData } = useQuery({
     queryKey: ["reminder-counts"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees/important-dates/reminder-counts");
+      const response = await fetchWithTimeout("/api/franchisees/important-dates/reminder-counts");
       if (!response.ok) {
         throw new Error("Failed to fetch reminder counts");
       }
@@ -355,7 +350,7 @@ export default function AdminFranchiseesPage() {
   const fetchFranchiseeDocuments = async (franchiseeId: string) => {
     try {
       setLoadingDocumentsId(franchiseeId);
-      const response = await fetch(`/api/documents/franchisee/${franchiseeId}`);
+      const response = await fetchWithTimeout(`/api/documents/franchisee/${franchiseeId}`);
       if (!response.ok) {
         throw new Error("Failed to fetch documents");
       }
@@ -393,7 +388,7 @@ export default function AdminFranchiseesPage() {
   // Create franchisee mutation
   const createFranchisee = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const response = await fetch("/api/franchisees", {
+      const response = await fetchWithTimeout("/api/franchisees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -418,7 +413,7 @@ export default function AdminFranchiseesPage() {
       if (franchiseeId && pendingContacts.length > 0) {
         for (const pc of pendingContacts) {
           try {
-            await fetch(`/api/franchisees/${franchiseeId}/contacts`, {
+            await fetchWithTimeout(`/api/franchisees/${franchiseeId}/contacts`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -451,7 +446,7 @@ export default function AdminFranchiseesPage() {
   // Update franchisee mutation
   const updateFranchisee = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
-      const response = await fetch(`/api/franchisees/${id}`, {
+      const response = await fetchWithTimeout(`/api/franchisees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -554,7 +549,7 @@ export default function AdminFranchiseesPage() {
       reason?: string;
       notes?: string;
     }) => {
-      const response = await fetch(`/api/franchisees/${id}`, {
+      const response = await fetchWithTimeout(`/api/franchisees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -620,7 +615,7 @@ export default function AdminFranchiseesPage() {
     setLoadingHistoryId(franchiseeId);
 
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/status-history`
       );
 
@@ -759,7 +754,7 @@ export default function AdminFranchiseesPage() {
         ? `/api/franchisees/${editingFranchisee.id}/contacts/${editingContactIdInEdit}`
         : `/api/franchisees/${editingFranchisee.id}/contacts`;
       const method = editingContactIdInEdit ? "PATCH" : "POST";
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(contactFormInEdit),
@@ -778,7 +773,7 @@ export default function AdminFranchiseesPage() {
     if (!editingFranchisee) return;
     setDeletingContactIdInEdit(contactId);
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${editingFranchisee.id}/contacts/${contactId}`,
         { method: "DELETE" }
       );
@@ -877,7 +872,7 @@ export default function AdminFranchiseesPage() {
       </div>
 
       {/* Franchisee Form Dialog */}
-      <Dialog open={showForm} onOpenChange={(open) => !isSubmitting && setShowForm(open)}>
+      <Dialog open={showForm} onOpenChange={(open) => { if (!open) setShowForm(false); else setShowForm(true); }}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>

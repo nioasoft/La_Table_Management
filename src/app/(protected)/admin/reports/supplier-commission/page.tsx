@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -164,7 +165,7 @@ export default function SupplierCommissionReportPage() {
   // Fetch brands for dropdown
   const fetchBrands = useCallback(async () => {
     try {
-      const response = await fetch("/api/brands?filter=active");
+      const response = await fetchWithTimeout("/api/brands?filter=active");
       if (!response.ok) throw new Error("Failed to fetch brands");
       const data = await response.json();
       setBrands(data.brands || []);
@@ -194,7 +195,7 @@ export default function SupplierCommissionReportPage() {
         params.append("brandId", selectedBrandId);
       }
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/reports/supplier-commission?${params.toString()}`
       );
       if (!response.ok) {
@@ -231,7 +232,7 @@ export default function SupplierCommissionReportPage() {
         params.append("brandId", selectedBrandId);
       }
 
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/reports/supplier-commission/export?${params.toString()}`
       );
       if (!response.ok) {

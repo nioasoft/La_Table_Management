@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -321,7 +322,7 @@ export default function DepositsReportPage() {
     setError(null);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/reports/deposits${queryString ? `?${queryString}` : ""}`);
+      const response = await fetchWithTimeout(`/api/reports/deposits${queryString ? `?${queryString}` : ""}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch report");

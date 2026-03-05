@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -234,7 +235,7 @@ export default function BkmvDataPage() {
       category: AccountCategory;
       accountName?: string;
     }) => {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/account-classifications`,
         {
           method: "PUT",
@@ -255,7 +256,7 @@ export default function BkmvDataPage() {
       franchiseeId: string;
       accountKey: string;
     }) => {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/account-classifications`,
         {
           method: "DELETE",
@@ -276,7 +277,7 @@ export default function BkmvDataPage() {
       franchiseeId: string;
       items: Array<{ accountKey: string; category: AccountCategory; accountName?: string }>;
     }) => {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}/account-classifications`,
         {
           method: "PUT",
@@ -292,19 +293,13 @@ export default function BkmvDataPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/bkmvdata");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch suppliers
   const { data: suppliersData, isLoading: isLoadingSuppliers, error: suppliersError } = useQuery({
     queryKey: ["suppliers", "list", { filter: "all" }],
     queryFn: async () => {
-      const response = await fetch("/api/suppliers?filter=all");
+      const response = await fetchWithTimeout("/api/suppliers?filter=all");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       return response.json();
     },
@@ -317,7 +312,7 @@ export default function BkmvDataPage() {
   const { data: blacklistData, refetch: refetchBlacklist } = useQuery({
     queryKey: ["bkmvdata", "blacklist"],
     queryFn: async () => {
-      const response = await fetch("/api/bkmvdata/blacklist");
+      const response = await fetchWithTimeout("/api/bkmvdata/blacklist");
       if (!response.ok) throw new Error("Failed to fetch blacklist");
       return response.json();
     },
@@ -344,7 +339,7 @@ export default function BkmvDataPage() {
   const { data: smallSupplierData } = useQuery({
     queryKey: ["bkmvdata", "small-supplier"],
     queryFn: async () => {
-      const response = await fetch("/api/bkmvdata/small-supplier");
+      const response = await fetchWithTimeout("/api/bkmvdata/small-supplier");
       if (!response.ok) throw new Error("Failed to fetch small suppliers");
       return response.json();
     },
@@ -361,7 +356,7 @@ export default function BkmvDataPage() {
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees");
+      const response = await fetchWithTimeout("/api/franchisees");
       if (!response.ok) throw new Error("Failed to fetch franchisees");
       return response.json();
     },
@@ -382,7 +377,7 @@ export default function BkmvDataPage() {
         params.set("status", historyFilterStatus);
       }
       params.set("limit", "50");
-      const response = await fetch(`/api/bkmvdata/history?${params.toString()}`);
+      const response = await fetchWithTimeout(`/api/bkmvdata/history?${params.toString()}`);
       if (!response.ok) throw new Error("Failed to fetch history");
       return response.json();
     },
@@ -429,7 +424,7 @@ export default function BkmvDataPage() {
   // Update supplier mutation (for adding aliases)
   const updateSupplierMutation = useMutation({
     mutationFn: async ({ supplierId, bkmvAliases }: { supplierId: string; bkmvAliases: string[] }) => {
-      const response = await fetch(`/api/suppliers/${supplierId}`, {
+      const response = await fetchWithTimeout(`/api/suppliers/${supplierId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bkmvAliases }),
@@ -445,7 +440,7 @@ export default function BkmvDataPage() {
   // Add to blacklist mutation (for marking as not relevant)
   const addToBlacklistMutation = useMutation({
     mutationFn: async (name: string) => {
-      const response = await fetch("/api/bkmvdata/blacklist", {
+      const response = await fetchWithTimeout("/api/bkmvdata/blacklist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -470,7 +465,7 @@ export default function BkmvDataPage() {
   // Remove from blacklist mutation (for restoring blacklisted items)
   const removeFromBlacklistMutation = useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/bkmvdata/blacklist?id=${id}`, { method: "DELETE" });
+      const response = await fetchWithTimeout(`/api/bkmvdata/blacklist?id=${id}`, { method: "DELETE" });
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || "שגיאה בהסרה מהרשימה");
@@ -602,7 +597,7 @@ export default function BkmvDataPage() {
       }
 
       // Step 2: Process the uploaded file
-      const response = await fetch("/api/bkmvdata/admin-process", {
+      const response = await fetchWithTimeout("/api/bkmvdata/admin-process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -689,7 +684,7 @@ export default function BkmvDataPage() {
 
       if (result.companyId) {
         try {
-          const franchiseeResponse = await fetch(`/api/franchisees?companyId=${encodeURIComponent(result.companyId)}`);
+          const franchiseeResponse = await fetchWithTimeout(`/api/franchisees?companyId=${encodeURIComponent(result.companyId)}`);
           if (franchiseeResponse.ok) {
             const data = await franchiseeResponse.json();
             if (data.found && data.franchisee) {
@@ -698,7 +693,7 @@ export default function BkmvDataPage() {
 
               // Load saved classifications for this franchisee
               try {
-                const classResponse = await fetch(
+                const classResponse = await fetchWithTimeout(
                   `/api/franchisees/${data.franchisee.id}/account-classifications?format=map`
                 );
                 if (classResponse.ok) {
@@ -2512,7 +2507,7 @@ export default function BkmvDataPage() {
                                   className="gap-1"
                                   onClick={async () => {
                                     try {
-                                      const res = await fetch(item.fileUrl);
+                                      const res = await fetchWithTimeout(item.fileUrl);
                                       const blob = await res.blob();
                                       const url = URL.createObjectURL(blob);
                                       const a = document.createElement("a");

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -145,7 +146,7 @@ export default function InvoiceReportPage() {
       });
       if (status) params.append("status", status);
 
-      const response = await fetch(`/api/commissions/invoice?${params.toString()}`);
+      const response = await fetchWithTimeout(`/api/commissions/invoice?${params.toString()}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || t.invoice.errors.loadInvoiceData);
@@ -173,7 +174,7 @@ export default function InvoiceReportPage() {
       });
       if (status) params.append("status", status);
 
-      const response = await fetch(`/api/commissions/invoice/export?${params.toString()}`);
+      const response = await fetchWithTimeout(`/api/commissions/invoice/export?${params.toString()}`);
 
       if (!response.ok) {
         const errorData = await response.json();

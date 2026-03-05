@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -105,19 +106,13 @@ export default function OtherIncomePage() {
     ? (session.user as { role?: string })?.role
     : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/other-income");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch other income sources
   const { data: sourcesData, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["franchisees", "other-income"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees?category=other&stats=true");
+      const response = await fetchWithTimeout("/api/franchisees?category=other&stats=true");
       if (!response.ok) {
         throw new Error("Failed to fetch other income sources");
       }
@@ -144,7 +139,7 @@ export default function OtherIncomePage() {
   const { data: brandsData } = useQuery({
     queryKey: ["brands", "list", { includeSystem: true }],
     queryFn: async () => {
-      const response = await fetch("/api/brands?filter=active&includeSystem=true");
+      const response = await fetchWithTimeout("/api/brands?filter=active&includeSystem=true");
       if (!response.ok) {
         throw new Error("Failed to fetch brands");
       }
@@ -158,7 +153,7 @@ export default function OtherIncomePage() {
   // Create source mutation
   const createSource = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const response = await fetch("/api/franchisees", {
+      const response = await fetchWithTimeout("/api/franchisees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -187,7 +182,7 @@ export default function OtherIncomePage() {
   // Update source mutation
   const updateSource = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: typeof formData }) => {
-      const response = await fetch(`/api/franchisees/${id}`, {
+      const response = await fetchWithTimeout(`/api/franchisees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -345,7 +340,7 @@ export default function OtherIncomePage() {
       </div>
 
       {/* Form Dialog */}
-      <Dialog open={showForm} onOpenChange={(open) => !isSubmitting && setShowForm(open)}>
+      <Dialog open={showForm} onOpenChange={(open) => { if (!open) setShowForm(false); else setShowForm(true); }}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>

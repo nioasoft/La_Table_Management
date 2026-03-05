@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const brandKeys = {
@@ -8,7 +9,7 @@ export const brandKeys = {
 };
 
 async function fetchBrands() {
-  const res = await fetch("/api/brands");
+  const res = await fetchWithTimeout("/api/brands");
   if (!res.ok) throw new Error("Failed to fetch brands");
   const data = await res.json();
   return data.brands;
@@ -25,7 +26,7 @@ export function useCreateBrand() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/brands", {
+      const res = await fetchWithTimeout("/api/brands", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -43,7 +44,7 @@ export function useUpdateBrand() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/brands/${id}`, {
+      const res = await fetchWithTimeout(`/api/brands/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -62,7 +63,7 @@ export function useDeleteBrand() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/brands/${id}`, {
+      const res = await fetchWithTimeout(`/api/brands/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete brand");

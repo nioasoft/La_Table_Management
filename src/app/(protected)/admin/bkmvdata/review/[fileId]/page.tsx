@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -167,19 +168,13 @@ export default function FileDetailsPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/bkmvdata/review");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch file details
   const { data: fileData, isLoading, error } = useQuery<FileDetails>({
     queryKey: ["bkmvdata", "review", fileId],
     queryFn: async () => {
-      const response = await fetch(`/api/bkmvdata/review/${fileId}`);
+      const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`);
       if (!response.ok) throw new Error("Failed to fetch file details");
       return response.json();
     },
@@ -190,7 +185,7 @@ export default function FileDetailsPage() {
   const { data: suppliersData } = useQuery({
     queryKey: ["suppliers", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/suppliers?filter=active");
+      const response = await fetchWithTimeout("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       return response.json();
     },
@@ -355,7 +350,7 @@ export default function FileDetailsPage() {
   // Review action mutation
   const reviewMutation = useMutation({
     mutationFn: async ({ action, notes }: { action: "approve" | "reject"; notes: string }) => {
-      const response = await fetch("/api/bkmvdata/review", {
+      const response = await fetchWithTimeout("/api/bkmvdata/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId, action, notes }),
@@ -372,7 +367,7 @@ export default function FileDetailsPage() {
   // Manual match mutation
   const matchMutation = useMutation({
     mutationFn: async ({ bkmvName, newSupplierId, addAlias }: { bkmvName: string; newSupplierId: string; addAlias: boolean }) => {
-      const response = await fetch(`/api/bkmvdata/review/${fileId}`, {
+      const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bkmvName, newSupplierId, addAsAlias: addAlias }),
@@ -390,7 +385,7 @@ export default function FileDetailsPage() {
   // Blacklist mutation
   const blacklistMutation = useMutation({
     mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
-      const response = await fetch("/api/bkmvdata/blacklist", {
+      const response = await fetchWithTimeout("/api/bkmvdata/blacklist", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, notes }),
@@ -413,7 +408,7 @@ export default function FileDetailsPage() {
   const smallSupplierMutation = useMutation({
     mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
       // 1. Add to small supplier table
-      const addResponse = await fetch("/api/bkmvdata/small-supplier", {
+      const addResponse = await fetchWithTimeout("/api/bkmvdata/small-supplier", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, notes }),
@@ -423,7 +418,7 @@ export default function FileDetailsPage() {
         throw new Error(error.error || "Failed to add small supplier");
       }
       // 2. Update match type in processing result
-      const patchResponse = await fetch(`/api/bkmvdata/review/${fileId}`, {
+      const patchResponse = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bkmvName: name, markAsSmallSupplier: true }),
@@ -444,7 +439,7 @@ export default function FileDetailsPage() {
   // Revenue confirmation mutation
   const revenueConfirmMutation = useMutation({
     mutationFn: async ({ accountCodes, saveToFranchisee }: { accountCodes: string[]; saveToFranchisee: boolean }) => {
-      const response = await fetch(`/api/bkmvdata/review/${fileId}`, {
+      const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

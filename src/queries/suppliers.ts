@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const supplierKeys = {
@@ -9,14 +10,14 @@ export const supplierKeys = {
 };
 
 async function fetchSuppliers() {
-  const res = await fetch("/api/suppliers");
+  const res = await fetchWithTimeout("/api/suppliers");
   if (!res.ok) throw new Error("Failed to fetch suppliers");
   const data = await res.json();
   return data.suppliers;
 }
 
 async function fetchSupplier(id: string) {
-  const res = await fetch(`/api/suppliers/${id}`);
+  const res = await fetchWithTimeout(`/api/suppliers/${id}`);
   if (!res.ok) throw new Error("Failed to fetch supplier");
   const data = await res.json();
   return data.supplier;
@@ -41,7 +42,7 @@ export function useCreateSupplier() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/suppliers", {
+      const res = await fetchWithTimeout("/api/suppliers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -59,7 +60,7 @@ export function useUpdateSupplier() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/suppliers/${id}`, {
+      const res = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -78,7 +79,7 @@ export function useDeleteSupplier() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/suppliers/${id}`, {
+      const res = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete supplier");

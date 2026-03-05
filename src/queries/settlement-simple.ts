@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   SettlementSimpleReport,
@@ -61,7 +62,7 @@ export function useSettlementSimpleReport(filters: SettlementSimpleFilters) {
     queryKey: settlementSimpleKeys.report(filters),
     queryFn: async () => {
       const url = `/api/settlement-simple${queryParams.toString() ? `?${queryParams}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) {
         throw new Error("Failed to fetch settlement report");
       }
@@ -78,7 +79,7 @@ export function useSettlementSimpleFilterOptions() {
   return useQuery<SettlementSimpleAPIResponse>({
     queryKey: settlementSimpleKeys.filterOptions(),
     queryFn: async () => {
-      const res = await fetch("/api/settlement-simple");
+      const res = await fetchWithTimeout("/api/settlement-simple");
       if (!res.ok) {
         throw new Error("Failed to fetch filter options");
       }
@@ -96,7 +97,7 @@ export function useSaveSettlementAdjustment() {
 
   return useMutation({
     mutationFn: async (data: Omit<SaveAdjustmentData, "createdBy">) => {
-      const res = await fetch("/api/settlement-simple", {
+      const res = await fetchWithTimeout("/api/settlement-simple", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -141,7 +142,7 @@ export function useExportSettlementSimple() {
       }
 
       const url = `/api/settlement-simple/export?${queryParams}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
 
       if (!res.ok) {
         throw new Error("Failed to export report");

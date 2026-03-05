@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
@@ -242,7 +243,7 @@ export default function VarianceReportPage() {
     setError(null);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(`/api/commissions/variance?${queryString}`);
+      const response = await fetchWithTimeout(`/api/commissions/variance?${queryString}`);
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -272,7 +273,7 @@ export default function VarianceReportPage() {
     setIsExporting(true);
     try {
       const queryString = buildQueryString();
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/commissions/variance/export?${queryString}`
       );
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import React, { useState, useCallback, useRef, useMemo, type DragEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -217,19 +218,13 @@ export default function SupplierFilesPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/supplier-files");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch suppliers with file mapping
   const { data: suppliersData, isLoading: suppliersLoading, refetch } = useQuery({
     queryKey: ["suppliers", "with-file-mapping"],
     queryFn: async () => {
-      const response = await fetch("/api/suppliers?filter=active");
+      const response = await fetchWithTimeout("/api/suppliers?filter=active");
       if (!response.ok) throw new Error("Failed to fetch suppliers");
       const data = await response.json();
       // Filter to suppliers with file mapping OR custom parser
@@ -242,7 +237,7 @@ export default function SupplierFilesPage() {
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees");
+      const response = await fetchWithTimeout("/api/franchisees");
       if (!response.ok) throw new Error("Failed to fetch franchisees");
       return response.json();
     },
@@ -327,7 +322,7 @@ export default function SupplierFilesPage() {
   // Add alias mutation
   const addAliasMutation = useMutation({
     mutationFn: async ({ franchiseeId, aliasName }: { franchiseeId: string; aliasName: string }) => {
-      const response = await fetch(`/api/franchisees/${franchiseeId}/aliases`, {
+      const response = await fetchWithTimeout(`/api/franchisees/${franchiseeId}/aliases`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alias: aliasName }),
@@ -415,7 +410,7 @@ export default function SupplierFilesPage() {
         processedAt: new Date().toISOString(),
       };
 
-      const response = await fetch("/api/supplier-files", {
+      const response = await fetchWithTimeout("/api/supplier-files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -522,7 +517,7 @@ export default function SupplierFilesPage() {
     formData.append("file", processedFile);
     formData.append("enableMatching", "true");
 
-    const response = await fetch(`/api/suppliers/${supplierId}/process-file`, {
+    const response = await fetchWithTimeout(`/api/suppliers/${supplierId}/process-file`, {
       method: "POST",
       body: formData,
     });
@@ -594,7 +589,7 @@ export default function SupplierFilesPage() {
       processedAt: new Date().toISOString(),
     };
 
-    const saveResponse = await fetch("/api/supplier-files", {
+    const saveResponse = await fetchWithTimeout("/api/supplier-files", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -653,7 +648,7 @@ export default function SupplierFilesPage() {
         formData.append("file", file);
         formData.append("enableMatching", "true");
 
-        const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+        const response = await fetchWithTimeout(`/api/suppliers/${selectedSupplierId}/process-file`, {
           method: "POST",
           body: formData,
         });
@@ -809,7 +804,7 @@ export default function SupplierFilesPage() {
         formData.append("file", file);
         formData.append("enableMatching", "true");
 
-        const response = await fetch(`/api/suppliers/${selectedSupplierId}/process-file`, {
+        const response = await fetchWithTimeout(`/api/suppliers/${selectedSupplierId}/process-file`, {
           method: "POST",
           body: formData,
         });

@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const reconciliationKeys = {
@@ -15,7 +16,7 @@ export function useReconciliation(params?: { stats?: boolean }) {
     queryKey: [...reconciliationKeys.lists(), params],
     queryFn: async () => {
       const url = `/api/reconciliation${queryParams.toString() ? `?${queryParams}` : ""}`;
-      const res = await fetch(url);
+      const res = await fetchWithTimeout(url);
       if (!res.ok) throw new Error("Failed to fetch reconciliation data");
       return res.json();
     },
@@ -26,7 +27,7 @@ export function useDiscrepancies() {
   return useQuery({
     queryKey: reconciliationKeys.discrepancies(),
     queryFn: async () => {
-      const res = await fetch("/api/reconciliation/discrepancies");
+      const res = await fetchWithTimeout("/api/reconciliation/discrepancies");
       if (!res.ok) throw new Error("Failed to fetch discrepancies");
       return res.json();
     },
@@ -37,7 +38,7 @@ export function useCrossReference(id: string) {
   return useQuery({
     queryKey: reconciliationKeys.detail(id),
     queryFn: async () => {
-      const res = await fetch(`/api/reconciliation/${id}`);
+      const res = await fetchWithTimeout(`/api/reconciliation/${id}`);
       if (!res.ok) throw new Error("Failed to fetch cross reference");
       return res.json();
     },
@@ -49,7 +50,7 @@ export function useResolveCrossReference() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/reconciliation/${id}/resolve`, {
+      const res = await fetchWithTimeout(`/api/reconciliation/${id}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -67,7 +68,7 @@ export function useBulkCompare() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: { periodStartDate: string; periodEndDate: string; threshold?: number }) => {
-      const res = await fetch("/api/reconciliation", {
+      const res = await fetchWithTimeout("/api/reconciliation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),

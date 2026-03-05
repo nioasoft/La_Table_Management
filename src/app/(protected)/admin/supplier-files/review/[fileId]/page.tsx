@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
@@ -131,19 +132,13 @@ export default function SupplierFileDetailPage() {
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
 
-  // Redirect if not authenticated or authorized
-  if (!isPending && !session) {
-    router.push("/sign-in?redirect=/admin/supplier-files/review");
-  }
-  if (!isPending && session?.user && userRole !== "super_user" && userRole !== "admin") {
-    router.push("/dashboard");
-  }
+
 
   // Fetch file details
   const { data: fileData, isLoading, error } = useQuery<FileDetails>({
     queryKey: ["supplier-files", "review", fileId],
     queryFn: async () => {
-      const response = await fetch(`/api/supplier-files/review/${fileId}`);
+      const response = await fetchWithTimeout(`/api/supplier-files/review/${fileId}`);
       if (!response.ok) throw new Error("Failed to fetch file details");
       return response.json();
     },
@@ -154,7 +149,7 @@ export default function SupplierFileDetailPage() {
   const { data: franchiseesData } = useQuery({
     queryKey: ["franchisees", "list"],
     queryFn: async () => {
-      const response = await fetch("/api/franchisees?filter=active");
+      const response = await fetchWithTimeout("/api/franchisees?filter=active");
       if (!response.ok) throw new Error("Failed to fetch franchisees");
       return response.json();
     },
@@ -179,7 +174,7 @@ export default function SupplierFileDetailPage() {
   // Review action mutation
   const reviewMutation = useMutation({
     mutationFn: async ({ action, notes }: { action: "approve" | "reject"; notes: string }) => {
-      const response = await fetch("/api/supplier-files/review", {
+      const response = await fetchWithTimeout("/api/supplier-files/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId, action, notes }),
@@ -204,7 +199,7 @@ export default function SupplierFileDetailPage() {
       franchiseeId: string;
       addAlias: boolean;
     }) => {
-      const response = await fetch(`/api/supplier-files/review/${fileId}`, {
+      const response = await fetchWithTimeout(`/api/supplier-files/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ originalName, franchiseeId, addAsAlias: addAlias }),
@@ -223,7 +218,7 @@ export default function SupplierFileDetailPage() {
   // Blacklist mutation
   const blacklistMutation = useMutation({
     mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
-      const response = await fetch(`/api/supplier-files/review/${fileId}`, {
+      const response = await fetchWithTimeout(`/api/supplier-files/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ originalName: name, blacklist: true, notes }),

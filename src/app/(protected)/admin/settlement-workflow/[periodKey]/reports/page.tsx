@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -134,7 +135,7 @@ export default function ReportsPage() {
   const fetchReportData = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reports`);
+      const response = await fetchWithTimeout(`/api/settlement-workflow/${encodeURIComponent(periodKey)}/reports`);
       if (!response.ok) {
         throw new Error("Failed to fetch report data");
       }
@@ -172,7 +173,7 @@ export default function ReportsPage() {
   const handleExportExcel = async (includeDetails: boolean = false) => {
     setIsExporting(true);
     try {
-      const response = await fetch(
+      const response = await fetchWithTimeout(
         `/api/settlement-workflow/${encodeURIComponent(periodKey)}/reports?format=excel&includeDetails=${includeDetails}`
       );
 

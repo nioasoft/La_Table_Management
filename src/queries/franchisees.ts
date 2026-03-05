@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 export const franchiseeKeys = {
@@ -9,14 +10,14 @@ export const franchiseeKeys = {
 };
 
 async function fetchFranchisees() {
-  const res = await fetch("/api/franchisees");
+  const res = await fetchWithTimeout("/api/franchisees");
   if (!res.ok) throw new Error("Failed to fetch franchisees");
   const data = await res.json();
   return data.franchisees;
 }
 
 async function fetchFranchisee(id: string) {
-  const res = await fetch(`/api/franchisees/${id}`);
+  const res = await fetchWithTimeout(`/api/franchisees/${id}`);
   if (!res.ok) throw new Error("Failed to fetch franchisee");
   const data = await res.json();
   return data.franchisee;
@@ -41,7 +42,7 @@ export function useCreateFranchisee() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await fetch("/api/franchisees", {
+      const res = await fetchWithTimeout("/api/franchisees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -59,7 +60,7 @@ export function useUpdateFranchisee() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
-      const res = await fetch(`/api/franchisees/${id}`, {
+      const res = await fetchWithTimeout(`/api/franchisees/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -78,7 +79,7 @@ export function useDeleteFranchisee() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/franchisees/${id}`, {
+      const res = await fetchWithTimeout(`/api/franchisees/${id}`, {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete franchisee");
