@@ -829,6 +829,7 @@ export default function BkmvDataPage() {
 
   // Handle date filter
   const handleDateFilter = useCallback(() => {
+    console.log('[DATE-FILTER] handleDateFilter called', { filterStartDate, filterEndDate, hasParseResult: !!parseResult });
     if (!parseResult || !filterStartDate || !filterEndDate) return;
 
     // Rebuild classified accounts with date-filtered amounts
