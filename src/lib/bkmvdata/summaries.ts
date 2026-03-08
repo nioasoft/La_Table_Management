@@ -81,12 +81,13 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
   const accountCodeToInfo = new Map<string, { accountKey: string; accountName: string }>();
 
   // Primary: detect revenue accounts by accountType
-  let detectedByName = false;
+  const detectedByType = new Set<string>();
   for (const account of result.accounts) {
     if (account.accountType && (account.accountType.includes('הכנסות') || (account.accountType.includes('מכירות') && !account.accountType.includes('עלות מכירות')))) {
       const key = account.accountKey.trim();
       if (key) {
         revenueAccountCodes.add(key);
+        detectedByType.add(key);
         accountCodeToInfo.set(key, {
           accountKey: key,
           accountName: account.accountName || key,
@@ -95,27 +96,30 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     }
   }
 
-  // Fallback: if no revenue accounts found by type, detect by account name
-  // (e.g. unknown-d files where accountType is "צאות" but name is "הכנסות")
-  if (revenueAccountCodes.size === 0) {
-    for (const account of result.accounts) {
-      if (
-        account.accountName &&
-        account.accountName.startsWith('הכנסות') &&
-        !account.accountName.includes('זקופות')
-      ) {
-        const key = account.accountKey.trim();
-        if (key) {
-          revenueAccountCodes.add(key);
-          accountCodeToInfo.set(key, {
-            accountKey: key,
-            accountName: account.accountName || key,
-          });
-          detectedByName = true;
-        }
-      }
+  // Cumulative: also detect revenue accounts by account name
+  // Catches accounts like "הכנסות תן ביס" typed as "וחברות חיצוניות" in Ravachit,
+  // and unknown-d files where accountType is "צאות" but name is "הכנסות"
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!key || revenueAccountCodes.has(key)) continue;
+
+    if (
+      account.accountName &&
+      account.accountName.startsWith('הכנסות') &&
+      !account.accountName.includes('זקופות')
+    ) {
+      revenueAccountCodes.add(key);
+      accountCodeToInfo.set(key, {
+        accountKey: key,
+        accountName: account.accountName || key,
+      });
     }
   }
+
+  // Name-based transaction matching is only used when NO accounts were found by type
+  // (unknown-d files where accountCode doesn't match accountKey).
+  // When type-based detection found accounts, transactions already match by code correctly.
+  const detectedByName = detectedByType.size === 0;
 
   if (revenueAccountCodes.size === 0) {
     result.revenueSummary = summary;

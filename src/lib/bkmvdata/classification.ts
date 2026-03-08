@@ -131,7 +131,17 @@ export function classifyAccounts(
     // Auto-classify from accountType
     let autoCategory = autoClassifyAccount(account.accountType);
 
-    // Fallback: when text-based classification fails, try classifying by accountKey prefix.
+    // Fallback 1: detect revenue by account name (e.g. "הכנסות תן ביס" typed as "וחברות חיצוניות")
+    if (autoCategory === 'uncategorized' && account.accountName) {
+      if (
+        account.accountName.startsWith('הכנסות') &&
+        !account.accountName.includes('זקופות')
+      ) {
+        autoCategory = 'revenue';
+      }
+    }
+
+    // Fallback 2: when text-based classification fails, try classifying by accountKey prefix.
     // Only use prefix fallback when accountType is genuinely empty/missing or equals
     // accountName (parser fallback for extended format files where no real type exists).
     // When accountType has a real but unrecognized value (e.g. "גז"), skip prefix fallback

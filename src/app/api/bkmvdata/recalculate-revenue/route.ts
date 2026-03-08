@@ -65,25 +65,21 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Filter revenueAccounts by current classifications:
-      // - Keep accounts that are explicitly classified as 'revenue' (saved override)
-      // - Keep accounts that have NO saved classification (original auto-detection stands)
-      // - Remove accounts that are explicitly classified as something OTHER than 'revenue'
-      const filteredRevenueAccounts = result.revenueAccounts.filter(
-        (account) => {
-          const savedCategory = classificationMap.get(account.accountCode);
-          // If no saved classification, keep the original detection
-          if (!savedCategory) return true;
-          // If explicitly set to revenue, keep
-          if (savedCategory === "revenue") return true;
-          // If explicitly set to something else, remove from revenue
-          return false;
-        }
-      );
+      // Toggle isConfirmed on each account based on current classifications.
+      // Keep ALL accounts in the array (non-destructive) so they can be re-enabled later.
+      const confirmedCodes: string[] = [];
+      const updatedRevenueAccounts = result.revenueAccounts.map((account) => {
+        const savedCategory = classificationMap.get(account.accountCode);
+        // Confirmed if: no saved classification (auto-detection stands) OR explicitly set to revenue
+        const isConfirmed = !savedCategory || savedCategory === "revenue";
+        if (isConfirmed) confirmedCodes.push(account.accountCode);
+        return { ...account, isConfirmed };
+      });
 
-      // Recalculate revenueMonthlyBreakdown from remaining accounts
+      // Recalculate revenueMonthlyBreakdown from confirmed accounts only
       const newBreakdown: Record<string, number> = {};
-      for (const account of filteredRevenueAccounts) {
+      for (const account of updatedRevenueAccounts) {
+        if (!account.isConfirmed) continue;
         if (account.monthlyBreakdown) {
           for (const [month, amount] of Object.entries(
             account.monthlyBreakdown
@@ -110,14 +106,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Update the stored processing result
+      // Update the stored processing result — keep all accounts, only update confirmation status
       const updatedResult: BkmvProcessingResult = {
         ...result,
-        revenueAccounts: filteredRevenueAccounts,
+        revenueAccounts: updatedRevenueAccounts,
         revenueMonthlyBreakdown: newBreakdown,
-        confirmedRevenueAccountCodes: filteredRevenueAccounts.map(
-          (a) => a.accountCode
-        ),
+        confirmedRevenueAccountCodes: confirmedCodes,
       };
 
       await database
