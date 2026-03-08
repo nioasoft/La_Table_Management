@@ -12,7 +12,7 @@ import {
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or, isNotNull, desc } from "drizzle-orm";
 import { getVatRateForDate } from "@/data-access/vatRates";
-import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
+import { roundToTwoDecimals } from "@/lib/file-processor";
 
 // ============================================================================
 // TYPES
@@ -384,13 +384,11 @@ export async function getSupplierCommissionReport(
 
       const grossAmount = Number(match.grossAmount || 0);
 
-      // Calculate net amount (before VAT)
-      // grossAmount from file processing already accounts for vatIncluded:
-      // - If vatIncluded=true: grossAmount = original amount (includes VAT)
-      // - If vatIncluded=false: grossAmount = original * (1 + VAT) (VAT was added)
-      const netAmount = isVatExempt
-        ? Number(match.netAmount || match.grossAmount || 0)
-        : calculateNetFromGross(grossAmount, vatRate);
+      // Use the stored net amount from file processing directly.
+      // Custom parsers (e.g., TREZ_PAZOS) read gross and net from separate file columns,
+      // so recalculating net from gross via VAT would give wrong results.
+      // For standard parsers, match.netAmount is already correctly calculated.
+      const netAmount = Number(match.netAmount || match.grossAmount || 0);
 
       // Commission amounts depend on commission type
       let commissionAmount: number;
@@ -494,9 +492,7 @@ export async function getSupplierCommissionReport(
       if (match.matchedFranchiseeId) continue; // already counted in cells above
 
       const grossAmount = Number(match.grossAmount || 0);
-      const netAmount = isVatExempt
-        ? Number(match.netAmount || match.grossAmount || 0)
-        : calculateNetFromGross(grossAmount, vatRate);
+      const netAmount = Number(match.netAmount || match.grossAmount || 0);
 
       let unmatchedCommission: number;
       let unmatchedCommissionBeforeVat: number;
