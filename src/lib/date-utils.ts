@@ -22,3 +22,28 @@ export function formatDateAsLocal(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
+
+/**
+ * Clamp a date input value to ensure validity.
+ * - Truncates year to 4 digits if longer (prevents "20255" overflow)
+ * - Clamps day to the maximum valid day for the given month/year (prevents Feb 30)
+ *
+ * @param value - A date string in YYYY-MM-DD format (from input[type="date"])
+ * @returns The clamped date string, or the original value if empty or non-matching format
+ */
+export function clampDateValue(value: string): string {
+  if (!value) return value;
+
+  const match = value.match(/^(\d{4,})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+
+  const year = parseInt(match[1].slice(0, 4), 10);
+  const month = parseInt(match[2], 10);
+  let day = parseInt(match[3], 10);
+
+  // new Date(year, month, 0) gives the last day of the given month
+  const maxDay = new Date(year, month, 0).getDate();
+  if (day > maxDay) day = maxDay;
+
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
