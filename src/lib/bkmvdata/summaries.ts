@@ -10,6 +10,26 @@ import { formatYearMonth } from './formatters';
 import { filterTransactionsByPeriod } from './filters';
 
 /**
+ * Get unique months from transactions, filtered to the dominant year.
+ * Prevents outlier months (e.g. 2005-05, 2023-03) from corrupting even-distribution.
+ */
+function getDominantYearMonths(transactions: BkmvTransaction[]): Set<string> {
+  const allMonths = new Set<string>();
+  for (const tx of transactions) {
+    allMonths.add(formatYearMonth(tx.documentDate));
+  }
+  const yearCounts = new Map<number, number>();
+  for (const m of allMonths) {
+    const y = parseInt(m.slice(0, 4));
+    yearCounts.set(y, (yearCounts.get(y) || 0) + 1);
+  }
+  const dominantYear = [...yearCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  return dominantYear
+    ? new Set([...allMonths].filter(m => m.startsWith(String(dominantYear))))
+    : allMonths;
+}
+
+/**
  * Build supplier purchase summary from transactions
  *
  * Purchase transactions appear as CREDIT (side=2) to supplier accounts
@@ -155,11 +175,8 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     }
   }
 
-  // B110 fallback
-  const allMonths = new Set<string>();
-  for (const tx of result.transactions) {
-    allMonths.add(formatYearMonth(tx.documentDate));
-  }
+  // B110 fallback — use dominant-year months to avoid outlier month corruption
+  const relevantMonths = getDominantYearMonths(result.transactions);
 
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
@@ -208,11 +225,11 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
         }
       }
 
-      // Fallback: distribute B110 total evenly across months
-      const monthCount = allMonths.size || 1;
+      // Fallback: distribute B110 total evenly across dominant-year months only
+      const monthCount = relevantMonths.size || 1;
       const perMonth = b110Credit / monthCount;
       const evenBreakdown: Record<string, number> = {};
-      for (const month of allMonths) {
+      for (const month of relevantMonths) {
         evenBreakdown[month] = perMonth;
       }
 
@@ -319,11 +336,8 @@ export function buildAllAccountsSummary(
     }
   }
 
-  // B110 fallback
-  const allMonths = new Set<string>();
-  for (const tx of transactions) {
-    allMonths.add(formatYearMonth(tx.documentDate));
-  }
+  // B110 fallback — use dominant-year months to avoid outlier month corruption
+  const relevantMonths2 = getDominantYearMonths(transactions);
 
   for (const account of result.accounts) {
     const key = account.accountKey.trim();
@@ -334,11 +348,11 @@ export function buildAllAccountsSummary(
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {
-      // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across months
-      const monthCount = allMonths.size || 1;
+      // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across dominant-year months
+      const monthCount = relevantMonths2.size || 1;
       const perMonth = b110Credit / monthCount;
       const evenBreakdown: Record<string, number> = {};
-      for (const month of allMonths) {
+      for (const month of relevantMonths2) {
         evenBreakdown[month] = perMonth;
       }
 

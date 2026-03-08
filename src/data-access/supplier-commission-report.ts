@@ -255,9 +255,7 @@ export async function getSupplierCommissionReport(
     for (const match of result.franchiseeMatches) {
       if (
         match.matchedFranchiseeId &&
-        match.matchType !== "blacklisted" &&
-        match.matchType !== "fuzzy" &&
-        match.matchType !== "none"
+        match.matchType !== "blacklisted"
       ) {
         allFranchiseeIds.add(match.matchedFranchiseeId);
       }
@@ -375,13 +373,8 @@ export async function getSupplierCommissionReport(
     const processedRows = result.processedRows || 0;
 
     for (const match of result.franchiseeMatches) {
+      if (match.matchType === "blacklisted") continue;
       if (!match.matchedFranchiseeId) continue;
-      if (
-        match.matchType === "blacklisted" ||
-        match.matchType === "fuzzy" ||
-        match.matchType === "none"
-      )
-        continue;
 
       const fDetail = franchiseeDetailMap.get(match.matchedFranchiseeId);
       if (!fDetail) continue;
@@ -491,6 +484,69 @@ export async function getSupplierCommissionReport(
       const fCol = franchiseeColumnMap.get(match.matchedFranchiseeId)!;
       fCol.totalCommission += commissionAmount;
       fCol.totalCommissionBeforeVat += commissionAmountBeforeVat;
+    }
+
+    // Second pass: accumulate unmatched (none) row amounts into supplier totals
+    // These rows have no matchedFranchiseeId so they can't create cells,
+    // but their amounts should count toward the supplier's total commission
+    for (const match of result.franchiseeMatches) {
+      if (match.matchType === "blacklisted") continue;
+      if (match.matchedFranchiseeId) continue; // already counted in cells above
+
+      const grossAmount = Number(match.grossAmount || 0);
+      const netAmount = isVatExempt
+        ? Number(match.netAmount || match.grossAmount || 0)
+        : calculateNetFromGross(grossAmount, vatRate);
+
+      let unmatchedCommission: number;
+      let unmatchedCommissionBeforeVat: number;
+
+      if (commissionType === "per_item") {
+        const matchCommission = Number(match.preCalculatedCommission || 0);
+        if (matchCommission > 0) {
+          unmatchedCommissionBeforeVat = matchCommission;
+          unmatchedCommission = isVatExempt
+            ? matchCommission
+            : matchCommission * (1 + vatRate);
+        } else {
+          const totalFileCommission = processedRows * commissionRate;
+          const totalFileGross = result.totalGrossAmount || 1;
+          const proportion = totalFileGross > 0 ? grossAmount / totalFileGross : 0;
+          unmatchedCommissionBeforeVat = totalFileCommission * proportion;
+          unmatchedCommission = isVatExempt
+            ? unmatchedCommissionBeforeVat
+            : unmatchedCommissionBeforeVat * (1 + vatRate);
+        }
+      } else {
+        const matchCommission = Number(match.preCalculatedCommission || 0);
+        if (matchCommission > 0) {
+          unmatchedCommissionBeforeVat = matchCommission;
+          unmatchedCommission = isVatExempt
+            ? matchCommission
+            : matchCommission * (1 + vatRate);
+        } else {
+          unmatchedCommission = (grossAmount * commissionRate) / 100;
+          unmatchedCommissionBeforeVat = (netAmount * commissionRate) / 100;
+        }
+      }
+
+      // Initialize supplier row if needed
+      if (!supplierRowsMap.has(file.supplierId)) {
+        supplierRowsMap.set(file.supplierId, {
+          supplierId: file.supplierId,
+          supplierName: supplierData.name,
+          supplierCode: supplierData.code,
+          commissionRate,
+          isVatExempt,
+          cells: {},
+          totalCommission: 0,
+          totalCommissionBeforeVat: 0,
+        });
+      }
+
+      const supplierRow = supplierRowsMap.get(file.supplierId)!;
+      supplierRow.totalCommission += unmatchedCommission;
+      supplierRow.totalCommissionBeforeVat += unmatchedCommissionBeforeVat;
     }
   }
 

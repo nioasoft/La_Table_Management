@@ -599,6 +599,7 @@ export default function BkmvDataPage() {
       // Step 2: Process the uploaded file
       const response = await fetchWithTimeout("/api/bkmvdata/admin-process", {
         method: "POST",
+        timeout: 120_000, // BKMV processing can take >30s for large files (16K+ transactions)
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           blobUrl,
