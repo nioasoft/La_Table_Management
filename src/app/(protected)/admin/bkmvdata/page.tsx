@@ -886,7 +886,10 @@ export default function BkmvDataPage() {
     category: AccountCategory,
     accountName?: string
   ) => {
-    if (!matchedFranchisee) return;
+    if (!matchedFranchisee) {
+      setError("לא ניתן לסווג חשבונות - לא זוהה זכיין. נסה לבחור זכיין ידנית.");
+      return;
+    }
 
     // Check previous category before optimistic update
     const previousCategory = classifiedAccounts.get(accountKey)?.category;
@@ -928,11 +931,27 @@ export default function BkmvDataPage() {
         });
       }, 0);
     }
+
+    // Recalculate stored revenue when revenue category is involved
+    if (category === 'revenue' || previousCategory === 'revenue') {
+      try {
+        await fetchWithTimeout('/api/bkmvdata/recalculate-revenue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ franchiseeId: matchedFranchisee.id }),
+        });
+      } catch {
+        console.error('Revenue recalculation failed — classification was saved');
+      }
+    }
   }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
 
   // Handle reclassify (move back to auto-detection / uncategorized)
   const handleReclassify = useCallback(async (accountKey: string) => {
-    if (!matchedFranchisee || !parseResult) return;
+    if (!matchedFranchisee || !parseResult) {
+      if (!matchedFranchisee) setError("לא ניתן לאפס סיווג - לא זוהה זכיין.");
+      return;
+    }
 
     // Find the auto-classification for this account
     const allAccounts = buildAllAccountsSummary(parseResult);
@@ -974,11 +993,25 @@ export default function BkmvDataPage() {
         return currentClassified;
       });
     }, 0);
+
+    // Recalculate stored revenue (reclassify may affect revenue accounts)
+    try {
+      await fetchWithTimeout('/api/bkmvdata/recalculate-revenue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ franchiseeId: matchedFranchisee.id }),
+      });
+    } catch {
+      console.error('Revenue recalculation failed — classification was reset');
+    }
   }, [matchedFranchisee, parseResult, reclassifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, smallSupplierNames]);
 
   // Handle saving selected revenue accounts
   const handleSaveRevenueAccounts = useCallback(async () => {
-    if (!matchedFranchisee || selectedRevenueAccounts.size === 0) return;
+    if (!matchedFranchisee || selectedRevenueAccounts.size === 0) {
+      if (!matchedFranchisee) setError("לא ניתן לשמור קודי הכנסה - לא זוהה זכיין.");
+      return;
+    }
 
     const items = Array.from(selectedRevenueAccounts).map(accountKey => {
       const account = classifiedAccounts.get(accountKey);
@@ -1025,6 +1058,17 @@ export default function BkmvDataPage() {
       });
 
       setSelectedRevenueAccounts(new Set());
+
+      // Recalculate stored revenue with new revenue account selections
+      try {
+        await fetchWithTimeout('/api/bkmvdata/recalculate-revenue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ franchiseeId: matchedFranchisee.id }),
+        });
+      } catch {
+        console.error('Revenue recalculation failed — revenue codes were saved');
+      }
     } catch {
       setError("שגיאה בשמירת קודי הכנסה");
     }
@@ -1618,7 +1662,8 @@ export default function BkmvDataPage() {
                                         <button
                                           key={cat}
                                           onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
-                                          disabled={classifyMutation.isPending}
+                                          disabled={!matchedFranchisee || classifyMutation.isPending}
+                                          title={!matchedFranchisee ? "נדרש זיהוי זכיין כדי לשמור סיווג" : undefined}
                                           className={`
                                             px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
                                             ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
@@ -1633,7 +1678,7 @@ export default function BkmvDataPage() {
                                     {account.classificationSource === 'saved' && (
                                       <button
                                         onClick={() => handleReclassify(account.accountCode)}
-                                        disabled={reclassifyMutation.isPending}
+                                        disabled={!matchedFranchisee || reclassifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
                                         איפוס
@@ -1708,7 +1753,8 @@ export default function BkmvDataPage() {
                                     <button
                                       key={cat}
                                       onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
-                                      disabled={classifyMutation.isPending}
+                                      disabled={!matchedFranchisee || classifyMutation.isPending}
+                                          title={!matchedFranchisee ? "נדרש זיהוי זכיין כדי לשמור סיווג" : undefined}
                                       className={`
                                         px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
                                         ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
@@ -2104,7 +2150,8 @@ export default function BkmvDataPage() {
                                       <button
                                         key={cat}
                                         onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
-                                        disabled={classifyMutation.isPending}
+                                        disabled={!matchedFranchisee || classifyMutation.isPending}
+                                          title={!matchedFranchisee ? "נדרש זיהוי זכיין כדי לשמור סיווג" : undefined}
                                         className={`
                                           px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
                                           ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
@@ -2118,7 +2165,7 @@ export default function BkmvDataPage() {
                                     {account.classificationSource === 'saved' && (
                                       <button
                                         onClick={() => handleReclassify(account.accountCode)}
-                                        disabled={reclassifyMutation.isPending}
+                                        disabled={!matchedFranchisee || reclassifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
                                         איפוס
@@ -2186,7 +2233,8 @@ export default function BkmvDataPage() {
                                     <button
                                       key={cat}
                                       onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
-                                      disabled={classifyMutation.isPending}
+                                      disabled={!matchedFranchisee || classifyMutation.isPending}
+                                          title={!matchedFranchisee ? "נדרש זיהוי זכיין כדי לשמור סיווג" : undefined}
                                       className={`
                                         px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
                                         ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
@@ -2200,7 +2248,7 @@ export default function BkmvDataPage() {
                                   {account.classificationSource === 'saved' && (
                                     <button
                                       onClick={() => handleReclassify(account.accountCode)}
-                                      disabled={reclassifyMutation.isPending}
+                                      disabled={!matchedFranchisee || reclassifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
                                       איפוס
@@ -2267,7 +2315,8 @@ export default function BkmvDataPage() {
                                     <button
                                       key={cat}
                                       onClick={() => handleQuickClassify(account.accountCode, cat, account.accountName)}
-                                      disabled={classifyMutation.isPending}
+                                      disabled={!matchedFranchisee || classifyMutation.isPending}
+                                          title={!matchedFranchisee ? "נדרש זיהוי זכיין כדי לשמור סיווג" : undefined}
                                       className={`
                                         px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer
                                         ${cat === 'supplier' ? 'bg-blue-50 text-blue-700 hover:bg-blue-200' : ''}
@@ -2281,7 +2330,7 @@ export default function BkmvDataPage() {
                                   {account.classificationSource === 'saved' && (
                                     <button
                                       onClick={() => handleReclassify(account.accountCode)}
-                                      disabled={reclassifyMutation.isPending}
+                                      disabled={!matchedFranchisee || reclassifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
                                       איפוס

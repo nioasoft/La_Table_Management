@@ -53,6 +53,12 @@ export function autoClassifyAccount(accountType: string): AccountCategory {
     return 'employee';
   }
 
+  // Short Hebrew utility/expense type keywords (common in Ravachit format
+  // where accountType is abbreviated, e.g. "גז" instead of "הוצאות גז")
+  if (t === 'גז' || t === 'חשמל' || t === 'מים') {
+    return 'expense';
+  }
+
   // Expense patterns - includes generic "הוצאות" catch-all
   if (
     t.includes('קניות') ||
@@ -125,12 +131,21 @@ export function classifyAccounts(
     // Auto-classify from accountType
     let autoCategory = autoClassifyAccount(account.accountType);
 
-    // Fallback: when text-based classification fails (common in extended format
-    // where accountType = supplier name), try classifying by accountKey prefix
+    // Fallback: when text-based classification fails, try classifying by accountKey prefix.
+    // Only use prefix fallback when accountType is genuinely empty/missing or equals
+    // accountName (parser fallback for extended format files where no real type exists).
+    // When accountType has a real but unrecognized value (e.g. "גז"), skip prefix fallback
+    // to avoid misclassifying expense accounts whose key happens to start with 21 (revenue range).
     if (autoCategory === 'uncategorized') {
-      const prefixCategory = classifyByAccountKeyPrefix(key);
-      if (prefixCategory !== 'uncategorized') {
-        autoCategory = prefixCategory;
+      const hasRealAccountType = account.accountType &&
+        account.accountType.trim().length > 0 &&
+        account.accountType !== account.accountName;
+
+      if (!hasRealAccountType) {
+        const prefixCategory = classifyByAccountKeyPrefix(key);
+        if (prefixCategory !== 'uncategorized') {
+          autoCategory = prefixCategory;
+        }
       }
     }
 
