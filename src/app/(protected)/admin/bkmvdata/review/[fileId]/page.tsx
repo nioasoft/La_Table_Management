@@ -2,7 +2,7 @@
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { toast } from "sonner";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -162,6 +162,8 @@ export default function FileDetailsPage() {
   const [matchFilter, setMatchFilter] = useState<string>("all");
   // Revenue account state
   const [selectedRevenueAccounts, setSelectedRevenueAccounts] = useState<Set<string>>(new Set());
+  const hasUserInteractedRevenue = useRef(false);
+  const effectiveSelectedRef = useRef<Set<string>>(new Set());
   // Date filter state
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
   const [selectedMonthEnd, setSelectedMonthEnd] = useState<string>("");
@@ -491,11 +493,12 @@ export default function FileDetailsPage() {
   }, [smallSupplierMatch, smallSupplierNotes, smallSupplierMutation]);
 
   const handleConfirmRevenue = useCallback(() => {
-    if (selectedRevenueAccounts.size === 0) return;
+    const codes = effectiveSelectedRef.current;
+    if (codes.size === 0) return;
     revenueConfirmMutation.mutate({
-      accountCodes: Array.from(selectedRevenueAccounts),
+      accountCodes: Array.from(codes),
     });
-  }, [selectedRevenueAccounts, revenueConfirmMutation]);
+  }, [revenueConfirmMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -817,17 +820,19 @@ export default function FileDetailsPage() {
           code => !filteredRevenueAccounts.some(a => a.accountCode === code)
         );
 
-        // Initialize selected accounts from saved codes on first render
+        // Compute effective selected: user choice takes priority over defaults
         const getEffectiveSelected = () => {
-          if (selectedRevenueAccounts.size > 0) return selectedRevenueAccounts;
+          if (hasUserInteractedRevenue.current) return selectedRevenueAccounts;
           if (hasSavedCodes) return new Set(savedAccountsInFile.map(a => a.accountCode));
           // No saved codes — check isConfirmed from processing result
           const confirmed = filteredRevenueAccounts.filter(a => a.isConfirmed).map(a => a.accountCode);
           return confirmed.length > 0 ? new Set(confirmed) : new Set<string>();
         };
         const effectiveSelected = getEffectiveSelected();
+        effectiveSelectedRef.current = effectiveSelected;
 
         const handleToggle = (accountCode: string, checked: boolean | string) => {
+          hasUserInteractedRevenue.current = true;
           setSelectedRevenueAccounts(() => {
             const next = new Set(effectiveSelected);
             if (checked) {
