@@ -1,23 +1,33 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { clampDateValue } from "@/lib/date-utils";
+import { DateInput } from "./date-input";
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {}
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, onChange, max, ...props }, ref) => {
-    const isDate = type === "date";
-
-    const handleChange = isDate && onChange
-      ? (e: React.ChangeEvent<HTMLInputElement>) => {
-          const clamped = clampDateValue(e.target.value);
-          if (clamped !== e.target.value) {
-            e.target.value = clamped;
-          }
-          onChange(e);
-        }
-      : onChange;
+  ({ className, type, ...allProps }, ref) => {
+    if (type === "date") {
+      const { onChange, value, disabled, required, id } = allProps;
+      return (
+        <DateInput
+          ref={ref}
+          value={(value as string) ?? ""}
+          onChange={(dateStr) => {
+            if (onChange) {
+              onChange({
+                target: { value: dateStr },
+                currentTarget: { value: dateStr },
+              } as React.ChangeEvent<HTMLInputElement>);
+            }
+          }}
+          disabled={disabled}
+          required={required}
+          className={className}
+          id={id}
+        />
+      );
+    }
 
     return (
       <input
@@ -27,9 +37,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
           className
         )}
         ref={ref}
-        {...props}
-        onChange={handleChange}
-        max={isDate ? (max ?? "9999-12-31") : max}
+        {...allProps}
       />
     );
   }
