@@ -136,6 +136,7 @@ interface FileDetails {
   } | null;
   supplierMatches: SupplierMatch[];
   revenueAccounts: RevenueAccount[];
+  savedRevenueCodes: string[];
 }
 
 export default function FileDetailsPage() {
@@ -161,7 +162,6 @@ export default function FileDetailsPage() {
   const [matchFilter, setMatchFilter] = useState<string>("all");
   // Revenue account state
   const [selectedRevenueAccounts, setSelectedRevenueAccounts] = useState<Set<string>>(new Set());
-  const [saveRevenueToFranchisee, setSaveRevenueToFranchisee] = useState(true);
   // Date filter state
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
   const [selectedMonthEnd, setSelectedMonthEnd] = useState<string>("");
@@ -437,23 +437,20 @@ export default function FileDetailsPage() {
     },
   });
 
-  // Revenue confirmation mutation
+  // Revenue confirmation mutation — always saves to franchisee
   const revenueConfirmMutation = useMutation({
-    mutationFn: async ({ accountCodes, saveToFranchisee }: { accountCodes: string[]; saveToFranchisee: boolean }) => {
+    mutationFn: async ({ accountCodes }: { accountCodes: string[] }) => {
       const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          revenueAccountCodes: accountCodes,
-          saveRevenueToFranchisee: saveToFranchisee,
-        }),
+        body: JSON.stringify({ revenueAccountCodes: accountCodes }),
       });
       if (!response.ok) throw new Error("Failed to confirm revenue accounts");
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
-      toast.success("חשבונות הכנסות אושרו בהצלחה");
+      toast.success("חשבונות הכנסות אושרו ונשמרו לזכיין");
     },
     onError: () => {
       toast.error("שגיאה באישור חשבונות הכנסות");
@@ -497,9 +494,8 @@ export default function FileDetailsPage() {
     if (selectedRevenueAccounts.size === 0) return;
     revenueConfirmMutation.mutate({
       accountCodes: Array.from(selectedRevenueAccounts),
-      saveToFranchisee: saveRevenueToFranchisee,
     });
-  }, [selectedRevenueAccounts, saveRevenueToFranchisee, revenueConfirmMutation]);
+  }, [selectedRevenueAccounts, revenueConfirmMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -568,7 +564,7 @@ export default function FileDetailsPage() {
     );
   }
 
-  const { file, franchisee, processingResult, supplierMatches, revenueAccounts } = fileData;
+  const { file, franchisee, processingResult, supplierMatches, revenueAccounts, savedRevenueCodes } = fileData;
   const isReviewed = file.processingStatus === "approved" || file.processingStatus === "rejected";
 
   return (
@@ -808,117 +804,188 @@ export default function FileDetailsPage() {
       )}
 
 
-      {/* Revenue Account Selection */}
-      {revenueAccounts && revenueAccounts.length > 0 && (
-        <Card className="mb-4">
-          <CardHeader className="pb-2 pt-3 px-4">
-            <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-              <DollarSign className="h-4 w-4" />
-              זיהוי חשבון המחזור
-            </CardTitle>
-            <CardDescription className="text-xs">
-              בחר את חשבון ההכנסות שמייצג את המחזור של הזכיין
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-4 pb-3 pt-0">
-            <div className="space-y-2">
-              {filteredRevenueAccounts.map((account) => {
-                const isSelected = selectedRevenueAccounts.has(account.accountCode)
-                  || (selectedRevenueAccounts.size === 0 && account.isConfirmed);
-                return (
-                  <div
-                    key={account.accountCode}
-                    className={`flex items-center gap-3 p-2 rounded border text-sm ${
-                      account.isConfirmed ? "bg-green-50 border-green-200" : "bg-muted/30"
-                    }`}
-                  >
-                    <Checkbox
-                      id={`revenue-${account.accountCode}`}
-                      checked={isSelected}
-                      disabled={isReviewed}
-                      onCheckedChange={(checked) => {
-                        setSelectedRevenueAccounts(prev => {
-                          // On first interaction, initialize from confirmed state
-                          const next = new Set(
-                            prev.size === 0
-                              ? filteredRevenueAccounts.filter(a => a.isConfirmed).map(a => a.accountCode)
-                              : prev
-                          );
-                          if (checked) {
-                            next.add(account.accountCode);
-                          } else {
-                            next.delete(account.accountCode);
-                          }
-                          return next;
-                        });
-                      }}
-                    />
-                    <Label
-                      htmlFor={`revenue-${account.accountCode}`}
-                      className="flex-1 flex items-center justify-between cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm font-semibold">
-                          {formatAmount(account.totalAmount)}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          ({account.transactionCount} עסקאות)
-                        </span>
-                        {account.isConfirmed && (
-                          <Badge variant="success" className="gap-1 text-xs">
-                            <Check className="h-3 w-3" />
-                            מאושר
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm">{account.accountName}</span>
-                        <span className="text-xs text-muted-foreground">
-                          (קוד: {account.accountCode})
-                        </span>
-                      </div>
-                    </Label>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Revenue Account Selection — Hybrid: saved codes + auto-detected suggestions */}
+      {revenueAccounts && revenueAccounts.length > 0 && (() => {
+        const savedCodesSet = new Set(savedRevenueCodes || []);
+        const hasSavedCodes = savedCodesSet.size > 0;
 
-            {!isReviewed && (
-              <div className="mt-3 flex items-center justify-between">
+        // Split accounts: saved (found in file) vs auto-detected suggestions
+        const savedAccountsInFile = filteredRevenueAccounts.filter(a => savedCodesSet.has(a.accountCode));
+        const suggestedAccounts = filteredRevenueAccounts.filter(a => !savedCodesSet.has(a.accountCode));
+        // Saved codes NOT found in this file
+        const missingSavedCodes = (savedRevenueCodes || []).filter(
+          code => !filteredRevenueAccounts.some(a => a.accountCode === code)
+        );
+
+        // Initialize selected accounts from saved codes on first render
+        const getEffectiveSelected = () => {
+          if (selectedRevenueAccounts.size > 0) return selectedRevenueAccounts;
+          if (hasSavedCodes) return new Set(savedAccountsInFile.map(a => a.accountCode));
+          // No saved codes — check isConfirmed from processing result
+          const confirmed = filteredRevenueAccounts.filter(a => a.isConfirmed).map(a => a.accountCode);
+          return confirmed.length > 0 ? new Set(confirmed) : new Set<string>();
+        };
+        const effectiveSelected = getEffectiveSelected();
+
+        const handleToggle = (accountCode: string, checked: boolean | string) => {
+          setSelectedRevenueAccounts(() => {
+            const next = new Set(effectiveSelected);
+            if (checked) {
+              next.add(accountCode);
+            } else {
+              next.delete(accountCode);
+            }
+            return next;
+          });
+        };
+
+        const renderAccountRow = (account: RevenueAccount, isSaved: boolean) => {
+          const isSelected = effectiveSelected.has(account.accountCode);
+          return (
+            <div
+              key={account.accountCode}
+              className={`flex items-center gap-3 p-2 rounded border text-sm ${
+                isSaved
+                  ? "bg-green-50 border-green-200"
+                  : "bg-amber-50/50 border-amber-200/60"
+              }`}
+            >
+              <Checkbox
+                id={`revenue-${account.accountCode}`}
+                checked={isSelected}
+                disabled={isReviewed}
+                onCheckedChange={(checked) => handleToggle(account.accountCode, checked)}
+              />
+              <Label
+                htmlFor={`revenue-${account.accountCode}`}
+                className="flex-1 flex items-center justify-between cursor-pointer"
+              >
                 <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="saveRevenueToFranchisee"
-                    checked={saveRevenueToFranchisee}
-                    onCheckedChange={(checked) => setSaveRevenueToFranchisee(checked === true)}
-                  />
-                  <Label htmlFor="saveRevenueToFranchisee" className="text-xs">
-                    שמור לקבצים הבאים של זכיין זה
-                  </Label>
-                </div>
-                <Button
-                  onClick={handleConfirmRevenue}
-                  disabled={selectedRevenueAccounts.size === 0 || revenueConfirmMutation.isPending}
-                  size="sm"
-                  className="h-7 text-xs"
-                >
-                  {revenueConfirmMutation.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin ms-1.5" />
-                  ) : (
-                    <Check className="h-3.5 w-3.5 ms-1.5" />
+                  <span className="font-mono text-sm font-semibold">
+                    {formatAmount(account.totalAmount)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    ({account.transactionCount} עסקאות)
+                  </span>
+                  {isSaved && (
+                    <Badge variant="success" className="gap-1 text-xs">
+                      <Check className="h-3 w-3" />
+                      שמור
+                    </Badge>
                   )}
-                  אשר חשבונות
-                </Button>
-              </div>
-            )}
+                  {!isSaved && (
+                    <Badge variant="outline" className="gap-1 text-xs border-amber-300 text-amber-700 bg-amber-50">
+                      זוהה אוטומטית
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{account.accountName}</span>
+                  <span className="text-xs text-muted-foreground">
+                    (קוד: {account.accountCode})
+                  </span>
+                </div>
+              </Label>
+            </div>
+          );
+        };
 
-            {franchisee?.revenueAccountCode && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                חשבון שמור לזכיין: <span className="font-medium">{franchisee.revenueAccountCode}</span>
-              </p>
-            )}
-          </CardContent>
-        </Card>
-      )}
+        return (
+          <Card className="mb-4">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                <DollarSign className="h-4 w-4" />
+                חשבונות הכנסות (מחזור)
+                {suggestedAccounts.length > 0 && hasSavedCodes && (
+                  <Badge variant="outline" className="gap-1 text-xs border-amber-300 text-amber-700 bg-amber-50">
+                    <AlertTriangle className="h-3 w-3" />
+                    {suggestedAccounts.length} הצעות חדשות
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {hasSavedCodes
+                  ? "חשבונות שמורים נכללים בחישוב. הצעות חדשות מוצגות בנפרד."
+                  : "לא נמצאו חשבונות הכנסות שמורים לזכיין זה. בחר את החשבונות המתאימים ושמור."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 pt-0">
+              {/* Section A: Saved revenue accounts */}
+              {hasSavedCodes && (savedAccountsInFile.length > 0 || missingSavedCodes.length > 0) && (
+                <div className="space-y-2 mb-3">
+                  <p className="text-xs font-medium text-muted-foreground">חשבונות שמורים</p>
+                  {savedAccountsInFile.map(account => renderAccountRow(account, true))}
+                  {missingSavedCodes.map(code => (
+                    <div
+                      key={code}
+                      className="flex items-center gap-3 p-2 rounded border text-sm bg-muted/30 border-dashed border-muted-foreground/30"
+                    >
+                      <Checkbox
+                        id={`revenue-missing-${code}`}
+                        checked={false}
+                        disabled={true}
+                      />
+                      <Label
+                        htmlFor={`revenue-missing-${code}`}
+                        className="flex-1 flex items-center justify-between cursor-default"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="gap-1 text-xs border-orange-300 text-orange-600">
+                            <AlertTriangle className="h-3 w-3" />
+                            לא נמצא בקובץ
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm text-muted-foreground line-through">
+                            קוד: {code}
+                          </span>
+                        </div>
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Section B: Auto-detected suggestions (not saved) */}
+              {suggestedAccounts.length > 0 && (
+                <div className="space-y-2">
+                  {hasSavedCodes && (
+                    <p className="text-xs font-medium text-muted-foreground">
+                      הצעות חדשות (זוהו אוטומטית)
+                    </p>
+                  )}
+                  {suggestedAccounts.map(account => renderAccountRow(account, false))}
+                </div>
+              )}
+
+              {/* No saved codes — all accounts are suggestions */}
+              {!hasSavedCodes && savedAccountsInFile.length === 0 && suggestedAccounts.length === 0 && (
+                <div className="space-y-2">
+                  {filteredRevenueAccounts.map(account => renderAccountRow(account, false))}
+                </div>
+              )}
+
+              {!isReviewed && (
+                <div className="mt-3 flex items-center justify-end">
+                  <Button
+                    onClick={handleConfirmRevenue}
+                    disabled={effectiveSelected.size === 0 || revenueConfirmMutation.isPending}
+                    size="sm"
+                    className="h-7 text-xs"
+                  >
+                    {revenueConfirmMutation.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin ms-1.5" />
+                    ) : (
+                      <Check className="h-3.5 w-3.5 ms-1.5" />
+                    )}
+                    אשר ושמור לזכיין
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Matches Table */}
       <Card>

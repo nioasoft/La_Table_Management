@@ -10,6 +10,7 @@ import {
 } from "@/data-access/uploadLinks";
 import { getFranchiseeById } from "@/data-access/franchisees";
 import { getSupplierById, updateSupplier } from "@/data-access/suppliers";
+import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
 import type { BkmvProcessingResult } from "@/db/schema";
 
 /**
@@ -50,6 +51,12 @@ export async function GET(
     }
 
     const processingResult = file.bkmvProcessingResult as BkmvProcessingResult | null;
+
+    // Get saved revenue codes for this franchisee (for UI distinction: saved vs auto-detected)
+    const franchiseeId = file.franchiseeId ?? (uploadLink?.entityType === "franchisee" ? uploadLink.entityId : null);
+    const savedRevenueCodes = franchiseeId
+      ? await getFranchiseeRevenueCodesList(franchiseeId)
+      : [];
 
     // Enrich supplier matches with current supplier info
     let enrichedMatches: Array<{
@@ -118,6 +125,7 @@ export async function GET(
       } : null,
       supplierMatches: enrichedMatches,
       revenueAccounts: processingResult?.revenueAccounts || [],
+      savedRevenueCodes,
     });
   } catch (error) {
     console.error("Error fetching file details:", error);
@@ -300,12 +308,10 @@ async function handleRevenueConfirmation(
   body: {
     revenueAccountCode?: string | null;
     revenueAccountCodes?: string[];
-    saveRevenueToFranchisee?: boolean;
+    saveRevenueToFranchisee?: boolean; // Legacy — now always saves
   }
 ): Promise<NextResponse> {
   try {
-    const { saveRevenueToFranchisee } = body;
-
     // Normalize to array of codes (support both single and multi-account)
     const accountCodes: string[] = body.revenueAccountCodes
       ?? (body.revenueAccountCode ? [body.revenueAccountCode] : []);
@@ -379,8 +385,9 @@ async function handleRevenueConfirmation(
       updatedResult
     );
 
-    // Optionally save revenue accounts to franchisee for future auto-matching
-    if (saveRevenueToFranchisee && file.franchiseeId && accountCodes.length > 0) {
+    // Always save revenue codes to franchisee — confirmed codes are the source of truth
+    const franchiseeId = file.franchiseeId;
+    if (franchiseeId) {
       const { setFranchiseeRevenueCodes } = await import("@/data-access/franchisee-revenue-codes");
       const codesToSave = accountCodes.map(code => {
         const account = updatedRevenueAccounts?.find(a => a.accountCode === code);
@@ -389,7 +396,7 @@ async function handleRevenueConfirmation(
           accountName: account?.accountName || null,
         };
       });
-      await setFranchiseeRevenueCodes(file.franchiseeId, codesToSave);
+      await setFranchiseeRevenueCodes(franchiseeId, codesToSave);
     }
 
     const confirmedNames = accountCodes
@@ -398,9 +405,7 @@ async function handleRevenueConfirmation(
 
     return NextResponse.json({
       success: true,
-      message: saveRevenueToFranchisee
-        ? `חשבונות הכנסות "${confirmedNames}" אושרו ונשמרו לזכיין`
-        : `חשבונות הכנסות "${confirmedNames}" אושרו`,
+      message: `חשבונות הכנסות "${confirmedNames}" אושרו ונשמרו לזכיין`,
       confirmedRevenueAccountCodes: accountCodes,
     });
   } catch (error) {
