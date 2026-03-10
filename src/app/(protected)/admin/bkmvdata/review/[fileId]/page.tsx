@@ -2,7 +2,7 @@
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { toast } from "sonner";
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -43,7 +43,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   Loader2,
@@ -175,11 +174,9 @@ export default function FileDetailsPage() {
   // Status filter state
   const [matchFilter, setMatchFilter] = useState<string>("all");
   // Revenue account state
-  const [selectedRevenueAccounts, setSelectedRevenueAccounts] = useState<Set<string>>(new Set());
-  const hasUserInteractedRevenue = useRef(false);
-  const effectiveSelectedRef = useRef<Set<string>>(new Set());
   const [revenueSearchQuery, setRevenueSearchQuery] = useState("");
   const [showOtherAccounts, setShowOtherAccounts] = useState(false);
+  const [togglingRevenueCode, setTogglingRevenueCode] = useState<string | null>(null);
   // Date filter state
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
   const [selectedMonthEnd, setSelectedMonthEnd] = useState<string>("");
@@ -306,30 +303,6 @@ export default function FileDetailsPage() {
     });
   }, [fileData?.supplierMatches, fileData?.processingResult?.monthlyBreakdown, isDateFilterActive, selectedMonthStart, selectedMonthEnd]);
 
-  // Filtered revenue accounts based on date filter
-  const filteredRevenueAccounts = useMemo(() => {
-    const accounts = fileData?.revenueAccounts || [];
-    if (!isDateFilterActive) return accounts;
-
-    const effectiveEnd = selectedMonthEnd || selectedMonthStart;
-
-    return accounts.map((account) => {
-      if (!account.monthlyBreakdown) return account;
-      let filteredAmount = 0;
-      let filteredCount = 0;
-      for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
-        if (month >= selectedMonthStart && month <= effectiveEnd) {
-          filteredAmount += amount;
-          filteredCount++; // count months with data
-        }
-      }
-      return {
-        ...account,
-        totalAmount: filteredAmount,
-      };
-    });
-  }, [fileData?.revenueAccounts, isDateFilterActive, selectedMonthStart, selectedMonthEnd]);
-
   // Filtered total for the indicator
   const dateFilteredTotal = useMemo(() => {
     if (!isDateFilterActive) return null;
@@ -455,23 +428,24 @@ export default function FileDetailsPage() {
     },
   });
 
-  // Revenue confirmation mutation — always saves to franchisee
-  const revenueConfirmMutation = useMutation({
+  // Revenue toggle mutation — immediate save per row
+  const revenueToggleMutation = useMutation({
     mutationFn: async ({ accountCodes }: { accountCodes: string[] }) => {
       const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ revenueAccountCodes: accountCodes }),
       });
-      if (!response.ok) throw new Error("Failed to confirm revenue accounts");
+      if (!response.ok) throw new Error("Failed to update revenue accounts");
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
-      toast.success("חשבונות הכנסות אושרו ונשמרו לזכיין");
+      setTogglingRevenueCode(null);
     },
     onError: () => {
-      toast.error("שגיאה באישור חשבונות הכנסות");
+      toast.error("שגיאה בעדכון חשבון הכנסות");
+      setTogglingRevenueCode(null);
     },
   });
 
@@ -507,14 +481,6 @@ export default function FileDetailsPage() {
       notes: smallSupplierNotes || undefined,
     });
   }, [smallSupplierMatch, smallSupplierNotes, smallSupplierMutation]);
-
-  const handleConfirmRevenue = useCallback(() => {
-    const codes = effectiveSelectedRef.current;
-    if (codes.size === 0) return;
-    revenueConfirmMutation.mutate({
-      accountCodes: Array.from(codes),
-    });
-  }, [revenueConfirmMutation]);
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -823,7 +789,7 @@ export default function FileDetailsPage() {
       )}
 
 
-      {/* Revenue Account Classification — table of ALL accounts from the file */}
+      {/* Revenue Account Classification — table of ALL accounts, toggle per row */}
       {(() => {
         // Use allAccountSummaries if available, fall back to revenueAccounts for older files
         const hasAllAccounts = allAccountSummaries && allAccountSummaries.length > 0;
@@ -831,7 +797,6 @@ export default function FileDetailsPage() {
         if (!hasAllAccounts && !hasRevenueOnly) return null;
 
         const savedCodesSet = new Set(savedRevenueCodes || []);
-        const hasSavedCodes = savedCodesSet.size > 0;
 
         // Build unified account list with classification status
         type AccountRow = {
@@ -841,13 +806,13 @@ export default function FileDetailsPage() {
           totalAmount: number;
           transactionCount: number;
           monthlyBreakdown?: Record<string, number>;
-          status: "saved" | "auto-detected" | "other";
+          isSavedRevenue: boolean;
+          autoDetected: boolean;
         };
 
         let allRows: AccountRow[];
 
         if (hasAllAccounts) {
-          // New path: all accounts from the file
           allRows = allAccountSummaries.map(a => ({
             accountCode: a.accountCode,
             accountName: a.accountName,
@@ -855,14 +820,10 @@ export default function FileDetailsPage() {
             totalAmount: a.totalAmount,
             transactionCount: a.transactionCount,
             monthlyBreakdown: a.monthlyBreakdown,
-            status: savedCodesSet.has(a.accountCode)
-              ? "saved" as const
-              : a.autoDetectedAsRevenue
-                ? "auto-detected" as const
-                : "other" as const,
+            isSavedRevenue: savedCodesSet.has(a.accountCode),
+            autoDetected: a.autoDetectedAsRevenue,
           }));
         } else {
-          // Fallback: only revenue accounts (old files without allAccountSummaries)
           allRows = (revenueAccounts || []).map(a => ({
             accountCode: a.accountCode,
             accountName: a.accountName,
@@ -870,9 +831,8 @@ export default function FileDetailsPage() {
             totalAmount: a.totalAmount,
             transactionCount: a.transactionCount,
             monthlyBreakdown: a.monthlyBreakdown,
-            status: savedCodesSet.has(a.accountCode)
-              ? "saved" as const
-              : "auto-detected" as const,
+            isSavedRevenue: savedCodesSet.has(a.accountCode),
+            autoDetected: true,
           }));
         }
 
@@ -901,106 +861,93 @@ export default function FileDetailsPage() {
           : allRows;
 
         // Split: revenue accounts (saved + auto-detected) at top, rest below
-        const revenueRows = searchFiltered.filter(a => a.status === "saved" || a.status === "auto-detected");
-        const otherRows = searchFiltered.filter(a => a.status === "other");
+        const revenueRows = searchFiltered.filter(a => a.isSavedRevenue || a.autoDetected);
+        const otherRows = searchFiltered.filter(a => !a.isSavedRevenue && !a.autoDetected);
 
         // Saved codes NOT found in this file
         const missingSavedCodes = (savedRevenueCodes || []).filter(
           code => !allRows.some(a => a.accountCode === code)
         );
 
-        // Compute effective selected: user choice takes priority over defaults
-        const getEffectiveSelected = () => {
-          if (hasUserInteractedRevenue.current) return selectedRevenueAccounts;
-          if (hasSavedCodes) {
-            return new Set(allRows.filter(a => savedCodesSet.has(a.accountCode)).map(a => a.accountCode));
+        // Toggle: add or remove a single account code and save immediately
+        const handleToggleRevenue = (accountCode: string) => {
+          setTogglingRevenueCode(accountCode);
+          const currentCodes = new Set(savedRevenueCodes || []);
+          if (currentCodes.has(accountCode)) {
+            currentCodes.delete(accountCode);
+          } else {
+            currentCodes.add(accountCode);
           }
-          // No saved codes — check isConfirmed from revenueAccounts
-          const confirmed = (revenueAccounts || []).filter(a => a.isConfirmed).map(a => a.accountCode);
-          return confirmed.length > 0 ? new Set(confirmed) : new Set<string>();
-        };
-        const effectiveSelected = getEffectiveSelected();
-        effectiveSelectedRef.current = effectiveSelected;
-
-        const handleToggle = (accountCode: string, checked: boolean | string) => {
-          hasUserInteractedRevenue.current = true;
-          setSelectedRevenueAccounts(() => {
-            const next = new Set(effectiveSelected);
-            if (checked) {
-              next.add(accountCode);
-            } else {
-              next.delete(accountCode);
-            }
-            return next;
-          });
+          revenueToggleMutation.mutate({ accountCodes: Array.from(currentCodes) });
         };
 
-        const renderStatusBadge = (row: AccountRow) => {
-          if (effectiveSelected.has(row.accountCode)) {
-            if (row.status === "saved") {
-              return (
-                <Badge variant="success" className="gap-1 text-xs">
-                  <Check className="h-3 w-3" />
-                  שמור
-                </Badge>
-              );
-            }
-            return (
-              <Badge className="gap-1 text-xs bg-blue-100 text-blue-700 border-blue-300">
-                <Check className="h-3 w-3" />
-                נבחר
-              </Badge>
-            );
-          }
-          if (row.status === "saved") {
-            return (
-              <Badge variant="success" className="gap-1 text-xs">
-                <Check className="h-3 w-3" />
-                שמור
-              </Badge>
-            );
-          }
-          if (row.status === "auto-detected") {
-            return (
-              <Badge variant="outline" className="gap-1 text-xs border-amber-300 text-amber-700 bg-amber-50">
-                זוהה אוטומטית
-              </Badge>
-            );
-          }
-          return null;
-        };
+        const tableHeaders = (
+          <TableRow>
+            <TableHead className="text-xs py-1.5">קוד</TableHead>
+            <TableHead className="text-xs py-1.5">שם חשבון</TableHead>
+            <TableHead className="text-xs py-1.5">סוג חשבון</TableHead>
+            <TableHead className="text-xs py-1.5">סכום</TableHead>
+            <TableHead className="text-xs py-1.5">עסקאות</TableHead>
+            <TableHead className="text-xs py-1.5">סטטוס</TableHead>
+            <TableHead className="text-xs py-1.5 w-24">פעולה</TableHead>
+          </TableRow>
+        );
 
-        const renderAccountTableRow = (row: AccountRow) => {
-          const isSelected = effectiveSelected.has(row.accountCode);
-          const rowBg = row.status === "saved"
+        const renderRow = (row: AccountRow) => {
+          const isToggling = togglingRevenueCode === row.accountCode;
+          const rowBg = row.isSavedRevenue
             ? "bg-green-50/50"
-            : row.status === "auto-detected"
+            : row.autoDetected
               ? "bg-amber-50/30"
-              : isSelected
-                ? "bg-blue-50/30"
-                : "";
+              : "";
 
           return (
             <TableRow key={row.accountCode} className={rowBg}>
-              <TableCell className="py-1.5 w-10">
-                <Checkbox
-                  id={`rev-${row.accountCode}`}
-                  checked={isSelected}
-                  disabled={isReviewed}
-                  onCheckedChange={(checked) => handleToggle(row.accountCode, checked)}
-                />
-              </TableCell>
               <TableCell className="font-mono text-xs py-1.5">{row.accountCode}</TableCell>
               <TableCell className="text-sm py-1.5">{row.accountName}</TableCell>
               <TableCell className="text-xs text-muted-foreground py-1.5">{row.accountType}</TableCell>
               <TableCell className="font-mono text-sm py-1.5">{formatAmount(row.totalAmount)}</TableCell>
               <TableCell className="text-xs text-muted-foreground py-1.5">{row.transactionCount}</TableCell>
-              <TableCell className="py-1.5">{renderStatusBadge(row)}</TableCell>
+              <TableCell className="py-1.5">
+                {row.isSavedRevenue ? (
+                  <Badge variant="success" className="gap-1 text-xs">
+                    <Check className="h-3 w-3" />
+                    הכנסה
+                  </Badge>
+                ) : row.autoDetected ? (
+                  <Badge variant="outline" className="gap-1 text-xs border-amber-300 text-amber-700 bg-amber-50">
+                    זוהה אוטומטית
+                  </Badge>
+                ) : null}
+              </TableCell>
+              <TableCell className="py-1.5">
+                {!isReviewed && (
+                  <Button
+                    variant={row.isSavedRevenue ? "outline" : "default"}
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    disabled={isToggling || revenueToggleMutation.isPending}
+                    onClick={() => handleToggleRevenue(row.accountCode)}
+                  >
+                    {isToggling ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : row.isSavedRevenue ? (
+                      <>
+                        <X className="h-3 w-3 ms-1" />
+                        הסר
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3 w-3 ms-1" />
+                        סמן כהכנסה
+                      </>
+                    )}
+                  </Button>
+                )}
+              </TableCell>
             </TableRow>
           );
         };
-
-        const selectedCount = effectiveSelected.size;
 
         return (
           <Card className="mb-4">
@@ -1008,9 +955,9 @@ export default function FileDetailsPage() {
               <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                 <DollarSign className="h-4 w-4" />
                 סיווג חשבונות הכנסות
-                {selectedCount > 0 && (
+                {savedCodesSet.size > 0 && (
                   <Badge variant="secondary" className="text-xs">
-                    {selectedCount} נבחרו
+                    {savedCodesSet.size} שמורים
                   </Badge>
                 )}
                 {!hasAllAccounts && (
@@ -1020,9 +967,7 @@ export default function FileDetailsPage() {
                 )}
               </CardTitle>
               <CardDescription className="text-xs">
-                {hasSavedCodes
-                  ? "סמן חשבונות כהכנסות. חשבונות שמורים מסומנים בירוק."
-                  : "לא נמצאו חשבונות הכנסות שמורים לזכיין זה. סמן את החשבונות המתאימים ושמור."}
+                לחץ &quot;סמן כהכנסה&quot; כדי לשמור חשבון כהכנסות לזכיין. השינוי נשמר מיד.
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-3 pt-0">
@@ -1043,25 +988,11 @@ export default function FileDetailsPage() {
               {revenueRows.length > 0 && (
                 <div className="rounded-md border mb-3">
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-10 py-1.5"></TableHead>
-                        <TableHead className="text-xs py-1.5">קוד</TableHead>
-                        <TableHead className="text-xs py-1.5">שם חשבון</TableHead>
-                        <TableHead className="text-xs py-1.5">סוג חשבון</TableHead>
-                        <TableHead className="text-xs py-1.5">סכום</TableHead>
-                        <TableHead className="text-xs py-1.5">עסקאות</TableHead>
-                        <TableHead className="text-xs py-1.5">סטטוס</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader>{tableHeaders}</TableHeader>
                     <TableBody>
-                      {revenueRows.map(renderAccountTableRow)}
-                      {/* Missing saved codes */}
+                      {revenueRows.map(renderRow)}
                       {missingSavedCodes.map(code => (
                         <TableRow key={`missing-${code}`} className="bg-muted/20">
-                          <TableCell className="py-1.5 w-10">
-                            <Checkbox checked={false} disabled={true} />
-                          </TableCell>
                           <TableCell className="font-mono text-xs py-1.5 text-muted-foreground line-through">{code}</TableCell>
                           <TableCell colSpan={4} className="text-xs text-muted-foreground py-1.5">—</TableCell>
                           <TableCell className="py-1.5">
@@ -1070,6 +1001,7 @@ export default function FileDetailsPage() {
                               לא בקובץ
                             </Badge>
                           </TableCell>
+                          <TableCell className="py-1.5" />
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1091,19 +1023,9 @@ export default function FileDetailsPage() {
                   {showOtherAccounts && (
                     <div className="rounded-md border">
                       <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-10 py-1.5"></TableHead>
-                            <TableHead className="text-xs py-1.5">קוד</TableHead>
-                            <TableHead className="text-xs py-1.5">שם חשבון</TableHead>
-                            <TableHead className="text-xs py-1.5">סוג חשבון</TableHead>
-                            <TableHead className="text-xs py-1.5">סכום</TableHead>
-                            <TableHead className="text-xs py-1.5">עסקאות</TableHead>
-                            <TableHead className="text-xs py-1.5">סטטוס</TableHead>
-                          </TableRow>
-                        </TableHeader>
+                        <TableHeader>{tableHeaders}</TableHeader>
                         <TableBody>
-                          {otherRows.map(renderAccountTableRow)}
+                          {otherRows.map(renderRow)}
                         </TableBody>
                       </Table>
                     </div>
@@ -1116,24 +1038,6 @@ export default function FileDetailsPage() {
                 <p className="text-xs text-muted-foreground text-center py-4">
                   לא נמצאו חשבונות מתאימים לחיפוש
                 </p>
-              )}
-
-              {!isReviewed && (
-                <div className="mt-3 flex items-center justify-end">
-                  <Button
-                    onClick={handleConfirmRevenue}
-                    disabled={effectiveSelected.size === 0 || revenueConfirmMutation.isPending}
-                    size="sm"
-                    className="h-7 text-xs"
-                  >
-                    {revenueConfirmMutation.isPending ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin ms-1.5" />
-                    ) : (
-                      <Check className="h-3.5 w-3.5 ms-1.5" />
-                    )}
-                    אשר ושמור לזכיין
-                  </Button>
-                </div>
               )}
             </CardContent>
           </Card>
