@@ -1508,7 +1508,7 @@ export type BkmvProcessingResult = {
     amount: number;
     transactionCount: number;
   }>>;
-  /** Revenue accounts found in file */
+  /** Revenue accounts found in file (auto-detected by keywords) */
   revenueAccounts?: Array<{
     accountCode: string;
     accountName: string;
@@ -1517,6 +1517,17 @@ export type BkmvProcessingResult = {
     isConfirmed: boolean;
     monthlyBreakdown?: Record<string, number>;
     b110CreditTurnover?: number; // Raw B110 credit turnover when B110 fallback was used
+  }>;
+  /** ALL accounts from the BKMV file (superset — for manual revenue classification) */
+  allAccountSummaries?: Array<{
+    accountCode: string;
+    accountName: string;
+    accountType: string;
+    accountSort: string;
+    totalAmount: number;
+    transactionCount: number;
+    monthlyBreakdown?: Record<string, number>;
+    autoDetectedAsRevenue: boolean;
   }>;
   /** Monthly revenue breakdown - YYYY-MM -> amount */
   revenueMonthlyBreakdown?: Record<string, number>;

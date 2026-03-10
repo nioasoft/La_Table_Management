@@ -125,6 +125,7 @@ export async function GET(
       } : null,
       supplierMatches: enrichedMatches,
       revenueAccounts: processingResult?.revenueAccounts || [],
+      allAccountSummaries: processingResult?.allAccountSummaries || [],
       savedRevenueCodes,
     });
   } catch (error) {
@@ -333,31 +334,50 @@ async function handleRevenueConfirmation(
       );
     }
 
-    // Validate all account codes exist in the revenue accounts
+    // Validate all account codes exist in allAccountSummaries (preferred) or revenueAccounts (fallback)
     const confirmedCodesSet = new Set(accountCodes);
+    const allAccounts = processingResult.allAccountSummaries || [];
+    const revenueOnly = processingResult.revenueAccounts || [];
     for (const code of accountCodes) {
-      const validAccount = processingResult.revenueAccounts?.find(
-        a => a.accountCode === code
-      );
-      if (!validAccount) {
+      const validInAll = allAccounts.find(a => a.accountCode === code);
+      const validInRevenue = revenueOnly.find(a => a.accountCode === code);
+      if (!validInAll && !validInRevenue) {
         return NextResponse.json(
-          { error: `Invalid revenue account code: ${code}` },
+          { error: `Invalid account code: ${code}` },
           { status: 400 }
         );
       }
     }
 
     // Update the revenue accounts - mark selected ones as confirmed
-    const updatedRevenueAccounts = processingResult.revenueAccounts?.map(account => ({
-      ...account,
-      isConfirmed: confirmedCodesSet.has(account.accountCode),
-    }));
+    // Also add newly-selected accounts from allAccountSummaries that aren't already in revenueAccounts
+    const existingRevenueCodes = new Set((processingResult.revenueAccounts || []).map(a => a.accountCode));
+    const updatedRevenueAccounts = [
+      ...(processingResult.revenueAccounts || []).map(account => ({
+        ...account,
+        isConfirmed: confirmedCodesSet.has(account.accountCode),
+      })),
+      // Add accounts selected from allAccountSummaries that weren't already in revenueAccounts
+      ...accountCodes
+        .filter(code => !existingRevenueCodes.has(code))
+        .map(code => {
+          const allAccount = allAccounts.find(a => a.accountCode === code);
+          return {
+            accountCode: code,
+            accountName: allAccount?.accountName || code,
+            totalAmount: allAccount?.totalAmount || 0,
+            transactionCount: allAccount?.transactionCount || 0,
+            isConfirmed: true,
+            monthlyBreakdown: allAccount?.monthlyBreakdown,
+          };
+        }),
+    ];
 
     // Build revenueMonthlyBreakdown from ALL confirmed accounts' monthlyBreakdowns
     let revenueMonthlyBreakdown: Record<string, number> | undefined;
-    if (accountCodes.length > 0 && processingResult.revenueAccounts) {
+    if (accountCodes.length > 0) {
       const breakdown: Record<string, number> = {};
-      for (const account of processingResult.revenueAccounts) {
+      for (const account of updatedRevenueAccounts) {
         if (!confirmedCodesSet.has(account.accountCode)) continue;
         if (account.monthlyBreakdown) {
           for (const [month, amount] of Object.entries(account.monthlyBreakdown)) {
@@ -386,7 +406,14 @@ async function handleRevenueConfirmation(
     );
 
     // Always save revenue codes to franchisee — confirmed codes are the source of truth
-    const franchiseeId = file.franchiseeId;
+    // Resolve franchiseeId: direct reference OR via upload link (same fallback as GET handler)
+    let franchiseeId = file.franchiseeId;
+    if (!franchiseeId && file.uploadLinkId) {
+      const uploadLink = await getUploadLinkById(file.uploadLinkId);
+      if (uploadLink?.entityType === "franchisee") {
+        franchiseeId = uploadLink.entityId;
+      }
+    }
     if (franchiseeId) {
       const { setFranchiseeRevenueCodes } = await import("@/data-access/franchisee-revenue-codes");
       const codesToSave = accountCodes.map(code => {

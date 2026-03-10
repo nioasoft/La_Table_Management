@@ -1,7 +1,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, isAuthError, requireRole } from "@/lib/api-middleware";
-import { parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getFranchiseeByCompanyId, getFranchiseeById } from "@/data-access/franchisees";
@@ -216,6 +216,14 @@ export async function POST(request: NextRequest) {
     // Extract revenue accounts from the parsed data
     const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
 
+    // Build all-accounts summary for manual revenue classification in the UI
+    const allAccountsMap = buildAllAccountsSummary(parseResult);
+    const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
+    const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
+      ...a,
+      autoDetectedAsRevenue: revenueCodeSet.has(a.accountCode),
+    }));
+
     // Determine which revenue account codes to use:
     // 1. User-selected from UI (takes priority)
     // 2. Saved on franchisee (auto-match)
@@ -291,6 +299,7 @@ export async function POST(request: NextRequest) {
       })),
       monthlyBreakdown,
       revenueAccounts: revenueAccounts.length > 0 ? revenueAccounts : undefined,
+      allAccountSummaries: allAccountSummaries.length > 0 ? allAccountSummaries : undefined,
       revenueMonthlyBreakdown: Object.keys(revenueMonthlyBreakdown).length > 0 ? revenueMonthlyBreakdown : undefined,
       // Support both new array format and legacy single code (for backward compatibility)
       confirmedRevenueAccountCodes: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : undefined,

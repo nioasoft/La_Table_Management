@@ -25,7 +25,7 @@ import {
 import { validateFileType } from "@/lib/file-validation";
 import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
-import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
@@ -344,6 +344,14 @@ export async function POST(
           // Extract revenue accounts from the parsed data
           const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
 
+          // Build all-accounts summary for manual revenue classification
+          const allAccountsMap = buildAllAccountsSummary(parseResult);
+          const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
+          const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
+            ...a,
+            autoDetectedAsRevenue: revenueCodeSet.has(a.accountCode),
+          }));
+
           // Check if franchisee has saved revenue account codes for auto-matching
           const savedRevenueCodes = await getFranchiseeRevenueCodesList(link.entityId);
           const confirmedRevenueAccountCodes: string[] = [];
@@ -391,6 +399,7 @@ export async function POST(
             })),
             monthlyBreakdown,
             revenueAccounts: revenueAccounts.length > 0 ? revenueAccounts : undefined,
+            allAccountSummaries: allAccountSummaries.length > 0 ? allAccountSummaries : undefined,
             revenueMonthlyBreakdown: Object.keys(revenueMonthlyBreakdown).length > 0 ? revenueMonthlyBreakdown : undefined,
             confirmedRevenueAccountCodes: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes : undefined,
             confirmedRevenueAccountCode: confirmedRevenueAccountCodes.length > 0 ? confirmedRevenueAccountCodes[0] : null,

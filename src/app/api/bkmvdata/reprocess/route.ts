@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
@@ -180,6 +180,14 @@ export async function POST(request: NextRequest) {
           // Rebuild revenue from re-parsed data (uses B110 credit turnover fallback)
           const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
 
+          // Build all-accounts summary for manual revenue classification
+          const allAccountsMap = buildAllAccountsSummary(parseResult);
+          const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
+          const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
+            ...a,
+            autoDetectedAsRevenue: revenueCodeSet.has(a.accountCode),
+          }));
+
           // Preserve confirmed revenue account codes from existing result
           const confirmedCodes = existingResult.confirmedRevenueAccountCodes
             ?? (existingResult.confirmedRevenueAccountCode ? [existingResult.confirmedRevenueAccountCode] : undefined);
@@ -208,6 +216,7 @@ export async function POST(request: NextRequest) {
             },
             monthlyBreakdown,
             revenueAccounts,
+            allAccountSummaries: allAccountSummaries.length > 0 ? allAccountSummaries : undefined,
             revenueMonthlyBreakdown,
           };
 
