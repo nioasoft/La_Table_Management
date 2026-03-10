@@ -12,6 +12,7 @@ import {
   type SupplierFileProcessingResult,
 } from "@/db/schema";
 import { eq, and, gte, lte, inArray, isNotNull, or } from "drizzle-orm";
+import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import * as XLSX from "xlsx";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
@@ -40,10 +41,13 @@ interface HashavshevetRow {
 function calculateMatchCommission(
   match: SupplierFileProcessingResult["franchiseeMatches"][0],
   supplierCommissionRate: string | null,
-  supplierCommissionType: string | null
+  supplierCommissionType: string | null,
+  supplierCode?: string
 ): number {
-  // Check for pre-calculated commission first
-  if (match.preCalculatedCommission && match.preCalculatedCommission > 0) {
+  const isFileCommission = supplierCode ? hasCommissionFromFile(supplierCode) : false;
+  // File-commission suppliers: always use file value (even 0 = no commission)
+  // Other suppliers: only use positive pre-calculated values
+  if (match.preCalculatedCommission != null && (isFileCommission || match.preCalculatedCommission > 0)) {
     return Math.trunc(match.preCalculatedCommission * 100) / 100;
   }
 
@@ -119,6 +123,7 @@ export async function GET(request: NextRequest) {
         fileId: supplierFileUpload.id,
         supplierId: supplier.id,
         supplierName: supplier.name,
+        supplierCode: supplier.code,
         hashavshevetCode: supplier.hashavshevetCode,
         commissionRate: supplier.defaultCommissionRate,
         commissionType: supplier.commissionType,
@@ -179,7 +184,8 @@ export async function GET(request: NextRequest) {
         const commissionAmount = calculateMatchCommission(
           match,
           file.commissionRate,
-          file.commissionType
+          file.commissionType,
+          file.supplierCode
         );
 
         if (commissionAmount === 0) continue;

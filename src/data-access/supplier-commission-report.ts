@@ -13,6 +13,7 @@ import {
 import { eq, and, inArray, gte, lte, or, isNotNull, desc } from "drizzle-orm";
 import { getVatRateForDate } from "@/data-access/vatRates";
 import { roundToTwoDecimals } from "@/lib/file-processor";
+import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 
 // ============================================================================
 // TYPES
@@ -368,6 +369,7 @@ export async function getSupplierCommissionReport(
     const commissionRate = Number(supplierData.defaultCommissionRate || 0);
     const commissionType = supplierData.commissionType || "percentage";
     const isVatExempt = supplierData.vatExempt;
+    const isFileCommissionSupplier = hasCommissionFromFile(supplierData.code);
 
     // For per_item suppliers, use processedRows from file processing result
     const processedRows = result.processedRows || 0;
@@ -398,8 +400,9 @@ export async function getSupplierCommissionReport(
         // Per-item commission: rate is ₪ per item, not a percentage
         // Use pre-calculated commission from match if available, otherwise estimate
         const matchCommission = Number(match.preCalculatedCommission || 0);
-        if (matchCommission > 0) {
-          // preCalculatedCommission is net (e.g., capsules × ₪rate) = commission before VAT
+        if (isFileCommissionSupplier || matchCommission > 0) {
+          // File-commission suppliers: always use file value (even if 0 = no commission)
+          // Other suppliers with pre-calculated: use it when > 0
           commissionAmountBeforeVat = matchCommission;
           commissionAmount = isVatExempt
             ? matchCommission
@@ -420,8 +423,9 @@ export async function getSupplierCommissionReport(
         // Use supplier's pre-calculated commission when available
         // (e.g., for suppliers with variable rates per product like Avrahami)
         const matchCommission = Number(match.preCalculatedCommission || 0);
-        if (matchCommission > 0) {
-          // preCalculatedCommission is calculated on net sale amounts = commission before VAT
+        if (isFileCommissionSupplier || matchCommission > 0) {
+          // File-commission suppliers: always use file value (even if 0 = no commission)
+          // Other suppliers with pre-calculated: use it when > 0
           commissionAmountBeforeVat = matchCommission;
           commissionAmount = isVatExempt
             ? matchCommission
@@ -499,7 +503,7 @@ export async function getSupplierCommissionReport(
 
       if (commissionType === "per_item") {
         const matchCommission = Number(match.preCalculatedCommission || 0);
-        if (matchCommission > 0) {
+        if (isFileCommissionSupplier || matchCommission > 0) {
           unmatchedCommissionBeforeVat = matchCommission;
           unmatchedCommission = isVatExempt
             ? matchCommission
@@ -515,7 +519,7 @@ export async function getSupplierCommissionReport(
         }
       } else {
         const matchCommission = Number(match.preCalculatedCommission || 0);
-        if (matchCommission > 0) {
+        if (isFileCommissionSupplier || matchCommission > 0) {
           unmatchedCommissionBeforeVat = matchCommission;
           unmatchedCommission = isVatExempt
             ? matchCommission

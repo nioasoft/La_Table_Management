@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, gte, lte, inArray } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
+import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 
 // ============================================================================
 // TYPES
@@ -118,11 +119,14 @@ export interface SupplierFilesFilterOptions {
 function calculateCommission(
   processingResult: SupplierFileProcessingResult | null,
   commissionRate: number | null,
-  commissionType: string | null
+  commissionType: string | null,
+  supplierCode?: string
 ): { calculated: number; preCalculated: number | null } {
   if (!processingResult) {
     return { calculated: 0, preCalculated: null };
   }
+
+  const isFileCommission = supplierCode ? hasCommissionFromFile(supplierCode) : false;
 
   // Check for pre-calculated commission in franchisee matches
   let preCalculatedTotal = 0;
@@ -130,10 +134,8 @@ function calculateCommission(
 
   if (processingResult.franchiseeMatches) {
     for (const match of processingResult.franchiseeMatches) {
-      // Check if match has preCalculatedCommission field
-      // Only count as pre-calculated if value is positive (0 falls back to rate)
       const matchAny = match as Record<string, unknown>;
-      if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
+      if (typeof matchAny.preCalculatedCommission === "number" && (isFileCommission || matchAny.preCalculatedCommission > 0)) {
         preCalculatedTotal += matchAny.preCalculatedCommission;
         hasPreCalculated = true;
       }
@@ -392,11 +394,12 @@ export async function getSupplierFilesReport(
 
       let preCalculatedTotal = 0;
       let hasPreCalculated = false;
+      const isFileCommission = hasCommissionFromFile(file.supplierCode);
       for (const match of matchesToUse) {
         const matchAny = match as Record<string, unknown>;
-        // Only count as pre-calculated if value is a positive number
-        // Zero values should fall back to supplier rate calculation
-        if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
+        // File-commission suppliers: always use file value (even 0 = no commission)
+        // Other suppliers: only count positive pre-calculated values
+        if (typeof matchAny.preCalculatedCommission === "number" && (isFileCommission || matchAny.preCalculatedCommission > 0)) {
           preCalculatedTotal += matchAny.preCalculatedCommission;
           hasPreCalculated = true;
         }
@@ -497,12 +500,12 @@ export async function getSupplierFilesReport(
         // Calculate commission for this franchisee match
         const matchAny = match as Record<string, unknown>;
         let matchCommission = 0;
-        // Only use pre-calculated if positive (0 falls back to rate calculation)
-        if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
-          // Commission from file (for suppliers like AVRAHAMI, etc.)
+        const isFileCommission = hasCommissionFromFile(existing.supplierCode);
+        // File-commission suppliers: always use file value (even 0 = no commission)
+        // Other suppliers: only use positive pre-calculated values
+        if (typeof matchAny.preCalculatedCommission === "number" && (isFileCommission || matchAny.preCalculatedCommission > 0)) {
           matchCommission = matchAny.preCalculatedCommission;
         } else if (commissionRate && commissionType === "percentage") {
-          // Fixed commission rate
           matchCommission = (match.netAmount || 0) * (commissionRate / 100);
         }
         matchCommission = Math.trunc(matchCommission * 100) / 100;
@@ -736,6 +739,7 @@ export async function getFranchiseeBreakdownReport(
       periodEndDate: supplierFileUpload.periodEndDate,
       createdAt: supplierFileUpload.createdAt, // Added for deduplication
       supplierName: supplier.name,
+      supplierCode: supplier.code,
       commissionRate: supplier.defaultCommissionRate,
       commissionType: supplier.commissionType,
       fileMapping: supplier.fileMapping,
@@ -796,12 +800,12 @@ export async function getFranchiseeBreakdownReport(
       // Calculate commission for this match
       const matchAny = match as Record<string, unknown>;
       let matchCommission = 0;
-      // Only use pre-calculated if positive (0 falls back to rate calculation)
-      if (typeof matchAny.preCalculatedCommission === "number" && matchAny.preCalculatedCommission > 0) {
-        // Commission from file (for suppliers like AVRAHAMI, etc.)
+      const isFileCommission = hasCommissionFromFile(file.supplierCode);
+      // File-commission suppliers: always use file value (even 0 = no commission)
+      // Other suppliers: only use positive pre-calculated values
+      if (typeof matchAny.preCalculatedCommission === "number" && (isFileCommission || matchAny.preCalculatedCommission > 0)) {
         matchCommission = matchAny.preCalculatedCommission;
       } else if (commissionRate && commissionType === "percentage") {
-        // Fixed commission rate
         matchCommission = (match.netAmount || 0) * (commissionRate / 100);
       }
       matchCommission = Math.trunc(matchCommission * 100) / 100;
