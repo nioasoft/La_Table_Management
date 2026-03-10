@@ -27,6 +27,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -38,9 +39,13 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
-  LogOut,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   RefreshCw,
-  Download,
   FileSpreadsheet,
   FileText,
   Loader2,
@@ -55,6 +60,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatCurrency } from "@/lib/translations";
+import { formatCompactPeriod } from "@/lib/report-utils";
 
 // Types matching the API response
 interface CommissionWithDetails {
@@ -595,13 +601,13 @@ export default function CommissionReportPage() {
                       אין נתונים להצגה
                     </p>
                   ) : (
-                    <Table>
+                    <Table className="table-compact table-grid">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="text-end">מותג</TableHead>
-                          <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
-                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
+                          <TableHead className="text-end">מס׳ עמלות</TableHead>
+                          <TableHead className="text-end">כולל מע״מ</TableHead>
+                          <TableHead className="text-end">לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                           <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
@@ -612,22 +618,40 @@ export default function CommissionReportPage() {
                             <TableCell className="font-medium text-end">
                               {brand.brandNameHe}
                             </TableCell>
-                            <TableCell className="text-end">{brand.commissionCount}</TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">{brand.commissionCount}</TableCell>
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(brand.totalGrossAmount)}
                             </TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(brand.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium text-end">
+                            <TableCell className="font-medium text-end font-mono tabular-nums">
                               {formatCurrency(brand.totalCommissionAmount)}
                             </TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatPercent(brand.avgCommissionRate)}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
+                      <TableFooter>
+                        <TableRow className="font-bold bg-muted/50 border-t-2">
+                          <TableCell className="text-end">סה״כ</TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {report.byBrand.reduce((sum, b) => sum + b.commissionCount, 0)}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byBrand.reduce((sum, b) => sum + b.totalGrossAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byBrand.reduce((sum, b) => sum + b.totalNetAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byBrand.reduce((sum, b) => sum + b.totalCommissionAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end"></TableCell>
+                        </TableRow>
+                      </TableFooter>
                     </Table>
                   )}
                 </CardContent>
@@ -649,39 +673,52 @@ export default function CommissionReportPage() {
                       אין נתונים להצגה
                     </p>
                   ) : (
-                    <Table>
+                    <Table className="table-compact table-grid">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-end">תאריך התחלה</TableHead>
-                          <TableHead className="text-end">תאריך סיום</TableHead>
-                          <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
-                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
+                          <TableHead className="text-end">תקופה</TableHead>
+                          <TableHead className="text-end">מס׳ עמלות</TableHead>
+                          <TableHead className="text-end">כולל מע״מ</TableHead>
+                          <TableHead className="text-end">לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.byPeriod.map((period, index) => (
                           <TableRow key={index}>
-                            <TableCell className="text-end">
-                              {formatDate(period.periodStartDate)}
+                            <TableCell className="text-end font-mono tabular-nums">
+                              {formatCompactPeriod(period.periodStartDate, period.periodEndDate)}
                             </TableCell>
-                            <TableCell className="text-end">
-                              {formatDate(period.periodEndDate)}
-                            </TableCell>
-                            <TableCell className="text-end">{period.commissionCount}</TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">{period.commissionCount}</TableCell>
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(period.totalGrossAmount)}
                             </TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(period.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium text-end">
+                            <TableCell className="font-medium text-end font-mono tabular-nums">
                               {formatCurrency(period.totalCommissionAmount)}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
+                      <TableFooter>
+                        <TableRow className="font-bold bg-muted/50 border-t-2">
+                          <TableCell className="text-end">סה״כ</TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {report.byPeriod.reduce((sum, p) => sum + p.commissionCount, 0)}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byPeriod.reduce((sum, p) => sum + p.totalGrossAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byPeriod.reduce((sum, p) => sum + p.totalNetAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.byPeriod.reduce((sum, p) => sum + p.totalCommissionAmount, 0))}
+                          </TableCell>
+                        </TableRow>
+                      </TableFooter>
                     </Table>
                   )}
                 </CardContent>
@@ -703,14 +740,13 @@ export default function CommissionReportPage() {
                       אין נתונים להצגה
                     </p>
                   ) : (
-                    <Table>
+                    <Table className="table-compact table-grid">
                       <TableHeader>
                         <TableRow>
                           <TableHead className="text-end">ספק</TableHead>
-                          <TableHead className="text-end">קוד</TableHead>
-                          <TableHead className="text-end">מספר עמלות</TableHead>
-                          <TableHead className="text-end">סכום כולל מע״מ</TableHead>
-                          <TableHead className="text-end">סכום לפני מע״מ</TableHead>
+                          <TableHead className="text-end">מס׳ עמלות</TableHead>
+                          <TableHead className="text-end">כולל מע״מ</TableHead>
+                          <TableHead className="text-end">לפני מע״מ</TableHead>
                           <TableHead className="text-end">סכום עמלה</TableHead>
                           <TableHead className="text-end">עמלה ממוצעת</TableHead>
                         </TableRow>
@@ -718,26 +754,55 @@ export default function CommissionReportPage() {
                       <TableBody>
                         {report.bySupplier.map((supplier) => (
                           <TableRow key={supplier.supplierId}>
-                            <TableCell className="font-medium text-end">
-                              {supplier.supplierName}
+                            <TableCell className="font-medium text-end max-w-[180px]">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="block truncate">{supplier.supplierName}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>{supplier.supplierName}</p>
+                                    {supplier.supplierCode && (
+                                      <p className="text-muted-foreground">קוד: {supplier.supplierCode}</p>
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </TableCell>
-                            <TableCell className="text-end">{supplier.supplierCode}</TableCell>
-                            <TableCell className="text-end">{supplier.commissionCount}</TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">{supplier.commissionCount}</TableCell>
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(supplier.totalGrossAmount)}
                             </TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatCurrency(supplier.totalNetAmount)}
                             </TableCell>
-                            <TableCell className="font-medium text-end">
+                            <TableCell className="font-medium text-end font-mono tabular-nums">
                               {formatCurrency(supplier.totalCommissionAmount)}
                             </TableCell>
-                            <TableCell className="text-end">
+                            <TableCell className="text-end font-mono tabular-nums">
                               {formatPercent(supplier.avgCommissionRate)}
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
+                      <TableFooter>
+                        <TableRow className="font-bold bg-muted/50 border-t-2">
+                          <TableCell className="text-end">סה״כ</TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {report.bySupplier.reduce((sum, s) => sum + s.commissionCount, 0)}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.bySupplier.reduce((sum, s) => sum + s.totalGrossAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.bySupplier.reduce((sum, s) => sum + s.totalNetAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end font-mono tabular-nums">
+                            {formatCurrency(report.bySupplier.reduce((sum, s) => sum + s.totalCommissionAmount, 0))}
+                          </TableCell>
+                          <TableCell className="text-end"></TableCell>
+                        </TableRow>
+                      </TableFooter>
                     </Table>
                   )}
                 </CardContent>
@@ -759,8 +824,8 @@ export default function CommissionReportPage() {
                       אין נתונים להצגה
                     </p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
+                    <>
+                      <Table className="table-compact table-grid">
                         <TableHeader>
                           <TableRow>
                             <TableHead className="text-end">ספק</TableHead>
@@ -776,22 +841,37 @@ export default function CommissionReportPage() {
                         <TableBody>
                           {report.details.slice(0, 100).map((commission) => (
                             <TableRow key={commission.id}>
-                              <TableCell className="font-medium text-end">
-                                {commission.supplierName}
+                              <TableCell className="font-medium text-end max-w-[150px]">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="block truncate">{commission.supplierName}</span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{commission.supplierName}</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               </TableCell>
-                              <TableCell className="text-end">{commission.franchiseeName}</TableCell>
+                              <TableCell className="text-end max-w-[150px]">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="block truncate">{commission.franchiseeName}</span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>{commission.franchiseeName}</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </TableCell>
                               <TableCell className="text-end">{commission.brandNameHe}</TableCell>
-                              <TableCell className="text-sm text-end">
-                                {formatDate(commission.periodStartDate)} -{" "}
-                                {formatDate(commission.periodEndDate)}
+                              <TableCell className="text-end font-mono tabular-nums">
+                                {formatCompactPeriod(commission.periodStartDate, commission.periodEndDate)}
                               </TableCell>
-                              <TableCell className="text-end">
+                              <TableCell className="text-end font-mono tabular-nums">
                                 {formatCurrency(Number(commission.grossAmount))}
                               </TableCell>
-                              <TableCell className="font-medium text-end">
+                              <TableCell className="font-medium text-end font-mono tabular-nums">
                                 {formatCurrency(Number(commission.commissionAmount))}
                               </TableCell>
-                              <TableCell className="text-end">
+                              <TableCell className="text-end font-mono tabular-nums">
                                 {formatPercent(Number(commission.commissionRate))}
                               </TableCell>
                               <TableCell className="text-end">
@@ -807,7 +887,7 @@ export default function CommissionReportPage() {
                           לאקסל לצפייה בכל הרשומות.
                         </p>
                       )}
-                    </div>
+                    </>
                   )}
                 </CardContent>
               </Card>

@@ -260,6 +260,25 @@
   column-gap: 1rem;
 }
 
+@utility table-compact {
+  & th {
+    padding: 0.375rem 0.5rem;
+    height: 2.25rem;
+    font-size: 0.8125rem;
+  }
+  & td {
+    padding: 0.375rem 0.5rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@utility table-grid {
+  & th,
+  & td {
+    border: 1px solid hsl(var(--border));
+  }
+}
+
 @utility table-cell-numeric {
   /* --------------------------------------------------------------------------
      Table RTL utilities

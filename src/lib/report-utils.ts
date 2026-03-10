@@ -33,6 +33,19 @@ export function formatDateRange(startDate: string, endDate: string): string {
 }
 
 /**
+ * Format a date range as compact MM/YY - MM/YY
+ */
+export function formatCompactPeriod(startDate: string, endDate: string): string {
+  const fmt = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = String(d.getFullYear()).slice(2);
+    return `${month}/${year}`;
+  };
+  return `${fmt(startDate)} - ${fmt(endDate)}`;
+}
+
+/**
  * Format number with thousands separator
  */
 export function formatNumber(num: number | string | null | undefined): string {
