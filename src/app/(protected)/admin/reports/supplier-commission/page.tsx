@@ -30,6 +30,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Loader2,
   Coins,
   Calendar,
@@ -497,21 +503,26 @@ export default function SupplierCommissionReportPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="[&>div]:max-h-[70vh]">
-              <Table>
-                <TableHeader className="sticky top-0 z-20 bg-background shadow-[0_1px_0_0_hsl(var(--border))] [&_th]:bg-background">
+              <Table className="table-compact table-grid">
+                <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background">
                   <TableRow>
-                    <TableHead className="sticky start-0 z-30 bg-background">
+                    <TableHead className="sticky start-0 z-30 bg-background text-end">
                       ספק
                     </TableHead>
-                    <TableHead className="text-center">% עמלה</TableHead>
+                    <TableHead className="text-center">%</TableHead>
                     {report.franchisees.map((f) => (
                       <TableHead key={f.franchiseeId} className="text-center">
-                        <div className="text-xs">
-                          <div className="font-medium">{f.franchiseeName}</div>
-                          <div className="text-muted-foreground">
-                            {f.franchiseeCode}
-                          </div>
-                        </div>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-xs font-medium whitespace-nowrap">{f.franchiseeName}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{f.franchiseeName}</p>
+                              <p className="text-muted-foreground">{f.franchiseeCode}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableHead>
                     ))}
                     <TableHead className="text-center font-bold">
@@ -522,24 +533,32 @@ export default function SupplierCommissionReportPage() {
                 <TableBody>
                   {report.suppliers.map((sup) => (
                     <TableRow key={sup.supplierId}>
-                      <TableCell className="sticky start-0 z-10 bg-background">
-                        <div>
-                          <div className="font-medium">{sup.supplierName}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {sup.supplierCode}
-                            {sup.isVatExempt && (
-                              <Badge
-                                variant="outline"
-                                className="ms-1 text-xs"
-                              >
-                                פטור מע״מ
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
+                      <TableCell className="sticky start-0 z-10 bg-background text-end whitespace-nowrap">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="font-medium">
+                                {sup.supplierName}
+                                {sup.isVatExempt && (
+                                  <Badge
+                                    variant="outline"
+                                    className="ms-1 text-[10px] px-1 py-0"
+                                  >
+                                    פטור
+                                  </Badge>
+                                )}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{sup.supplierName}</p>
+                              <p className="text-muted-foreground">{sup.supplierCode}</p>
+                              {sup.isVatExempt && <p className="text-muted-foreground">פטור מע״מ</p>}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="outline">{sup.commissionRate}%</Badge>
+                      <TableCell className="text-center font-mono tabular-nums">
+                        {sup.commissionRate}%
                       </TableCell>
                       {report.franchisees.map((f) => {
                         const cell = sup.cells[f.franchiseeId];
@@ -556,13 +575,13 @@ export default function SupplierCommissionReportPage() {
                         return (
                           <TableCell
                             key={f.franchiseeId}
-                            className="text-center text-xs"
+                            className="text-center font-mono tabular-nums"
                           >
                             {formatCurrency(cell.commissionAmountBeforeVat)}
                           </TableCell>
                         );
                       })}
-                      <TableCell className="text-center font-medium">
+                      <TableCell className="text-center font-medium font-mono tabular-nums">
                         {formatCurrency(sup.totalCommissionBeforeVat)}
                       </TableCell>
                     </TableRow>
@@ -570,19 +589,19 @@ export default function SupplierCommissionReportPage() {
 
                   {/* Totals Row */}
                   <TableRow className="bg-muted/50 font-bold">
-                    <TableCell className="sticky start-0 z-10 bg-muted">
+                    <TableCell className="sticky start-0 z-10 bg-muted text-end">
                       סה״כ
                     </TableCell>
                     <TableCell />
                     {report.franchisees.map((f) => (
                       <TableCell
                         key={f.franchiseeId}
-                        className="text-center text-xs"
+                        className="text-center font-mono tabular-nums"
                       >
                         {formatCurrency(f.totalCommissionBeforeVat)}
                       </TableCell>
                     ))}
-                    <TableCell className="text-center">
+                    <TableCell className="text-center font-mono tabular-nums">
                       {formatCurrency(
                         report.grandTotals.totalCommissionBeforeVat
                       )}
@@ -591,7 +610,7 @@ export default function SupplierCommissionReportPage() {
 
                   {/* % of Turnover Row */}
                   <TableRow className="bg-amber-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-amber-50 font-bold">
+                    <TableCell className="sticky start-0 z-10 bg-amber-50 font-bold text-end">
                       % ממחזור
                     </TableCell>
                     <TableCell />
@@ -606,37 +625,33 @@ export default function SupplierCommissionReportPage() {
                       return (
                         <TableCell
                           key={f.franchiseeId}
-                          className="text-center"
+                          className="text-center font-mono tabular-nums"
                         >
                           {pct != null ? (
-                            <Badge variant="secondary">{pct}%</Badge>
+                            `${pct}%`
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
                         </TableCell>
                       );
                     })}
-                    <TableCell className="text-center">
-                      {report.grandTotals.overallPercentOfTurnover != null ? (
-                        <Badge variant="default">
-                          {report.grandTotals.overallPercentOfTurnover}%
-                        </Badge>
-                      ) : (
-                        "-"
-                      )}
+                    <TableCell className="text-center font-mono tabular-nums font-bold">
+                      {report.grandTotals.overallPercentOfTurnover != null
+                        ? `${report.grandTotals.overallPercentOfTurnover}%`
+                        : "-"}
                     </TableCell>
                   </TableRow>
 
                   {/* BKMV Revenue Row */}
                   <TableRow className="bg-blue-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-blue-50 font-bold">
+                    <TableCell className="sticky start-0 z-10 bg-blue-50 font-bold text-end">
                       מחזור (BKMV)
                     </TableCell>
                     <TableCell />
                     {report.franchisees.map((f) => (
                       <TableCell
                         key={f.franchiseeId}
-                        className="text-center text-xs"
+                        className="text-center font-mono tabular-nums"
                       >
                         {f.bkmvRevenue > 0 ? (
                           formatCurrency(f.bkmvRevenue)
@@ -645,7 +660,7 @@ export default function SupplierCommissionReportPage() {
                         )}
                       </TableCell>
                     ))}
-                    <TableCell className="text-center font-medium">
+                    <TableCell className="text-center font-medium font-mono tabular-nums">
                       {formatCurrency(report.grandTotals.totalBkmvRevenue)}
                     </TableCell>
                   </TableRow>
