@@ -22,7 +22,7 @@ import iconv from "iconv-lite";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
   ISRAEL_VAT_RATE,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
@@ -156,8 +156,8 @@ export function parseAleAleFile(
         continue;
       }
 
-      const netAmount = roundToTwoDecimals(franchiseeData.netAmount);
-      const grossAmount = roundToTwoDecimals(franchiseeData.grossAmount);
+      const netAmount = roundAmount(franchiseeData.netAmount);
+      const grossAmount = roundAmount(franchiseeData.grossAmount);
 
       // Parse Hebrew date (e.g., "אוקטובר 2025")
       const parsedDate = parseHebrewDate(franchiseeData.date);
@@ -275,8 +275,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

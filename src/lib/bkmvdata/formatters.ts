@@ -5,8 +5,8 @@ export function formatAmount(amount: number): string {
   return new Intl.NumberFormat('he-IL', {
     style: 'currency',
     currency: 'ILS',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(amount);
 }
 

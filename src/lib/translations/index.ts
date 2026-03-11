@@ -233,6 +233,8 @@ export function formatCurrency(value: number): string {
   return formatNumber(value, {
     style: "currency",
     currency: "ILS",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   });
 }
 

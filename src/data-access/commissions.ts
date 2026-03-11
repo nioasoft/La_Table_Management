@@ -11,7 +11,7 @@ import {
   type CommissionStatus,
 } from "@/db/schema";
 import { eq, and, gte, lte, desc, sql, asc, inArray, count } from "drizzle-orm";
-import { calculateCommission, roundToTwoDecimals } from "@/lib/file-processor";
+import { calculateCommission, roundAmount, roundPercent } from "@/lib/file-processor";
 import {
   logCommissionStatusChange,
   logAuditEvent,
@@ -1307,8 +1307,8 @@ export async function calculateAndCreateCommission(
       periodStartDate: input.periodStartDate,
       periodEndDate: input.periodEndDate,
       status: "calculated",
-      grossAmount: roundToTwoDecimals(input.grossAmount).toString(),
-      netAmount: roundToTwoDecimals(input.netAmount).toString(),
+      grossAmount: roundAmount(input.grossAmount).toString(),
+      netAmount: roundAmount(input.netAmount).toString(),
       vatAdjusted: input.vatAdjusted,
       commissionRate: commissionRate.toString(),
       commissionAmount: commissionAmount.toString(),
@@ -1465,12 +1465,12 @@ export async function calculateBatchCommissions(
     commissions,
     errors,
     summary: {
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
-      totalCommissionAmount: roundToTwoDecimals(totalCommissionAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
+      totalCommissionAmount: roundAmount(totalCommissionAmount),
       averageCommissionRate:
         commissions.length > 0
-          ? roundToTwoDecimals(totalCommissionRate / commissions.length)
+          ? roundPercent(totalCommissionRate / commissions.length)
           : 0,
     },
   };
@@ -1795,12 +1795,12 @@ export async function getCommissionsGroupedByBrand(
   // Calculate averages and totals
   const byBrand = Array.from(brandGroups.values()).map((group) => {
     if (group.summary.commissionCount > 0) {
-      group.summary.avgCommissionRate = roundToTwoDecimals(
+      group.summary.avgCommissionRate = roundPercent(
         group.summary.avgCommissionRate / group.summary.commissionCount
       );
-      group.summary.totalGrossAmount = roundToTwoDecimals(group.summary.totalGrossAmount);
-      group.summary.totalNetAmount = roundToTwoDecimals(group.summary.totalNetAmount);
-      group.summary.totalCommissionAmount = roundToTwoDecimals(group.summary.totalCommissionAmount);
+      group.summary.totalGrossAmount = roundAmount(group.summary.totalGrossAmount);
+      group.summary.totalNetAmount = roundAmount(group.summary.totalNetAmount);
+      group.summary.totalCommissionAmount = roundAmount(group.summary.totalCommissionAmount);
     }
     return group;
   });
@@ -1809,13 +1809,13 @@ export async function getCommissionsGroupedByBrand(
   const totals = {
     totalBrands: byBrand.length,
     totalCommissions: results.length,
-    totalGrossAmount: roundToTwoDecimals(
+    totalGrossAmount: roundAmount(
       byBrand.reduce((sum, g) => sum + g.summary.totalGrossAmount, 0)
     ),
-    totalNetAmount: roundToTwoDecimals(
+    totalNetAmount: roundAmount(
       byBrand.reduce((sum, g) => sum + g.summary.totalNetAmount, 0)
     ),
-    totalCommissionAmount: roundToTwoDecimals(
+    totalCommissionAmount: roundAmount(
       byBrand.reduce((sum, g) => sum + g.summary.totalCommissionAmount, 0)
     ),
   };
@@ -2816,7 +2816,7 @@ export async function getSupplierPurchasePercentages(
     supplierCode: r.supplierCode,
     totalGrossAmount: Number(r.totalGrossAmount),
     purchasePercentage: totalGross > 0
-      ? roundToTwoDecimals((Number(r.totalGrossAmount) / totalGross) * 100)
+      ? roundPercent((Number(r.totalGrossAmount) / totalGross) * 100)
       : 0,
   }));
 }
@@ -2883,13 +2883,13 @@ export async function getVarianceReportData(
     const previousPurchasePercent = previous?.purchasePercentage ?? 0;
 
     // Calculate variance (absolute difference in percentage points)
-    const variance = roundToTwoDecimals(
+    const variance = roundPercent(
       Math.abs(currentPurchasePercent - previousPurchasePercent)
     );
 
     // Calculate relative variance percentage
     const variancePercent = previousPurchasePercent > 0
-      ? roundToTwoDecimals(
+      ? roundPercent(
           ((currentPurchasePercent - previousPurchasePercent) /
             previousPurchasePercent) *
             100
@@ -2929,8 +2929,8 @@ export async function getVarianceReportData(
     summary: {
       totalSuppliers: suppliers.length,
       flaggedSuppliers: flaggedOnly.length,
-      totalCurrentGross: roundToTwoDecimals(totalCurrentGross),
-      totalPreviousGross: roundToTwoDecimals(totalPreviousGross),
+      totalCurrentGross: roundAmount(totalCurrentGross),
+      totalPreviousGross: roundAmount(totalPreviousGross),
       currentPeriod: {
         startDate: filters.currentStartDate,
         endDate: filters.currentEndDate,

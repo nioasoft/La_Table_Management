@@ -26,7 +26,7 @@ import AdmZip from "adm-zip";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
@@ -429,8 +429,8 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
     for (const [franchisee, info] of franchiseeAmounts.entries()) {
       if (info.amount === 0) continue;
 
-      const netAmount = roundToTwoDecimals(info.amount);
-      const grossAmount = roundToTwoDecimals(info.amount * (1 + effectiveVatRate));
+      const netAmount = roundAmount(info.amount);
+      const grossAmount = roundAmount(info.amount * (1 + effectiveVatRate));
 
       data.push({
         franchisee,
@@ -504,8 +504,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

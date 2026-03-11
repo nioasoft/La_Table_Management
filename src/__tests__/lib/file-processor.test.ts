@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   calculateNetFromGross,
   calculateGrossFromNet,
-  roundToTwoDecimals,
+  roundAmount,
+  roundPercent,
   ISRAEL_VAT_RATE,
 } from "@/lib/file-processor";
 
@@ -109,56 +110,75 @@ describe("VAT round-trip conversion", () => {
 });
 
 // ============================================================================
-// Rounding Tests
+// Rounding Tests - roundAmount (whole shekels, no agorot)
 // ============================================================================
 
-describe("roundToTwoDecimals", () => {
-  it("rounds to exactly 2 decimal places", () => {
-    expect(roundToTwoDecimals(10.12345)).toBe(10.12);
-    expect(roundToTwoDecimals(10.129)).toBe(10.13);
+describe("roundAmount", () => {
+  it("rounds to whole shekels", () => {
+    expect(roundAmount(10.49)).toBe(10);
+    expect(roundAmount(10.50)).toBe(11);
+    expect(roundAmount(10.51)).toBe(11);
+    expect(roundAmount(10.99)).toBe(11);
   });
 
-  it("handles values with fewer decimal places", () => {
-    expect(roundToTwoDecimals(10)).toBe(10);
-    expect(roundToTwoDecimals(10.1)).toBe(10.1);
-  });
-
-  it("rounds 0.5 up (standard rounding)", () => {
-    expect(roundToTwoDecimals(10.125)).toBe(10.13);
-    expect(roundToTwoDecimals(10.115)).toBe(10.12);
+  it("handles values already whole", () => {
+    expect(roundAmount(10)).toBe(10);
+    expect(roundAmount(100)).toBe(100);
   });
 
   it("handles zero", () => {
-    expect(roundToTwoDecimals(0)).toBe(0);
+    expect(roundAmount(0)).toBe(0);
   });
 
   it("handles negative numbers", () => {
-    expect(roundToTwoDecimals(-10.12345)).toBe(-10.12);
-    expect(roundToTwoDecimals(-10.129)).toBe(-10.13);
+    expect(roundAmount(-10.49)).toBe(-10);
+    expect(roundAmount(-10.51)).toBe(-11);
+    // Math.round(-10.5) = -10 (rounds towards +Infinity)
+    expect(roundAmount(-10.5)).toBe(-10);
   });
 
-  it("handles very small numbers", () => {
-    expect(roundToTwoDecimals(0.001)).toBe(0);
-    expect(roundToTwoDecimals(0.005)).toBe(0.01);
-    expect(roundToTwoDecimals(0.009)).toBe(0.01);
+  it("handles very small amounts", () => {
+    expect(roundAmount(0.49)).toBe(0);
+    expect(roundAmount(0.50)).toBe(1);
+    expect(roundAmount(0.01)).toBe(0);
   });
 
   it("handles very large numbers", () => {
-    expect(roundToTwoDecimals(1000000.12345)).toBe(1000000.12);
-  });
-
-  it("preserves precision for financial calculations", () => {
-    // Test typical commission calculations
-    const netAmount = 847.46;
-    const commissionRate = 0.025; // 2.5%
-    const rawCommission = netAmount * commissionRate; // 21.1865
-    expect(roundToTwoDecimals(rawCommission)).toBe(21.19);
+    expect(roundAmount(1000000.49)).toBe(1000000);
+    expect(roundAmount(1000000.50)).toBe(1000001);
   });
 
   it("handles floating point precision issues", () => {
     // JavaScript: 0.1 + 0.2 = 0.30000000000000004
     const result = 0.1 + 0.2;
-    expect(roundToTwoDecimals(result)).toBe(0.3);
+    expect(roundAmount(result)).toBe(0);
+  });
+});
+
+// ============================================================================
+// Rounding Tests - roundPercent (2 decimal places for percentages)
+// ============================================================================
+
+describe("roundPercent", () => {
+  it("rounds to 2 decimal places", () => {
+    expect(roundPercent(3.456)).toBe(3.46);
+    expect(roundPercent(3.454)).toBe(3.45);
+    expect(roundPercent(3.455)).toBe(3.46);
+  });
+
+  it("handles whole numbers", () => {
+    expect(roundPercent(5)).toBe(5);
+    expect(roundPercent(100)).toBe(100);
+  });
+
+  it("handles zero", () => {
+    expect(roundPercent(0)).toBe(0);
+  });
+
+  it("preserves precision for typical commission rates", () => {
+    expect(roundPercent(3.5)).toBe(3.5);
+    expect(roundPercent(2.75)).toBe(2.75);
+    expect(roundPercent(12.123)).toBe(12.12);
   });
 });
 
@@ -168,22 +188,16 @@ describe("roundToTwoDecimals", () => {
 
 describe("Commission calculation workflow", () => {
   it("calculates commission from gross amount correctly", () => {
-    // Typical workflow:
-    // 1. Receive gross amount from supplier (includes VAT)
-    // 2. Calculate net amount (remove VAT)
-    // 3. Calculate commission on net amount
-    // 4. Round to 2 decimals for financial precision
-
     const grossAmount = 11800; // ILS including 18% VAT
     const commissionRate = 0.03; // 3%
 
     // Step 1: Calculate net
     const netAmount = calculateNetFromGross(grossAmount);
-    expect(roundToTwoDecimals(netAmount)).toBe(10000);
+    expect(roundAmount(netAmount)).toBe(10000);
 
     // Step 2: Calculate commission on net
     const commission = netAmount * commissionRate;
-    expect(roundToTwoDecimals(commission)).toBe(300);
+    expect(roundAmount(commission)).toBe(300);
   });
 
   it("handles typical supplier commission scenario", () => {
@@ -194,12 +208,12 @@ describe("Commission calculation workflow", () => {
     const commissionRate = 0.025;
 
     const netAmount = calculateNetFromGross(grossAmount);
-    const commission = roundToTwoDecimals(netAmount * commissionRate);
+    const commission = roundAmount(netAmount * commissionRate);
 
-    // Net = 5000 / 1.18 = 4237.29
-    // Commission = 4237.29 * 0.025 = 105.93
-    expect(roundToTwoDecimals(netAmount)).toBeCloseTo(4237.29, 2);
-    expect(commission).toBeCloseTo(105.93, 2);
+    // Net = 5000 / 1.18 = 4237.29...
+    // Commission = 4237.29 * 0.025 = 105.93... → rounds to 106
+    expect(roundAmount(netAmount)).toBe(4237);
+    expect(commission).toBe(106);
   });
 
   it("handles multiple line items accumulation", () => {
@@ -220,9 +234,9 @@ describe("Commission calculation workflow", () => {
       totalCommission += commission;
     }
 
-    // Round final totals
-    totalNet = roundToTwoDecimals(totalNet);
-    totalCommission = roundToTwoDecimals(totalCommission);
+    // Round final totals to whole shekels
+    totalNet = roundAmount(totalNet);
+    totalCommission = roundAmount(totalCommission);
 
     // Expected:
     // Item 1: net = 1000, commission = 20

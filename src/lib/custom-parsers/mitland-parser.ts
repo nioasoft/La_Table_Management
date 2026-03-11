@@ -27,7 +27,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -222,7 +222,7 @@ export function parseMitlandFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Set Gross = Net since file only has Net amounts
-      const netAmountRounded = roundToTwoDecimals(block.netAmount);
+      const netAmountRounded = roundAmount(block.netAmount);
       data.push({
         franchisee: block.franchisee,
         date: null,
@@ -246,7 +246,7 @@ export function parseMitlandFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
-    const totalNetRounded = roundToTwoDecimals(totalNet);
+    const totalNetRounded = roundAmount(totalNet);
     return createResult(
       true,
       data,
@@ -295,8 +295,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

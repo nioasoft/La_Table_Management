@@ -21,7 +21,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -273,10 +273,10 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Purchase amount is used for cross-reference with franchisees (assumed net without VAT)
-      const netAmount = roundToTwoDecimals(block.totalPurchase);
-      const grossAmount = roundToTwoDecimals(block.totalPurchase * 1.18);
+      const netAmount = roundAmount(block.totalPurchase);
+      const grossAmount = roundAmount(block.totalPurchase * 1.18);
       // Commission is pre-calculated by the supplier
-      const preCalculatedCommission = roundToTwoDecimals(block.totalCommission);
+      const preCalculatedCommission = roundAmount(block.totalCommission);
 
       data.push({
         franchisee: block.franchisee,
@@ -313,7 +313,7 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedCustomers,
       skippedRows,
-      roundToTwoDecimals(totalNetAmount * 1.18),
+      roundAmount(totalNetAmount * 1.18),
       totalNetAmount
     );
   } catch (error) {
@@ -351,8 +351,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

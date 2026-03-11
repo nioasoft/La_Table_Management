@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -232,9 +232,9 @@ export function parseFandangoFile(buffer: Buffer): FileProcessingResult {
       }
 
       // The sale amount appears to be without VAT based on file analysis
-      const netAmount = roundToTwoDecimals(amounts.sale);
-      const grossAmount = roundToTwoDecimals(amounts.sale * 1.18); // Add VAT for gross
-      const preCalculatedCommission = roundToTwoDecimals(amounts.commission);
+      const netAmount = roundAmount(amounts.sale);
+      const grossAmount = roundAmount(amounts.sale * 1.18); // Add VAT for gross
+      const preCalculatedCommission = roundAmount(amounts.commission);
 
       data.push({
         franchisee,
@@ -271,7 +271,7 @@ export function parseFandangoFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedFranchisees,
       skippedRows,
-      roundToTwoDecimals(totalSaleAmount * 1.18),
+      roundAmount(totalSaleAmount * 1.18),
       totalSaleAmount,
       totalCommission
     );
@@ -311,8 +311,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

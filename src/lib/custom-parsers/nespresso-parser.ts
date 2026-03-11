@@ -24,7 +24,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -184,9 +184,9 @@ export function parseNespressoFile(buffer: Buffer): FileProcessingResult {
       // Calculate commission: capsules × 0.21 NIS
       const commission = capsules * COMMISSION_PER_CAPSULE;
 
-      const roundedGrossAmount = roundToTwoDecimals(grossAmount);
-      const roundedNetAmount = roundToTwoDecimals(netAmount);
-      const roundedCommission = roundToTwoDecimals(commission);
+      const roundedGrossAmount = roundAmount(grossAmount);
+      const roundedNetAmount = roundAmount(netAmount);
+      const roundedCommission = roundAmount(commission);
 
       data.push({
         franchisee,
@@ -280,8 +280,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

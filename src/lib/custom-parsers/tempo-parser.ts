@@ -23,7 +23,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -117,9 +117,9 @@ export function parseTempoFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      const netAmount = roundToTwoDecimals(amounts.netAmount);
-      const grossAmount = roundToTwoDecimals(amounts.netAmount * (1 + VAT_RATE));
-      const preCalculatedCommission = roundToTwoDecimals(amounts.commission);
+      const netAmount = roundAmount(amounts.netAmount);
+      const grossAmount = roundAmount(amounts.netAmount * (1 + VAT_RATE));
+      const preCalculatedCommission = roundAmount(amounts.commission);
 
       data.push({
         franchisee,
@@ -212,8 +212,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

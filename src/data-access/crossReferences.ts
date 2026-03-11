@@ -15,6 +15,7 @@ import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import type { AuditContext } from "./auditLog";
 import type { BkmvParseResult, SupplierPurchaseSummary } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers, type BkmvSupplierMatchingResult } from "@/lib/supplier-matcher";
+import { roundPercent } from "@/lib/file-processor";
 
 // ============================================================================
 // CROSS-REFERENCE TYPES
@@ -281,7 +282,7 @@ export function compareAmounts(
     franchiseeAmount,
     difference,
     absoluteDifference,
-    differencePercentage: Math.trunc(differencePercentage * 100) / 100,
+    differencePercentage: roundPercent(differencePercentage),
     matchStatus,
     threshold,
   };
@@ -568,9 +569,9 @@ export async function generateReconciliationReport(
     matchedCount,
     discrepancyCount,
     pendingCount,
-    totalSupplierAmount: Math.trunc(totalSupplierAmount * 100) / 100,
-    totalFranchiseeAmount: Math.trunc(totalFranchiseeAmount * 100) / 100,
-    totalDifference: Math.trunc(totalDifference * 100) / 100,
+    totalSupplierAmount: Math.round(totalSupplierAmount),
+    totalFranchiseeAmount: Math.round(totalFranchiseeAmount),
+    totalDifference: Math.round(totalDifference),
     entries,
     generatedAt: new Date().toISOString(),
   };

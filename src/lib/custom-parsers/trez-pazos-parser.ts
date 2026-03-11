@@ -23,7 +23,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -225,9 +225,9 @@ export function parseTrezPazosFile(buffer: Buffer): FileProcessingResult {
       data.push({
         franchisee: block.franchisee,
         date: null,
-        grossAmount: roundToTwoDecimals(block.grossAmount),
-        netAmount: roundToTwoDecimals(block.netAmount),
-        originalAmount: roundToTwoDecimals(block.netAmount),
+        grossAmount: roundAmount(block.grossAmount),
+        netAmount: roundAmount(block.netAmount),
+        originalAmount: roundAmount(block.netAmount),
         rowNumber: rowNumber++,
       });
 
@@ -256,8 +256,8 @@ export function parseTrezPazosFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedCount,
       skippedCount,
-      roundToTwoDecimals(totalGross),
-      roundToTwoDecimals(totalNet)
+      roundAmount(totalGross),
+      roundAmount(totalNet)
     );
   } catch (error) {
     errors.push(
@@ -294,8 +294,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

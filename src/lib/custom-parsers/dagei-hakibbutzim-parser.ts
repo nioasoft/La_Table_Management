@@ -28,7 +28,7 @@ import AdmZip from "adm-zip";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
@@ -257,8 +257,8 @@ export function parseDageiHakibbutzimFile(
     for (const [businessId, info] of allFranchisees.entries()) {
       if (info.amount === 0) continue;
 
-      const netAmount = roundToTwoDecimals(info.amount);
-      const grossAmount = roundToTwoDecimals(
+      const netAmount = roundAmount(info.amount);
+      const grossAmount = roundAmount(
         info.amount * (1 + effectiveVatRate)
       );
 
@@ -340,8 +340,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

@@ -82,12 +82,19 @@ export function calculateGrossFromNet(netAmount: number, vatRate: number = ISRAE
 }
 
 /**
- * Truncate to 2 decimal places for financial calculations
- * Uses Math.trunc (not Math.floor) to truncate towards zero for both positive and negative numbers
- * Example: 1.235 → 1.23, -1.235 → -1.23
+ * Round monetary amounts to whole shekels (no agorot).
+ * Uses standard rounding: ≥0.50 rounds up, <0.50 rounds down.
  */
-export function roundToTwoDecimals(value: number): number {
-  return Math.trunc(value * 100) / 100;
+export function roundAmount(value: number): number {
+  return Math.round(value);
+}
+
+/**
+ * Round percentage values to 2 decimal places.
+ * Used for commission rates, variance percentages, etc.
+ */
+export function roundPercent(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 /**
@@ -475,11 +482,11 @@ export function parseSupplierFile(
       } else if (vatIncluded) {
         // Amount includes VAT - calculate net (for commission calculation)
         grossAmount = originalAmount;
-        netAmount = roundToTwoDecimals(calculateNetFromGross(originalAmount, vatRate));
+        netAmount = roundAmount(calculateNetFromGross(originalAmount, vatRate));
       } else {
         // Amount does not include VAT - this is already the net amount
         netAmount = originalAmount;
-        grossAmount = roundToTwoDecimals(calculateGrossFromNet(originalAmount, vatRate));
+        grossAmount = roundAmount(calculateGrossFromNet(originalAmount, vatRate));
       }
 
       // Parse date
@@ -498,9 +505,9 @@ export function parseSupplierFile(
       data.push({
         franchisee: franchiseeName,
         date: parsedDate,
-        grossAmount: roundToTwoDecimals(grossAmount),
-        netAmount: roundToTwoDecimals(netAmount),
-        originalAmount: roundToTwoDecimals(originalAmount),
+        grossAmount: roundAmount(grossAmount),
+        netAmount: roundAmount(netAmount),
+        originalAmount: roundAmount(originalAmount),
         rowNumber: i + 1, // 1-indexed for display
       });
 
@@ -535,8 +542,8 @@ export function parseSupplierFile(
         totalRows: rawData.length,
         processedRows,
         skippedRows,
-        totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-        totalNetAmount: roundToTwoDecimals(totalNetAmount),
+        totalGrossAmount: roundAmount(totalGrossAmount),
+        totalNetAmount: roundAmount(totalNetAmount),
         vatAdjusted: vatIncluded,
       },
     };
@@ -589,8 +596,8 @@ export async function processSupplierFile(
           totalGross += row.grossAmount;
           totalNet += row.netAmount;
         }
-        result.summary.totalGrossAmount = roundToTwoDecimals(totalGross);
-        result.summary.totalNetAmount = roundToTwoDecimals(totalNet);
+        result.summary.totalGrossAmount = roundAmount(totalGross);
+        result.summary.totalNetAmount = roundAmount(totalNet);
       }
 
       return result;
@@ -639,12 +646,12 @@ export function calculateCommission(
 ): number {
   if (commissionType === "percentage") {
     // Commission rate is a percentage (e.g., 5 means 5%)
-    return roundToTwoDecimals(netAmount * (commissionRate / 100));
+    return roundAmount(netAmount * (commissionRate / 100));
   }
 
   // For per_item, the commission rate is the fixed amount per item
   // This would need item count which isn't supported in current schema
-  return roundToTwoDecimals(commissionRate);
+  return roundAmount(commissionRate);
 }
 
 /**

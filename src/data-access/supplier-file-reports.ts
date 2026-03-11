@@ -151,8 +151,8 @@ function calculateCommission(
   }
 
   return {
-    calculated: Math.trunc(calculated * 100) / 100,
-    preCalculated: hasPreCalculated ? Math.trunc(preCalculatedTotal * 100) / 100 : null,
+    calculated: Math.round(calculated),
+    preCalculated: hasPreCalculated ? Math.round(preCalculatedTotal) : null,
   };
 }
 
@@ -379,7 +379,7 @@ export async function getSupplierFilesReport(
       // For per_item, we need to count filtered transactions
       calculated = (filters.brandId && franchiseeBrandMap ? franchiseeCount : (processingResult?.processedRows || 0)) * commissionRate;
     }
-    calculated = Math.trunc(calculated * 100) / 100;
+    calculated = Math.round(calculated);
 
     // Check for pre-calculated commission in franchisee matches (filtered by brand if needed)
     let preCalculated: number | null = null;
@@ -404,7 +404,7 @@ export async function getSupplierFilesReport(
           hasPreCalculated = true;
         }
       }
-      preCalculated = hasPreCalculated ? Math.trunc(preCalculatedTotal * 100) / 100 : null;
+      preCalculated = hasPreCalculated ? Math.round(preCalculatedTotal) : null;
     }
 
     return {
@@ -508,7 +508,7 @@ export async function getSupplierFilesReport(
         } else if (commissionRate && commissionType === "percentage") {
           matchCommission = (match.netAmount || 0) * (commissionRate / 100);
         }
-        matchCommission = Math.trunc(matchCommission * 100) / 100;
+        matchCommission = Math.round(matchCommission);
 
         const existingFranchisee = existing.franchiseeMap.get(match.matchedFranchiseeId);
         if (existingFranchisee) {
@@ -559,9 +559,9 @@ export async function getSupplierFilesReport(
   return {
     summary: {
       totalFiles: files.length,
-      totalGrossAmount: Math.trunc(totalGrossAmount * 100) / 100,
-      totalNetAmount: Math.trunc(totalNetAmount * 100) / 100,
-      totalCalculatedCommission: Math.trunc(totalCalculatedCommission * 100) / 100,
+      totalGrossAmount: Math.round(totalGrossAmount),
+      totalNetAmount: Math.round(totalNetAmount),
+      totalCalculatedCommission: Math.round(totalCalculatedCommission),
       supplierCount: supplierMap.size,
       periodRange: {
         startDate: validDates[0] || null,
@@ -808,7 +808,7 @@ export async function getFranchiseeBreakdownReport(
       } else if (commissionRate && commissionType === "percentage") {
         matchCommission = (match.netAmount || 0) * (commissionRate / 100);
       }
-      matchCommission = Math.trunc(matchCommission * 100) / 100;
+      matchCommission = Math.round(matchCommission);
 
       let franchiseeData = franchiseeDataMap.get(match.matchedFranchiseeId);
       if (!franchiseeData) {
@@ -873,9 +873,9 @@ export async function getFranchiseeBreakdownReport(
         franchiseeName: data.franchiseeName,
         brandId: data.brandId,
         brandName: data.brandName,
-        totalGrossAmount: Math.trunc(totalGross * 100) / 100,
-        totalNetAmount: Math.trunc(totalNet * 100) / 100,
-        totalCommission: Math.trunc(totalCommission * 100) / 100,
+        totalGrossAmount: Math.round(totalGross),
+        totalNetAmount: Math.round(totalNet),
+        totalCommission: Math.round(totalCommission),
         supplierCount: data.suppliers.size,
         suppliers: suppliersList.sort((a, b) => b.netAmount - a.netAmount),
       };
@@ -895,8 +895,8 @@ export async function getFranchiseeBreakdownReport(
   return {
     summary: {
       totalFranchisees: franchisees.length,
-      totalGrossAmount: Math.trunc(totalGrossAmount * 100) / 100,
-      totalNetAmount: Math.trunc(totalNetAmount * 100) / 100,
+      totalGrossAmount: Math.round(totalGrossAmount),
+      totalNetAmount: Math.round(totalNetAmount),
       totalFiles,
       generatedAt: new Date().toISOString(),
     },

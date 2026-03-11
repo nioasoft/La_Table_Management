@@ -11,7 +11,7 @@ import { eq, and, inArray, gte, lte, isNotNull, desc } from "drizzle-orm";
 import { normalizeName, generateNameVariants } from "@/lib/franchisee-matcher";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { getVatRateForDate } from "@/data-access/vatRates";
-import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
+import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
 
 // ============================================================================
 // TYPES
@@ -388,8 +388,8 @@ export async function getCommissionRevenueReport(
       ? Array.from(supplierDetail.values())
           .map((e) => ({
             ...e,
-            amount: roundToTwoDecimals(e.amount),
-            amountBeforeVat: roundToTwoDecimals(e.amountBeforeVat),
+            amount: roundAmount(e.amount),
+            amountBeforeVat: roundAmount(e.amountBeforeVat),
           }))
           .sort((a, b) => b.amount - a.amount)
       : [];
@@ -410,9 +410,9 @@ export async function getCommissionRevenueReport(
       name: f.name,
       code: f.code,
       brandName: f.brandId ? brandNames.get(f.brandId) || "" : "",
-      totalRevenue: roundToTwoDecimals(revenue),
-      totalSupplierPurchases: roundToTwoDecimals(supplierPurchases),
-      totalSupplierPurchasesBeforeVat: roundToTwoDecimals(supplierPurchasesBeforeVat),
+      totalRevenue: roundAmount(revenue),
+      totalSupplierPurchases: roundAmount(supplierPurchases),
+      totalSupplierPurchasesBeforeVat: roundAmount(supplierPurchasesBeforeVat),
       supplierPurchasesPercentage,
       supplierPurchasesPercentageBeforeVat,
       supplierBreakdown,
@@ -460,9 +460,9 @@ export async function getCommissionRevenueReport(
   return {
     rows,
     summary: {
-      totalRevenue: roundToTwoDecimals(totalRevenue),
-      totalSupplierPurchases: roundToTwoDecimals(totalSupplierPurchases),
-      totalSupplierPurchasesBeforeVat: roundToTwoDecimals(totalSupplierPurchasesBeforeVat),
+      totalRevenue: roundAmount(totalRevenue),
+      totalSupplierPurchases: roundAmount(totalSupplierPurchases),
+      totalSupplierPurchasesBeforeVat: roundAmount(totalSupplierPurchasesBeforeVat),
       avgPercent,
       avgPercentBeforeVat,
       count: rows.length,

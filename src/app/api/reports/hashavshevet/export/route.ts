@@ -48,7 +48,7 @@ function calculateMatchCommission(
   // File-commission suppliers: always use file value (even 0 = no commission)
   // Other suppliers: only use positive pre-calculated values
   if (match.preCalculatedCommission != null && (isFileCommission || match.preCalculatedCommission > 0)) {
-    return Math.trunc(match.preCalculatedCommission * 100) / 100;
+    return Math.round(match.preCalculatedCommission);
   }
 
   // Calculate based on supplier rate
@@ -64,7 +64,7 @@ function calculateMatchCommission(
     commission = rate;
   }
 
-  return Math.trunc(commission * 100) / 100;
+  return Math.round(commission);
 }
 
 // ============================================================================

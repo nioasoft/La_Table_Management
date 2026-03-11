@@ -20,7 +20,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -213,8 +213,8 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Kill Bill amounts are NET (before VAT) - need to add VAT for gross
-      const netAmount = roundToTwoDecimals(amounts.amount);
-      const grossAmount = roundToTwoDecimals(amounts.amount * 1.18);
+      const netAmount = roundAmount(amounts.amount);
+      const grossAmount = roundAmount(amounts.amount * 1.18);
 
       data.push({
         franchisee,
@@ -249,7 +249,7 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedFranchisees,
       skippedRows,
-      roundToTwoDecimals(totalAmount * 1.18), // totalGrossAmount
+      roundAmount(totalAmount * 1.18), // totalGrossAmount
       totalAmount // totalNetAmount (original amounts are net)
     );
   } catch (error) {
@@ -287,8 +287,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: true,
     },
   };

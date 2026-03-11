@@ -21,7 +21,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -254,8 +254,8 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Amounts appear to include VAT based on the file structure
-      const grossAmount = roundToTwoDecimals(franchisee.totalDebit);
-      const netAmount = roundToTwoDecimals(grossAmount / (1 + VAT_RATE));
+      const grossAmount = roundAmount(franchisee.totalDebit);
+      const netAmount = roundAmount(grossAmount / (1 + VAT_RATE));
 
       data.push({
         franchisee: franchisee.name,
@@ -329,8 +329,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: true,
     },
   };

@@ -19,7 +19,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -119,8 +119,8 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
     for (const [franchisee, amounts] of franchiseeAmounts.entries()) {
       if (amounts.net <= 0) continue;
 
-      const netAmount = roundToTwoDecimals(amounts.net);
-      const grossAmount = roundToTwoDecimals(amounts.gross);
+      const netAmount = roundAmount(amounts.net);
+      const grossAmount = roundAmount(amounts.gross);
 
       data.push({
         franchisee,
@@ -194,8 +194,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

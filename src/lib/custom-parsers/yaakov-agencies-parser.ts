@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -145,8 +145,8 @@ export function parseYaakovAgenciesFile(buffer: Buffer): FileProcessingResult {
 
       // Amounts in file INCLUDE VAT (gross amounts)
       // Calculate net by removing VAT
-      const grossAmount = roundToTwoDecimals(amount);
-      const netAmount = roundToTwoDecimals(amount / (1 + VAT_RATE));
+      const grossAmount = roundAmount(amount);
+      const netAmount = roundAmount(amount / (1 + VAT_RATE));
 
       data.push({
         franchisee: customer,
@@ -220,8 +220,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

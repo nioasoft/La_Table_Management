@@ -17,7 +17,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -152,9 +152,9 @@ export function parseKiroskaiFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Total amount is before VAT (net), so calculate gross by adding VAT
-      const netAmount = roundToTwoDecimals(totalAmount);
-      const grossAmount = roundToTwoDecimals(totalAmount * (1 + VAT_RATE));
-      const preCalculatedCommission = roundToTwoDecimals(commission);
+      const netAmount = roundAmount(totalAmount);
+      const grossAmount = roundAmount(totalAmount * (1 + VAT_RATE));
+      const preCalculatedCommission = roundAmount(commission);
 
       data.push({
         franchisee,
@@ -229,8 +229,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: true,
     },
   };

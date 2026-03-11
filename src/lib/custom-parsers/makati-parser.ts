@@ -19,7 +19,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
   ISRAEL_VAT_RATE,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
@@ -142,8 +142,8 @@ export function parseMakatiFile(
       // grossAmount = netAmount + (taxableAmount × vatRate)
       // partialVat = grossAmount - netAmount = taxableAmount × vatRate
       const vatOnTaxable = taxableAmount * vatRate;
-      const grossAmount = roundToTwoDecimals(netAmount + vatOnTaxable);
-      const roundedNet = roundToTwoDecimals(netAmount);
+      const grossAmount = roundAmount(netAmount + vatOnTaxable);
+      const roundedNet = roundAmount(netAmount);
 
       data.push({
         franchisee,
@@ -235,8 +235,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
       hasPartialVat: true,
     },

@@ -26,7 +26,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -190,9 +190,9 @@ export function parseSoberLernerFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Amounts are BEFORE VAT (net amounts)
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
-      const roundedCommission = roundToTwoDecimals(commission);
+      const netAmount = roundAmount(amount);
+      const grossAmount = roundAmount(amount * (1 + VAT_RATE));
+      const roundedCommission = roundAmount(commission);
 
       // Purchase amount (סהכ לזכיין) is net amount for cross-reference
       // Pre-calculated commission (סהכ עמלת רשת) goes to preCalculatedCommission
@@ -269,8 +269,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: true,
     },
   };

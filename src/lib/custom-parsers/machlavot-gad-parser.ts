@@ -23,7 +23,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -205,14 +205,14 @@ export function parseMachlavotGadFile(buffer: Buffer): FileProcessingResult {
       }
 
       // Use Table 2 amount for netAmount (for cross-reference)
-      const netAmount = roundToTwoDecimals(table2Amount!);
+      const netAmount = roundAmount(table2Amount!);
       if (netAmount <= 0) continue;
 
-      const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
+      const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
 
       // Calculate commission: use Table 3 amount if available, otherwise fallback to Table 2
       const commissionBasis = table3Amount !== undefined ? table3Amount : table2Amount!;
-      const preCalculatedCommission = roundToTwoDecimals(commissionBasis * COMMISSION_RATE);
+      const preCalculatedCommission = roundAmount(commissionBasis * COMMISSION_RATE);
 
       data.push({
         franchisee,
@@ -287,8 +287,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

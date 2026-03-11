@@ -9,7 +9,7 @@ import {
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or } from "drizzle-orm";
 import { getVatRateForDate } from "@/data-access/vatRates";
-import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
+import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
 
 // ============================================================================
 // TYPES

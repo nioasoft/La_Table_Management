@@ -31,7 +31,7 @@ import {
 import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, inArray } from "drizzle-orm";
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
-import { calculateNetFromGross, roundToTwoDecimals } from "@/lib/file-processor";
+import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
 import { getDatabaseError } from "@/lib/drizzle-errors";
 
 // ============================================================================
@@ -343,8 +343,8 @@ export async function createReconciliationSession(
   // Step 1: Use year table data (preferred source) - apply VAT conversion
   for (const [fId, data] of yearAmounts) {
     const netAmount = supplierData[0].vatExempt
-      ? roundToTwoDecimals(data.amount)
-      : roundToTwoDecimals(calculateNetFromGross(data.amount, vatRate));
+      ? roundAmount(data.amount)
+      : roundAmount(calculateNetFromGross(data.amount, vatRate));
     franchiseeAmounts.set(fId, { amount: netAmount, fileId: data.fileId });
   }
 
@@ -407,8 +407,8 @@ export async function createReconciliationSession(
         );
         if (periodAmount !== null) {
           const netAmount = supplierData[0].vatExempt
-            ? roundToTwoDecimals(periodAmount)
-            : roundToTwoDecimals(calculateNetFromGross(periodAmount, vatRate));
+            ? roundAmount(periodAmount)
+            : roundAmount(calculateNetFromGross(periodAmount, vatRate));
           franchiseeAmounts.set(file.franchiseeId, { amount: netAmount, fileId: file.id });
           continue;
         }
@@ -418,8 +418,8 @@ export async function createReconciliationSession(
         for (const match of bkmvResult.supplierMatches) {
           if (match.matchedSupplierId === supplierId) {
             const netAmount = supplierData[0].vatExempt
-              ? roundToTwoDecimals(match.amount)
-              : roundToTwoDecimals(calculateNetFromGross(match.amount, vatRate));
+              ? roundAmount(match.amount)
+              : roundAmount(calculateNetFromGross(match.amount, vatRate));
             franchiseeAmounts.set(file.franchiseeId, { amount: netAmount, fileId: file.id });
           }
         }

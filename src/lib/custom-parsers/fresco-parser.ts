@@ -15,7 +15,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -115,8 +115,8 @@ export function parseFrescoFile(buffer: Buffer): FileProcessingResult {
         continue;
       }
 
-      const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
-      const roundedNetAmount = roundToTwoDecimals(netAmount);
+      const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
+      const roundedNetAmount = roundAmount(netAmount);
 
       data.push({
         franchisee,
@@ -190,8 +190,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

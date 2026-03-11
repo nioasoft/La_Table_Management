@@ -24,7 +24,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -219,8 +219,8 @@ export function parseTuviotHatzafonFile(buffer: Buffer): FileProcessingResult {
     for (const [franchisee, amount] of franchiseeAmounts.entries()) {
       if (amount <= 0) continue;
 
-      const netAmount = roundToTwoDecimals(amount);
-      const grossAmount = roundToTwoDecimals(amount * (1 + VAT_RATE));
+      const netAmount = roundAmount(amount);
+      const grossAmount = roundAmount(amount * (1 + VAT_RATE));
 
       data.push({
         franchisee,
@@ -294,8 +294,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

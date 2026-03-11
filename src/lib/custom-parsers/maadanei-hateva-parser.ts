@@ -15,7 +15,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -213,8 +213,8 @@ export function parseMaadaneiHatevaFile(buffer: Buffer): FileProcessingResult {
       }
 
       // The amount appears to be without VAT based on file analysis
-      const netAmount = roundToTwoDecimals(totals.amount);
-      const grossAmount = roundToTwoDecimals(totals.amount * 1.18);
+      const netAmount = roundAmount(totals.amount);
+      const grossAmount = roundAmount(totals.amount * 1.18);
 
       data.push({
         franchisee,
@@ -249,7 +249,7 @@ export function parseMaadaneiHatevaFile(buffer: Buffer): FileProcessingResult {
       rawData.length,
       processedFranchisees,
       skippedRows,
-      roundToTwoDecimals(totalAmount * 1.18),
+      roundAmount(totalAmount * 1.18),
       totalAmount
     );
   } catch (error) {
@@ -287,8 +287,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

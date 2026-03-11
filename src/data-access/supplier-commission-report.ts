@@ -12,7 +12,7 @@ import {
 } from "@/db/schema";
 import { eq, and, inArray, gte, lte, or, isNotNull, desc } from "drizzle-orm";
 import { getVatRateForDate } from "@/data-access/vatRates";
-import { roundToTwoDecimals } from "@/lib/file-processor";
+import { roundAmount, roundPercent } from "@/lib/file-processor";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 
 // ============================================================================
@@ -562,13 +562,13 @@ export async function getSupplierCommissionReport(
   )
     .map((row) => ({
       ...row,
-      totalCommission: roundToTwoDecimals(row.totalCommission),
-      totalCommissionBeforeVat: roundToTwoDecimals(
+      totalCommission: roundAmount(row.totalCommission),
+      totalCommissionBeforeVat: roundAmount(
         row.totalCommissionBeforeVat
       ),
       percentOfTurnover:
         totalBkmvRevenue > 0
-          ? roundToTwoDecimals(
+          ? roundPercent(
               (row.totalCommissionBeforeVat / totalBkmvRevenue) * 100
             )
           : null,
@@ -583,9 +583,9 @@ export async function getSupplierCommissionReport(
       franchiseeId: f.id,
       franchiseeName: f.name,
       franchiseeCode: f.code,
-      totalCommission: roundToTwoDecimals(f.totalCommission),
-      totalCommissionBeforeVat: roundToTwoDecimals(f.totalCommissionBeforeVat),
-      bkmvRevenue: roundToTwoDecimals(f.bkmvRevenue),
+      totalCommission: roundAmount(f.totalCommission),
+      totalCommissionBeforeVat: roundAmount(f.totalCommissionBeforeVat),
+      bkmvRevenue: roundAmount(f.bkmvRevenue),
     }))
     .sort((a, b) => a.franchiseeName.localeCompare(b.franchiseeName, "he"));
 
@@ -607,14 +607,14 @@ export async function getSupplierCommissionReport(
     suppliers: supplierRows,
     franchisees: franchiseeColumns,
     grandTotals: {
-      totalCommission: roundToTwoDecimals(grandTotalCommission),
-      totalCommissionBeforeVat: roundToTwoDecimals(
+      totalCommission: roundAmount(grandTotalCommission),
+      totalCommissionBeforeVat: roundAmount(
         grandTotalCommissionBeforeVat
       ),
-      totalBkmvRevenue: roundToTwoDecimals(totalBkmvRevenue),
+      totalBkmvRevenue: roundAmount(totalBkmvRevenue),
       overallPercentOfTurnover:
         totalBkmvRevenue > 0
-          ? roundToTwoDecimals(
+          ? roundAmount(
               (grandTotalCommissionBeforeVat / totalBkmvRevenue) * 100
             )
           : null,

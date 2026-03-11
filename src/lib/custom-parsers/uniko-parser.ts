@@ -18,7 +18,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -122,8 +122,8 @@ export function parseUnikoFile(buffer: Buffer): FileProcessingResult {
         // This is the key fix - we only take the total row, not individual product amounts
         if (!nameCell && amount !== 0 && currentFranchisee) {
           // This is the total for the current franchisee
-          const netAmount = roundToTwoDecimals(Math.abs(amount));
-          const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
+          const netAmount = roundAmount(Math.abs(amount));
+          const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
 
           // Include brand in franchisee name for disambiguation
           const fullName = `${currentFranchisee} (${group.brand})`;
@@ -217,8 +217,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };

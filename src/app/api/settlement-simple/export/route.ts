@@ -12,9 +12,9 @@ import {
 } from "@/data-access/settlement-simple";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
-// Format currency for Excel (truncate to 2 decimals)
+// Format currency for Excel (round to whole shekels)
 const formatCurrency = (amount: number): number => {
-  return Math.trunc(amount * 100) / 100;
+  return Math.round(amount);
 };
 
 // Format percentage for Excel

@@ -28,7 +28,7 @@ import * as XLSX from "xlsx";
 import {
   type FileProcessingResult,
   type ParsedRowData,
-  roundToTwoDecimals,
+  roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
@@ -238,11 +238,11 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
 
     for (const [franchiseeName, amounts] of sortedFranchisees) {
       // Calculate total net amount (sum of both sections)
-      const netAmount = roundToTwoDecimals(amounts.amount17 + amounts.amount10);
-      const grossAmount = roundToTwoDecimals(netAmount * (1 + VAT_RATE));
+      const netAmount = roundAmount(amounts.amount17 + amounts.amount10);
+      const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
 
       // Calculate pre-calculated commission based on rates
-      const preCalculatedCommission = roundToTwoDecimals(
+      const preCalculatedCommission = roundAmount(
         (amounts.amount17 * COMMISSION_RATE_17) + (amounts.amount10 * COMMISSION_RATE_10)
       );
 
@@ -331,8 +331,8 @@ function createResult(
       totalRows,
       processedRows,
       skippedRows,
-      totalGrossAmount: roundToTwoDecimals(totalGrossAmount),
-      totalNetAmount: roundToTwoDecimals(totalNetAmount),
+      totalGrossAmount: roundAmount(totalGrossAmount),
+      totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
   };
