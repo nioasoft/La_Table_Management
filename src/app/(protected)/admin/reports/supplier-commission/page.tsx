@@ -1,19 +1,15 @@
 "use client";
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -38,12 +34,9 @@ import {
 import {
   Loader2,
   Coins,
-  Calendar,
   AlertCircle,
   Download,
   RefreshCw,
-  TrendingUp,
-  BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/report-utils";
@@ -273,119 +266,128 @@ export default function SupplierCommissionReportPage() {
     return null;
   }
 
+  // Sort franchisees: push "דון פדרו" to the end
+  const sortedFranchisees = useMemo(() => {
+    if (!report) return [];
+    return [...report.franchisees].sort((a, b) => {
+      if (a.franchiseeName === "דון פדרו") return 1;
+      if (b.franchiseeName === "דון פדרו") return -1;
+      return 0;
+    });
+  }, [report]);
+
   const hasData = report && report.suppliers.length > 0;
 
   return (
-    <div className="container mx-auto space-y-6 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">דוח עמלות ספקים</h1>
-          <p className="text-muted-foreground">
-            מטריצת עמלות ספקים לפי סניף עם אחוז ממחזור
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchReport}
-            disabled={isLoading}
-          >
-            <RefreshCw
-              className={`me-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-            />
-            רענון
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExport}
-            disabled={!hasData || isLoading}
-          >
-            <Download className="me-2 h-4 w-4" />
-            ייצוא לאקסל
-          </Button>
-        </div>
+    <div className="container mx-auto space-y-2 px-4 pt-3 pb-4">
+      {/* Compact toolbar: title + filters + actions in one row */}
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-lg font-bold me-2">דוח עמלות ספקים</h1>
+
+        <Select value={selectedYear} onValueChange={setSelectedYear}>
+          <SelectTrigger className="w-24 h-8 text-sm">
+            <SelectValue placeholder="שנה" />
+          </SelectTrigger>
+          <SelectContent>
+            {YEARS.map((y) => (
+              <SelectItem key={y.value} value={y.value}>
+                {y.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={selectedQuarter}
+          onValueChange={setSelectedQuarter}
+        >
+          <SelectTrigger className="w-40 h-8 text-sm">
+            <SelectValue placeholder="רבעון" />
+          </SelectTrigger>
+          <SelectContent>
+            {QUARTERS.map((q) => (
+              <SelectItem key={q.value} value={q.value}>
+                {q.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={selectedBrandId}
+          onValueChange={setSelectedBrandId}
+        >
+          <SelectTrigger className="w-36 h-8 text-sm">
+            <SelectValue placeholder="כל המותגים" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">כל המותגים</SelectItem>
+            {brands.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
+                {b.nameHe}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button size="sm" className="h-8" onClick={fetchReport} disabled={isLoading}>
+          {isLoading ? (
+            <Loader2 className="me-1.5 h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Coins className="me-1.5 h-3.5 w-3.5" />
+          )}
+          הפק דוח
+        </Button>
+
+        <div className="flex-1" />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={fetchReport}
+          disabled={isLoading}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={handleExport}
+          disabled={!hasData || isLoading}
+        >
+          <Download className="h-3.5 w-3.5" />
+        </Button>
       </div>
 
-      {/* Filters Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5" />
-            בחירת תקופה
-          </CardTitle>
-          <CardDescription>בחר שנה ורבעון להפקת הדוח</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap items-end gap-4">
-            <div className="space-y-2">
-              <Label>שנה</Label>
-              <Select value={selectedYear} onValueChange={setSelectedYear}>
-                <SelectTrigger className="w-32">
-                  <SelectValue placeholder="בחר שנה" />
-                </SelectTrigger>
-                <SelectContent>
-                  {YEARS.map((y) => (
-                    <SelectItem key={y.value} value={y.value}>
-                      {y.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>רבעון</Label>
-              <Select
-                value={selectedQuarter}
-                onValueChange={setSelectedQuarter}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="בחר רבעון" />
-                </SelectTrigger>
-                <SelectContent>
-                  {QUARTERS.map((q) => (
-                    <SelectItem key={q.value} value={q.value}>
-                      {q.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label>מותג</Label>
-              <Select
-                value={selectedBrandId}
-                onValueChange={setSelectedBrandId}
-              >
-                <SelectTrigger className="w-48">
-                  <SelectValue placeholder="כל המותגים" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">כל המותגים</SelectItem>
-                  {brands.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.nameHe}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button onClick={fetchReport} disabled={isLoading}>
-              {isLoading ? (
-                <Loader2 className="me-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Coins className="me-2 h-4 w-4" />
-              )}
-              הפק דוח
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Compact stats strip — only when data exists */}
+      {hasData && !isLoading && (
+        <div className="flex items-center gap-3 text-sm border rounded-md px-3 py-1.5 bg-muted/30">
+          <span>
+            <span className="text-muted-foreground">עמלות:</span>{" "}
+            <span className="font-semibold font-mono tabular-nums">
+              {formatCurrency(report.grandTotals.totalCommissionBeforeVat)}
+            </span>
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            <span className="text-muted-foreground">מחזור:</span>{" "}
+            <span className="font-semibold font-mono tabular-nums text-blue-600">
+              {formatCurrency(report.grandTotals.totalBkmvRevenue)}
+            </span>
+          </span>
+          <span className="text-border">|</span>
+          <span>
+            <span className="text-muted-foreground">% ממחזור:</span>{" "}
+            <span className="font-semibold font-mono tabular-nums text-amber-600">
+              {report.grandTotals.overallPercentOfTurnover != null
+                ? `${report.grandTotals.overallPercentOfTurnover}%`
+                : "-"}
+            </span>
+          </span>
+        </div>
+      )}
 
       {/* Loading State */}
       {isLoading && (
@@ -397,11 +399,11 @@ export default function SupplierCommissionReportPage() {
       {/* Error State */}
       {error && !isLoading && (
         <Card className="border-destructive">
-          <CardContent className="flex items-center gap-4 py-6">
-            <AlertCircle className="h-8 w-8 text-destructive" />
+          <CardContent className="flex items-center gap-4 py-4">
+            <AlertCircle className="h-6 w-6 text-destructive" />
             <div>
-              <p className="font-medium text-destructive">{error}</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-medium text-destructive text-sm">{error}</p>
+              <p className="text-xs text-muted-foreground">
                 נסה שוב או בחר תקופה אחרת
               </p>
             </div>
@@ -412,11 +414,11 @@ export default function SupplierCommissionReportPage() {
       {/* Empty State */}
       {report && report.suppliers.length === 0 && !isLoading && (
         <Card>
-          <CardContent className="flex flex-col items-center gap-4 py-12">
-            <Coins className="h-12 w-12 text-muted-foreground" />
+          <CardContent className="flex flex-col items-center gap-3 py-8">
+            <Coins className="h-10 w-10 text-muted-foreground" />
             <div className="text-center">
-              <p className="font-medium">אין נתונים לתקופה זו</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-medium text-sm">אין נתונים לתקופה זו</p>
+              <p className="text-xs text-muted-foreground">
                 לא נמצאו קבצי ספקים מאושרים בתקופה שנבחרה
               </p>
             </div>
@@ -424,93 +426,17 @@ export default function SupplierCommissionReportPage() {
         </Card>
       )}
 
-      {/* Report Content */}
+      {/* Matrix Table — no Card wrapper overhead */}
       {hasData && !isLoading && (
-        <>
-          {/* Summary Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardContent className="flex items-center gap-4 py-6">
-                <div className="rounded-lg bg-primary/10 p-3">
-                  <Coins className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    סה״כ עמלות (לפני מע״מ)
-                  </p>
-                  <p className="text-2xl font-bold">
-                    {formatCurrency(report.grandTotals.totalCommissionBeforeVat)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="flex items-center gap-4 py-6">
-                <div className="rounded-lg bg-blue-500/10 p-3">
-                  <BarChart3 className="h-6 w-6 text-blue-500" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    סה״כ מחזור (BKMV)
-                  </p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {formatCurrency(report.grandTotals.totalBkmvRevenue)}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="flex items-center gap-4 py-6">
-                <div className="rounded-lg bg-amber-500/10 p-3">
-                  <TrendingUp className="h-6 w-6 text-amber-500" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    % עמלות ממחזור
-                  </p>
-                  <p className="text-2xl font-bold text-amber-600">
-                    {report.grandTotals.overallPercentOfTurnover != null
-                      ? `${report.grandTotals.overallPercentOfTurnover}%`
-                      : "-"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Period Info */}
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Calendar className="h-4 w-4" />
-            <span>
-              שנה: {report.year} | רבעון: Q{report.quarter}
-            </span>
-            {report.brandName && (
-              <>
-                <span>•</span>
-                <span>מותג: {report.brandName}</span>
-              </>
-            )}
-          </div>
-
-          {/* Matrix Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>מטריצת עמלות ספקים</CardTitle>
-              <CardDescription>
-                עמלות לפני מע״מ לפי ספק וסניף
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="[&>div]:max-h-[70vh]">
+        <div className="border rounded-md overflow-auto max-h-[calc(100vh-140px)]">
               <Table className="table-compact table-grid">
                 <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background">
                   <TableRow>
-                    <TableHead className="sticky start-0 z-30 bg-background text-end">
+                    <TableHead className="sticky start-0 z-30 bg-background text-start">
                       ספק
                     </TableHead>
                     <TableHead className="text-center">%</TableHead>
-                    {report.franchisees.map((f) => (
+                    {sortedFranchisees.map((f) => (
                       <TableHead key={f.franchiseeId} className="text-center">
                         <TooltipProvider>
                           <Tooltip>
@@ -533,7 +459,7 @@ export default function SupplierCommissionReportPage() {
                 <TableBody>
                   {report.suppliers.map((sup) => (
                     <TableRow key={sup.supplierId}>
-                      <TableCell className="sticky start-0 z-10 bg-background text-end whitespace-nowrap">
+                      <TableCell className="sticky start-0 z-10 bg-background text-start whitespace-nowrap">
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
@@ -560,7 +486,7 @@ export default function SupplierCommissionReportPage() {
                       <TableCell className="text-center font-mono tabular-nums">
                         {sup.commissionRate}%
                       </TableCell>
-                      {report.franchisees.map((f) => {
+                      {sortedFranchisees.map((f) => {
                         const cell = sup.cells[f.franchiseeId];
                         if (!cell || cell.commissionAmountBeforeVat === 0) {
                           return (
@@ -589,11 +515,11 @@ export default function SupplierCommissionReportPage() {
 
                   {/* Totals Row */}
                   <TableRow className="bg-muted/50 font-bold">
-                    <TableCell className="sticky start-0 z-10 bg-muted text-end">
+                    <TableCell className="sticky start-0 z-10 bg-muted text-start">
                       סה״כ
                     </TableCell>
                     <TableCell />
-                    {report.franchisees.map((f) => (
+                    {sortedFranchisees.map((f) => (
                       <TableCell
                         key={f.franchiseeId}
                         className="text-center font-mono tabular-nums"
@@ -610,11 +536,11 @@ export default function SupplierCommissionReportPage() {
 
                   {/* % of Turnover Row */}
                   <TableRow className="bg-amber-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-amber-50 font-bold text-end">
+                    <TableCell className="sticky start-0 z-10 bg-amber-50 font-bold text-start">
                       % ממחזור
                     </TableCell>
                     <TableCell />
-                    {report.franchisees.map((f) => {
+                    {sortedFranchisees.map((f) => {
                       const pct =
                         f.bkmvRevenue > 0
                           ? Math.round(
@@ -644,11 +570,11 @@ export default function SupplierCommissionReportPage() {
 
                   {/* BKMV Revenue Row */}
                   <TableRow className="bg-blue-50/50">
-                    <TableCell className="sticky start-0 z-10 bg-blue-50 font-bold text-end">
+                    <TableCell className="sticky start-0 z-10 bg-blue-50 font-bold text-start">
                       מחזור (BKMV)
                     </TableCell>
                     <TableCell />
-                    {report.franchisees.map((f) => (
+                    {sortedFranchisees.map((f) => (
                       <TableCell
                         key={f.franchiseeId}
                         className="text-center font-mono tabular-nums"
@@ -666,9 +592,7 @@ export default function SupplierCommissionReportPage() {
                   </TableRow>
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
-        </>
+            </div>
       )}
     </div>
   );
