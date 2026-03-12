@@ -6,14 +6,19 @@
  *   - Column B (index 1): שם לקוח - Franchisee name
  *   - Column K (index 10): ערך מכירות נטו לצבירה - Net sales for accumulation
  *   - Column L (index 11): צבירת הנחה - Accumulated discount (commission part 1)
- *   - Column N (index 13): הנחת מחזור - Cycle discount (commission part 2)
+ *   - Cycle discount (commission part 2): Column N (14-col format) or Column O (15-col format)
+ *
+ * Format detection:
+ *   - 14-column files (old): row 1 = totals, cycle discount in column N (index 13)
+ *   - 15-column files (new): row 1 = data, new "עמלה שנתית" rate column at N,
+ *     cycle discount shifted to column O (index 14)
  *
  * Processing Logic:
- *   1. Skip row 0 (headers) and row 1 (totals row)
- *   2. Process rows 2+ (data rows)
+ *   1. Skip row 0 (headers), start from row 1
+ *   2. Rows without a franchisee name (e.g. totals) are skipped automatically
  *   3. Aggregate by franchisee name (column B)
  *   4. netAmount: Sum of column K per franchisee
- *   5. preCalculatedCommission: Sum of (column L + column N) per franchisee
+ *   5. preCalculatedCommission: Sum of (column L + cycle discount column) per franchisee
  *   6. grossAmount: netAmount × 1.18 (VAT)
  *
  * Note: Values are positive. Commission columns may be empty for some rows.
@@ -34,10 +39,11 @@ const VAT_RATE = 0.18;
 const FRANCHISEE_COL = 1; // Column B - שם לקוח
 const NET_SALES_COL = 10; // Column K - ערך מכירות נטו לצבירה
 const ACCUM_DISCOUNT_COL = 11; // Column L - צבירת הנחה
-const CYCLE_DISCOUNT_COL = 13; // Column N - הנחת מחזור
+const CYCLE_DISCOUNT_COL_OLD = 13; // Column N - הנחת מחזור (14-column format)
+const CYCLE_DISCOUNT_COL_NEW = 14; // Column O - הנחת מחזור (15-column format)
 
-// Row 0 = headers, Row 1 = totals, Row 2+ = data
-const DATA_START_ROW = 2;
+// Row 0 = headers, Row 1+ = data (totals rows have no franchisee name and are skipped)
+const DATA_START_ROW = 1;
 
 interface FranchiseeData {
   netAmount: number;
@@ -78,6 +84,11 @@ export function parseTempoFile(buffer: Buffer): FileProcessingResult {
       defval: "",
     });
 
+    // Detect format: 15+ columns = new format (cycle discount in O), else old (N)
+    const headerRow = rows[0] as unknown[] | undefined;
+    const colCount = headerRow ? headerRow.length : 0;
+    const cycleDiscountCol = colCount >= 15 ? CYCLE_DISCOUNT_COL_NEW : CYCLE_DISCOUNT_COL_OLD;
+
     // Aggregate data by franchisee name
     const franchiseeData: Map<string, FranchiseeData> = new Map();
     let totalRowsProcessed = 0;
@@ -91,7 +102,7 @@ export function parseTempoFile(buffer: Buffer): FileProcessingResult {
 
       const netSales = parseNumber(String(row[NET_SALES_COL] || ""));
       const accumDiscount = parseNumber(String(row[ACCUM_DISCOUNT_COL] || ""));
-      const cycleDiscount = parseNumber(String(row[CYCLE_DISCOUNT_COL] || ""));
+      const cycleDiscount = parseNumber(String(row[cycleDiscountCol] || ""));
 
       const existing = franchiseeData.get(franchiseeName) || {
         netAmount: 0,
