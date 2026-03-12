@@ -428,7 +428,7 @@ export default function SupplierCommissionReportPage() {
 
       {/* Matrix Table — no Card wrapper overhead */}
       {hasData && !isLoading && (
-        <div className="border rounded-md overflow-auto max-h-[calc(100vh-140px)]">
+        <div className="border rounded-md overflow-auto max-h-[calc(100vh-140px)] [&>div]:overflow-visible">
               <Table className="table-compact table-grid">
                 <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background">
                   <TableRow>
