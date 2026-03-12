@@ -151,6 +151,12 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
       }
     }
 
+    // Fallback: resolvedAccountKey (e.g. credit-side transactions where
+    // accountCode is the counterparty but resolvedAccountKey is the revenue account)
+    if (!accountInfo && tx.resolvedAccountKey) {
+      accountInfo = accountCodeToInfo.get(tx.resolvedAccountKey);
+    }
+
     if (!accountInfo) {
       continue;
     }

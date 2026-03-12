@@ -248,27 +248,6 @@ export default function BkmvDataPage() {
     },
   });
 
-  const reclassifyMutation = useMutation({
-    mutationFn: async ({
-      franchiseeId,
-      accountKey,
-    }: {
-      franchiseeId: string;
-      accountKey: string;
-    }) => {
-      const response = await fetchWithTimeout(
-        `/api/franchisees/${franchiseeId}/account-classifications`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountKey }),
-        }
-      );
-      if (!response.ok) throw new Error("Failed to remove classification");
-      return response.json();
-    },
-  });
-
   const bulkClassifyMutation = useMutation({
     mutationFn: async ({
       franchiseeId,
@@ -946,65 +925,70 @@ export default function BkmvDataPage() {
     }
   }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
 
-  // Handle reclassify (move back to auto-detection / uncategorized)
+  // Handle reclassify (reset to uncategorized)
   const handleReclassify = useCallback(async (accountKey: string) => {
     if (!matchedFranchisee || !parseResult) {
       if (!matchedFranchisee) setError("לא ניתן לאפס סיווג - לא זוהה זכיין.");
       return;
     }
 
-    // Find the auto-classification for this account
-    const allAccounts = buildAllAccountsSummary(parseResult);
-    const accountInfo = allAccounts.get(accountKey);
-    const autoCategory = accountInfo ? (await import("@/lib/bkmvdata-parser")).autoClassifyAccount(accountInfo.accountType) : 'uncategorized';
+    // Find the previous category before reset
+    const previousCategory = classifiedAccounts.get(accountKey)?.category;
+    const accountName = classifiedAccounts.get(accountKey)?.accountName;
 
-    // Optimistic update - revert to auto
+    // Optimistic update - set to uncategorized (saved, so auto-detection won't re-grab)
     setClassifiedAccounts(prev => {
       const next = new Map(prev);
       const existing = next.get(accountKey);
       if (existing) {
         next.set(accountKey, {
           ...existing,
-          category: autoCategory as AccountCategory,
-          classificationSource: autoCategory === 'uncategorized' ? 'default' : 'auto',
+          category: 'uncategorized' as AccountCategory,
+          classificationSource: 'saved',
         });
       }
       return next;
     });
 
-    // Remove from DB
+    // Save as uncategorized in DB (PUT, not DELETE)
     try {
-      await reclassifyMutation.mutateAsync({
+      await classifyMutation.mutateAsync({
         franchiseeId: matchedFranchisee.id,
         accountKey,
+        category: 'uncategorized' as AccountCategory,
+        accountName,
       });
     } catch {
-      setError("שגיאה בהסרת הסיווג");
+      setError("שגיאה באיפוס הסיווג");
     }
 
-    // Re-run supplier matching
-    setTimeout(() => {
-      setClassifiedAccounts(currentClassified => {
-        const matches = reRunSupplierMatching(
-          parseResult, currentClassified, blacklistedNames, suppliers,
-          isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
-        );
-        setMatchingResults(matches);
-        return currentClassified;
-      });
-    }, 0);
-
-    // Recalculate stored revenue (reclassify may affect revenue accounts)
-    try {
-      await fetchWithTimeout('/api/bkmvdata/recalculate-revenue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ franchiseeId: matchedFranchisee.id }),
-      });
-    } catch {
-      console.error('Revenue recalculation failed — classification was reset');
+    // Re-run supplier matching if previous category was supplier
+    if (previousCategory === 'supplier') {
+      setTimeout(() => {
+        setClassifiedAccounts(currentClassified => {
+          const matches = reRunSupplierMatching(
+            parseResult, currentClassified, blacklistedNames, suppliers,
+            isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
+          );
+          setMatchingResults(matches);
+          return currentClassified;
+        });
+      }, 0);
     }
-  }, [matchedFranchisee, parseResult, reclassifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, smallSupplierNames]);
+
+    // Recalculate stored revenue if previous category was revenue
+    if (previousCategory === 'revenue') {
+      try {
+        await fetchWithTimeout('/api/bkmvdata/recalculate-revenue', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ franchiseeId: matchedFranchisee.id }),
+        });
+      } catch {
+        console.error('Revenue recalculation failed — classification was reset');
+      }
+    }
+  }, [matchedFranchisee, parseResult, classifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
 
   // Handle saving selected revenue accounts
   const handleSaveRevenueAccounts = useCallback(async () => {
@@ -1675,10 +1659,10 @@ export default function BkmvDataPage() {
                                           {CATEGORY_LABELS[cat]}
                                         </button>
                                       ))}
-                                    {account.classificationSource === 'saved' && (
+                                    {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
                                       <button
                                         onClick={() => handleReclassify(account.accountCode)}
-                                        disabled={!matchedFranchisee || reclassifyMutation.isPending}
+                                        disabled={!matchedFranchisee || classifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
                                         איפוס
@@ -2162,10 +2146,10 @@ export default function BkmvDataPage() {
                                         {CATEGORY_LABELS[cat]}
                                       </button>
                                     ))}
-                                    {account.classificationSource === 'saved' && (
+                                    {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
                                       <button
                                         onClick={() => handleReclassify(account.accountCode)}
-                                        disabled={!matchedFranchisee || reclassifyMutation.isPending}
+                                        disabled={!matchedFranchisee || classifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
                                         איפוס
@@ -2245,10 +2229,10 @@ export default function BkmvDataPage() {
                                       {CATEGORY_LABELS[cat]}
                                     </button>
                                   ))}
-                                  {account.classificationSource === 'saved' && (
+                                  {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
                                     <button
                                       onClick={() => handleReclassify(account.accountCode)}
-                                      disabled={!matchedFranchisee || reclassifyMutation.isPending}
+                                      disabled={!matchedFranchisee || classifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
                                       איפוס
@@ -2327,10 +2311,10 @@ export default function BkmvDataPage() {
                                       {CATEGORY_LABELS[cat]}
                                     </button>
                                   ))}
-                                  {account.classificationSource === 'saved' && (
+                                  {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
                                     <button
                                       onClick={() => handleReclassify(account.accountCode)}
-                                      disabled={!matchedFranchisee || reclassifyMutation.isPending}
+                                      disabled={!matchedFranchisee || classifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
                                       איפוס
