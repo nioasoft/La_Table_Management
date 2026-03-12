@@ -21,25 +21,25 @@ export async function GET(request: NextRequest) {
 
     const staffContacts = await getStaffContacts({ isActive: true });
 
-    const headers = ["שם", "טלפון", "אימייל", "תפקיד", "מותג / קבוצה"];
+    const headers = ["תפקיד", "מותג / קבוצה", "שם", "טלפון", "אימייל"];
 
     const rows = staffContacts.map((contact) => [
+      ROLE_LABELS[contact.role as keyof typeof ROLE_LABELS] || contact.role,
+      contact.brand?.nameHe || he.staffContacts.group,
       contact.name,
       contact.phone || "-",
       contact.email || "-",
-      ROLE_LABELS[contact.role as keyof typeof ROLE_LABELS] || contact.role,
-      contact.brand?.nameHe || he.staffContacts.group,
     ]);
 
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
     ws["!cols"] = [
+      { wch: 15 }, // תפקיד
+      { wch: 20 }, // מותג / קבוצה
       { wch: 20 }, // שם
       { wch: 18 }, // טלפון
       { wch: 30 }, // אימייל
-      { wch: 15 }, // תפקיד
-      { wch: 20 }, // מותג / קבוצה
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "אנשי מטה");
