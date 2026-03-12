@@ -27,13 +27,20 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 import {
   Plus,
   Pencil,
   Trash2,
   Copy,
   Calendar,
+  CalendarPlus,
   Bell,
   Loader2,
   ChevronDown,
@@ -85,6 +92,8 @@ export function ImportantDatesManager({
   const [editingDate, setEditingDate] = useState<FranchiseeImportantDate | null>(null);
   const [formData, setFormData] = useState<ImportantDateFormData>(defaultFormData);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [extendingDateId, setExtendingDateId] = useState<string | null>(null);
+  const [customExtendYears, setCustomExtendYears] = useState<number>(1);
 
   // Fetch important dates for this franchisee
   const { data: importantDates = [], isLoading } = useQuery({
@@ -261,6 +270,27 @@ export function ImportantDatesManager({
     }
   };
 
+  const handleExtend = async (sourceDate: FranchiseeImportantDate, years: number) => {
+    try {
+      await createMutation.mutateAsync({
+        dateType: sourceDate.dateType,
+        customTypeName: sourceDate.customTypeName || "",
+        startDate: sourceDate.endDate,
+        durationValue: years,
+        displayUnit: "years",
+        reminderMonthsBefore: sourceDate.reminderMonthsBefore,
+        description: `הארכה - ${sourceDate.dateType === "custom" && sourceDate.customTypeName
+          ? sourceDate.customTypeName
+          : DATE_TYPE_LABELS[sourceDate.dateType]}`,
+        notes: "",
+      });
+      setExtendingDateId(null);
+      toast.success("התקופה הוארכה בהצלחה");
+    } catch {
+      toast.error("שגיאה בהארכת התקופה");
+    }
+  };
+
   // Calculate preview dates
   const previewEndDate = formData.startDate && formData.durationValue > 0
     ? calculateEndDate(
@@ -362,6 +392,64 @@ export function ImportantDatesManager({
                           ))}
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    <Popover
+                      open={extendingDateId === date.id}
+                      onOpenChange={(open) => setExtendingDateId(open ? date.id : null)}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm" disabled={disabled}>
+                          <CalendarPlus className="h-4 w-4" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="w-60" dir="rtl">
+                        <div className="space-y-3">
+                          <p className="text-sm font-medium">הארכת תקופה</p>
+                          <p className="text-xs text-muted-foreground">
+                            מ-{formatDate(date.endDate)}
+                          </p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            {[1, 2, 3, 4, 5].map((years) => (
+                              <Button
+                                key={years}
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 min-w-[40px]"
+                                disabled={createMutation.isPending}
+                                onClick={() => handleExtend(date, years)}
+                              >
+                                {years} {years === 1 ? "שנה" : "שנים"}
+                              </Button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2 items-center pt-2 border-t">
+                            <Input
+                              type="number"
+                              min={1}
+                              max={99}
+                              value={customExtendYears}
+                              onChange={(e) => setCustomExtendYears(parseInt(e.target.value) || 1)}
+                              className="w-16 h-8 text-sm"
+                            />
+                            <span className="text-xs text-muted-foreground">שנים</span>
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              className="mr-auto"
+                              disabled={createMutation.isPending || customExtendYears < 1}
+                              onClick={() => handleExtend(date, customExtendYears)}
+                            >
+                              {createMutation.isPending ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "הארך"
+                              )}
+                            </Button>
+                          </div>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <Button
                       type="button"
                       variant="ghost"
