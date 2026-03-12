@@ -65,6 +65,7 @@ export {
   classifyAccounts,
   filterSuppliersByClassification,
   getCategoryCounts,
+  mergeRevenueSummaryIntoClassified,
 } from './classification';
 
 // Monthly breakdown

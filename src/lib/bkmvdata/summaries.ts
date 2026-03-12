@@ -135,6 +135,9 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
         .map(info => [info.accountName, info] as const))
     : null;
 
+  // Track gross B100 volume per account for B110 fallback heuristic
+  const revenueGrossVolume = new Map<string, number>();
+
   for (const tx of result.transactions) {
     const normalizedCode = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
 
@@ -169,6 +172,8 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     const accountKey = accountInfo.accountKey;
     const accountName = accountInfo.accountName;
 
+    revenueGrossVolume.set(accountKey, (revenueGrossVolume.get(accountKey) || 0) + Math.abs(tx.amount));
+
     const existing = summary.get(accountKey);
     if (existing) {
       existing.totalAmount += tx.amount;
@@ -194,7 +199,8 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     if (account.creditTurnover <= 0) continue;
 
     const existing = summary.get(key);
-    const b100Sum = existing ? Math.abs(existing.totalAmount) : 0;
+    // Use gross volume (sum of absolute amounts) to avoid false positives on two-sided accounts
+    const b100Sum = revenueGrossVolume.get(key) || (existing ? Math.abs(existing.totalAmount) : 0);
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {
@@ -292,8 +298,12 @@ export function buildAllAccountsSummary(
     });
   }
 
+  // Track gross B100 volume per account (sum of absolute amounts) for B110 fallback heuristic
+  const grossVolume = new Map<string, number>();
+
   function addToSummary(groupKey: string, info: AccountInfo, tx: BkmvTransaction) {
     const monthKey = formatYearMonth(tx.documentDate);
+    grossVolume.set(groupKey, (grossVolume.get(groupKey) || 0) + Math.abs(tx.amount));
     const existing = summary.get(groupKey);
     if (existing) {
       existing.totalAmount += tx.amount;
@@ -354,7 +364,9 @@ export function buildAllAccountsSummary(
     if (!key || account.creditTurnover <= 0) continue;
 
     const existing = summary.get(key);
-    const b100Sum = existing ? Math.abs(existing.totalAmount) : 0;
+    // Use gross volume (sum of absolute amounts) to avoid false positives on two-sided accounts
+    // where debit and credit nearly cancel out (e.g. offset/contra accounts like "הכנסות מקיזוז חבר")
+    const b100Sum = grossVolume.get(key) || (existing ? Math.abs(existing.totalAmount) : 0);
     const b110Credit = Math.abs(account.creditTurnover);
 
     if (b110Credit > b100Sum * 2) {

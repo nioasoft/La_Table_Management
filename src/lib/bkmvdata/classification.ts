@@ -2,6 +2,7 @@ import type {
   AccountCategory,
   AllAccountSummary,
   ClassifiedAccount,
+  RevenueAccountSummary,
   SupplierPurchaseSummary,
 } from './types';
 
@@ -247,4 +248,61 @@ export function getCategoryCounts(
   }
 
   return counts;
+}
+
+/**
+ * Merge revenue summary amounts into classified accounts.
+ *
+ * buildAllAccountsSummary groups transactions by their own accountCode, so accounts
+ * with contra-entries from other accounts (e.g., "הכנסות מקיזוז חבר" — offset accounts
+ * where credits come from employee accounts) show only the direct side.
+ * buildRevenueSummary captures both sides via resolvedAccountKey.
+ *
+ * This function overrides revenue-classified accounts' amounts with the more accurate
+ * totals from revenueSummary.
+ */
+export function mergeRevenueSummaryIntoClassified(
+  classifiedAccounts: Map<string, ClassifiedAccount>,
+  revenueSummary: Map<string, RevenueAccountSummary> | undefined,
+  startDate?: Date,
+  endDate?: Date,
+): void {
+  if (!revenueSummary) return;
+
+  const isFiltered = startDate !== undefined && endDate !== undefined;
+
+  for (const [key, account] of classifiedAccounts) {
+    if (account.category !== 'revenue') continue;
+
+    const revenueData = revenueSummary.get(key);
+    if (!revenueData) continue;
+
+    if (isFiltered) {
+      // Filter revenueSummary monthly breakdown to match date range
+      const startMonth = `${startDate!.getFullYear()}-${String(startDate!.getMonth() + 1).padStart(2, '0')}`;
+      const endMonth = `${endDate!.getFullYear()}-${String(endDate!.getMonth() + 1).padStart(2, '0')}`;
+      const filteredBreakdown: Record<string, number> = {};
+      for (const [month, amount] of Object.entries(revenueData.monthlyBreakdown)) {
+        if (month >= startMonth && month <= endMonth) {
+          filteredBreakdown[month] = amount;
+        }
+      }
+      const filteredTotal = Object.values(filteredBreakdown).reduce((sum, val) => sum + val, 0);
+      if (filteredTotal === 0 && account.totalAmount !== 0) continue; // keep existing if filter yields nothing
+
+      classifiedAccounts.set(key, {
+        ...account,
+        totalAmount: filteredTotal,
+        transactionCount: revenueData.transactionCount,
+        monthlyBreakdown: filteredBreakdown,
+      });
+    } else {
+      classifiedAccounts.set(key, {
+        ...account,
+        totalAmount: revenueData.totalAmount,
+        transactionCount: revenueData.transactionCount,
+        monthlyBreakdown: revenueData.monthlyBreakdown,
+      });
+    }
+  }
 }

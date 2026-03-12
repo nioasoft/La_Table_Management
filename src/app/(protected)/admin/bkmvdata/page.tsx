@@ -85,6 +85,7 @@ import {
   buildAllAccountsSummary,
   classifyAccounts,
   getCategoryCounts,
+  mergeRevenueSummaryIntoClassified,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   CATEGORY_TAB_ORDER,
@@ -701,6 +702,7 @@ export default function BkmvDataPage() {
       // Build all accounts summary and classify
       const allAccounts = buildAllAccountsSummary(result);
       const classified = classifyAccounts(allAccounts, savedMap);
+      mergeRevenueSummaryIntoClassified(classified, result.revenueSummary);
       setClassifiedAccounts(classified);
 
       // Default to uncategorized tab if there are uncategorized accounts, otherwise suppliers
@@ -818,6 +820,7 @@ export default function BkmvDataPage() {
     const end = new Date(eY, eM - 1, eD);
     const allAccounts = buildAllAccountsSummary(parseResult, start, end);
     const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary, start, end);
     setClassifiedAccounts(classified);
 
     const matches = reRunSupplierMatching(
@@ -835,6 +838,7 @@ export default function BkmvDataPage() {
     // Rebuild classified accounts with full (unfiltered) data
     const allAccounts = buildAllAccountsSummary(parseResult);
     const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary);
     setClassifiedAccounts(classified);
 
     const matches = reRunSupplierMatching(
@@ -890,6 +894,12 @@ export default function BkmvDataPage() {
         accountKey,
         category,
         accountName,
+      });
+      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
+      setSavedClassificationsMap(prev => {
+        const next = new Map(prev);
+        next.set(accountKey, category);
+        return next;
       });
     } catch {
       // Revert on error - reload from scratch
@@ -957,6 +967,12 @@ export default function BkmvDataPage() {
         accountKey,
         category: 'uncategorized' as AccountCategory,
         accountName,
+      });
+      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
+      setSavedClassificationsMap(prev => {
+        const next = new Map(prev);
+        next.set(accountKey, 'uncategorized');
+        return next;
       });
     } catch {
       setError("שגיאה באיפוס הסיווג");
@@ -1037,6 +1053,15 @@ export default function BkmvDataPage() {
           if (existing) {
             next.set(item.accountKey, { ...existing, category: 'revenue', classificationSource: 'saved' });
           }
+        }
+        return next;
+      });
+
+      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
+      setSavedClassificationsMap(prev => {
+        const next = new Map(prev);
+        for (const item of items) {
+          next.set(item.accountKey, item.category);
         }
         return next;
       });
