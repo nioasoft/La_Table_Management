@@ -242,8 +242,12 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
       }
 
       // Fallback: distribute B110 total evenly across dominant-year months only
+      // Preserve sign from B100 data — if transactions sum to negative (e.g. offset accounts
+      // like "קיזוז חבר"), keep the negative sign even when using B110 magnitude
+      const isNegative = existing && existing.totalAmount < 0;
+      const signedTotal = isNegative ? -b110Credit : b110Credit;
       const monthCount = relevantMonths.size || 1;
-      const perMonth = b110Credit / monthCount;
+      const perMonth = signedTotal / monthCount;
       const evenBreakdown: Record<string, number> = {};
       for (const month of relevantMonths) {
         evenBreakdown[month] = perMonth;
@@ -251,7 +255,7 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
 
       if (existing) {
         existing.monthlyBreakdown = evenBreakdown;
-        existing.totalAmount = b110Credit;
+        existing.totalAmount = signedTotal;
         existing.b110CreditTurnover = b110Credit;
       } else {
         const info = accountCodeToInfo.get(key);
@@ -262,6 +266,77 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
           transactionCount: 0,
           monthlyBreakdown: evenBreakdown,
           b110CreditTurnover: b110Credit,
+        });
+      }
+    }
+  }
+
+  // Handle negative credit turnover accounts (contra-revenue like "הכנסות מקיזוז חבר").
+  // These accounts have B100 entries where direct debit+credit amounts are both positive
+  // (cancel out in reality, but sum incorrectly). The indirect (resolvedAccountKey) entries
+  // from other accounts carry the correctly-signed revenue amounts.
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!revenueAccountCodes.has(key)) continue;
+    if (account.creditTurnover >= 0) continue; // positive handled above
+
+    // Collect only indirect transactions (resolvedAccountKey points to this revenue account)
+    const indirectBreakdown: Record<string, number> = {};
+    let indirectSum = 0;
+    let indirectCount = 0;
+    for (const tx of result.transactions) {
+      if (tx.amount === 0) continue;
+      const code = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
+      if (code === key) continue; // skip direct — debit+credit cancel out
+      if (tx.resolvedAccountKey === key) {
+        const monthKey = formatYearMonth(tx.documentDate);
+        indirectBreakdown[monthKey] = (indirectBreakdown[monthKey] || 0) + tx.amount;
+        indirectSum += tx.amount;
+        indirectCount++;
+      }
+    }
+
+    if (indirectCount > 0) {
+      const existing = summary.get(key);
+      if (existing) {
+        existing.monthlyBreakdown = indirectBreakdown;
+        existing.totalAmount = indirectSum;
+        existing.transactionCount = indirectCount;
+        existing.b110CreditTurnover = account.creditTurnover;
+      } else {
+        const info = accountCodeToInfo.get(key);
+        summary.set(key, {
+          accountCode: key,
+          accountName: info?.accountName || key,
+          totalAmount: indirectSum,
+          transactionCount: indirectCount,
+          monthlyBreakdown: indirectBreakdown,
+          b110CreditTurnover: account.creditTurnover,
+        });
+      }
+    } else {
+      // No indirect transactions — distribute B110 creditTurnover evenly
+      const total = account.creditTurnover;
+      const monthCount = relevantMonths.size || 1;
+      const perMonth = total / monthCount;
+      const evenBreakdown: Record<string, number> = {};
+      for (const month of relevantMonths) {
+        evenBreakdown[month] = perMonth;
+      }
+      const existing = summary.get(key);
+      if (existing) {
+        existing.monthlyBreakdown = evenBreakdown;
+        existing.totalAmount = total;
+        existing.b110CreditTurnover = account.creditTurnover;
+      } else {
+        const info = accountCodeToInfo.get(key);
+        summary.set(key, {
+          accountCode: key,
+          accountName: info?.accountName || key,
+          totalAmount: total,
+          transactionCount: 0,
+          monthlyBreakdown: evenBreakdown,
+          b110CreditTurnover: account.creditTurnover,
         });
       }
     }
@@ -371,8 +446,11 @@ export function buildAllAccountsSummary(
 
     if (b110Credit > b100Sum * 2) {
       // B100 entries are unreliable (< 50% of B110 total) — distribute evenly across dominant-year months
+      // Preserve sign from B100 data — if transactions sum to negative, keep negative sign
+      const isNegative = existing && existing.totalAmount < 0;
+      const signedTotal = isNegative ? -b110Credit : b110Credit;
       const monthCount = relevantMonths2.size || 1;
-      const perMonth = b110Credit / monthCount;
+      const perMonth = signedTotal / monthCount;
       const evenBreakdown: Record<string, number> = {};
       for (const month of relevantMonths2) {
         evenBreakdown[month] = perMonth;
@@ -380,7 +458,7 @@ export function buildAllAccountsSummary(
 
       if (existing) {
         existing.monthlyBreakdown = evenBreakdown;
-        existing.totalAmount = b110Credit;
+        existing.totalAmount = signedTotal;
       } else {
         const info = accountKeyToInfo.get(key);
         if (info) {

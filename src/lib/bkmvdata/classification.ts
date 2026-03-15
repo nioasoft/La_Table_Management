@@ -277,6 +277,10 @@ export function mergeRevenueSummaryIntoClassified(
     const revenueData = revenueSummary.get(key);
     if (!revenueData) continue;
 
+    // Guard: don't override negative B100 amounts with positive B110-derived amounts
+    // (e.g. offset accounts like "קיזוז חבר" where the net is correctly negative)
+    if (account.totalAmount < 0 && revenueData.totalAmount > 0) continue;
+
     if (isFiltered) {
       // Filter revenueSummary monthly breakdown to match date range
       const startMonth = `${startDate!.getFullYear()}-${String(startDate!.getMonth() + 1).padStart(2, '0')}`;

@@ -206,7 +206,9 @@ export default function BkmvDataPage() {
 
   // Classification state
   const [classifiedAccounts, setClassifiedAccounts] = useState<Map<string, ClassifiedAccount>>(new Map());
-  const [savedClassificationsMap, setSavedClassificationsMap] = useState<Map<string, AccountCategory> | undefined>();
+  const [savedClassificationsMap, setSavedClassificationsMap] = useState<Map<string, AccountCategory>>(new Map());
+  // Ref is the synchronous source of truth — always current in closures (no stale-state issues)
+  const savedClassificationsRef = useRef<Map<string, AccountCategory>>(new Map());
   const [activeCategory, setActiveCategory] = useState<CategoryTab>('uncategorized');
 
   // History and upload state
@@ -681,6 +683,7 @@ export default function BkmvDataPage() {
                   const classData = await classResponse.json();
                   if (classData.map && Object.keys(classData.map).length > 0) {
                     savedMap = new Map(Object.entries(classData.map)) as Map<string, AccountCategory>;
+                    savedClassificationsRef.current = savedMap;
                     setSavedClassificationsMap(savedMap);
                   }
                 }
@@ -819,7 +822,7 @@ export default function BkmvDataPage() {
     const start = new Date(sY, sM - 1, sD);
     const end = new Date(eY, eM - 1, eD);
     const allAccounts = buildAllAccountsSummary(parseResult, start, end);
-    const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    const classified = classifyAccounts(allAccounts, savedClassificationsRef.current);
     mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary, start, end);
     setClassifiedAccounts(classified);
 
@@ -829,7 +832,7 @@ export default function BkmvDataPage() {
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, savedClassificationsMap, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
+  }, [parseResult, filterStartDate, filterEndDate, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
@@ -837,7 +840,7 @@ export default function BkmvDataPage() {
 
     // Rebuild classified accounts with full (unfiltered) data
     const allAccounts = buildAllAccountsSummary(parseResult);
-    const classified = classifyAccounts(allAccounts, savedClassificationsMap);
+    const classified = classifyAccounts(allAccounts, savedClassificationsRef.current);
     mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary);
     setClassifiedAccounts(classified);
 
@@ -849,7 +852,7 @@ export default function BkmvDataPage() {
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames, savedClassificationsMap, reRunSupplierMatching, smallSupplierNames]);
+  }, [parseResult, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
@@ -877,6 +880,12 @@ export default function BkmvDataPage() {
     // Check previous category before optimistic update
     const previousCategory = classifiedAccounts.get(accountKey)?.category;
 
+    // Synchronously update ref BEFORE async call — prevents stale closures in date filter handlers
+    const prevRefMap = savedClassificationsRef.current;
+    const nextRefMap = new Map(prevRefMap);
+    nextRefMap.set(accountKey, category);
+    savedClassificationsRef.current = nextRefMap;
+
     // Optimistic update
     setClassifiedAccounts(prev => {
       const next = new Map(prev);
@@ -895,14 +904,11 @@ export default function BkmvDataPage() {
         category,
         accountName,
       });
-      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
-      setSavedClassificationsMap(prev => {
-        const next = new Map(prev);
-        next.set(accountKey, category);
-        return next;
-      });
+      // Sync React state for dependency tracking
+      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
     } catch {
-      // Revert on error - reload from scratch
+      // Rollback ref on error
+      savedClassificationsRef.current = prevRefMap;
       setError("שגיאה בשמירת הסיווג");
     }
 
@@ -946,6 +952,12 @@ export default function BkmvDataPage() {
     const previousCategory = classifiedAccounts.get(accountKey)?.category;
     const accountName = classifiedAccounts.get(accountKey)?.accountName;
 
+    // Synchronously update ref BEFORE async call — prevents stale closures in date filter handlers
+    const prevRefMap = savedClassificationsRef.current;
+    const nextRefMap = new Map(prevRefMap);
+    nextRefMap.set(accountKey, 'uncategorized');
+    savedClassificationsRef.current = nextRefMap;
+
     // Optimistic update - set to uncategorized (saved, so auto-detection won't re-grab)
     setClassifiedAccounts(prev => {
       const next = new Map(prev);
@@ -968,13 +980,11 @@ export default function BkmvDataPage() {
         category: 'uncategorized' as AccountCategory,
         accountName,
       });
-      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
-      setSavedClassificationsMap(prev => {
-        const next = new Map(prev);
-        next.set(accountKey, 'uncategorized');
-        return next;
-      });
+      // Sync React state for dependency tracking
+      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
     } catch {
+      // Rollback ref on error
+      savedClassificationsRef.current = prevRefMap;
       setError("שגיאה באיפוס הסיווג");
     }
 
@@ -1022,6 +1032,14 @@ export default function BkmvDataPage() {
       };
     });
 
+    // Synchronously update ref BEFORE async call
+    const prevRefMap = savedClassificationsRef.current;
+    const nextRefMap = new Map(prevRefMap);
+    for (const item of items) {
+      nextRefMap.set(item.accountKey, item.category);
+    }
+    savedClassificationsRef.current = nextRefMap;
+
     try {
       await bulkClassifyMutation.mutateAsync({
         franchiseeId: matchedFranchisee.id,
@@ -1057,14 +1075,8 @@ export default function BkmvDataPage() {
         return next;
       });
 
-      // Keep savedClassificationsMap in sync so handleDateFilter won't revert
-      setSavedClassificationsMap(prev => {
-        const next = new Map(prev);
-        for (const item of items) {
-          next.set(item.accountKey, item.category);
-        }
-        return next;
-      });
+      // Sync React state for dependency tracking
+      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
 
       setSelectedRevenueAccounts(new Set());
 
@@ -1079,6 +1091,8 @@ export default function BkmvDataPage() {
         console.error('Revenue recalculation failed — revenue codes were saved');
       }
     } catch {
+      // Rollback ref on error
+      savedClassificationsRef.current = prevRefMap;
       setError("שגיאה בשמירת קודי הכנסה");
     }
   }, [matchedFranchisee, selectedRevenueAccounts, classifiedAccounts, bulkClassifyMutation]);
