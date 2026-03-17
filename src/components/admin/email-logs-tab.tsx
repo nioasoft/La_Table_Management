@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -44,7 +44,9 @@ import {
   Clock,
   Send,
   AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { EmailLog, EmailStatus } from "@/db/schema";
 import { he } from "@/lib/translations/he";
 import { cn } from "@/lib/utils";
@@ -91,9 +93,35 @@ function formatDate(dateString: string | Date | null | undefined): string {
 }
 
 export default function EmailLogsTab() {
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<"all" | EmailStatus>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLog, setSelectedLog] = useState<EmailLog | null>(null);
+
+  // Resend email mutation
+  const resendMutation = useMutation({
+    mutationFn: async (logId: string) => {
+      const response = await fetch(`/api/email-logs/${logId}/resend`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to resend email");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success("האימייל נשלח מחדש בהצלחה");
+      queryClient.invalidateQueries({ queryKey: ["email-logs"] });
+      setSelectedLog(null);
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "שגיאה בשליחה מחדש");
+    },
+  });
+
+  const canResend = (log: EmailLog) =>
+    log.status === "failed" || log.status === "bounced";
 
   // Fetch email logs with stats
   const { data, isLoading, refetch, isFetching } = useQuery<EmailLogResponse>({
@@ -303,18 +331,38 @@ export default function EmailLogsTab() {
                         {formatDate(log.sentAt || log.createdAt)}
                       </TableCell>
                       <TableCell className="text-center">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedLog(log);
-                          }}
-                          className="gap-2"
-                        >
-                          <Eye className="h-4 w-4" />
-                          {t.actions.viewDetails}
-                        </Button>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedLog(log);
+                            }}
+                            title={t.actions.viewDetails}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          {canResend(log) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                resendMutation.mutate(log.id);
+                              }}
+                              disabled={resendMutation.isPending}
+                              title="שלח מחדש"
+                              className="text-amber-600 hover:text-amber-700"
+                            >
+                              {resendMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <RotateCcw className="h-4 w-4" />
+                              )}
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -404,7 +452,22 @@ export default function EmailLogsTab() {
                 </div>
               )}
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-2">
+                {canResend(selectedLog) && (
+                  <Button
+                    variant="default"
+                    onClick={() => resendMutation.mutate(selectedLog.id)}
+                    disabled={resendMutation.isPending}
+                    className="gap-2"
+                  >
+                    {resendMutation.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    שלח מחדש
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setSelectedLog(null)}>
                   {t.details.close}
                 </Button>

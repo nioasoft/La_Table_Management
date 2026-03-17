@@ -2391,6 +2391,10 @@ export const he = {
           name: "תזכורות זכיינים",
           description: "שליחת תזכורות לזכיינים על מועדים חשובים",
         },
+        bkmvRequests: {
+          name: "בקשות מבנה אחיד",
+          description: "שליחת בקשות BKMV לרואי חשבון של זכיינים",
+        },
       },
 
       status: {

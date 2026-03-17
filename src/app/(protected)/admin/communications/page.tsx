@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Mail, Bell, Loader2, Calendar, Clock, History } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Mail, Bell, Loader2, Calendar, Clock, History, Send } from "lucide-react";
 import dynamic from "next/dynamic";
+import SendToEntityDialog from "@/components/admin/send-to-entity-dialog";
 
 // Dynamically import the tab content components
 const EmailTemplatesContent = dynamic(
@@ -68,6 +70,7 @@ export default function CommunicationsPage() {
   const searchParams = useSearchParams();
   const initialTab = searchParams.get("tab") || "email-templates";
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [showSendDialog, setShowSendDialog] = useState(false);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -92,10 +95,21 @@ export default function CommunicationsPage() {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">תקשורת</h1>
-        <p className="text-muted-foreground">ניהול תקשורת, תבניות אימייל ותזכורות</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">תקשורת</h1>
+          <p className="text-muted-foreground">ניהול תקשורת, תבניות אימייל ותזכורות</p>
+        </div>
+        <Button onClick={() => setShowSendDialog(true)} className="gap-2">
+          <Send className="h-4 w-4" />
+          שלח אימייל
+        </Button>
       </div>
+
+      <SendToEntityDialog
+        open={showSendDialog}
+        onOpenChange={setShowSendDialog}
+      />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6" dir="rtl">
         <TabsList className="flex w-full max-w-4xl gap-1 flex-wrap">

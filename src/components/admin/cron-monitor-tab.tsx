@@ -96,6 +96,14 @@ const CRON_JOBS: CronJob[] = [
     schedule: "0 8 * * *",
     icon: <Users className="h-6 w-6" />,
   },
+  {
+    id: "bkmv-requests",
+    name: "בקשות מבנה אחיד",
+    description: "שליחת בקשות BKMV לרואי חשבון של זכיינים",
+    endpoint: "/api/cron/bkmv-requests",
+    schedule: "0 8 15 1,4,7,10 *",
+    icon: <FileText className="h-6 w-6" />,
+  },
 ];
 
 function formatDate(dateString: string | Date | null | undefined): string {
@@ -152,22 +160,20 @@ export default function CronMonitorTab() {
     },
   });
 
-  // Run cron job mutation
+  // Run cron job mutation via server-side proxy (keeps CRON_SECRET on server)
   const runJobMutation = useMutation({
     mutationFn: async ({ endpoint, dryRun }: { endpoint: string; dryRun: boolean }) => {
-      const url = dryRun
-        ? `${endpoint}${endpoint.includes("?") ? "&" : "?"}dryRun=true`
-        : endpoint;
-
-      const response = await fetch(url, {
+      const response = await fetch("/api/admin/cron-jobs/run", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET || ""}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({ endpoint, dryRun }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to run cron job");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Failed to run cron job");
       }
 
       return response.json();
@@ -261,13 +267,14 @@ export default function CronMonitorTab() {
       </div>
 
       {/* CRON Jobs Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {CRON_JOBS.map((job, index) => {
           const colors = [
             { bg: "from-indigo-50/80", border: "border-indigo-200", icon: "bg-indigo-100 text-indigo-600", dark: "dark:from-indigo-950/30 dark:border-indigo-800" },
             { bg: "from-emerald-50/80", border: "border-emerald-200", icon: "bg-emerald-100 text-emerald-600", dark: "dark:from-emerald-950/30 dark:border-emerald-800" },
             { bg: "from-orange-50/80", border: "border-orange-200", icon: "bg-orange-100 text-orange-600", dark: "dark:from-orange-950/30 dark:border-orange-800" },
             { bg: "from-pink-50/80", border: "border-pink-200", icon: "bg-pink-100 text-pink-600", dark: "dark:from-pink-950/30 dark:border-pink-800" },
+            { bg: "from-cyan-50/80", border: "border-cyan-200", icon: "bg-cyan-100 text-cyan-600", dark: "dark:from-cyan-950/30 dark:border-cyan-800" },
           ];
           const color = colors[index % colors.length];
 
