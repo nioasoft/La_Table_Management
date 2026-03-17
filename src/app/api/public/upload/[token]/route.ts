@@ -25,7 +25,7 @@ import {
 import { validateFileType } from "@/lib/file-validation";
 import { randomUUID } from "crypto";
 import { notifySuperUsersAboutUpload } from "@/lib/notifications";
-import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { isBkmvDataFile, parseBkmvData, extractDateRange, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown, mergeRevenueSummaryIntoAllAccounts } from "@/lib/bkmvdata-parser";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
@@ -346,6 +346,7 @@ export async function POST(
 
           // Build all-accounts summary for manual revenue classification
           const allAccountsMap = buildAllAccountsSummary(parseResult);
+          mergeRevenueSummaryIntoAllAccounts(allAccountsMap, parseResult.revenueSummary);
           const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
           const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
             ...a,

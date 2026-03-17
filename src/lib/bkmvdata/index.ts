@@ -57,6 +57,7 @@ export {
   convertRevenueSummaryToArray,
   convertAllAccountsSummaryToArray,
   buildRevenueMonthlyBreakdown,
+  mergeRevenueSummaryIntoAllAccounts,
 } from './summaries';
 
 // Classification

@@ -86,6 +86,7 @@ import {
   classifyAccounts,
   getCategoryCounts,
   mergeRevenueSummaryIntoClassified,
+  mergeRevenueSummaryIntoAllAccounts,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   CATEGORY_TAB_ORDER,
@@ -206,10 +207,27 @@ export default function BkmvDataPage() {
 
   // Classification state
   const [classifiedAccounts, setClassifiedAccounts] = useState<Map<string, ClassifiedAccount>>(new Map());
-  const [savedClassificationsMap, setSavedClassificationsMap] = useState<Map<string, AccountCategory>>(new Map());
-  // Ref is the synchronous source of truth — always current in closures (no stale-state issues)
+  // Ref mirrors classifiedAccounts state — allows callbacks to read current values without stale closures
+  const classifiedAccountsRef = useRef<Map<string, ClassifiedAccount>>(new Map());
+  // Ref is the synchronous source of truth for saved DB classifications
   const savedClassificationsRef = useRef<Map<string, AccountCategory>>(new Map());
   const [activeCategory, setActiveCategory] = useState<CategoryTab>('uncategorized');
+
+  // Helper: update both classifiedAccounts state and ref atomically
+  const updateClassifiedAccounts = useCallback((
+    updaterOrValue: Map<string, ClassifiedAccount> | ((prev: Map<string, ClassifiedAccount>) => Map<string, ClassifiedAccount>)
+  ) => {
+    if (typeof updaterOrValue === 'function') {
+      setClassifiedAccounts(prev => {
+        const next = updaterOrValue(prev);
+        classifiedAccountsRef.current = next;
+        return next;
+      });
+    } else {
+      classifiedAccountsRef.current = updaterOrValue;
+      setClassifiedAccounts(updaterOrValue);
+    }
+  }, []);
 
   // History and upload state
   const [activeTab, setActiveTab] = useState<string>("upload");
@@ -470,11 +488,11 @@ export default function BkmvDataPage() {
       setDateRange({ minDate: null, maxDate: null });
       setUploadSuccess(null);
       setLastBlobUrl(null);
-      setClassifiedAccounts(new Map());
+      updateClassifiedAccounts(new Map());
       setActiveCategory('uncategorized');
       setSelectedRevenueAccounts(new Set());
     }
-  }, []);
+  }, [updateClassifiedAccounts]);
 
   // Handle drag events
   const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -512,10 +530,10 @@ export default function BkmvDataPage() {
     setDateRange({ minDate: null, maxDate: null });
     setUploadSuccess(null);
     setLastBlobUrl(null);
-    setClassifiedAccounts(new Map());
+    updateClassifiedAccounts(new Map());
     setActiveCategory('uncategorized');
     setSelectedRevenueAccounts(new Set());
-  }, []);
+  }, [updateClassifiedAccounts]);
 
   // Generate unique filename with franchisee name, date, and random suffix
   function generateUniqueFileName(
@@ -684,7 +702,6 @@ export default function BkmvDataPage() {
                   if (classData.map && Object.keys(classData.map).length > 0) {
                     savedMap = new Map(Object.entries(classData.map)) as Map<string, AccountCategory>;
                     savedClassificationsRef.current = savedMap;
-                    setSavedClassificationsMap(savedMap);
                   }
                 }
               } catch {
@@ -702,11 +719,12 @@ export default function BkmvDataPage() {
         setFranchiseeError("מספר חברה (ח.פ) לא נמצא בקובץ");
       }
 
-      // Build all accounts summary and classify
+      // Build all accounts summary, merge revenue data, and classify
       const allAccounts = buildAllAccountsSummary(result);
+      mergeRevenueSummaryIntoAllAccounts(allAccounts, result.revenueSummary);
       const classified = classifyAccounts(allAccounts, savedMap);
       mergeRevenueSummaryIntoClassified(classified, result.revenueSummary);
-      setClassifiedAccounts(classified);
+      updateClassifiedAccounts(classified);
 
       // Default to uncategorized tab if there are uncategorized accounts, otherwise suppliers
       const counts = getCategoryCounts(classified);
@@ -749,7 +767,7 @@ export default function BkmvDataPage() {
     });
 
     // Re-run matching with updated suppliers (use classification-filtered summary like initial load)
-    if (parseResult && classifiedAccounts.size > 0) {
+    if (parseResult && classifiedAccountsRef.current.size > 0) {
       const updatedSuppliers = suppliers.map(s =>
         s.id === supplierId
           ? { ...s, bkmvAliases: [...existingAliases, alias] }
@@ -766,7 +784,7 @@ export default function BkmvDataPage() {
           new Date(eY, eM - 1, eD)
         );
       }
-      const supplierFiltered = filterSuppliersByClassification(summaryToUse, classifiedAccounts, 'supplier');
+      const supplierFiltered = filterSuppliersByClassification(summaryToUse, classifiedAccountsRef.current, 'supplier');
 
       const matches = matchBkmvSuppliers(
         supplierFiltered,
@@ -777,7 +795,7 @@ export default function BkmvDataPage() {
       );
       setMatchingResults(matches);
     }
-  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames, smallSupplierNames, classifiedAccounts, isDateFiltered, filterStartDate, filterEndDate]);
+  }, [suppliers, updateSupplierMutation, parseResult, blacklistedNames, smallSupplierNames, isDateFiltered, filterStartDate, filterEndDate]);
 
   // Helper to re-run supplier matching with current classification and date filters
   const reRunSupplierMatching = useCallback((
@@ -822,9 +840,10 @@ export default function BkmvDataPage() {
     const start = new Date(sY, sM - 1, sD);
     const end = new Date(eY, eM - 1, eD);
     const allAccounts = buildAllAccountsSummary(parseResult, start, end);
+    mergeRevenueSummaryIntoAllAccounts(allAccounts, parseResult.revenueSummary);
     const classified = classifyAccounts(allAccounts, savedClassificationsRef.current);
     mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary, start, end);
-    setClassifiedAccounts(classified);
+    updateClassifiedAccounts(classified);
 
     const matches = reRunSupplierMatching(
       parseResult, classified, blacklistedNames, suppliers,
@@ -832,7 +851,7 @@ export default function BkmvDataPage() {
     );
     setMatchingResults(matches);
     setIsDateFiltered(true);
-  }, [parseResult, filterStartDate, filterEndDate, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
+  }, [parseResult, filterStartDate, filterEndDate, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames, updateClassifiedAccounts]);
 
   // Clear date filter
   const handleClearDateFilter = useCallback(() => {
@@ -840,9 +859,10 @@ export default function BkmvDataPage() {
 
     // Rebuild classified accounts with full (unfiltered) data
     const allAccounts = buildAllAccountsSummary(parseResult);
+    mergeRevenueSummaryIntoAllAccounts(allAccounts, parseResult.revenueSummary);
     const classified = classifyAccounts(allAccounts, savedClassificationsRef.current);
     mergeRevenueSummaryIntoClassified(classified, parseResult.revenueSummary);
-    setClassifiedAccounts(classified);
+    updateClassifiedAccounts(classified);
 
     const matches = reRunSupplierMatching(
       parseResult, classified, blacklistedNames, suppliers, false,
@@ -852,19 +872,36 @@ export default function BkmvDataPage() {
     setFilterStartDate("");
     setFilterEndDate("");
     setIsDateFiltered(false);
-  }, [parseResult, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames]);
+  }, [parseResult, suppliers, blacklistedNames, reRunSupplierMatching, smallSupplierNames, updateClassifiedAccounts]);
 
   // Re-run matching when blacklist changes
   useEffect(() => {
-    if (!parseResult || suppliers.length === 0 || classifiedAccounts.size === 0) return;
+    if (!parseResult || suppliers.length === 0 || classifiedAccountsRef.current.size === 0) return;
 
     const matches = reRunSupplierMatching(
-      parseResult, classifiedAccounts, blacklistedNames, suppliers,
+      parseResult, classifiedAccountsRef.current, blacklistedNames, suppliers,
       isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
     );
     setMatchingResults(matches);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blacklistedNames, smallSupplierNames]);
+
+  // Helper: deterministic rebuild of classifiedAccounts from source of truth
+  const rebuildClassifiedAccounts = useCallback(() => {
+    if (!parseResult) return;
+    const start = isDateFiltered && filterStartDate && filterEndDate
+      ? (() => { const [y,m,d] = filterStartDate.split('-').map(Number); return new Date(y, m-1, d); })()
+      : undefined;
+    const end = isDateFiltered && filterStartDate && filterEndDate
+      ? (() => { const [y,m,d] = filterEndDate.split('-').map(Number); return new Date(y, m-1, d); })()
+      : undefined;
+    const allAccounts = buildAllAccountsSummary(parseResult, start, end);
+    mergeRevenueSummaryIntoAllAccounts(allAccounts, parseResult.revenueSummary);
+    const rebuilt = classifyAccounts(allAccounts, savedClassificationsRef.current);
+    mergeRevenueSummaryIntoClassified(rebuilt, parseResult.revenueSummary, start, end);
+    updateClassifiedAccounts(rebuilt);
+    return rebuilt;
+  }, [parseResult, isDateFiltered, filterStartDate, filterEndDate, updateClassifiedAccounts]);
 
   // Handle quick-classify action (from uncategorized or all tab)
   const handleQuickClassify = useCallback(async (
@@ -877,17 +914,17 @@ export default function BkmvDataPage() {
       return;
     }
 
-    // Check previous category before optimistic update
-    const previousCategory = classifiedAccounts.get(accountKey)?.category;
+    // Read from ref to avoid stale closures
+    const previousCategory = classifiedAccountsRef.current.get(accountKey)?.category;
 
-    // Synchronously update ref BEFORE async call — prevents stale closures in date filter handlers
+    // Synchronously update ref BEFORE async call
     const prevRefMap = savedClassificationsRef.current;
     const nextRefMap = new Map(prevRefMap);
     nextRefMap.set(accountKey, category);
     savedClassificationsRef.current = nextRefMap;
 
-    // Optimistic update
-    setClassifiedAccounts(prev => {
+    // Optimistic update for instant visual feedback
+    updateClassifiedAccounts(prev => {
       const next = new Map(prev);
       const existing = next.get(accountKey);
       if (existing) {
@@ -904,27 +941,29 @@ export default function BkmvDataPage() {
         category,
         accountName,
       });
-      // Sync React state for dependency tracking
-      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
+      // After successful save, full deterministic rebuild ensures correct state
+      const rebuilt = rebuildClassifiedAccounts();
+      // Re-run supplier matching if supplier category is involved
+      if (parseResult && rebuilt && (category === 'supplier' || previousCategory === 'supplier')) {
+        const matches = reRunSupplierMatching(
+          parseResult, rebuilt, blacklistedNames, suppliers,
+          isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
+        );
+        setMatchingResults(matches);
+      }
     } catch {
-      // Rollback ref on error
+      // Rollback ref and optimistic update on error
       savedClassificationsRef.current = prevRefMap;
+      updateClassifiedAccounts(prev => {
+        const next = new Map(prev);
+        const existing = next.get(accountKey);
+        if (existing && previousCategory) {
+          next.set(accountKey, { ...existing, category: previousCategory, classificationSource: 'saved' });
+        }
+        return next;
+      });
       setError("שגיאה בשמירת הסיווג");
-    }
-
-    // Re-run supplier matching if supplier category is involved (to or from)
-    if (parseResult && (category === 'supplier' || previousCategory === 'supplier')) {
-      // Need updated classifiedAccounts - use the optimistic state
-      setTimeout(() => {
-        setClassifiedAccounts(currentClassified => {
-          const matches = reRunSupplierMatching(
-            parseResult, currentClassified, blacklistedNames, suppliers,
-            isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
-          );
-          setMatchingResults(matches);
-          return currentClassified;
-        });
-      }, 0);
+      return;
     }
 
     // Recalculate stored revenue when revenue category is involved
@@ -939,7 +978,7 @@ export default function BkmvDataPage() {
         console.error('Revenue recalculation failed — classification was saved');
       }
     }
-  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
+  }, [matchedFranchisee, classifyMutation, parseResult, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, smallSupplierNames, updateClassifiedAccounts, rebuildClassifiedAccounts]);
 
   // Handle reclassify (reset to uncategorized)
   const handleReclassify = useCallback(async (accountKey: string) => {
@@ -948,18 +987,18 @@ export default function BkmvDataPage() {
       return;
     }
 
-    // Find the previous category before reset
-    const previousCategory = classifiedAccounts.get(accountKey)?.category;
-    const accountName = classifiedAccounts.get(accountKey)?.accountName;
+    // Read from ref to avoid stale closures
+    const previousCategory = classifiedAccountsRef.current.get(accountKey)?.category;
+    const accountName = classifiedAccountsRef.current.get(accountKey)?.accountName;
 
-    // Synchronously update ref BEFORE async call — prevents stale closures in date filter handlers
+    // Synchronously update ref BEFORE async call
     const prevRefMap = savedClassificationsRef.current;
     const nextRefMap = new Map(prevRefMap);
     nextRefMap.set(accountKey, 'uncategorized');
     savedClassificationsRef.current = nextRefMap;
 
-    // Optimistic update - set to uncategorized (saved, so auto-detection won't re-grab)
-    setClassifiedAccounts(prev => {
+    // Optimistic update for instant visual feedback
+    updateClassifiedAccounts(prev => {
       const next = new Map(prev);
       const existing = next.get(accountKey);
       if (existing) {
@@ -980,26 +1019,29 @@ export default function BkmvDataPage() {
         category: 'uncategorized' as AccountCategory,
         accountName,
       });
-      // Sync React state for dependency tracking
-      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
+      // After successful save, full deterministic rebuild ensures correct state
+      const rebuilt = rebuildClassifiedAccounts();
+      // Re-run supplier matching if previous category was supplier
+      if (rebuilt && previousCategory === 'supplier') {
+        const matches = reRunSupplierMatching(
+          parseResult, rebuilt, blacklistedNames, suppliers,
+          isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
+        );
+        setMatchingResults(matches);
+      }
     } catch {
-      // Rollback ref on error
+      // Rollback ref and optimistic update on error
       savedClassificationsRef.current = prevRefMap;
+      updateClassifiedAccounts(prev => {
+        const next = new Map(prev);
+        const existing = next.get(accountKey);
+        if (existing && previousCategory) {
+          next.set(accountKey, { ...existing, category: previousCategory, classificationSource: 'saved' });
+        }
+        return next;
+      });
       setError("שגיאה באיפוס הסיווג");
-    }
-
-    // Re-run supplier matching if previous category was supplier
-    if (previousCategory === 'supplier') {
-      setTimeout(() => {
-        setClassifiedAccounts(currentClassified => {
-          const matches = reRunSupplierMatching(
-            parseResult, currentClassified, blacklistedNames, suppliers,
-            isDateFiltered, filterStartDate, filterEndDate, smallSupplierNames
-          );
-          setMatchingResults(matches);
-          return currentClassified;
-        });
-      }, 0);
+      return;
     }
 
     // Recalculate stored revenue if previous category was revenue
@@ -1014,7 +1056,7 @@ export default function BkmvDataPage() {
         console.error('Revenue recalculation failed — classification was reset');
       }
     }
-  }, [matchedFranchisee, parseResult, classifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, classifiedAccounts, smallSupplierNames]);
+  }, [matchedFranchisee, parseResult, classifyMutation, blacklistedNames, suppliers, isDateFiltered, filterStartDate, filterEndDate, reRunSupplierMatching, smallSupplierNames, updateClassifiedAccounts, rebuildClassifiedAccounts]);
 
   // Handle saving selected revenue accounts
   const handleSaveRevenueAccounts = useCallback(async () => {
@@ -1024,7 +1066,7 @@ export default function BkmvDataPage() {
     }
 
     const items = Array.from(selectedRevenueAccounts).map(accountKey => {
-      const account = classifiedAccounts.get(accountKey);
+      const account = classifiedAccountsRef.current.get(accountKey);
       return {
         accountKey,
         category: 'revenue' as AccountCategory,
@@ -1063,20 +1105,8 @@ export default function BkmvDataPage() {
         console.error('Failed to save franchisee revenue codes');
       }
 
-      // Update local state
-      setClassifiedAccounts(prev => {
-        const next = new Map(prev);
-        for (const item of items) {
-          const existing = next.get(item.accountKey);
-          if (existing) {
-            next.set(item.accountKey, { ...existing, category: 'revenue', classificationSource: 'saved' });
-          }
-        }
-        return next;
-      });
-
-      // Sync React state for dependency tracking
-      setSavedClassificationsMap(new Map(savedClassificationsRef.current));
+      // Full deterministic rebuild after successful save
+      rebuildClassifiedAccounts();
 
       setSelectedRevenueAccounts(new Set());
 
@@ -1095,7 +1125,7 @@ export default function BkmvDataPage() {
       savedClassificationsRef.current = prevRefMap;
       setError("שגיאה בשמירת קודי הכנסה");
     }
-  }, [matchedFranchisee, selectedRevenueAccounts, classifiedAccounts, bulkClassifyMutation]);
+  }, [matchedFranchisee, selectedRevenueAccounts, bulkClassifyMutation, rebuildClassifiedAccounts]);
 
   // Filter and search results
   const filteredResults = useMemo(() => {

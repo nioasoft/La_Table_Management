@@ -430,7 +430,7 @@ export default function SupplierCommissionReportPage() {
       {hasData && !isLoading && (
         <div className="border rounded-md overflow-auto max-h-[calc(100vh-140px)] [&>div]:overflow-visible">
               <Table className="table-compact table-grid">
-                <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background">
+                <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background shadow-[0_-1px_0_1px_hsl(var(--background))]">
                   <TableRow>
                     <TableHead className="sticky start-0 z-30 bg-background text-start">
                       ספק

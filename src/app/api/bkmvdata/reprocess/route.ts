@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown, mergeRevenueSummaryIntoAllAccounts } from "@/lib/bkmvdata-parser";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getSuppliers } from "@/data-access/suppliers";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
 
           // Build all-accounts summary for manual revenue classification
           const allAccountsMap = buildAllAccountsSummary(parseResult);
+          mergeRevenueSummaryIntoAllAccounts(allAccountsMap, parseResult.revenueSummary);
           const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
           const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
             ...a,
