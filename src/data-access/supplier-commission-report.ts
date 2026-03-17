@@ -614,9 +614,9 @@ export async function getSupplierCommissionReport(
       totalBkmvRevenue: roundAmount(totalBkmvRevenue),
       overallPercentOfTurnover:
         totalBkmvRevenue > 0
-          ? roundAmount(
-              (grandTotalCommissionBeforeVat / totalBkmvRevenue) * 100
-            )
+          ? Math.round(
+              (grandTotalCommissionBeforeVat / totalBkmvRevenue) * 1000
+            ) / 10
           : null,
     },
     generatedAt: new Date().toISOString(),

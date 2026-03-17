@@ -76,6 +76,12 @@ export async function GET(request: NextRequest) {
       "סה״כ עמלות (לפני מע״מ)",
     ];
 
+    // Format helpers for Excel display
+    const fmt = new Intl.NumberFormat("he-IL", {
+      maximumFractionDigits: 0,
+    });
+    const fmtCurrency = (n: number) => `₪ ${fmt.format(Math.round(n))}`;
+
     // Data rows
     const rows: (string | number)[][] = [];
 
@@ -83,7 +89,7 @@ export async function GET(request: NextRequest) {
       const row: (string | number)[] = [
         sup.supplierName,
         sup.supplierCode,
-        sup.commissionRate,
+        `${sup.commissionRate}%`,
         sup.isVatExempt ? "כן" : "לא",
       ];
 
@@ -91,14 +97,14 @@ export async function GET(request: NextRequest) {
       for (const f of report.franchisees) {
         const cell = sup.cells[f.franchiseeId];
         if (cell) {
-          row.push(Math.round(cell.commissionAmountBeforeVat * 100) / 100);
+          row.push(fmtCurrency(cell.commissionAmountBeforeVat));
         } else {
-          row.push(0);
+          row.push("₪ 0");
         }
       }
 
       // Total commission before VAT
-      row.push(sup.totalCommissionBeforeVat);
+      row.push(fmtCurrency(sup.totalCommissionBeforeVat));
 
       rows.push(row);
     }
@@ -107,10 +113,10 @@ export async function GET(request: NextRequest) {
     const totalsRow: (string | number)[] = ["סה״כ", "", "", ""];
 
     for (const f of report.franchisees) {
-      totalsRow.push(f.totalCommissionBeforeVat);
+      totalsRow.push(fmtCurrency(f.totalCommissionBeforeVat));
     }
 
-    totalsRow.push(report.grandTotals.totalCommissionBeforeVat);
+    totalsRow.push(fmtCurrency(report.grandTotals.totalCommissionBeforeVat));
 
     rows.push(totalsRow);
 
@@ -118,18 +124,19 @@ export async function GET(request: NextRequest) {
     const pctRow: (string | number)[] = ["% ממחזור", "", "", ""];
 
     for (const f of report.franchisees) {
-      pctRow.push(
+      const pct =
         f.bkmvRevenue > 0
-          ? Math.round((f.totalCommissionBeforeVat / f.bkmvRevenue) * 10000) /
-              100
-          : 0
-      );
+          ? Math.round(
+              (f.totalCommissionBeforeVat / f.bkmvRevenue) * 1000
+            ) / 10
+          : 0;
+      pctRow.push(`${pct}%`);
     }
 
     pctRow.push(
       report.grandTotals.overallPercentOfTurnover != null
-        ? report.grandTotals.overallPercentOfTurnover
-        : 0
+        ? `${report.grandTotals.overallPercentOfTurnover}%`
+        : "0%"
     );
 
     rows.push(pctRow);
@@ -138,10 +145,10 @@ export async function GET(request: NextRequest) {
     const revenueRow: (string | number)[] = ["מחזור (BKMV)", "", "", ""];
 
     for (const f of report.franchisees) {
-      revenueRow.push(f.bkmvRevenue);
+      revenueRow.push(fmtCurrency(f.bkmvRevenue));
     }
 
-    revenueRow.push(report.grandTotals.totalBkmvRevenue);
+    revenueRow.push(fmtCurrency(report.grandTotals.totalBkmvRevenue));
 
     rows.push(revenueRow);
 

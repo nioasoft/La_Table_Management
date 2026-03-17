@@ -545,8 +545,8 @@ export default function SupplierCommissionReportPage() {
                         f.bkmvRevenue > 0
                           ? Math.round(
                               (f.totalCommissionBeforeVat / f.bkmvRevenue) *
-                                10000
-                            ) / 100
+                                1000
+                            ) / 10
                           : null;
                       return (
                         <TableCell
