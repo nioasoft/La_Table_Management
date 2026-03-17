@@ -1728,15 +1728,13 @@ export default function BkmvDataPage() {
                                           {CATEGORY_LABELS[cat]}
                                         </button>
                                       ))}
-                                    {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
-                                      <button
+                                    <button
                                         onClick={() => handleReclassify(account.accountCode)}
                                         disabled={!matchedFranchisee || classifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
-                                        איפוס
+                                        לא רלוונטי
                                       </button>
-                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -2126,19 +2124,6 @@ export default function BkmvDataPage() {
                           className="ps-9 w-64"
                         />
                       </div>
-                    {matchedFranchisee && selectedRevenueAccounts.size > 0 && (
-                      <Button
-                        onClick={handleSaveRevenueAccounts}
-                        disabled={bulkClassifyMutation.isPending}
-                      >
-                        {bulkClassifyMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin ms-2" />
-                        ) : (
-                          <Check className="h-4 w-4 ms-2" />
-                        )}
-                        שמור כקודי הכנסה ({selectedRevenueAccounts.size})
-                      </Button>
-                    )}
                     </div>
                   </div>
                 </CardHeader>
@@ -2147,7 +2132,6 @@ export default function BkmvDataPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          {matchedFranchisee && <TableHead className="w-10"></TableHead>}
                           <TableHead className="text-right">שם חשבון</TableHead>
                           <TableHead className="text-right">קוד</TableHead>
                           <TableHead className="text-right">סכום</TableHead>
@@ -2159,7 +2143,7 @@ export default function BkmvDataPage() {
                       <TableBody>
                         {categoryAccounts.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={matchedFranchisee ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                            <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                               אין חשבונות הכנסות
                             </TableCell>
                           </TableRow>
@@ -2168,21 +2152,6 @@ export default function BkmvDataPage() {
                             const monthlyEntries = Object.entries(account.monthlyBreakdown || {}).sort(([a], [b]) => a.localeCompare(b));
                             return (
                               <TableRow key={account.accountCode}>
-                                {matchedFranchisee && (
-                                  <TableCell>
-                                    <Checkbox
-                                      checked={selectedRevenueAccounts.has(account.accountCode)}
-                                      onCheckedChange={(checked) => {
-                                        setSelectedRevenueAccounts(prev => {
-                                          const next = new Set(prev);
-                                          if (checked) next.add(account.accountCode);
-                                          else next.delete(account.accountCode);
-                                          return next;
-                                        });
-                                      }}
-                                    />
-                                  </TableCell>
-                                )}
                                 <TableCell className="font-medium">{account.accountName}</TableCell>
                                 <TableCell className="font-mono text-sm">{account.accountCode}</TableCell>
                                 <TableCell className="font-mono">{formatAmount(account.totalAmount)}</TableCell>
@@ -2215,15 +2184,13 @@ export default function BkmvDataPage() {
                                         {CATEGORY_LABELS[cat]}
                                       </button>
                                     ))}
-                                    {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
-                                      <button
+                                    <button
                                         onClick={() => handleReclassify(account.accountCode)}
                                         disabled={!matchedFranchisee || classifyMutation.isPending}
                                         className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                       >
-                                        איפוס
+                                        לא רלוונטי
                                       </button>
-                                    )}
                                   </div>
                                 </TableCell>
                               </TableRow>
@@ -2298,15 +2265,13 @@ export default function BkmvDataPage() {
                                       {CATEGORY_LABELS[cat]}
                                     </button>
                                   ))}
-                                  {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
-                                    <button
+                                  <button
                                       onClick={() => handleReclassify(account.accountCode)}
                                       disabled={!matchedFranchisee || classifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
-                                      איפוס
+                                      לא רלוונטי
                                     </button>
-                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -2380,15 +2345,13 @@ export default function BkmvDataPage() {
                                       {CATEGORY_LABELS[cat]}
                                     </button>
                                   ))}
-                                  {account.classificationSource === 'saved' && account.category !== 'uncategorized' && (
-                                    <button
+                                  <button
                                       onClick={() => handleReclassify(account.accountCode)}
                                       disabled={!matchedFranchisee || classifyMutation.isPending}
                                       className="px-2 py-0.5 text-xs rounded-full font-medium transition-colors cursor-pointer bg-gray-50 text-gray-600 hover:bg-gray-200"
                                     >
-                                      איפוס
+                                      לא רלוונטי
                                     </button>
-                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>
