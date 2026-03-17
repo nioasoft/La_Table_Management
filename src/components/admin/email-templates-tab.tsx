@@ -29,20 +29,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
   Mail,
   Plus,
   Pencil,
-  Trash2,
   RefreshCw,
   X,
   Check,
@@ -65,7 +54,6 @@ import {
   useEmailTemplates,
   useCreateEmailTemplate,
   useUpdateEmailTemplate,
-  useDeleteEmailTemplate,
   useToggleEmailTemplateStatus,
   usePreviewEmailTemplate,
 } from "@/queries/email-templates";
@@ -137,9 +125,6 @@ export default function EmailTemplatesTab() {
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPreviewDialog, setShowPreviewDialog] = useState(false);
 
-  // Delete confirmation state
-  const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null);
-
   // Send test dialog state
   const [sendTestTemplate, setSendTestTemplate] =
     useState<EmailTemplate | null>(null);
@@ -161,7 +146,6 @@ export default function EmailTemplatesTab() {
 
   const createMutation = useCreateEmailTemplate();
   const updateMutation = useUpdateEmailTemplate();
-  const deleteMutation = useDeleteEmailTemplate();
   const toggleStatusMutation = useToggleEmailTemplateStatus();
   const previewMutation = usePreviewEmailTemplate();
 
@@ -228,21 +212,6 @@ export default function EmailTemplatesTab() {
     });
     setShowFormDialog(true);
     setFormError(null);
-  };
-
-  const handleDelete = () => {
-    if (!deleteTemplateId) return;
-
-    deleteMutation.mutate(deleteTemplateId, {
-      onSuccess: () => {
-        toast.success(t.messages.deleteSuccess);
-        setDeleteTemplateId(null);
-      },
-      onError: (error) => {
-        toast.error(error.message || t.messages.deleteError);
-        setDeleteTemplateId(null);
-      },
-    });
   };
 
   const handleToggleStatus = (template: EmailTemplate) => {
@@ -567,16 +536,6 @@ export default function EmailTemplatesTab() {
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
-                    {userRole === "super_user" && (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setDeleteTemplateId(template.id)}
-                        title={t.actions.delete}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
                   </div>
                 </div>
               ))}
@@ -870,40 +829,6 @@ export default function EmailTemplatesTab() {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog
-        open={!!deleteTemplateId}
-        onOpenChange={(open) => !open && setDeleteTemplateId(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t.deleteDialog.title}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t.deleteDialog.description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteMutation.isPending}>
-              {t.deleteDialog.cancel}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              disabled={deleteMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {deleteMutation.isPending ? (
-                <>
-                  <Loader2 className="ms-2 h-4 w-4 animate-spin" />
-                  {t.deleteDialog.deleting}
-                </>
-              ) : (
-                t.deleteDialog.confirm
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Send Test Email Dialog */}
       <SendTestEmailDialog
