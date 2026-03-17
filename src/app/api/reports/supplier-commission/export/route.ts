@@ -87,9 +87,9 @@ export async function GET(request: NextRequest) {
 
     for (const sup of report.suppliers) {
       const row: (string | number)[] = [
-        sup.supplierName,
+        sup.isEstimated ? `${sup.supplierName} *` : sup.supplierName,
         sup.supplierCode,
-        `${sup.commissionRate}%`,
+        `${Number(sup.commissionRate).toFixed(1)}%`,
         sup.isVatExempt ? "כן" : "לא",
       ];
 
@@ -130,13 +130,13 @@ export async function GET(request: NextRequest) {
               (f.totalCommissionBeforeVat / f.bkmvRevenue) * 1000
             ) / 10
           : 0;
-      pctRow.push(`${pct}%`);
+      pctRow.push(`${pct.toFixed(1)}%`);
     }
 
     pctRow.push(
       report.grandTotals.overallPercentOfTurnover != null
-        ? `${report.grandTotals.overallPercentOfTurnover}%`
-        : "0%"
+        ? `${report.grandTotals.overallPercentOfTurnover.toFixed(1)}%`
+        : "0.0%"
     );
 
     rows.push(pctRow);
@@ -151,6 +151,14 @@ export async function GET(request: NextRequest) {
     revenueRow.push(fmtCurrency(report.grandTotals.totalBkmvRevenue));
 
     rows.push(revenueRow);
+
+    // Add footnote if any suppliers are estimated (pro-rated)
+    if (report.suppliers.some((s) => s.isEstimated)) {
+      rows.push([]); // empty separator row
+      rows.push([
+        "* הערכה רבעונית — סכומים חולקו באופן יחסי עבור ספקים שנתיים/חצי-שנתיים",
+      ]);
+    }
 
     // Create workbook
     const wb = XLSX.utils.book_new();

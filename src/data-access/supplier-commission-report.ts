@@ -42,6 +42,8 @@ export interface SupplierCommissionRow {
   totalCommission: number;
   totalCommissionBeforeVat: number;
   percentOfTurnover: number | null;
+  isEstimated: boolean; // true for pro-rated suppliers (annual/semi-annual)
+  settlementFrequency: string; // for display context
 }
 
 export interface SupplierCommissionFranchiseeColumn {
@@ -100,6 +102,21 @@ function getQuarterDateRange(
     endDate: formatLocalDate(end),
     months,
   };
+}
+
+/**
+ * Get the pro-rata factor for converting a supplier's settlement period to quarterly.
+ * Annual → ÷4, Semi-annual → ÷2, others → no change.
+ */
+function getProRataFactor(freq: string | null | undefined): number {
+  switch (freq) {
+    case "annual":
+      return 3 / 12;
+    case "semi_annual":
+      return 3 / 6;
+    default:
+      return 1;
+  }
 }
 
 function emptyReport(
@@ -166,6 +183,7 @@ export async function getSupplierCommissionReport(
       vatExempt: supplier.vatExempt,
       vatIncluded: supplier.vatIncluded,
       fileMapping: supplier.fileMapping,
+      settlementFrequency: supplier.settlementFrequency,
     })
     .from(supplier)
     .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
@@ -556,24 +574,65 @@ export async function getSupplierCommissionReport(
     totalBkmvRevenue += fCol.bkmvRevenue;
   }
 
-  // Convert supplier rows to array and calculate % of turnover
+  // Convert supplier rows to array, apply pro-rata, and calculate % of turnover
   const supplierRows: SupplierCommissionRow[] = Array.from(
     supplierRowsMap.values()
   )
-    .map((row) => ({
-      ...row,
-      totalCommission: roundAmount(row.totalCommission),
-      totalCommissionBeforeVat: roundAmount(
-        row.totalCommissionBeforeVat
-      ),
-      percentOfTurnover:
-        totalBkmvRevenue > 0
-          ? roundPercent(
-              (row.totalCommissionBeforeVat / totalBkmvRevenue) * 100
-            )
-          : null,
-    }))
+    .map((row) => {
+      const sData = supplierMap.get(row.supplierId);
+      const freq = sData?.settlementFrequency ?? "quarterly";
+      const factor = getProRataFactor(freq);
+      const isEstimated = factor !== 1;
+
+      // Apply pro-rata factor to cells
+      const adjustedCells: Record<string, SupplierCommissionCell> = {};
+      for (const [fId, cell] of Object.entries(row.cells)) {
+        adjustedCells[fId] = {
+          grossAmount: roundAmount(cell.grossAmount * factor),
+          netAmount: roundAmount(cell.netAmount * factor),
+          commissionAmount: roundAmount(cell.commissionAmount * factor),
+          commissionAmountBeforeVat: roundAmount(
+            cell.commissionAmountBeforeVat * factor
+          ),
+        };
+      }
+
+      const totalCommission = roundAmount(row.totalCommission * factor);
+      const totalCommissionBeforeVat = roundAmount(
+        row.totalCommissionBeforeVat * factor
+      );
+
+      return {
+        ...row,
+        cells: adjustedCells,
+        totalCommission,
+        totalCommissionBeforeVat,
+        percentOfTurnover:
+          totalBkmvRevenue > 0
+            ? roundPercent(
+                (totalCommissionBeforeVat / totalBkmvRevenue) * 100
+              )
+            : null,
+        isEstimated,
+        settlementFrequency: freq,
+      };
+    })
     .sort((a, b) => a.supplierName.localeCompare(b.supplierName, "he"));
+
+  // Recalculate franchisee column totals using pro-rated supplier data
+  for (const fCol of franchiseeColumnMap.values()) {
+    fCol.totalCommission = 0;
+    fCol.totalCommissionBeforeVat = 0;
+  }
+  for (const sup of supplierRows) {
+    for (const [fId, cell] of Object.entries(sup.cells)) {
+      const fCol = franchiseeColumnMap.get(fId);
+      if (fCol) {
+        fCol.totalCommission += cell.commissionAmount;
+        fCol.totalCommissionBeforeVat += cell.commissionAmountBeforeVat;
+      }
+    }
+  }
 
   // Convert franchisee columns to array
   const franchiseeColumns: SupplierCommissionFranchiseeColumn[] = Array.from(

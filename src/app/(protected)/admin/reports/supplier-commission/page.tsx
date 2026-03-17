@@ -68,6 +68,8 @@ interface SupplierCommissionRow {
   totalCommission: number;
   totalCommissionBeforeVat: number;
   percentOfTurnover: number | null;
+  isEstimated: boolean;
+  settlementFrequency: string;
 }
 
 interface SupplierCommissionFranchiseeColumn {
@@ -382,7 +384,7 @@ export default function SupplierCommissionReportPage() {
             <span className="text-muted-foreground">% ממחזור:</span>{" "}
             <span className="font-semibold font-mono tabular-nums text-amber-600">
               {report.grandTotals.overallPercentOfTurnover != null
-                ? `${report.grandTotals.overallPercentOfTurnover}%`
+                ? `${report.grandTotals.overallPercentOfTurnover.toFixed(1)}%`
                 : "-"}
             </span>
           </span>
@@ -428,6 +430,7 @@ export default function SupplierCommissionReportPage() {
 
       {/* Matrix Table — no Card wrapper overhead */}
       {hasData && !isLoading && (
+        <>
         <div className="border rounded-md overflow-auto max-h-[calc(100vh-140px)] [&>div]:overflow-visible">
               <Table className="table-compact table-grid">
                 <TableHeader className="sticky top-0 z-20 bg-background [&_th]:bg-background shadow-[0_-1px_0_1px_hsl(var(--background))]">
@@ -473,18 +476,31 @@ export default function SupplierCommissionReportPage() {
                                     פטור
                                   </Badge>
                                 )}
+                                {sup.isEstimated && (
+                                  <Badge
+                                    variant="outline"
+                                    className="ms-1 text-[10px] px-1 py-0 border-amber-400 text-amber-600"
+                                  >
+                                    הערכה *
+                                  </Badge>
+                                )}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
                               <p>{sup.supplierName}</p>
                               <p className="text-muted-foreground">{sup.supplierCode}</p>
                               {sup.isVatExempt && <p className="text-muted-foreground">פטור מע״מ</p>}
+                              {sup.isEstimated && (
+                                <p className="text-amber-600">
+                                  הערכה רבעונית (ספק {sup.settlementFrequency === "annual" ? "שנתי" : "חצי-שנתי"})
+                                </p>
+                              )}
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </TableCell>
                       <TableCell className="text-center font-mono tabular-nums">
-                        {sup.commissionRate}%
+                        {Number(sup.commissionRate).toFixed(1)}%
                       </TableCell>
                       {sortedFranchisees.map((f) => {
                         const cell = sup.cells[f.franchiseeId];
@@ -554,7 +570,7 @@ export default function SupplierCommissionReportPage() {
                           className="text-center font-mono tabular-nums"
                         >
                           {pct != null ? (
-                            `${pct}%`
+                            `${pct.toFixed(1)}%`
                           ) : (
                             <span className="text-muted-foreground">-</span>
                           )}
@@ -563,7 +579,7 @@ export default function SupplierCommissionReportPage() {
                     })}
                     <TableCell className="text-center font-mono tabular-nums font-bold">
                       {report.grandTotals.overallPercentOfTurnover != null
-                        ? `${report.grandTotals.overallPercentOfTurnover}%`
+                        ? `${report.grandTotals.overallPercentOfTurnover.toFixed(1)}%`
                         : "-"}
                     </TableCell>
                   </TableRow>
@@ -593,6 +609,12 @@ export default function SupplierCommissionReportPage() {
                 </TableBody>
               </Table>
             </div>
+        {report.suppliers.some((s) => s.isEstimated) && (
+          <p className="text-xs text-muted-foreground mt-1 px-1">
+            * הערכה רבעונית — סכומים חולקו באופן יחסי עבור ספקים שנתיים/חצי-שנתיים
+          </p>
+        )}
+        </>
       )}
     </div>
   );
