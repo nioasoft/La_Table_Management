@@ -342,6 +342,26 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     }
   }
 
+  // Handle debit-only revenue accounts (creditTurnover = 0, debitTurnover > 0).
+  // Debit entries to a revenue account are contra-revenue (reductions/offsets).
+  // B100 transactions sum to a positive amount but should be negative in revenue context.
+  // Example: "הכנסות עמלת חבר" — member commission deductions.
+  for (const account of result.accounts) {
+    const key = account.accountKey.trim();
+    if (!revenueAccountCodes.has(key)) continue;
+    if (account.creditTurnover !== 0) continue; // already handled above
+    if (account.debitTurnover <= 0) continue;
+
+    const existing = summary.get(key);
+    if (!existing || existing.totalAmount <= 0) continue; // already negative or missing
+
+    // Negate — debit entries to revenue are contra-revenue
+    existing.totalAmount = -existing.totalAmount;
+    for (const month of Object.keys(existing.monthlyBreakdown)) {
+      existing.monthlyBreakdown[month] = -existing.monthlyBreakdown[month];
+    }
+  }
+
   result.revenueSummary = summary;
 }
 
