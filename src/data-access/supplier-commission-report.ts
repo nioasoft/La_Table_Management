@@ -21,7 +21,7 @@ import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-
 
 export interface SupplierCommissionReportFilters {
   year: number;
-  quarter: 1 | 2 | 3 | 4;
+  quarter: 0 | 1 | 2 | 3 | 4; // 0 = annual (full year)
   brandId?: string;
 }
 
@@ -57,7 +57,7 @@ export interface SupplierCommissionFranchiseeColumn {
 
 export interface SupplierCommissionReport {
   year: number;
-  quarter: 1 | 2 | 3 | 4;
+  quarter: 0 | 1 | 2 | 3 | 4; // 0 = annual
   brandId: string | null;
   brandName: string | null;
   suppliers: SupplierCommissionRow[];
@@ -75,14 +75,10 @@ export interface SupplierCommissionReport {
 // HELPERS
 // ============================================================================
 
-function getQuarterDateRange(
+function getPeriodDateRange(
   year: number,
-  quarter: 1 | 2 | 3 | 4
+  quarter: 0 | 1 | 2 | 3 | 4
 ): { startDate: string; endDate: string; months: string[] } {
-  const startMonth = (quarter - 1) * 3;
-  const start = new Date(year, startMonth, 1);
-  const end = new Date(year, startMonth + 3, 0);
-
   const formatLocalDate = (date: Date) => {
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -90,7 +86,22 @@ function getQuarterDateRange(
     return `${y}-${m}-${d}`;
   };
 
-  // Build list of months in the quarter (e.g. ["2025-01", "2025-02", "2025-03"])
+  // Annual: full year
+  if (quarter === 0) {
+    const start = new Date(year, 0, 1);
+    const end = new Date(year, 11, 31);
+    const months: string[] = [];
+    for (let i = 1; i <= 12; i++) {
+      months.push(`${year}-${String(i).padStart(2, "0")}`);
+    }
+    return { startDate: formatLocalDate(start), endDate: formatLocalDate(end), months };
+  }
+
+  // Quarterly
+  const startMonth = (quarter - 1) * 3;
+  const start = new Date(year, startMonth, 1);
+  const end = new Date(year, startMonth + 3, 0);
+
   const months: string[] = [];
   for (let i = 0; i < 3; i++) {
     const m = startMonth + i + 1; // 1-based
@@ -121,7 +132,7 @@ function getProRataFactor(freq: string | null | undefined): number {
 
 function emptyReport(
   year: number,
-  quarter: 1 | 2 | 3 | 4,
+  quarter: 0 | 1 | 2 | 3 | 4,
   brandId: string | undefined,
   brandName: string | null
 ): SupplierCommissionReport {
@@ -156,8 +167,9 @@ export async function getSupplierCommissionReport(
   filters: SupplierCommissionReportFilters
 ): Promise<SupplierCommissionReport> {
   const { year, quarter, brandId } = filters;
-  const { startDate: quarterStart, endDate: quarterEnd, months } =
-    getQuarterDateRange(year, quarter);
+  const isAnnual = quarter === 0;
+  const { startDate: periodStart, endDate: periodEnd, months } =
+    getPeriodDateRange(year, quarter);
 
   // Get brand info if filtering
   let brandInfo: { id: string; nameHe: string } | null = null;
@@ -212,9 +224,9 @@ export async function getSupplierCommissionReport(
     supplierMap.set(s.id, s);
   }
 
-  // Get VAT rate for the quarter
-  const quarterStartMonth = (quarter - 1) * 3;
-  const periodDate = new Date(year, quarterStartMonth, 1);
+  // Get VAT rate for the period
+  const periodStartMonth = isAnnual ? 0 : (quarter - 1) * 3;
+  const periodDate = new Date(year, periodStartMonth, 1);
   const vatRate = await getVatRateForDate(periodDate);
 
   // Query supplier file uploads for the quarter (ordered by newest first for dedup)
@@ -234,8 +246,8 @@ export async function getSupplierCommissionReport(
           eq(supplierFileUpload.processingStatus, "auto_approved"),
           eq(supplierFileUpload.processingStatus, "approved")
         ),
-        lte(supplierFileUpload.periodStartDate, quarterEnd),
-        gte(supplierFileUpload.periodEndDate, quarterStart)
+        lte(supplierFileUpload.periodStartDate, periodEnd),
+        gte(supplierFileUpload.periodEndDate, periodStart)
       )
     )
     .orderBy(desc(supplierFileUpload.createdAt));
@@ -314,8 +326,8 @@ export async function getSupplierCommissionReport(
       and(
         isNotNull(uploadedFile.bkmvProcessingResult),
         isNotNull(uploadedFile.franchiseeId),
-        lte(uploadedFile.periodStartDate, quarterEnd),
-        gte(uploadedFile.periodEndDate, quarterStart),
+        lte(uploadedFile.periodStartDate, periodEnd),
+        gte(uploadedFile.periodEndDate, periodStart),
         inArray(uploadedFile.processingStatus, ["approved", "auto_approved"])
       )
     )
@@ -581,7 +593,8 @@ export async function getSupplierCommissionReport(
     .map((row) => {
       const sData = supplierMap.get(row.supplierId);
       const freq = sData?.settlementFrequency ?? "quarterly";
-      const factor = getProRataFactor(freq);
+      // Pro-rata only applies in quarterly view, not annual
+      const factor = isAnnual ? 1 : getProRataFactor(freq);
       const isEstimated = factor !== 1;
 
       // Apply pro-rata factor to cells

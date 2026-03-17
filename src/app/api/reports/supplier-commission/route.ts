@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     const year = parseInt(yearStr, 10);
-    const quarter = parseInt(quarterStr, 10) as 1 | 2 | 3 | 4;
+    const quarter = parseInt(quarterStr, 10) as 0 | 1 | 2 | 3 | 4;
 
     if (isNaN(year) || year < 2020 || year > 2100) {
       return NextResponse.json(
@@ -43,9 +43,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (![1, 2, 3, 4].includes(quarter)) {
+    if (![0, 1, 2, 3, 4].includes(quarter)) {
       return NextResponse.json(
-        { error: "Quarter must be 1, 2, 3, or 4" },
+        { error: "Quarter must be 0 (annual), 1, 2, 3, or 4" },
         { status: 400 }
       );
     }

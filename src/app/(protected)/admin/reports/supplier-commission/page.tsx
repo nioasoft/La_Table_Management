@@ -83,7 +83,7 @@ interface SupplierCommissionFranchiseeColumn {
 
 interface SupplierCommissionReport {
   year: number;
-  quarter: 1 | 2 | 3 | 4;
+  quarter: 0 | 1 | 2 | 3 | 4;
   brandId: string | null;
   brandName: string | null;
   suppliers: SupplierCommissionRow[];
@@ -101,11 +101,12 @@ interface SupplierCommissionReport {
 // CONSTANTS
 // ============================================================================
 
-const QUARTERS = [
+const PERIODS = [
   { value: "1", label: "Q1 (ינואר-מרץ)" },
   { value: "2", label: "Q2 (אפריל-יוני)" },
   { value: "3", label: "Q3 (יולי-ספטמבר)" },
   { value: "4", label: "Q4 (אוקטובר-דצמבר)" },
+  { value: "0", label: "שנתי" },
 ];
 
 const currentYear = new Date().getFullYear();
@@ -244,7 +245,7 @@ export default function SupplierCommissionReportPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `supplier-commissions-${selectedYear}-Q${selectedQuarter}.xlsx`;
+      a.download = `supplier-commissions-${selectedYear}-${selectedQuarter === "0" ? "annual" : `Q${selectedQuarter}`}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -304,10 +305,10 @@ export default function SupplierCommissionReportPage() {
           onValueChange={setSelectedQuarter}
         >
           <SelectTrigger className="w-40 h-8 text-sm">
-            <SelectValue placeholder="רבעון" />
+            <SelectValue placeholder="תקופה" />
           </SelectTrigger>
           <SelectContent>
-            {QUARTERS.map((q) => (
+            {PERIODS.map((q) => (
               <SelectItem key={q.value} value={q.value}>
                 {q.label}
               </SelectItem>
