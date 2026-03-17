@@ -27,7 +27,6 @@ import {
   Clock,
   AlertCircle,
   FileText,
-  Coins,
   Bell,
   Users,
   Send,
@@ -71,14 +70,6 @@ const CRON_JOBS: CronJob[] = [
     endpoint: "/api/cron/file-requests",
     schedule: "0 1 * * *",
     icon: <FileText className="h-6 w-6" />,
-  },
-  {
-    id: "settlement-requests",
-    name: t.jobs.settlementRequests.name,
-    description: t.jobs.settlementRequests.description,
-    endpoint: "/api/cron/settlement-requests?action=all",
-    schedule: "0 8 1,15 * *",
-    icon: <Coins className="h-6 w-6" />,
   },
   {
     id: "upload-reminders",
@@ -267,7 +258,7 @@ export default function CronMonitorTab() {
       </div>
 
       {/* CRON Jobs Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {CRON_JOBS.map((job, index) => {
           const colors = [
             { bg: "from-indigo-50/80", border: "border-indigo-200", icon: "bg-indigo-100 text-indigo-600", dark: "dark:from-indigo-950/30 dark:border-indigo-800" },
