@@ -549,7 +549,7 @@ export default function EmailTemplatesTab() {
         open={showFormDialog}
         onOpenChange={(open) => !open && cancelForm()}
       >
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate ? t.form.editTitle : t.form.createTitle}
@@ -561,16 +561,16 @@ export default function EmailTemplatesTab() {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
             {formError && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 mb-4">
+              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 mb-4 shrink-0">
                 <p className="text-sm text-destructive">{formError}</p>
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
               {/* Left column: Form fields */}
-              <div className="space-y-4">
+              <div className="space-y-4 overflow-y-auto pe-2">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">{t.form.fields.name}</Label>
@@ -737,7 +737,7 @@ export default function EmailTemplatesTab() {
               </div>
 
               {/* Right column: Live preview */}
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-y-auto">
                 <div className="flex items-center gap-2">
                   <Eye className="h-4 w-4 text-muted-foreground" />
                   <Label className="text-sm font-medium">
@@ -760,6 +760,7 @@ export default function EmailTemplatesTab() {
                     {/* Body preview */}
                     <div className="border rounded-lg overflow-hidden flex-1">
                       <iframe
+                        key={livePreviewHtml.body}
                         srcDoc={livePreviewHtml.body}
                         className="w-full h-[500px]"
                         title="תצוגה מקדימה חיה"
@@ -780,7 +781,7 @@ export default function EmailTemplatesTab() {
               </div>
             </div>
 
-            <DialogFooter className="gap-2 pt-6">
+            <DialogFooter className="gap-2 pt-6 shrink-0">
               <Button
                 type="button"
                 variant="outline"
@@ -809,12 +810,12 @@ export default function EmailTemplatesTab() {
 
       {/* Preview Dialog */}
       <Dialog open={showPreviewDialog} onOpenChange={setShowPreviewDialog}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>{t.preview.title}</DialogTitle>
             <DialogDescription>{t.preview.description}</DialogDescription>
           </DialogHeader>
-          <div className="overflow-auto max-h-[calc(90vh-120px)]">
+          <div className="flex-1 min-h-0">
             {previewMutation.isPending ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin" />
@@ -822,7 +823,7 @@ export default function EmailTemplatesTab() {
             ) : previewHtml ? (
               <iframe
                 srcDoc={previewHtml}
-                className="w-full h-[600px] border rounded"
+                className="w-full h-full border rounded"
                 title={t.preview.title}
               />
             ) : null}

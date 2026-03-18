@@ -26,6 +26,7 @@ import {
   Pencil,
   Trash2,
   RefreshCw,
+  RefreshCcw,
   Check,
   Loader2,
   Calendar,
@@ -34,6 +35,7 @@ import {
   Send,
   BellOff,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { FranchiseeReminder, FranchiseeReminderType, ReminderStatus } from "@/db/schema";
 import { he } from "@/lib/translations/he";
 import { authClient } from "@/lib/auth-client";
@@ -105,6 +107,33 @@ export default function FranchiseeRemindersTab() {
   const [editingReminder, setEditingReminder] = useState<FranchiseeReminderWithFranchisee | null>(null);
   const [formData, setFormData] = useState<ReminderFormData>(initialFormData);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Sync reminders from important dates
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/admin/cron-jobs/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: "/api/cron/franchisee-reminders?action=all&autoCreate=true",
+          dryRun: false,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "שגיאה בסנכרון");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const created = data?.result?.autoCreate?.created ?? data?.result?.totals?.created ?? 0;
+      queryClient.invalidateQueries({ queryKey: ["franchisee-reminders"] });
+      toast.success(created > 0 ? `נוצרו ${created} תזכורות חדשות` : "הכל מסונכרן, אין תזכורות חדשות");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "שגיאה בסנכרון תזכורות");
+    },
+  });
 
   const { data: session } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -422,8 +451,20 @@ export default function FranchiseeRemindersTab() {
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => fetchReminders()}>
-            <RefreshCw className="ml-2 h-4 w-4" />
+            <RefreshCw className="ms-2 h-4 w-4" />
             {t.actions.refresh}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+          >
+            {syncMutation.isPending ? (
+              <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="ms-2 h-4 w-4" />
+            )}
+            סנכרון מתאריכים חשובים
           </Button>
         </div>
         <Button onClick={() => { setShowForm(true); setEditingReminder(null); setFormData(initialFormData); }}>

@@ -4,7 +4,9 @@ import { database } from "@/db";
 import {
   franchiseeReminder,
   franchisee,
+  franchiseeImportantDate,
   type FranchiseeReminderType,
+  type ImportantDateType,
 } from "@/db/schema";
 import { eq, and, lte, or } from "drizzle-orm";
 import {
@@ -216,6 +218,144 @@ async function autoCreateRemindersFromFranchisees(
   return results;
 }
 
+// Map important date types to reminder types
+function mapDateTypeToReminderType(dateType: ImportantDateType): FranchiseeReminderType {
+  switch (dateType) {
+    case "franchise_agreement":
+      return "franchise_agreement";
+    case "rental_contract":
+    case "lease_option":
+      return "lease_option";
+    case "custom":
+    default:
+      return "custom";
+  }
+}
+
+// Auto-create reminders from franchisee_important_date table
+async function autoCreateRemindersFromImportantDates(
+  dryRun: boolean
+): Promise<{ created: number; skipped: number; errors: string[] }> {
+  const results = { created: 0, skipped: 0, errors: [] as string[] };
+  const today = new Date();
+
+  // Get all active important dates with their franchisee info
+  const importantDates = await database
+    .select({
+      id: franchiseeImportantDate.id,
+      franchiseeId: franchiseeImportantDate.franchiseeId,
+      dateType: franchiseeImportantDate.dateType,
+      endDate: franchiseeImportantDate.endDate,
+      description: franchiseeImportantDate.description,
+      customTypeName: franchiseeImportantDate.customTypeName,
+    })
+    .from(franchiseeImportantDate)
+    .innerJoin(franchisee, eq(franchiseeImportantDate.franchiseeId, franchisee.id))
+    .where(
+      and(
+        eq(franchiseeImportantDate.isActive, true),
+        eq(franchisee.isActive, true)
+      )
+    );
+
+  // Get franchisee names for labels
+  const franchiseeNames = new Map<string, string>();
+  const allFranchisees = await database
+    .select({ id: franchisee.id, name: franchisee.name })
+    .from(franchisee)
+    .where(eq(franchisee.isActive, true));
+  for (const f of allFranchisees) {
+    franchiseeNames.set(f.id, f.name);
+  }
+
+  const dateTypeLabels: Record<string, string> = {
+    franchise_agreement: "הסכם זיכיון",
+    rental_contract: "חוזה שכירות",
+    lease_option: "אופציית שכירות",
+    custom: "תזכורת",
+  };
+
+  for (const impDate of importantDates) {
+    const expiryDate = new Date(impDate.endDate);
+    const daysUntilExpiry = Math.ceil(
+      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Only create reminders for dates within a reasonable window
+    if (daysUntilExpiry < -30 || daysUntilExpiry > LOOK_AHEAD_DAYS + 30) {
+      continue;
+    }
+
+    const reminderType = mapDateTypeToReminderType(impDate.dateType);
+    const label = impDate.customTypeName || dateTypeLabels[impDate.dateType] || impDate.dateType;
+    const franchiseeName = franchiseeNames.get(impDate.franchiseeId) || "לא ידוע";
+
+    for (const daysBefore of REMINDER_DAYS) {
+      const notificationDate = new Date(impDate.endDate);
+      notificationDate.setDate(notificationDate.getDate() - daysBefore);
+
+      const daysUntilNotification = Math.ceil(
+        (notificationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      if (daysUntilNotification < -30) continue;
+
+      // Check if reminder already exists (match on franchisee + type + endDate + daysBefore)
+      const existing = await database
+        .select({ id: franchiseeReminder.id })
+        .from(franchiseeReminder)
+        .where(
+          and(
+            eq(franchiseeReminder.franchiseeId, impDate.franchiseeId),
+            eq(franchiseeReminder.reminderType, reminderType),
+            eq(franchiseeReminder.reminderDate, impDate.endDate),
+            eq(franchiseeReminder.daysBeforeNotification, daysBefore)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        results.skipped++;
+        continue;
+      }
+
+      if (dryRun) {
+        results.created++;
+        continue;
+      }
+
+      try {
+        await createFranchiseeReminder({
+          id: crypto.randomUUID(),
+          franchiseeId: impDate.franchiseeId,
+          title: `תום ${label} - ${franchiseeName}`,
+          description: `${daysBefore === 0 ? "היום" : `${daysBefore} יום לפני`} תפוגת ${label} של סניף ${franchiseeName}`,
+          reminderType,
+          reminderDate: impDate.endDate,
+          daysBeforeNotification: daysBefore,
+          notificationDate: formatDateAsLocal(notificationDate),
+          recipients: [ADMIN_EMAIL],
+          status: "pending",
+          metadata: {
+            importantDateId: impDate.id,
+            expiryLabel: label,
+            autoCreated: true,
+            source: "important_dates",
+          },
+        });
+        results.created++;
+      } catch (error) {
+        results.errors.push(
+          `${franchiseeName} ${label} (${daysBefore}d): ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
+    }
+  }
+
+  return results;
+}
+
 // Process pending reminders - send emails
 async function processReminders(
   type: FranchiseeReminderType | "all",
@@ -329,9 +469,18 @@ export async function POST(request: NextRequest) {
       totals: { processed: 0, failed: 0, emailsSent: 0, created: 0, errors: [] },
     };
 
-    // Auto-create reminders
+    // Auto-create reminders from both sources
     if (autoCreate) {
-      results.autoCreate = await autoCreateRemindersFromFranchisees(dryRun);
+      // 1. From franchisee table fields (leaseOption1End, etc.)
+      const fromFields = await autoCreateRemindersFromFranchisees(dryRun);
+      // 2. From franchisee_important_date table
+      const fromImportantDates = await autoCreateRemindersFromImportantDates(dryRun);
+
+      results.autoCreate = {
+        created: fromFields.created + fromImportantDates.created,
+        skipped: fromFields.skipped + fromImportantDates.skipped,
+        errors: [...fromFields.errors, ...fromImportantDates.errors],
+      };
       results.totals.created += results.autoCreate.created;
       results.totals.errors.push(...results.autoCreate.errors);
     }

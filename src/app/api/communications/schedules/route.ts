@@ -4,9 +4,9 @@ import {
   isAuthError,
 } from "@/lib/api-middleware";
 import { database } from "@/db";
-import { supplier, fileRequest } from "@/db/schema";
+import { supplier, franchisee, contact, fileRequest } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
-import type { SettlementFrequency, Supplier } from "@/db/schema";
+import type { SettlementFrequency, Supplier, Franchisee } from "@/db/schema";
 
 /**
  * Calculate next request date based on settlement frequency
@@ -83,6 +83,25 @@ function getFrequencyLabel(frequency: SettlementFrequency): string {
     annual: "שנתי",
   };
   return labels[frequency] || frequency;
+}
+
+/**
+ * Calculate the next BKMV request date (15th of Jan/Apr/Jul/Oct)
+ */
+function getNextBkmvDate(): Date {
+  const now = new Date();
+  const year = now.getFullYear();
+  const bkmvDates = [
+    new Date(year, 0, 15), // Jan 15
+    new Date(year, 3, 15), // Apr 15
+    new Date(year, 6, 15), // Jul 15
+    new Date(year, 9, 15), // Oct 15
+  ];
+
+  for (const d of bkmvDates) {
+    if (d > now) return d;
+  }
+  return new Date(year + 1, 0, 15);
 }
 
 interface ScheduleItem {
@@ -193,10 +212,102 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get franchisees if needed (for future expansion)
+    // Get franchisees (quarterly BKMV file requests)
     if (entityType === "all" || entityType === "franchisee") {
-      // Franchisees typically don't have settlement frequency in the same way,
-      // but we can add this in the future if needed
+      // Only show franchisees when no frequency filter or filtering by quarterly
+      if (!frequencyFilter || frequencyFilter === "quarterly") {
+        const franchiseeConditions = [eq(franchisee.category, "regular")];
+        if (activeOnly) {
+          franchiseeConditions.push(eq(franchisee.isActive, true));
+        }
+
+        const franchisees = await database
+          .select()
+          .from(franchisee)
+          .where(and(...franchiseeConditions))
+          .orderBy(franchisee.name) as Franchisee[];
+
+        // Get accountant emails for all franchisees
+        const accountantContacts = await database
+          .select({
+            franchiseeId: contact.franchiseeId,
+            email: contact.email,
+            name: contact.name,
+          })
+          .from(contact)
+          .where(
+            and(
+              eq(contact.role, "accountant"),
+              eq(contact.isActive, true)
+            )
+          );
+
+        const accountantMap = new Map(
+          accountantContacts.map((c) => [c.franchiseeId, { email: c.email, name: c.name }])
+        );
+
+        // Get pending BKMV file requests per franchisee
+        const pendingBkmvQuery = await database
+          .select({
+            entityId: fileRequest.entityId,
+            count: sql<number>`count(*)::int`,
+          })
+          .from(fileRequest)
+          .where(
+            and(
+              eq(fileRequest.entityType, "franchisee"),
+              eq(fileRequest.documentType, "bkmv"),
+              eq(fileRequest.status, "sent")
+            )
+          )
+          .groupBy(fileRequest.entityId);
+
+        const pendingBkmvMap = new Map(
+          pendingBkmvQuery.map((r) => [r.entityId, r.count])
+        );
+
+        // Get last BKMV file request date per franchisee
+        const lastBkmvQuery = await database
+          .select({
+            entityId: fileRequest.entityId,
+            lastSentAt: sql<string>`max(${fileRequest.sentAt})`,
+          })
+          .from(fileRequest)
+          .where(
+            and(
+              eq(fileRequest.entityType, "franchisee"),
+              eq(fileRequest.documentType, "bkmv")
+            )
+          )
+          .groupBy(fileRequest.entityId);
+
+        const lastBkmvMap = new Map(
+          lastBkmvQuery.map((r) => [r.entityId, r.lastSentAt])
+        );
+
+        const nextBkmvDate = getNextBkmvDate();
+
+        for (const f of franchisees) {
+          const accountant = accountantMap.get(f.id);
+          const fallbackEmail = f.primaryContactEmail || f.contactEmail;
+          const lastRequestDate = lastBkmvMap.get(f.id);
+
+          schedules.push({
+            id: f.id,
+            name: f.name,
+            code: f.code,
+            type: "franchisee",
+            frequency: "quarterly",
+            frequencyLabel: "רבעוני (BKMV)",
+            email: accountant?.email || fallbackEmail || null,
+            contactName: accountant?.name || f.primaryContactName || null,
+            lastRequestDate: lastRequestDate ? new Date(lastRequestDate).toISOString() : null,
+            nextRequestDate: nextBkmvDate.toISOString(),
+            pendingRequests: pendingBkmvMap.get(f.id) || 0,
+            isActive: f.isActive,
+          });
+        }
+      }
     }
 
     // Sort by next request date

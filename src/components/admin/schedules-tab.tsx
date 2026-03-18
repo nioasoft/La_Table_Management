@@ -33,6 +33,7 @@ import {
   Clock,
   AlertCircle,
   Building2,
+  Store,
   Mail,
   Users,
 } from "lucide-react";
@@ -288,7 +289,11 @@ export default function SchedulesTab() {
                       <TableCell className="text-right">
                         <div className="flex items-center gap-3 flex-row-reverse justify-end">
                           <div className="rounded-lg bg-muted p-2">
-                            <Building2 className="h-4 w-4 text-muted-foreground" />
+                            {schedule.type === "franchisee" ? (
+                              <Store className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                            )}
                           </div>
                           <div className="text-right">
                             <p className="font-medium">{schedule.name}</p>
