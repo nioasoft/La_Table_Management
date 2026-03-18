@@ -246,6 +246,7 @@ async function autoCreateRemindersFromImportantDates(
       franchiseeId: franchiseeImportantDate.franchiseeId,
       dateType: franchiseeImportantDate.dateType,
       endDate: franchiseeImportantDate.endDate,
+      reminderDate: franchiseeImportantDate.reminderDate,
       description: franchiseeImportantDate.description,
       customTypeName: franchiseeImportantDate.customTypeName,
     })
@@ -276,30 +277,20 @@ async function autoCreateRemindersFromImportantDates(
   };
 
   for (const impDate of importantDates) {
-    const expiryDate = new Date(impDate.endDate);
-    const daysUntilExpiry = Math.ceil(
-      (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    // Only create reminders for dates within a reasonable window
-    if (daysUntilExpiry < -30 || daysUntilExpiry > LOOK_AHEAD_DAYS + 30) {
-      continue;
-    }
+    // Use the pre-computed reminderDate as the target for notifications.
+    // reminderDate = endDate - reminderMonthsBefore (e.g. 6 months before lease expires)
+    // No look-ahead window — user explicitly entered these dates and wants to see all reminders.
+    const targetDate = impDate.reminderDate || impDate.endDate;
 
     const reminderType = mapDateTypeToReminderType(impDate.dateType);
     const label = impDate.customTypeName || dateTypeLabels[impDate.dateType] || impDate.dateType;
     const franchiseeName = franchiseeNames.get(impDate.franchiseeId) || "לא ידוע";
 
     for (const daysBefore of REMINDER_DAYS) {
-      const notificationDate = new Date(impDate.endDate);
+      const notificationDate = new Date(targetDate);
       notificationDate.setDate(notificationDate.getDate() - daysBefore);
 
-      const daysUntilNotification = Math.ceil(
-        (notificationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-      );
-      if (daysUntilNotification < -30) continue;
-
-      // Check if reminder already exists (match on franchisee + type + endDate + daysBefore)
+      // Check if reminder already exists (match on franchisee + type + targetDate + daysBefore)
       const existing = await database
         .select({ id: franchiseeReminder.id })
         .from(franchiseeReminder)
@@ -307,7 +298,7 @@ async function autoCreateRemindersFromImportantDates(
           and(
             eq(franchiseeReminder.franchiseeId, impDate.franchiseeId),
             eq(franchiseeReminder.reminderType, reminderType),
-            eq(franchiseeReminder.reminderDate, impDate.endDate),
+            eq(franchiseeReminder.reminderDate, targetDate),
             eq(franchiseeReminder.daysBeforeNotification, daysBefore)
           )
         )
@@ -330,7 +321,7 @@ async function autoCreateRemindersFromImportantDates(
           title: `תום ${label} - ${franchiseeName}`,
           description: `${daysBefore === 0 ? "היום" : `${daysBefore} יום לפני`} תפוגת ${label} של סניף ${franchiseeName}`,
           reminderType,
-          reminderDate: impDate.endDate,
+          reminderDate: targetDate,
           daysBeforeNotification: daysBefore,
           notificationDate: formatDateAsLocal(notificationDate),
           recipients: [ADMIN_EMAIL],

@@ -2315,7 +2315,7 @@ export const he = {
       description: "סקירת לוחות זמנים לבקשות קבצים מספקים וזכיינים",
 
       stats: {
-        totalSuppliers: "סה״כ ספקים",
+        totalSuppliers: "סה״כ ספקים וזכיינים",
         withPendingRequests: "בקשות ממתינות",
         withoutEmail: "ללא אימייל",
       },
