@@ -3242,6 +3242,7 @@ export const he = {
       suppliers: "ספקים",
       franchisees: "זכיינים",
       staff: "אנשי מטה",
+      clients: "לקוחות",
       brands: "מותגים",
       bkmvdata: "מבנה אחיד",
       supplierFiles: "קבצי ספקים",
@@ -3336,6 +3337,67 @@ export const he = {
     // Export
     exportTitle: "דוח אנשי מטה",
     exportDescription: "רשימת כל אנשי המטה עם פרטי קשר ותפקידים",
+  },
+
+  // ============================================================================
+  // CLIENTS MODULE (ניהול לקוחות)
+  // ============================================================================
+  clients: {
+    title: "לקוחות",
+    description: "ניהול לקוחות של קבוצת לה טייבל",
+    addButton: "הוסף לקוח",
+    editTitle: "עריכת לקוח",
+    createTitle: "הוספת לקוח חדש",
+
+    form: {
+      name: "שם לקוח",
+      namePlaceholder: "לדוגמה: Wolt, Cibus",
+      companyId: 'ח.פ',
+      companyIdPlaceholder: "מספר חברה",
+      email: "כתובת מייל",
+      emailPlaceholder: "email@example.com",
+      contactName: "איש קשר",
+      contactNamePlaceholder: "שם איש הקשר",
+      hashavshevetName: "שם לחשבשבת",
+      hashavshevetNamePlaceholder: "שם בתוכנת החשבשבת",
+      commissionRates: "שיעורי עמלה",
+      posTerminalCommission: "עמלת מסופון",
+      dineInCommission: "עמלת ישיבה",
+      deliveryCommission: "עמלת משלוחים",
+      takeawayCommission: "עמלת טק אויי",
+      eventsCommission: "עמלת אירועים",
+      additionalBenefits: "הטבות נוספות",
+      additionalBenefitsPlaceholder: "תיאור הטבות נוספות",
+      invoiceGeneration: "הפקת חשבונית",
+      notes: "הערות",
+      notesPlaceholder: "הערות נוספות",
+      franchisees: "זכיינים משויכים",
+      searchFranchisees: "חפש זכיין...",
+    },
+
+    table: {
+      name: "שם לקוח",
+      companyId: 'ח.פ',
+      contactName: "איש קשר",
+      email: "אימייל",
+      commissions: "עמלות",
+      invoiceGeneration: "הפקת חשבונית",
+      franchiseeCount: "זכיינים",
+      status: "סטטוס",
+      actions: "פעולות",
+    },
+
+    status: {
+      active: "פעיל",
+      inactive: "לא פעיל",
+    },
+
+    deleteTitle: "מחיקת לקוח",
+    deleteDescription: "האם אתה בטוח שברצונך למחוק את הלקוח",
+    deleteConfirm: "מחק לקוח",
+
+    empty: "לא נמצאו לקוחות. לחץ על \"הוסף לקוח\" להתחלה.",
+    noResults: "לא נמצאו תוצאות",
   },
 } as const;
 

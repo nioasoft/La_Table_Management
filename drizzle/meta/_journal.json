@@ -162,6 +162,13 @@
       "when": 1740045600000,
       "tag": "0046_add_kosher_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1740132000000,
+      "tag": "0047_client_table",
+      "breakpoints": true
     }
   ]
 }

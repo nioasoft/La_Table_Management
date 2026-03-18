@@ -75,6 +75,12 @@ const ENTITY_DOCUMENT_TYPES: Record<string, readonly { value: string; label: str
     { value: "other", label: t.documentTypes.other },
   ],
   brand: [...BASE_DOCUMENT_TYPES],
+  client: [
+    { value: "agreement", label: t.documentTypes.agreement },
+    { value: "correspondence", label: t.documentTypes.correspondence },
+    { value: "invoice", label: t.documentTypes.invoice },
+    { value: "other", label: t.documentTypes.other },
+  ],
 };
 
 // All possible document type values
@@ -87,7 +93,7 @@ interface DocumentWithUploader extends Document {
 }
 
 interface DocumentManagerProps {
-  entityType: "supplier" | "franchisee" | "brand";
+  entityType: "supplier" | "franchisee" | "brand" | "client";
   entityId: string;
   entityName: string;
   documents: DocumentWithUploader[];

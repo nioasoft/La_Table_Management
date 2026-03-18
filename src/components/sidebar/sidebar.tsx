@@ -46,6 +46,7 @@ import {
   PiggyBank,
   UserRound,
   Coins,
+  Handshake,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -165,6 +166,11 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.staff,
                 href: "/admin/staff",
                 icon: <UserRound className="h-4 w-4" />,
+              },
+              {
+                label: he.sidebar.subNavigation.clients,
+                href: "/admin/clients",
+                icon: <Handshake className="h-4 w-4" />,
               },
             ],
           },
