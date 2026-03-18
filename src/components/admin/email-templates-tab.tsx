@@ -831,14 +831,13 @@ export default function EmailTemplatesTab() {
                 </Tabs>
               </div>
 
-              {/* ── Preview panel (left side in RTL) ───────────────────── */}
+              {/* ── Preview panel (left side in RTL) — always HTML ──── */}
               <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
                 {/* Preview header */}
                 <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center gap-2">
                   <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground">
-                    תצוגה מקדימה חיה
-                    {activeEditorTab === "html" ? " — HTML" : " — טקסט פשוט"}
+                    תצוגה מקדימה — איך הלקוח יקבל את המייל
                   </span>
                 </div>
 
@@ -848,55 +847,29 @@ export default function EmailTemplatesTab() {
                     נושא:
                   </p>
                   <p className="text-sm font-medium truncate" dir="auto">
-                    {activeEditorTab === "text"
-                      ? livePreviewText.subject || (
-                          <span className="text-muted-foreground italic text-xs">
-                            (ריק)
-                          </span>
-                        )
-                      : livePreviewHtml?.subject || (
-                          <span className="text-muted-foreground italic text-xs">
-                            (ריק)
-                          </span>
-                        )}
+                    {livePreviewHtml?.subject || (
+                      <span className="text-muted-foreground italic text-xs">
+                        (ריק)
+                      </span>
+                    )}
                   </p>
                 </div>
 
-                {/* Body preview */}
+                {/* Body preview — always HTML iframe */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {activeEditorTab === "html" ? (
-                    /* HTML iframe preview */
-                    livePreviewHtml?.body ? (
-                      <iframe
-                        ref={previewIframeRef}
-                        srcDoc={livePreviewHtml.body}
-                        className="w-full h-full border-0"
-                        title="תצוגה מקדימה HTML"
-                        sandbox="allow-same-origin"
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                        <Eye className="h-10 w-10 opacity-15" />
-                        <p className="text-sm">הכנס HTML כדי לראות תצוגה מקדימה</p>
-                      </div>
-                    )
+                  {livePreviewHtml?.body ? (
+                    <iframe
+                      ref={previewIframeRef}
+                      srcDoc={livePreviewHtml.body}
+                      className="w-full h-full border-0"
+                      title="תצוגה מקדימה"
+                      sandbox="allow-same-origin"
+                    />
                   ) : (
-                    /* Plain text preview */
-                    livePreviewText.body ? (
-                      <div className="h-full overflow-y-auto p-4">
-                        <pre
-                          className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground"
-                          dir="auto"
-                        >
-                          {livePreviewText.body}
-                        </pre>
-                      </div>
-                    ) : (
-                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                        <Eye className="h-10 w-10 opacity-15" />
-                        <p className="text-sm">הכנס טקסט כדי לראות תצוגה מקדימה</p>
-                      </div>
-                    )
+                    <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                      <Eye className="h-10 w-10 opacity-15" />
+                      <p className="text-sm">הכנס HTML כדי לראות תצוגה מקדימה</p>
+                    </div>
                   )}
                 </div>
               </div>
