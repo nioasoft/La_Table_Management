@@ -28,6 +28,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Mail,
   Plus,
@@ -129,8 +131,14 @@ export default function EmailTemplatesTab() {
   const [sendTestTemplate, setSendTestTemplate] =
     useState<EmailTemplate | null>(null);
 
-  // Ref for HTML textarea (for cursor-position insert)
+  // Active editor tab: "text" | "html"
+  const [activeEditorTab, setActiveEditorTab] = useState<"text" | "html">(
+    "text"
+  );
+
+  // Refs for each editor textarea (cursor-position insert)
   const htmlTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const textTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: session } = authClient.useSession();
   const userRole = session
@@ -160,6 +168,15 @@ export default function EmailTemplatesTab() {
     const body = substituteVarsClient(formData.bodyHtml, SAMPLE_VARS);
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
+
+  // Live preview plain text for the editor
+  const livePreviewText = useMemo(() => {
+    const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
+    const body = formData.bodyText
+      ? substituteVarsClient(formData.bodyText, SAMPLE_VARS)
+      : null;
+    return { subject, body };
+  }, [formData.bodyText, formData.subject]);
 
   // Update iframe content via ref (more reliable than key prop)
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
@@ -258,32 +275,57 @@ export default function EmailTemplatesTab() {
     setEditingTemplate(null);
     setFormData(initialFormData);
     setFormError(null);
+    setActiveEditorTab("text");
   };
 
   const insertVariable = (variable: string) => {
     const variableText = `{{${variable}}}`;
-    const textarea = htmlTextareaRef.current;
 
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const before = formData.bodyHtml.substring(0, start);
-      const after = formData.bodyHtml.substring(end);
-      setFormData((prev) => ({
-        ...prev,
-        bodyHtml: before + variableText + after,
-      }));
-      // Restore cursor position after state update
-      requestAnimationFrame(() => {
-        textarea.selectionStart = textarea.selectionEnd =
-          start + variableText.length;
-        textarea.focus();
-      });
+    if (activeEditorTab === "html") {
+      const textarea = htmlTextareaRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = formData.bodyHtml.substring(0, start);
+        const after = formData.bodyHtml.substring(end);
+        setFormData((prev) => ({
+          ...prev,
+          bodyHtml: before + variableText + after,
+        }));
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd =
+            start + variableText.length;
+          textarea.focus();
+        });
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          bodyHtml: prev.bodyHtml + variableText,
+        }));
+      }
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        bodyHtml: prev.bodyHtml + variableText,
-      }));
+      // Plain text tab — insert into bodyText
+      const textarea = textTextareaRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = formData.bodyText.substring(0, start);
+        const after = formData.bodyText.substring(end);
+        setFormData((prev) => ({
+          ...prev,
+          bodyText: before + variableText + after,
+        }));
+        requestAnimationFrame(() => {
+          textarea.selectionStart = textarea.selectionEnd =
+            start + variableText.length;
+          textarea.focus();
+        });
+      } else {
+        setFormData((prev) => ({
+          ...prev,
+          bodyText: prev.bodyText + variableText,
+        }));
+      }
     }
   };
 
@@ -296,6 +338,7 @@ export default function EmailTemplatesTab() {
     setEditingTemplate(null);
     setFormData(initialFormData);
     setFormError(null);
+    setActiveEditorTab("text");
     setShowFormDialog(true);
   };
 
@@ -553,265 +596,324 @@ export default function EmailTemplatesTab() {
         </CardContent>
       </Card>
 
-      {/* Create/Edit Template Dialog - Side-by-side with live preview */}
+      {/* Create/Edit Template Dialog — full-screen redesign */}
       <Dialog
         open={showFormDialog}
         onOpenChange={(open) => !open && cancelForm()}
       >
-        <DialogContent className="max-w-7xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTemplate ? t.form.editTitle : t.form.createTitle}
-            </DialogTitle>
-            <DialogDescription>
-              {editingTemplate
-                ? t.form.editDescription
-                : t.form.createDescription}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className="w-[95vw] max-w-[95vw] h-[95vh] max-h-[95vh] p-0 overflow-hidden flex flex-col gap-0">
+          {/* ── Header ─────────────────────────────────────────────────────── */}
+          <div className="shrink-0 border-b bg-card px-6 pt-5 pb-4 space-y-4">
+            <DialogHeader className="space-y-0">
+              <div className="flex items-center justify-between">
+                <DialogTitle className="text-lg font-semibold">
+                  {editingTemplate ? t.form.editTitle : t.form.createTitle}
+                </DialogTitle>
+                {/* isActive checkbox lives in the header, far end */}
+                <div className="flex items-center gap-2 me-8">
+                  <Checkbox
+                    id="isActive"
+                    checked={formData.isActive}
+                    onCheckedChange={(checked) =>
+                      setFormData({ ...formData, isActive: !!checked })
+                    }
+                    disabled={isSubmitting}
+                  />
+                  <Label
+                    htmlFor="isActive"
+                    className="text-sm cursor-pointer select-none"
+                  >
+                    {t.form.fields.isActive}
+                  </Label>
+                </div>
+              </div>
+              <DialogDescription className="text-xs text-muted-foreground">
+                {editingTemplate
+                  ? t.form.editDescription
+                  : t.form.createDescription}
+              </DialogDescription>
+            </DialogHeader>
 
-          <form onSubmit={handleSubmit} className="flex-1 min-h-0 flex flex-col overflow-hidden">
+            {/* Metadata row — name | code | category | description */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="name" className="text-xs">
+                  {t.form.fields.name}
+                </Label>
+                <Input
+                  id="name"
+                  value={formData.name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, name: e.target.value })
+                  }
+                  placeholder={t.form.fields.namePlaceholder}
+                  disabled={isSubmitting}
+                  required
+                  className="h-8 text-sm"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="code" className="text-xs">
+                  {t.form.fields.code}
+                </Label>
+                <Input
+                  id="code"
+                  value={formData.code}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      code: e.target.value.toLowerCase().replace(/\s+/g, "_"),
+                    })
+                  }
+                  placeholder={t.form.fields.codePlaceholder}
+                  disabled={isSubmitting}
+                  required
+                  dir="ltr"
+                  className="h-8 text-sm font-mono"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="category" className="text-xs">
+                  {t.form.fields.type}
+                </Label>
+                <Select
+                  value={formData.category}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      category: value as EmailTemplateType,
+                    })
+                  }
+                >
+                  <SelectTrigger id="category" className="h-8 text-sm">
+                    <SelectValue placeholder={t.form.fields.selectType} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EMAIL_TEMPLATE_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {t.templateTypes[type]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="description" className="text-xs">
+                  {t.form.fields.description}
+                </Label>
+                <Input
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
+                  placeholder={t.form.fields.descriptionPlaceholder}
+                  disabled={isSubmitting}
+                  className="h-8 text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Subject row — always visible */}
+            <div className="space-y-1.5">
+              <Label htmlFor="subject" className="text-xs">
+                {t.form.fields.subject}
+              </Label>
+              <Input
+                id="subject"
+                value={formData.subject}
+                onChange={(e) =>
+                  setFormData({ ...formData, subject: e.target.value })
+                }
+                placeholder={t.form.fields.subjectPlaceholder}
+                disabled={isSubmitting}
+                required
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* ── Main content area: editor + preview ────────────────────────── */}
+          <form
+            onSubmit={handleSubmit}
+            className="flex-1 min-h-0 flex flex-col overflow-hidden"
+          >
             {formError && (
-              <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-3 mb-4 shrink-0">
+              <div className="shrink-0 mx-6 mt-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
                 <p className="text-sm text-destructive">{formError}</p>
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
-              {/* Left column: Form fields */}
-              <div className="space-y-4 overflow-y-auto pe-2">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="name">{t.form.fields.name}</Label>
-                    <Input
-                      id="name"
-                      value={formData.name}
-                      onChange={(e) =>
-                        setFormData({ ...formData, name: e.target.value })
-                      }
-                      placeholder={t.form.fields.namePlaceholder}
-                      disabled={isSubmitting}
-                      required
-                    />
+            {/* Split pane: right = editor, left = preview (RTL) */}
+            <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-x-reverse">
+              {/* ── Editor panel (right side in RTL) ───────────────────── */}
+              <div className="flex flex-col min-h-0 overflow-hidden">
+                <Tabs
+                  value={activeEditorTab}
+                  onValueChange={(v) =>
+                    setActiveEditorTab(v as "text" | "html")
+                  }
+                  className="flex flex-col flex-1 min-h-0"
+                >
+                  {/* Tab bar + variable buttons */}
+                  <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 space-y-2">
+                    <TabsList className="h-8">
+                      <TabsTrigger value="text" className="text-xs h-7 px-3">
+                        טקסט פשוט
+                      </TabsTrigger>
+                      <TabsTrigger value="html" className="text-xs h-7 px-3">
+                        HTML
+                      </TabsTrigger>
+                    </TabsList>
+
+                    {/* Variable insertion chips */}
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {t.form.fields.insertVariables}:
+                      </span>
+                      {Object.entries(t.variableDescriptions).map(
+                        ([key, { description }]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => insertVariable(key)}
+                            title={description}
+                            className="inline-flex items-center rounded-full border border-dashed border-muted-foreground/40 bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
+                          >
+                            {`{{${key}}}`}
+                          </button>
+                        )
+                      )}
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="code">{t.form.fields.code}</Label>
-                    <Input
-                      id="code"
-                      value={formData.code}
+                  {/* Plain text editor */}
+                  <TabsContent
+                    value="text"
+                    className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
+                  >
+                    <Textarea
+                      ref={textTextareaRef}
+                      id="bodyText"
+                      value={formData.bodyText}
                       onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          code: e.target.value
-                            .toLowerCase()
-                            .replace(/\s+/g, "_"),
-                        })
+                        setFormData({ ...formData, bodyText: e.target.value })
                       }
-                      placeholder={t.form.fields.codePlaceholder}
+                      placeholder={t.form.fields.plainTextBodyPlaceholder}
+                      disabled={isSubmitting}
+                      dir="auto"
+                      className="flex-1 min-h-0 h-full resize-none rounded-none border-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm leading-relaxed font-mono"
+                    />
+                  </TabsContent>
+
+                  {/* HTML editor */}
+                  <TabsContent
+                    value="html"
+                    className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
+                  >
+                    <Textarea
+                      ref={htmlTextareaRef}
+                      id="bodyHtml"
+                      value={formData.bodyHtml}
+                      onChange={(e) =>
+                        setFormData({ ...formData, bodyHtml: e.target.value })
+                      }
+                      placeholder={t.form.fields.htmlBodyPlaceholder}
                       disabled={isSubmitting}
                       required
                       dir="ltr"
+                      className="flex-1 min-h-0 h-full resize-none rounded-none border-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm leading-relaxed font-mono"
                     />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="category">{t.form.fields.type}</Label>
-                    <Select
-                      value={formData.category}
-                      onValueChange={(value) =>
-                        setFormData({
-                          ...formData,
-                          category: value as EmailTemplateType,
-                        })
-                      }
-                    >
-                      <SelectTrigger id="category">
-                        <SelectValue placeholder={t.form.fields.selectType} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {EMAIL_TEMPLATE_TYPES.map((type) => (
-                          <SelectItem key={type} value={type}>
-                            {t.templateTypes[type]}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="description">
-                      {t.form.fields.description}
-                    </Label>
-                    <Input
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          description: e.target.value,
-                        })
-                      }
-                      placeholder={t.form.fields.descriptionPlaceholder}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="subject">{t.form.fields.subject}</Label>
-                  <Input
-                    id="subject"
-                    value={formData.subject}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subject: e.target.value })
-                    }
-                    placeholder={t.form.fields.subjectPlaceholder}
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-
-                {/* Variable Buttons */}
-                <div className="space-y-2">
-                  <Label>{t.form.fields.insertVariables}</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(t.variableDescriptions).map(
-                      ([key, { description }]) => (
-                        <Button
-                          key={key}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => insertVariable(key)}
-                          title={description}
-                        >
-                          {`{{${key}}}`}
-                        </Button>
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bodyText">
-                    {t.form.fields.plainTextBody}
-                  </Label>
-                  <Textarea
-                    id="bodyText"
-                    value={formData.bodyText}
-                    onChange={(e) =>
-                      setFormData({ ...formData, bodyText: e.target.value })
-                    }
-                    placeholder={t.form.fields.plainTextBodyPlaceholder}
-                    disabled={isSubmitting}
-                    className="min-h-[200px] text-sm"
-                    dir="auto"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="bodyHtml">{t.form.fields.htmlBody}</Label>
-                  <Textarea
-                    ref={htmlTextareaRef}
-                    id="bodyHtml"
-                    value={formData.bodyHtml}
-                    onChange={(e) =>
-                      setFormData({ ...formData, bodyHtml: e.target.value })
-                    }
-                    placeholder={t.form.fields.htmlBodyPlaceholder}
-                    disabled={isSubmitting}
-                    required
-                    className="min-h-[80px] text-sm"
-                    dir="auto"
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="isActive"
-                    checked={formData.isActive}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        isActive: e.target.checked,
-                      })
-                    }
-                    disabled={isSubmitting}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                  <Label htmlFor="isActive">{t.form.fields.isActive}</Label>
-                </div>
+                  </TabsContent>
+                </Tabs>
               </div>
 
-              {/* Right column: Live preview */}
-              <div className="flex flex-col gap-3 min-h-0">
-                <div className="flex items-center gap-2 shrink-0">
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">
+              {/* ── Preview panel (left side in RTL) ───────────────────── */}
+              <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
+                {/* Preview header */}
+                <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center gap-2">
+                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground">
                     תצוגה מקדימה חיה
-                  </Label>
+                    {activeEditorTab === "html" ? " — HTML" : " — טקסט פשוט"}
+                  </span>
                 </div>
 
-                {livePreviewHtml ? (
-                  <>
-                    {/* Subject preview */}
-                    <div className="rounded-md border bg-muted/30 p-3 shrink-0">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        נושא:
-                      </p>
-                      <p className="text-sm font-medium" dir="auto">
-                        {livePreviewHtml.subject}
-                      </p>
-                    </div>
+                {/* Subject preview strip */}
+                <div className="shrink-0 border-b px-4 py-2 bg-background">
+                  <p className="text-[11px] text-muted-foreground mb-0.5">
+                    נושא:
+                  </p>
+                  <p className="text-sm font-medium truncate" dir="auto">
+                    {activeEditorTab === "text"
+                      ? livePreviewText.subject || (
+                          <span className="text-muted-foreground italic text-xs">
+                            (ריק)
+                          </span>
+                        )
+                      : livePreviewHtml?.subject || (
+                          <span className="text-muted-foreground italic text-xs">
+                            (ריק)
+                          </span>
+                        )}
+                  </p>
+                </div>
 
-                    {/* HTML Body preview */}
-                    <div className="border rounded-lg overflow-hidden flex-1 min-h-[200px]">
+                {/* Body preview */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {activeEditorTab === "html" ? (
+                    /* HTML iframe preview */
+                    livePreviewHtml?.body ? (
                       <iframe
                         ref={previewIframeRef}
                         srcDoc={livePreviewHtml.body}
-                        className="w-full h-full"
-                        title="תצוגה מקדימה חיה"
+                        className="w-full h-full border-0"
+                        title="תצוגה מקדימה HTML"
                         sandbox="allow-same-origin"
                       />
-                    </div>
-
-                    {/* Plain text preview */}
-                    {formData.bodyText && (
-                      <div className="rounded-md border bg-muted/30 p-3 shrink-0 max-h-[150px] overflow-y-auto">
-                        <p className="text-xs text-muted-foreground mb-1">
-                          גוף טקסט פשוט:
-                        </p>
-                        <p className="text-sm whitespace-pre-wrap" dir="auto">
-                          {substituteVarsClient(formData.bodyText, SAMPLE_VARS)}
-                        </p>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                        <Eye className="h-10 w-10 opacity-15" />
+                        <p className="text-sm">הכנס HTML כדי לראות תצוגה מקדימה</p>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="flex items-center justify-center flex-1 min-h-[200px] border rounded-lg bg-muted/20">
-                    <div className="text-center text-muted-foreground">
-                      <Eye className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p className="text-sm">
-                        הכנס HTML כדי לראות תצוגה מקדימה
-                      </p>
-                    </div>
-                  </div>
-                )}
+                    )
+                  ) : (
+                    /* Plain text preview */
+                    livePreviewText.body ? (
+                      <div className="h-full overflow-y-auto p-4">
+                        <pre
+                          className="text-sm whitespace-pre-wrap font-sans leading-relaxed text-foreground"
+                          dir="auto"
+                        >
+                          {livePreviewText.body}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
+                        <Eye className="h-10 w-10 opacity-15" />
+                        <p className="text-sm">הכנס טקסט כדי לראות תצוגה מקדימה</p>
+                      </div>
+                    )
+                  )}
+                </div>
               </div>
             </div>
 
-            <DialogFooter className="gap-2 pt-6 shrink-0">
+            {/* ── Footer ───────────────────────────────────────────────────── */}
+            <DialogFooter className="shrink-0 border-t bg-card px-6 py-3 gap-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={cancelForm}
                 disabled={isSubmitting}
+                size="sm"
               >
                 {tCommon.cancel}
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting} size="sm">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="ms-2 h-4 w-4 animate-spin" />
