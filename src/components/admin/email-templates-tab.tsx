@@ -172,7 +172,7 @@ export default function EmailTemplatesTab() {
   // Track previous bodyText for syncing plain text edits → HTML
   const prevBodyTextRef = useRef(formData.bodyText);
 
-  // When bodyText changes, sync changes into bodyHtml behind the scenes
+  // When bodyText changes, sync changes into bodyHtml using character-level diff
   useEffect(() => {
     const oldText = prevBodyTextRef.current;
     const newText = formData.bodyText;
@@ -180,33 +180,45 @@ export default function EmailTemplatesTab() {
 
     if (!oldText || !newText || oldText === newText || !formData.bodyHtml) return;
 
-    // Split into lines and find what changed
-    const oldLines = oldText.split("\n").filter((l) => l.trim().length > 0);
-    const newLines = newText.split("\n").filter((l) => l.trim().length > 0);
-
-    let updatedHtml = formData.bodyHtml;
-    let changed = false;
-
-    // Find lines that were in old but not in new (removed)
-    for (const oldLine of oldLines) {
-      const trimmed = oldLine.trim();
-      if (trimmed.length < 2) continue; // skip very short lines (separators etc.)
-      if (!newLines.some((nl) => nl.trim() === trimmed)) {
-        // This line was removed — remove it from HTML (match text between tags)
-        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        const regex = new RegExp(`(>[^<]*)${escaped}([^<]*<)`, "g");
-        const before = updatedHtml;
-        updatedHtml = updatedHtml.replace(regex, (match, pre, post) => {
-          return pre.replace(trimmed, "") + post.replace(trimmed, "");
-        });
-        if (updatedHtml !== before) changed = true;
-      }
+    // Character-level diff: find exact segment that was removed/added
+    let prefixLen = 0;
+    while (
+      prefixLen < oldText.length &&
+      prefixLen < newText.length &&
+      oldText[prefixLen] === newText[prefixLen]
+    ) {
+      prefixLen++;
     }
 
-    // Find lines that are in new but not in old (added) — handled by HTML tab editing
-    // Plain text additions are trickier since we don't know where in the HTML to insert
+    let oldSuffix = oldText.length;
+    let newSuffix = newText.length;
+    while (
+      oldSuffix > prefixLen &&
+      newSuffix > prefixLen &&
+      oldText[oldSuffix - 1] === newText[newSuffix - 1]
+    ) {
+      oldSuffix--;
+      newSuffix--;
+    }
 
-    if (changed) {
+    const removed = oldText.substring(prefixLen, oldSuffix).trim();
+    const added = newText.substring(prefixLen, newSuffix).trim();
+
+    if (!removed && !added) return;
+
+    let updatedHtml = formData.bodyHtml;
+
+    if (removed) {
+      // Find the removed text in the HTML (between > and <) and replace with added text
+      const escaped = removed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Match the text inside HTML tags — first occurrence only
+      const regex = new RegExp(`(>[^<]*)${escaped}`, "");
+      updatedHtml = updatedHtml.replace(regex, (match, pre) => {
+        return pre + added;
+      });
+    }
+
+    if (updatedHtml !== formData.bodyHtml) {
       setFormData((prev) => ({ ...prev, bodyHtml: updatedHtml }));
     }
   }, [formData.bodyText]); // eslint-disable-line react-hooks/exhaustive-deps
