@@ -2,7 +2,7 @@
   "fileName": "מינה ת_א.txt",
   "softwareType": "חשבשבת",
   "fileSizeBytes": 4690982,
-  "snapshotDate": "2026-03-18T08:18:33.047Z",
+  "snapshotDate": "2026-03-18T08:41:03.619Z",
   "companyId": "516055480",
   "fileVersion": "1.31",
   "recordCounts": {
@@ -231286,10 +231286,10 @@
     "הכנ": {
       "accountCode": "הכנ",
       "accountName": "הכנסות חייבות",
-      "totalAmount": 11899689.470000004,
+      "totalAmount": 11812165.090000004,
       "transactionCount": 157,
       "monthlyBreakdown": {
-        "2025-01": 1183194.2999999998,
+        "2025-01": 1095669.92,
         "2025-02": 1046929.42,
         "2025-03": 1008921.02,
         "2025-04": 904281.4,

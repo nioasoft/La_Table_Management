@@ -2,7 +2,7 @@
   "fileName": "קינג קונג חדרה.txt",
   "softwareType": "חשבשבת",
   "fileSizeBytes": 5610514,
-  "snapshotDate": "2026-03-18T08:18:33.313Z",
+  "snapshotDate": "2026-03-18T08:41:03.882Z",
   "companyId": "517012217",
   "fileVersion": "1.31",
   "recordCounts": {
@@ -276664,13 +276664,13 @@
     "הכנסות א": {
       "accountCode": "הכנסות א",
       "accountName": "הכנסות אחרות",
-      "totalAmount": 691553.95,
+      "totalAmount": 565679.95,
       "transactionCount": 10,
       "monthlyBreakdown": {
         "2025-01": 30000,
         "2025-02": 500000,
         "2025-04": 63152.54,
-        "2025-06": 86106.5,
+        "2025-06": -39767.5,
         "2025-08": 8905.08,
         "2025-10": 3389.83
       }

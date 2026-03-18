@@ -181,20 +181,24 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     const accountKey = accountInfo.accountKey;
     const accountName = accountInfo.accountName;
 
+    // Indirect entries: credit-side adds to revenue, debit-side reduces it.
+    // Empirically verified: credit-side indirect = B110 creditTurnover exactly.
+    const effectiveAmount = tx.side === 'debit' ? -tx.amount : tx.amount;
+
     revenueGrossVolume.set(accountKey, (revenueGrossVolume.get(accountKey) || 0) + Math.abs(tx.amount));
 
     const existing = summary.get(accountKey);
     if (existing) {
-      existing.totalAmount += tx.amount;
+      existing.totalAmount += effectiveAmount;
       existing.transactionCount++;
-      existing.monthlyBreakdown[monthKey] = (existing.monthlyBreakdown[monthKey] || 0) + tx.amount;
+      existing.monthlyBreakdown[monthKey] = (existing.monthlyBreakdown[monthKey] || 0) + effectiveAmount;
     } else {
       summary.set(accountKey, {
         accountCode: accountKey,
         accountName: accountName,
-        totalAmount: tx.amount,
+        totalAmount: effectiveAmount,
         transactionCount: 1,
-        monthlyBreakdown: { [monthKey]: tx.amount },
+        monthlyBreakdown: { [monthKey]: effectiveAmount },
       });
     }
   }
@@ -298,9 +302,10 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
       const code = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
       if (code === key) continue; // skip direct — debit+credit cancel out
       if (tx.resolvedAccountKey === key) {
+        const effectiveAmount = tx.side === 'debit' ? -tx.amount : tx.amount;
         const monthKey = formatYearMonth(tx.documentDate);
-        indirectBreakdown[monthKey] = (indirectBreakdown[monthKey] || 0) + tx.amount;
-        indirectSum += tx.amount;
+        indirectBreakdown[monthKey] = (indirectBreakdown[monthKey] || 0) + effectiveAmount;
+        indirectSum += effectiveAmount;
         indirectCount++;
       }
     }

@@ -2,7 +2,7 @@
   "fileName": "קינג קונג כרמיאל.txt",
   "softwareType": "רווחית",
   "fileSizeBytes": 4720408,
-  "snapshotDate": "2026-03-18T08:18:33.768Z",
+  "snapshotDate": "2026-03-18T08:41:04.338Z",
   "companyId": "516476561",
   "fileVersion": "1.31",
   "recordCounts": {
@@ -233920,7 +233920,7 @@
     "4": {
       "accountCode": "4",
       "accountName": "הכנסות/מכירות/שכ\"ט",
-      "totalAmount": 46030.53,
+      "totalAmount": -3155.91,
       "transactionCount": 13,
       "monthlyBreakdown": {
         "2025-01": 161.86,
@@ -233929,7 +233929,7 @@
         "2025-07": 96.61,
         "2025-08": 2863.56,
         "2025-10": 553.47,
-        "2025-12": 51958.350000000006
+        "2025-12": 2771.91
       }
     },
     "263": {
