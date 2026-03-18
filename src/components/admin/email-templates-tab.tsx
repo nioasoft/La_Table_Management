@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -160,6 +160,15 @@ export default function EmailTemplatesTab() {
     const body = substituteVarsClient(formData.bodyHtml, SAMPLE_VARS);
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
+
+  // Update iframe content via ref (more reliable than key prop)
+  const previewIframeRef = useRef<HTMLIFrameElement>(null);
+  useEffect(() => {
+    const iframe = previewIframeRef.current;
+    if (iframe && livePreviewHtml?.body) {
+      iframe.srcdoc = livePreviewHtml.body;
+    }
+  }, [livePreviewHtml]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -685,23 +694,6 @@ export default function EmailTemplatesTab() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="bodyHtml">{t.form.fields.htmlBody}</Label>
-                  <Textarea
-                    ref={htmlTextareaRef}
-                    id="bodyHtml"
-                    value={formData.bodyHtml}
-                    onChange={(e) =>
-                      setFormData({ ...formData, bodyHtml: e.target.value })
-                    }
-                    placeholder={t.form.fields.htmlBodyPlaceholder}
-                    disabled={isSubmitting}
-                    required
-                    className="min-h-[250px] text-sm"
-                    dir="auto"
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="bodyText">
                     {t.form.fields.plainTextBody}
                   </Label>
@@ -713,6 +705,23 @@ export default function EmailTemplatesTab() {
                     }
                     placeholder={t.form.fields.plainTextBodyPlaceholder}
                     disabled={isSubmitting}
+                    className="min-h-[200px] text-sm"
+                    dir="auto"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bodyHtml">{t.form.fields.htmlBody}</Label>
+                  <Textarea
+                    ref={htmlTextareaRef}
+                    id="bodyHtml"
+                    value={formData.bodyHtml}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bodyHtml: e.target.value })
+                    }
+                    placeholder={t.form.fields.htmlBodyPlaceholder}
+                    disabled={isSubmitting}
+                    required
                     className="min-h-[80px] text-sm"
                     dir="auto"
                   />
@@ -737,8 +746,8 @@ export default function EmailTemplatesTab() {
               </div>
 
               {/* Right column: Live preview */}
-              <div className="space-y-3 overflow-y-auto">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-3 min-h-0">
+                <div className="flex items-center gap-2 shrink-0">
                   <Eye className="h-4 w-4 text-muted-foreground" />
                   <Label className="text-sm font-medium">
                     תצוגה מקדימה חיה
@@ -748,7 +757,7 @@ export default function EmailTemplatesTab() {
                 {livePreviewHtml ? (
                   <>
                     {/* Subject preview */}
-                    <div className="rounded-md border bg-muted/30 p-3">
+                    <div className="rounded-md border bg-muted/30 p-3 shrink-0">
                       <p className="text-xs text-muted-foreground mb-1">
                         נושא:
                       </p>
@@ -757,19 +766,31 @@ export default function EmailTemplatesTab() {
                       </p>
                     </div>
 
-                    {/* Body preview */}
-                    <div className="border rounded-lg overflow-hidden flex-1">
+                    {/* HTML Body preview */}
+                    <div className="border rounded-lg overflow-hidden flex-1 min-h-[200px]">
                       <iframe
-                        key={livePreviewHtml.body}
+                        ref={previewIframeRef}
                         srcDoc={livePreviewHtml.body}
-                        className="w-full h-[500px]"
+                        className="w-full h-full"
                         title="תצוגה מקדימה חיה"
                         sandbox="allow-same-origin"
                       />
                     </div>
+
+                    {/* Plain text preview */}
+                    {formData.bodyText && (
+                      <div className="rounded-md border bg-muted/30 p-3 shrink-0 max-h-[150px] overflow-y-auto">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          גוף טקסט פשוט:
+                        </p>
+                        <p className="text-sm whitespace-pre-wrap" dir="auto">
+                          {substituteVarsClient(formData.bodyText, SAMPLE_VARS)}
+                        </p>
+                      </div>
+                    )}
                   </>
                 ) : (
-                  <div className="flex items-center justify-center h-[400px] border rounded-lg bg-muted/20">
+                  <div className="flex items-center justify-center flex-1 min-h-[200px] border rounded-lg bg-muted/20">
                     <div className="text-center text-muted-foreground">
                       <Eye className="h-12 w-12 mx-auto mb-4 opacity-20" />
                       <p className="text-sm">
