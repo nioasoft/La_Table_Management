@@ -9,6 +9,7 @@ import { EmailLayout } from "./components/email-layout";
 interface SupplierRequestEmailProps {
   entity_name?: string;
   period?: string;
+  period_end_date?: string;
   upload_link?: string;
   deadline?: string;
   brand_name?: string;
@@ -18,6 +19,7 @@ interface SupplierRequestEmailProps {
 export function SupplierRequestEmail({
   entity_name = "{{entity_name}}",
   period = "{{period}}",
+  period_end_date = "{{period_end_date}}",
   upload_link = "{{upload_link}}",
   deadline = "{{deadline}}",
   brand_name = "La Table",
@@ -31,12 +33,12 @@ export function SupplierRequestEmail({
       <Section style={section}>
         <Text style={text}>שלום רב,</Text>
         <Text style={text}>
-          נבקשכם להעלות דוח עמלות רשת עבור קבוצת לה טייבל
-          ({displayBrands}) בקישור המצורף מטה.
+          נבקשכם להעלות דוח עמלות רשת עבור קבוצת LA TABLE
+          ({displayBrands}) לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה.
         </Text>
         <Section style={buttonSection}>
           <Button style={button} href={upload_link}>
-            📎 קישור להעלאת הדוח
+            קישור להעלאת הדוח
           </Button>
         </Section>
         <Text style={text}>
@@ -76,6 +78,7 @@ const buttonSection: React.CSSProperties = {
 const button: React.CSSProperties = {
   backgroundColor: "#2563eb",
   borderRadius: "6px",
+  border: "1px solid #2563eb",
   color: "#ffffff",
   fontSize: "14px",
   fontWeight: "600",

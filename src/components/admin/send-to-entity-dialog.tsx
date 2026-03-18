@@ -19,6 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Send,
   Loader2,
@@ -59,10 +61,11 @@ interface FranchiseeItem {
 // Default sample values for variables
 const SAMPLE_VARIABLES: Record<string, string> = {
   period: "ינואר 2025",
+  period_end_date: "31/01/2025",
   upload_link: "https://example.com/upload/test",
   deadline: "31/01/2025",
-  brand_name: "Pat Vini",
-  brand_names: "Pat Vini, Mina Tomai",
+  brand_name: "VINNI",
+  brand_names: "VINNI, MINNA TOMEI",
   document_type: "דוח עמלות",
   due_date: "31/01/2025",
   description: "נא להעלות את הדוח החודשי",
@@ -72,6 +75,7 @@ export default function SendToEntityDialog({
   open,
   onOpenChange,
 }: SendToEntityDialogProps) {
+  const [sendMode, setSendMode] = useState<"template" | "custom">("template");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [entityType, setEntityType] = useState<"supplier" | "franchisee">(
     "supplier"
@@ -82,6 +86,9 @@ export default function SendToEntityDialog({
   const [variables, setVariables] = useState<Record<string, string>>({});
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
+  // Custom email mode
+  const [customSubject, setCustomSubject] = useState("");
+  const [customBody, setCustomBody] = useState("");
 
   // Fetch active templates
   const { data: templates = [], isLoading: templatesLoading } =
@@ -131,6 +138,7 @@ export default function SendToEntityDialog({
   // Reset when dialog opens
   useEffect(() => {
     if (open) {
+      setSendMode("template");
       setSelectedTemplateId("");
       setEntityType("supplier");
       setEntityId("");
@@ -139,6 +147,8 @@ export default function SendToEntityDialog({
       setVariables({});
       setPreviewHtml(null);
       setShowPreview(false);
+      setCustomSubject("");
+      setCustomBody("");
     }
   }, [open]);
 
@@ -199,7 +209,61 @@ export default function SendToEntityDialog({
   };
 
   const handleSend = () => {
-    if (!selectedTemplate || !recipientEmail) return;
+    if (!recipientEmail) return;
+
+    if (sendMode === "custom") {
+      // Find the "custom" template in the DB (seeded from custom.tsx)
+      // For custom sends, we use the custom template with customSubject/customBody variables
+      // If no custom template exists, fall back to any template
+      const customTpl = (templates as EmailTemplate[]).find(
+        (t: EmailTemplate) => t.code === "custom"
+      );
+
+      // For custom mode, use sendDirectEmail via a new approach:
+      // We'll use the supplier_request template as a base but pass custom vars
+      // Actually, better approach: use the send-to-entity API with custom subject/body
+      // For now, use the custom template if available, or any template with customBody
+      if (!customSubject || !customBody) {
+        toast.error("נא למלא נושא ותוכן");
+        return;
+      }
+
+      // Use the first available template and override with custom content
+      const templateToUse = customTpl || selectedTemplate;
+      if (!templateToUse) {
+        toast.error("לא נמצאה תבנית מתאימה");
+        return;
+      }
+
+      sendMutation.mutate(
+        {
+          templateId: templateToUse.id,
+          to: recipientEmail,
+          toName: recipientName || undefined,
+          variables: {
+            ...variables,
+            entity_name: recipientName || "",
+            customSubject,
+            customBody,
+          },
+          entityType,
+          entityId: entityId || undefined,
+        },
+        {
+          onSuccess: () => {
+            toast.success("האימייל נשלח בהצלחה");
+            onOpenChange(false);
+          },
+          onError: (error) => {
+            toast.error(error.message || "שגיאה בשליחת האימייל");
+          },
+        }
+      );
+      return;
+    }
+
+    // Template mode
+    if (!selectedTemplate) return;
 
     sendMutation.mutate(
       {
@@ -233,35 +297,78 @@ export default function SendToEntityDialog({
         <DialogHeader>
           <DialogTitle>שליחת אימייל</DialogTitle>
           <DialogDescription>
-            בחר תבנית, בחר ספק או זכיין ושלח אימייל
+            שלח אימייל מתבנית קיימת או כתוב מייל חופשי
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Template selection */}
-          <div className="space-y-2">
-            <Label>תבנית אימייל *</Label>
-            <Select
-              value={selectedTemplateId}
-              onValueChange={setSelectedTemplateId}
-              disabled={templatesLoading}
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    templatesLoading ? "טוען תבניות..." : "בחר תבנית"
-                  }
+          {/* Mode toggle */}
+          <Tabs
+            value={sendMode}
+            onValueChange={(v) => setSendMode(v as "template" | "custom")}
+            dir="rtl"
+          >
+            <TabsList className="w-full">
+              <TabsTrigger value="template" className="flex-1">
+                שלח מתבנית
+              </TabsTrigger>
+              <TabsTrigger value="custom" className="flex-1">
+                מייל חופשי
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {/* Template selection — only in template mode */}
+          {sendMode === "template" && (
+            <div className="space-y-2">
+              <Label>תבנית אימייל *</Label>
+              <Select
+                value={selectedTemplateId}
+                onValueChange={setSelectedTemplateId}
+                disabled={templatesLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      templatesLoading ? "טוען תבניות..." : "בחר תבנית"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(templates as EmailTemplate[]).map((t: EmailTemplate) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Custom email fields — only in custom mode */}
+          {sendMode === "custom" && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>נושא *</Label>
+                <Input
+                  value={customSubject}
+                  onChange={(e) => setCustomSubject(e.target.value)}
+                  placeholder="נושא האימייל"
+                  dir="auto"
                 />
-              </SelectTrigger>
-              <SelectContent>
-                {(templates as EmailTemplate[]).map((t: EmailTemplate) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              </div>
+              <div className="space-y-2">
+                <Label>תוכן *</Label>
+                <Textarea
+                  value={customBody}
+                  onChange={(e) => setCustomBody(e.target.value)}
+                  placeholder="כתוב את תוכן האימייל כאן..."
+                  className="min-h-[150px]"
+                  dir="auto"
+                />
+              </div>
+            </div>
+          )}
 
           {/* Entity type + entity selection */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -344,8 +451,8 @@ export default function SendToEntityDialog({
             </div>
           </div>
 
-          {/* Template variables */}
-          {templateVars.length > 0 && (
+          {/* Template variables — only in template mode */}
+          {sendMode === "template" && templateVars.length > 0 && (
             <div className="space-y-3">
               <Label>משתנים</Label>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -395,9 +502,10 @@ export default function SendToEntityDialog({
           <Button
             onClick={handleSend}
             disabled={
-              !selectedTemplateId ||
               !recipientEmail ||
-              sendMutation.isPending
+              sendMutation.isPending ||
+              (sendMode === "template" && !selectedTemplateId) ||
+              (sendMode === "custom" && (!customSubject || !customBody))
             }
             className="gap-2"
           >
@@ -413,7 +521,7 @@ export default function SendToEntityDialog({
           <Button
             variant="outline"
             onClick={handlePreview}
-            disabled={!selectedTemplateId || previewMutation.isPending}
+            disabled={sendMode === "custom" || !selectedTemplateId || previewMutation.isPending}
             className="gap-2"
           >
             {previewMutation.isPending ? (

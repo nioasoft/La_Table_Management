@@ -23,11 +23,12 @@ const SEED_TEMPLATES = [
     category: "supplier_request",
     description: "בקשת דוח עמלות מספק לתקופה מסוימת - נשלח לספקים",
     subject: "בקשת דוח עמלות רשת - {{period}}",
-    variables: ["entity_name", "period", "upload_link", "deadline", "brand_name", "brand_names"],
+    variables: ["entity_name", "period", "period_end_date", "upload_link", "deadline", "brand_name", "brand_names"],
     render: () =>
       SupplierRequestEmail({
         entity_name: "{{entity_name}}",
         period: "{{period}}",
+        period_end_date: "{{period_end_date}}",
         upload_link: "{{upload_link}}",
         deadline: "{{deadline}}",
         brand_name: "{{brand_name}}",
@@ -166,13 +167,21 @@ const SEED_TEMPLATES = [
   },
 ];
 
+const forceUpdate = process.argv.includes("--force");
+
 async function seedTemplates() {
-  console.log("🌱 Seeding email templates into database...\n");
+  console.log(`🌱 Seeding email templates into database...${forceUpdate ? " (--force: updating existing)" : ""}\n`);
 
   let created = 0;
+  let updated = 0;
   let skipped = 0;
 
   for (const template of SEED_TEMPLATES) {
+    // Render React Email component to HTML
+    const element = template.render();
+    const html = await render(element);
+    const text = await render(element, { plainText: true });
+
     // Check if template code already exists
     const existing = await database
       .select({ id: emailTemplate.id })
@@ -181,15 +190,28 @@ async function seedTemplates() {
       .limit(1);
 
     if (existing.length > 0) {
-      console.log(`  ⏭  ${template.code} — already exists, skipping`);
-      skipped++;
+      if (forceUpdate) {
+        // Update existing template with new HTML
+        await database
+          .update(emailTemplate)
+          .set({
+            bodyHtml: html,
+            bodyText: text,
+            subject: template.subject,
+            description: template.description,
+            variables: template.variables,
+            name: template.name,
+            updatedAt: new Date(),
+          })
+          .where(eq(emailTemplate.code, template.code));
+        console.log(`  🔄 ${template.code} — updated`);
+        updated++;
+      } else {
+        console.log(`  ⏭  ${template.code} — already exists, skipping (use --force to update)`);
+        skipped++;
+      }
       continue;
     }
-
-    // Render React Email component to HTML
-    const element = template.render();
-    const html = await render(element);
-    const text = await render(element, { plainText: true });
 
     await database.insert(emailTemplate).values({
       id: randomUUID(),
@@ -208,7 +230,7 @@ async function seedTemplates() {
     created++;
   }
 
-  console.log(`\n✨ Done! Created ${created}, skipped ${skipped} (total: ${SEED_TEMPLATES.length})`);
+  console.log(`\n✨ Done! Created ${created}, updated ${updated}, skipped ${skipped} (total: ${SEED_TEMPLATES.length})`);
   process.exit(0);
 }
 

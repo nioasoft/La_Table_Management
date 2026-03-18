@@ -116,14 +116,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     const allVariables = [...new Set([...subjectVars, ...bodyVars, ...textVars])];
 
     const updatedTemplate = await updateEmailTemplate(templateId, {
-      name: name || undefined,
-      code: code || undefined,
-      subject: subject || undefined,
-      bodyHtml: bodyHtml || undefined,
-      bodyText: bodyText !== undefined ? bodyText : undefined,
-      description: description !== undefined ? description : undefined,
-      category: category !== undefined ? category : undefined,
-      isActive: isActive !== undefined ? isActive : undefined,
+      ...(name !== undefined && { name }),
+      ...(code !== undefined && { code }),
+      ...(subject !== undefined && { subject }),
+      ...(bodyHtml !== undefined && { bodyHtml }),
+      ...(bodyText !== undefined && { bodyText }),
+      ...(description !== undefined && { description }),
+      ...(category !== undefined && { category }),
+      ...(isActive !== undefined && { isActive }),
       variables: allVariables,
     });
 

@@ -7,6 +7,8 @@ import {
   Section,
   Text,
   Hr,
+  Row,
+  Column,
 } from "@react-email/components";
 import * as React from "react";
 import { emailTranslations } from "@/lib/translations/emails";
@@ -20,7 +22,6 @@ interface EmailLayoutProps {
 export function EmailLayout({
   preview,
   children,
-  footerText = "La Table Management",
 }: EmailLayoutProps) {
   return (
     <Html lang="he" dir="rtl">
@@ -33,8 +34,37 @@ export function EmailLayout({
         <Container style={container}>
           {children}
           <Hr style={hr} />
-          <Section style={footer}>
-            <Text style={footerTextStyle}>{footerText}</Text>
+          {/* Signature Block */}
+          <Section style={signatureSection}>
+            <Text style={signatureName}>רעות</Text>
+            <Text style={signatureCompany}>קבוצת LA TABLE</Text>
+            <Text style={signatureAddress}>
+              שדרות משה גושן 16, קרית מוצקין
+            </Text>
+            <Text style={signaturePhone}>
+              T: 04-8759732 &nbsp;&nbsp; F: 04-8763534
+            </Text>
+          </Section>
+          <Hr style={brandsDivider} />
+          {/* Brand Names */}
+          <Section style={brandsSection}>
+            <Row>
+              <Column style={brandColumn}>
+                <Text style={brandVinni}>VINNI</Text>
+              </Column>
+              <Column style={brandColumn}>
+                <Text style={brandKingKong}>KING KONG</Text>
+              </Column>
+              <Column style={brandColumn}>
+                <Text style={brandMinna}>minna tomei</Text>
+              </Column>
+              <Column style={brandColumn}>
+                <Text style={brandNatanzon}>NATANZON</Text>
+              </Column>
+            </Row>
+          </Section>
+          <Hr style={hrLight} />
+          <Section style={footerSection}>
             <Text style={footerTextStyle}>
               {emailTranslations.layout.autoEmailNotice}
             </Text>
@@ -64,16 +94,106 @@ const container: React.CSSProperties = {
 
 const hr: React.CSSProperties = {
   borderColor: "#e6ebf1",
-  margin: "30px 0",
+  margin: "30px 0 20px",
 };
 
-const footer: React.CSSProperties = {
+const signatureSection: React.CSSProperties = {
+  textAlign: "right" as const,
+  padding: "0 20px",
+};
+
+const signatureName: React.CSSProperties = {
+  color: "#333333",
+  fontSize: "16px",
+  fontWeight: "700",
+  margin: "0 0 2px",
+  textAlign: "right" as const,
+};
+
+const signatureCompany: React.CSSProperties = {
+  color: "#333333",
+  fontSize: "14px",
+  fontWeight: "600",
+  margin: "0 0 8px",
+  textAlign: "right" as const,
+  letterSpacing: "1px",
+};
+
+const signatureAddress: React.CSSProperties = {
+  color: "#666666",
+  fontSize: "12px",
+  margin: "0 0 2px",
+  textAlign: "right" as const,
+};
+
+const signaturePhone: React.CSSProperties = {
+  color: "#666666",
+  fontSize: "12px",
+  margin: "0",
+  textAlign: "right" as const,
+  direction: "ltr" as const,
+};
+
+const brandsDivider: React.CSSProperties = {
+  borderColor: "#e6ebf1",
+  margin: "16px 0",
+};
+
+const brandsSection: React.CSSProperties = {
+  textAlign: "center" as const,
+  padding: "0 20px",
+};
+
+const brandColumn: React.CSSProperties = {
+  textAlign: "center" as const,
+  width: "25%",
+};
+
+const brandVinni: React.CSSProperties = {
+  color: "#c41e3a",
+  fontSize: "13px",
+  fontWeight: "700",
+  fontStyle: "italic",
+  margin: "0",
+  letterSpacing: "1px",
+};
+
+const brandKingKong: React.CSSProperties = {
+  color: "#333333",
+  fontSize: "12px",
+  fontWeight: "800",
+  margin: "0",
+  letterSpacing: "1px",
+};
+
+const brandMinna: React.CSSProperties = {
+  color: "#e67e22",
+  fontSize: "12px",
+  fontWeight: "600",
+  margin: "0",
+  letterSpacing: "0.5px",
+};
+
+const brandNatanzon: React.CSSProperties = {
+  color: "#333333",
+  fontSize: "13px",
+  fontWeight: "700",
+  margin: "0",
+  letterSpacing: "2px",
+};
+
+const hrLight: React.CSSProperties = {
+  borderColor: "#f0f0f0",
+  margin: "16px 0 8px",
+};
+
+const footerSection: React.CSSProperties = {
   textAlign: "center" as const,
 };
 
 const footerTextStyle: React.CSSProperties = {
   color: "#8898aa",
-  fontSize: "12px",
+  fontSize: "11px",
   lineHeight: "16px",
   margin: "4px 0",
 };

@@ -18,6 +18,7 @@ export type EmailTemplateType = (typeof EMAIL_TEMPLATE_TYPES)[number];
 export const TEMPLATE_VARIABLES = [
   "entity_name",
   "period",
+  "period_end_date",
   "upload_link",
   "deadline",
   "brand_name",
@@ -38,6 +39,10 @@ export const VARIABLE_DESCRIPTIONS: Record<TemplateVariable, { label: string; de
   upload_link: {
     label: "Upload Link",
     description: "The secure link for document upload",
+  },
+  period_end_date: {
+    label: "Period End Date",
+    description: "The last date of the reporting period",
   },
   deadline: {
     label: "Deadline",
@@ -62,6 +67,7 @@ export const TEMPLATE_TYPE_LABELS: Record<EmailTemplateType, string> = {
 export interface TemplateVariables {
   entity_name?: string;
   period?: string;
+  period_end_date?: string;
   upload_link?: string;
   deadline?: string;
   brand_name?: string;

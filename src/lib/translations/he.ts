@@ -2184,6 +2184,10 @@ export const he = {
           label: "תקופה",
           description: "תקופת הדיווח (לדוגמה: ינואר 2024)",
         },
+        period_end_date: {
+          label: "תאריך סוף תקופה",
+          description: "התאריך האחרון של תקופת הדיווח",
+        },
         upload_link: {
           label: "קישור העלאה",
           description: "קישור מאובטח להעלאת מסמכים",

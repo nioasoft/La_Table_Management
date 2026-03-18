@@ -696,8 +696,8 @@ export default function EmailTemplatesTab() {
                     placeholder={t.form.fields.htmlBodyPlaceholder}
                     disabled={isSubmitting}
                     required
-                    className="min-h-[250px] font-mono text-sm"
-                    dir="ltr"
+                    className="min-h-[250px] text-sm"
+                    dir="auto"
                   />
                 </div>
 
@@ -714,7 +714,7 @@ export default function EmailTemplatesTab() {
                     placeholder={t.form.fields.plainTextBodyPlaceholder}
                     disabled={isSubmitting}
                     className="min-h-[80px] text-sm"
-                    dir="ltr"
+                    dir="auto"
                   />
                 </div>
 

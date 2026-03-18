@@ -28,10 +28,11 @@ interface SendTestEmailDialogProps {
 const SAMPLE_VARIABLES: Record<string, string> = {
   entity_name: "ספק לדוגמה",
   period: "ינואר 2025",
+  period_end_date: "31/01/2025",
   upload_link: "https://example.com/upload/test",
   deadline: "31/01/2025",
-  brand_name: "Pat Vini",
-  brand_names: "Pat Vini, Mina Tomai",
+  brand_name: "VINNI",
+  brand_names: "VINNI, MINNA TOMEI",
   recipient_name: "ישראל ישראלי",
   document_type: "דוח עמלות",
   due_date: "31/01/2025",
