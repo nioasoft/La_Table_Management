@@ -123,20 +123,12 @@ const getDefaultDates = () => {
   const currentMonth = now.getMonth();
 
   // Current period: current month
-  const currentStartDate = new Date(currentYear, currentMonth, 1)
-    .toISOString()
-    .split("T")[0];
-  const currentEndDate = new Date(currentYear, currentMonth + 1, 0)
-    .toISOString()
-    .split("T")[0];
+  const currentStartDate = formatDateAsLocal(new Date(currentYear, currentMonth, 1));
+  const currentEndDate = formatDateAsLocal(new Date(currentYear, currentMonth + 1, 0));
 
   // Previous period: previous month
-  const previousStartDate = new Date(currentYear, currentMonth - 1, 1)
-    .toISOString()
-    .split("T")[0];
-  const previousEndDate = new Date(currentYear, currentMonth, 0)
-    .toISOString()
-    .split("T")[0];
+  const previousStartDate = formatDateAsLocal(new Date(currentYear, currentMonth - 1, 1));
+  const previousEndDate = formatDateAsLocal(new Date(currentYear, currentMonth, 0));
 
   return {
     currentStartDate,

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { formatDateAsLocal } from "@/lib/date-utils";
 import {
   formatPercent,
   formatDateHe,
@@ -512,7 +513,7 @@ describe("generateReportFilename", () => {
   });
 
   it("includes current date in ISO format", () => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = formatDateAsLocal(new Date());
     const result = generateReportFilename("test");
     expect(result).toContain(today);
   });
