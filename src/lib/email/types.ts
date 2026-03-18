@@ -40,5 +40,5 @@ export interface SendEmailResult {
 // Default email settings
 export const EMAIL_DEFAULTS = {
   fromEmail: process.env.EMAIL_FROM || "office@latable.co.il",
-  fromName: process.env.EMAIL_FROM_NAME || "La Table Management",
+  fromName: process.env.EMAIL_FROM_NAME || "רעות - La Table",
 };

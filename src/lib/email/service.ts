@@ -212,9 +212,10 @@ export async function sendEmailWithTemplateData(
         subject,
         html,
         text,
-        replyTo: options.replyTo || "reutl@latableg.com",
+        replyTo: options.replyTo || "office@latable.co.il",
         headers: {
-          "List-Unsubscribe": "<mailto:reutl@latableg.com?subject=unsubscribe>",
+          "List-Unsubscribe": "<mailto:office@latable.co.il?subject=unsubscribe>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
       });
 
@@ -301,9 +302,10 @@ export async function sendDirectEmail(options: {
         subject,
         html,
         text,
-        replyTo: "reutl@latableg.com",
+        replyTo: "office@latable.co.il",
         headers: {
-          "List-Unsubscribe": "<mailto:reutl@latableg.com?subject=unsubscribe>",
+          "List-Unsubscribe": "<mailto:office@latable.co.il?subject=unsubscribe>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
       });
 
