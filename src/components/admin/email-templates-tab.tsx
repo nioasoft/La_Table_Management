@@ -169,23 +169,30 @@ export default function EmailTemplatesTab() {
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
 
-  // Live preview plain text for the editor
-  const livePreviewText = useMemo(() => {
+  // Live preview: plain text wrapped in basic HTML for iframe display
+  const livePreviewTextAsHtml = useMemo(() => {
+    if (!formData.bodyText) return null;
     const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
-    const body = formData.bodyText
-      ? substituteVarsClient(formData.bodyText, SAMPLE_VARS)
-      : null;
+    const text = substituteVarsClient(formData.bodyText, SAMPLE_VARS);
+    const escapedText = text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    const body = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"><style>body{font-family:'Rubik',sans-serif;padding:24px;line-height:1.8;color:#333;max-width:600px;margin:0 auto}pre{white-space:pre-wrap;font-family:inherit;margin:0}</style></head><body><pre>${escapedText}</pre></body></html>`;
     return { subject, body };
   }, [formData.bodyText, formData.subject]);
 
-  // Update iframe content via ref (more reliable than key prop)
+  // The active preview content — depends on which editor tab is selected
+  const activePreview = activeEditorTab === "html" ? livePreviewHtml : livePreviewTextAsHtml;
+
+  // Update iframe content via ref
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const iframe = previewIframeRef.current;
-    if (iframe && livePreviewHtml?.body) {
-      iframe.srcdoc = livePreviewHtml.body;
+    if (iframe && activePreview?.body) {
+      iframe.srcdoc = activePreview.body;
     }
-  }, [livePreviewHtml]);
+  }, [activePreview]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -831,13 +838,13 @@ export default function EmailTemplatesTab() {
                 </Tabs>
               </div>
 
-              {/* ── Preview panel (left side in RTL) — always HTML ──── */}
+              {/* ── Preview panel (left side in RTL) ───────────────── */}
               <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
                 {/* Preview header */}
                 <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center gap-2">
                   <Eye className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-xs font-medium text-muted-foreground">
-                    תצוגה מקדימה — איך הלקוח יקבל את המייל
+                    תצוגה מקדימה חיה
                   </span>
                 </div>
 
@@ -847,7 +854,7 @@ export default function EmailTemplatesTab() {
                     נושא:
                   </p>
                   <p className="text-sm font-medium truncate" dir="auto">
-                    {livePreviewHtml?.subject || (
+                    {activePreview?.subject || (
                       <span className="text-muted-foreground italic text-xs">
                         (ריק)
                       </span>
@@ -855,12 +862,12 @@ export default function EmailTemplatesTab() {
                   </p>
                 </div>
 
-                {/* Body preview — always HTML iframe */}
+                {/* Body preview — iframe shows active tab content */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {livePreviewHtml?.body ? (
+                  {activePreview?.body ? (
                     <iframe
                       ref={previewIframeRef}
-                      srcDoc={livePreviewHtml.body}
+                      srcDoc={activePreview.body}
                       className="w-full h-full border-0"
                       title="תצוגה מקדימה"
                       sandbox="allow-same-origin"
@@ -868,7 +875,7 @@ export default function EmailTemplatesTab() {
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                       <Eye className="h-10 w-10 opacity-15" />
-                      <p className="text-sm">הכנס HTML כדי לראות תצוגה מקדימה</p>
+                      <p className="text-sm">הכנס תוכן כדי לראות תצוגה מקדימה</p>
                     </div>
                   )}
                 </div>
