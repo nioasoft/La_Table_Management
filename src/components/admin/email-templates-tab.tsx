@@ -169,30 +169,56 @@ export default function EmailTemplatesTab() {
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
 
-  // Live preview: plain text wrapped in basic HTML for iframe display
-  const livePreviewTextAsHtml = useMemo(() => {
-    if (!formData.bodyText) return null;
-    const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
-    const text = substituteVarsClient(formData.bodyText, SAMPLE_VARS);
-    const escapedText = text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    const body = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8"><style>body{font-family:'Rubik',sans-serif;padding:24px;line-height:1.8;color:#333;max-width:600px;margin:0 auto}pre{white-space:pre-wrap;font-family:inherit;margin:0}</style></head><body><pre>${escapedText}</pre></body></html>`;
-    return { subject, body };
-  }, [formData.bodyText, formData.subject]);
+  // Track previous bodyText for syncing plain text edits → HTML
+  const prevBodyTextRef = useRef(formData.bodyText);
 
-  // The active preview content — depends on which editor tab is selected
-  const activePreview = activeEditorTab === "html" ? livePreviewHtml : livePreviewTextAsHtml;
+  // When bodyText changes, sync changes into bodyHtml behind the scenes
+  useEffect(() => {
+    const oldText = prevBodyTextRef.current;
+    const newText = formData.bodyText;
+    prevBodyTextRef.current = newText;
+
+    if (!oldText || !newText || oldText === newText || !formData.bodyHtml) return;
+
+    // Split into lines and find what changed
+    const oldLines = oldText.split("\n").filter((l) => l.trim().length > 0);
+    const newLines = newText.split("\n").filter((l) => l.trim().length > 0);
+
+    let updatedHtml = formData.bodyHtml;
+    let changed = false;
+
+    // Find lines that were in old but not in new (removed)
+    for (const oldLine of oldLines) {
+      const trimmed = oldLine.trim();
+      if (trimmed.length < 2) continue; // skip very short lines (separators etc.)
+      if (!newLines.some((nl) => nl.trim() === trimmed)) {
+        // This line was removed — remove it from HTML (match text between tags)
+        const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`(>[^<]*)${escaped}([^<]*<)`, "g");
+        const before = updatedHtml;
+        updatedHtml = updatedHtml.replace(regex, (match, pre, post) => {
+          return pre.replace(trimmed, "") + post.replace(trimmed, "");
+        });
+        if (updatedHtml !== before) changed = true;
+      }
+    }
+
+    // Find lines that are in new but not in old (added) — handled by HTML tab editing
+    // Plain text additions are trickier since we don't know where in the HTML to insert
+
+    if (changed) {
+      setFormData((prev) => ({ ...prev, bodyHtml: updatedHtml }));
+    }
+  }, [formData.bodyText]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update iframe content via ref
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const iframe = previewIframeRef.current;
-    if (iframe && activePreview?.body) {
-      iframe.srcdoc = activePreview.body;
+    if (iframe && livePreviewHtml?.body) {
+      iframe.srcdoc = livePreviewHtml.body;
     }
-  }, [activePreview]);
+  }, [livePreviewHtml]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -233,12 +259,14 @@ export default function EmailTemplatesTab() {
 
   const handleEdit = (template: EmailTemplate) => {
     setEditingTemplate(template);
+    const bodyText = template.bodyText || "";
+    prevBodyTextRef.current = bodyText;
     setFormData({
       name: template.name,
       code: template.code,
       subject: template.subject,
       bodyHtml: template.bodyHtml,
-      bodyText: template.bodyText || "",
+      bodyText,
       description: template.description || "",
       category: (template.category as EmailTemplateType) || "custom",
       isActive: template.isActive,
@@ -854,7 +882,7 @@ export default function EmailTemplatesTab() {
                     נושא:
                   </p>
                   <p className="text-sm font-medium truncate" dir="auto">
-                    {activePreview?.subject || (
+                    {livePreviewHtml?.subject || (
                       <span className="text-muted-foreground italic text-xs">
                         (ריק)
                       </span>
@@ -864,10 +892,10 @@ export default function EmailTemplatesTab() {
 
                 {/* Body preview — iframe shows active tab content */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {activePreview?.body ? (
+                  {livePreviewHtml?.body ? (
                     <iframe
                       ref={previewIframeRef}
-                      srcDoc={activePreview.body}
+                      srcDoc={livePreviewHtml.body}
                       className="w-full h-full border-0"
                       title="תצוגה מקדימה"
                       sandbox="allow-same-origin"
