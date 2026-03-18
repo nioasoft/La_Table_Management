@@ -141,15 +141,15 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
   for (const tx of result.transactions) {
     const normalizedCode = tx.accountCode.replace(/^0+/, '') || tx.accountCode;
 
-    // Track whether match is "direct" (tx.accountCode IS the revenue account)
-    // vs "indirect" (tx is on another account, revenue is the counterparty)
-    let isDirect = false;
     let accountInfo = accountCodeToInfo.get(normalizedCode);
     if (accountInfo) {
-      isDirect = true;
+      // Skip direct entries — revenue is fully captured via indirect entries
+      // (resolvedAccountKey/counterpartyName path). Direct entries to revenue
+      // accounts are adjustments/offsets, not actual revenue.
+      continue;
     }
 
-    if (!accountInfo) {
+    {
       const counterparty = tx.counterpartyName.trim();
       if (revenueAccountCodes.has(counterparty)) {
         accountInfo = accountCodeToInfo.get(counterparty);
@@ -181,25 +181,20 @@ export function buildRevenueSummary(result: BkmvParseResult): void {
     const accountKey = accountInfo.accountKey;
     const accountName = accountInfo.accountName;
 
-    // For direct entries (accountCode IS the revenue account), respect debit/credit side:
-    // Revenue accounts are credit-normal — debits reduce revenue, credits increase it.
-    // Without this, offset pairs (credit+debit) inflate the total instead of netting to 0.
-    const effectiveAmount = (isDirect && tx.side === 'debit') ? -tx.amount : tx.amount;
-
     revenueGrossVolume.set(accountKey, (revenueGrossVolume.get(accountKey) || 0) + Math.abs(tx.amount));
 
     const existing = summary.get(accountKey);
     if (existing) {
-      existing.totalAmount += effectiveAmount;
+      existing.totalAmount += tx.amount;
       existing.transactionCount++;
-      existing.monthlyBreakdown[monthKey] = (existing.monthlyBreakdown[monthKey] || 0) + effectiveAmount;
+      existing.monthlyBreakdown[monthKey] = (existing.monthlyBreakdown[monthKey] || 0) + tx.amount;
     } else {
       summary.set(accountKey, {
         accountCode: accountKey,
         accountName: accountName,
-        totalAmount: effectiveAmount,
+        totalAmount: tx.amount,
         transactionCount: 1,
-        monthlyBreakdown: { [monthKey]: effectiveAmount },
+        monthlyBreakdown: { [monthKey]: tx.amount },
       });
     }
   }
