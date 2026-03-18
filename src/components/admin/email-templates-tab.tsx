@@ -169,48 +169,130 @@ export default function EmailTemplatesTab() {
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
 
-  // Live preview for plain text: render using the HTML template's styling
-  const livePreviewTextAsHtml = useMemo(() => {
-    if (!formData.bodyText) return null;
-    const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
-    const text = substituteVarsClient(formData.bodyText, SAMPLE_VARS);
+  // Ref to store the original bodyText when a template is loaded/opened
+  const originalBodyTextRef = useRef<string>("");
 
-    // Extract <head> section from the HTML template for consistent styling
-    const headMatch = formData.bodyHtml?.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
-    const headContent = headMatch ? headMatch[1] : "";
+  /** Sync plain text edits into HTML body on demand (refresh button).
+   *  Handles removal, replacement, AND insertion.
+   *  Uses functional setState to avoid stale closure issues. */
+  const syncPlainTextToHtml = () => {
+    setFormData((prev) => {
+      const oldText = originalBodyTextRef.current;
+      const newText = prev.bodyText;
+      const html = prev.bodyHtml;
 
-    // Convert plain text to styled HTML paragraphs
-    const paragraphs = text
-      .split("\n")
-      .map((line) => {
-        if (!line.trim()) return "<br/>";
-        const escaped = line
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
-        // Detect separator lines
-        if (/^-{5,}$/.test(line.trim())) {
-          return `<hr style="border:none;border-top:1px solid #eaeaea;margin:12px 0"/>`;
+      if (!html) {
+        setTimeout(() => toast.error("אין תוכן HTML לסנכרן אליו."), 0);
+        return prev;
+      }
+      if (!oldText) {
+        setTimeout(() => toast.error("לא נמצא טקסט מקורי לסנכרון. ערוך ישירות בלשונית HTML."), 0);
+        return prev;
+      }
+      if (oldText === newText) {
+        setTimeout(() => toast.info("אין שינויים לסנכרן."), 0);
+        return prev;
+      }
+
+      // Find the single contiguous diff between old and new text
+      let prefixLen = 0;
+      const minLen = Math.min(oldText.length, newText.length);
+      while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+        prefixLen++;
+      }
+      let oldEnd = oldText.length;
+      let newEnd = newText.length;
+      while (oldEnd > prefixLen && newEnd > prefixLen && oldText[oldEnd - 1] === newText[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+      }
+
+      const removed = oldText.slice(prefixLen, oldEnd);
+      const added = newText.slice(prefixLen, newEnd);
+
+      if (!removed && !added) {
+        setTimeout(() => toast.info("אין שינויים לסנכרן."), 0);
+        return prev;
+      }
+
+      // Helper: escape a char for regex
+      const esc = (ch: string) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Allow HTML tags and whitespace between plain-text characters
+      const TAG_GAP = "(?:<[^>]*>|[\\s\\r\\n])*";
+      const charsToPattern = (text: string) =>
+        [...text]
+          .filter((ch) => ch !== "\n" && ch !== "\r")
+          .map((ch) => esc(ch))
+          .join(TAG_GAP);
+
+      let updatedHtml: string;
+
+      if (removed) {
+        // Removal or replacement: find removed text in HTML, replace with added
+        const re = new RegExp(charsToPattern(removed));
+        const match = re.exec(html);
+        if (!match) {
+          setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
+          return prev;
         }
-        return `<p style="font-size:14px;line-height:24px;color:#333;margin:0 0 4px 0;text-align:right">${escaped}</p>`;
-      })
-      .join("");
+        updatedHtml = html.slice(0, match.index) + added + html.slice(match.index + match[0].length);
+      } else {
+        // Pure insertion: use surrounding context to find the insertion point in HTML
+        const CTX = 8;
+        const ctxBefore = oldText.slice(Math.max(0, prefixLen - CTX), prefixLen);
+        const ctxAfter = oldText.slice(prefixLen, Math.min(oldText.length, prefixLen + CTX));
 
-    const body = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">${headContent}<style>body{background:#f6f9fc;margin:0;padding:0;font-family:'Rubik',Arial,sans-serif}table{width:100%}.container{background:#fff;max-width:600px;margin:24px auto;border-radius:8px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}</style></head><body><div class="container">${paragraphs}</div></body></html>`;
-    return { subject, body };
-  }, [formData.bodyText, formData.subject, formData.bodyHtml]);
+        if (!ctxBefore && !ctxAfter) {
+          setTimeout(() => toast.error("לא ניתן לסנכרן — אין הקשר מספיק. ערוך ישירות בלשונית HTML."), 0);
+          return prev;
+        }
 
-  // The active preview — plain text tab shows styled text, HTML tab shows full HTML
-  const activePreview = activeEditorTab === "html" ? livePreviewHtml : livePreviewTextAsHtml;
+        if (ctxBefore && ctxAfter) {
+          // Find contextBefore + (gap) + contextAfter, insert added after contextBefore
+          const re = new RegExp(
+            `(${charsToPattern(ctxBefore)})(${TAG_GAP})(${charsToPattern(ctxAfter)})`
+          );
+          const match = re.exec(html);
+          if (!match) {
+            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
+            return prev;
+          }
+          const insertAt = match.index + match[1].length;
+          updatedHtml = html.slice(0, insertAt) + added + html.slice(insertAt);
+        } else if (ctxBefore) {
+          const re = new RegExp(charsToPattern(ctxBefore));
+          const match = re.exec(html);
+          if (!match) {
+            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
+            return prev;
+          }
+          const insertAt = match.index + match[0].length;
+          updatedHtml = html.slice(0, insertAt) + added + html.slice(insertAt);
+        } else {
+          const re = new RegExp(charsToPattern(ctxAfter));
+          const match = re.exec(html);
+          if (!match) {
+            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
+            return prev;
+          }
+          updatedHtml = html.slice(0, match.index) + added + html.slice(match.index);
+        }
+      }
+
+      originalBodyTextRef.current = newText;
+      setTimeout(() => toast.success("התצוגה עודכנה בהצלחה"), 0);
+      return { ...prev, bodyHtml: updatedHtml };
+    });
+  };
 
   // Update iframe content via ref
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const iframe = previewIframeRef.current;
-    if (iframe && activePreview?.body) {
-      iframe.srcdoc = activePreview.body;
+    if (iframe && livePreviewHtml?.body) {
+      iframe.srcdoc = livePreviewHtml.body;
     }
-  }, [activePreview]);
+  }, [livePreviewHtml]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -261,6 +343,7 @@ export default function EmailTemplatesTab() {
       category: (template.category as EmailTemplateType) || "custom",
       isActive: template.isActive,
     });
+    originalBodyTextRef.current = template.bodyText || "";
     setShowFormDialog(true);
     setFormError(null);
   };
@@ -362,6 +445,7 @@ export default function EmailTemplatesTab() {
   const openCreateForm = () => {
     setEditingTemplate(null);
     setFormData(initialFormData);
+    originalBodyTextRef.current = "";
     setFormError(null);
     setActiveEditorTab("text");
     setShowFormDialog(true);
@@ -859,11 +943,26 @@ export default function EmailTemplatesTab() {
               {/* ── Preview panel (left side in RTL) ───────────────── */}
               <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
                 {/* Preview header */}
-                <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center gap-2">
-                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground">
-                    תצוגה מקדימה חיה
-                  </span>
+                <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">
+                      תצוגה מקדימה — HTML
+                    </span>
+                  </div>
+                  {activeEditorTab === "text" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2.5 text-xs gap-1.5"
+                      onClick={syncPlainTextToHtml}
+                      title="סנכרן שינויים מטקסט פשוט → HTML"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      רענן תצוגה
+                    </Button>
+                  )}
                 </div>
 
                 {/* Subject preview strip */}
@@ -872,7 +971,7 @@ export default function EmailTemplatesTab() {
                     נושא:
                   </p>
                   <p className="text-sm font-medium truncate" dir="auto">
-                    {activePreview?.subject || (
+                    {livePreviewHtml?.subject || (
                       <span className="text-muted-foreground italic text-xs">
                         (ריק)
                       </span>
@@ -882,10 +981,10 @@ export default function EmailTemplatesTab() {
 
                 {/* Body preview — iframe shows active tab content */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {activePreview?.body ? (
+                  {livePreviewHtml?.body ? (
                     <iframe
                       ref={previewIframeRef}
-                      srcDoc={activePreview.body}
+                      srcDoc={livePreviewHtml.body}
                       className="w-full h-full border-0"
                       title="תצוגה מקדימה"
                       sandbox="allow-same-origin"
