@@ -169,68 +169,48 @@ export default function EmailTemplatesTab() {
     return { subject, body };
   }, [formData.bodyHtml, formData.subject]);
 
-  // Track previous bodyText for syncing plain text edits → HTML
-  const prevBodyTextRef = useRef(formData.bodyText);
+  // Live preview for plain text: render using the HTML template's styling
+  const livePreviewTextAsHtml = useMemo(() => {
+    if (!formData.bodyText) return null;
+    const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
+    const text = substituteVarsClient(formData.bodyText, SAMPLE_VARS);
 
-  // When bodyText changes, sync changes into bodyHtml using character-level diff
-  useEffect(() => {
-    const oldText = prevBodyTextRef.current;
-    const newText = formData.bodyText;
-    prevBodyTextRef.current = newText;
+    // Extract <head> section from the HTML template for consistent styling
+    const headMatch = formData.bodyHtml?.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+    const headContent = headMatch ? headMatch[1] : "";
 
-    if (!oldText || !newText || oldText === newText || !formData.bodyHtml) return;
+    // Convert plain text to styled HTML paragraphs
+    const paragraphs = text
+      .split("\n")
+      .map((line) => {
+        if (!line.trim()) return "<br/>";
+        const escaped = line
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        // Detect separator lines
+        if (/^-{5,}$/.test(line.trim())) {
+          return `<hr style="border:none;border-top:1px solid #eaeaea;margin:12px 0"/>`;
+        }
+        return `<p style="font-size:14px;line-height:24px;color:#333;margin:0 0 4px 0;text-align:right">${escaped}</p>`;
+      })
+      .join("");
 
-    // Character-level diff: find exact segment that was removed/added
-    let prefixLen = 0;
-    while (
-      prefixLen < oldText.length &&
-      prefixLen < newText.length &&
-      oldText[prefixLen] === newText[prefixLen]
-    ) {
-      prefixLen++;
-    }
+    const body = `<!DOCTYPE html><html dir="rtl" lang="he"><head><meta charset="utf-8">${headContent}<style>body{background:#f6f9fc;margin:0;padding:0;font-family:'Rubik',Arial,sans-serif}table{width:100%}.container{background:#fff;max-width:600px;margin:24px auto;border-radius:8px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}</style></head><body><div class="container">${paragraphs}</div></body></html>`;
+    return { subject, body };
+  }, [formData.bodyText, formData.subject, formData.bodyHtml]);
 
-    let oldSuffix = oldText.length;
-    let newSuffix = newText.length;
-    while (
-      oldSuffix > prefixLen &&
-      newSuffix > prefixLen &&
-      oldText[oldSuffix - 1] === newText[newSuffix - 1]
-    ) {
-      oldSuffix--;
-      newSuffix--;
-    }
-
-    const removed = oldText.substring(prefixLen, oldSuffix).trim();
-    const added = newText.substring(prefixLen, newSuffix).trim();
-
-    if (!removed && !added) return;
-
-    let updatedHtml = formData.bodyHtml;
-
-    if (removed) {
-      // Find the removed text in the HTML (between > and <) and replace with added text
-      const escaped = removed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Match the text inside HTML tags — first occurrence only
-      const regex = new RegExp(`(>[^<]*)${escaped}`, "");
-      updatedHtml = updatedHtml.replace(regex, (match, pre) => {
-        return pre + added;
-      });
-    }
-
-    if (updatedHtml !== formData.bodyHtml) {
-      setFormData((prev) => ({ ...prev, bodyHtml: updatedHtml }));
-    }
-  }, [formData.bodyText]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The active preview — plain text tab shows styled text, HTML tab shows full HTML
+  const activePreview = activeEditorTab === "html" ? livePreviewHtml : livePreviewTextAsHtml;
 
   // Update iframe content via ref
   const previewIframeRef = useRef<HTMLIFrameElement>(null);
   useEffect(() => {
     const iframe = previewIframeRef.current;
-    if (iframe && livePreviewHtml?.body) {
-      iframe.srcdoc = livePreviewHtml.body;
+    if (iframe && activePreview?.body) {
+      iframe.srcdoc = activePreview.body;
     }
-  }, [livePreviewHtml]);
+  }, [activePreview]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -271,14 +251,12 @@ export default function EmailTemplatesTab() {
 
   const handleEdit = (template: EmailTemplate) => {
     setEditingTemplate(template);
-    const bodyText = template.bodyText || "";
-    prevBodyTextRef.current = bodyText;
     setFormData({
       name: template.name,
       code: template.code,
       subject: template.subject,
       bodyHtml: template.bodyHtml,
-      bodyText,
+      bodyText: template.bodyText || "",
       description: template.description || "",
       category: (template.category as EmailTemplateType) || "custom",
       isActive: template.isActive,
@@ -894,7 +872,7 @@ export default function EmailTemplatesTab() {
                     נושא:
                   </p>
                   <p className="text-sm font-medium truncate" dir="auto">
-                    {livePreviewHtml?.subject || (
+                    {activePreview?.subject || (
                       <span className="text-muted-foreground italic text-xs">
                         (ריק)
                       </span>
@@ -904,10 +882,10 @@ export default function EmailTemplatesTab() {
 
                 {/* Body preview — iframe shows active tab content */}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {livePreviewHtml?.body ? (
+                  {activePreview?.body ? (
                     <iframe
                       ref={previewIframeRef}
-                      srcDoc={livePreviewHtml.body}
+                      srcDoc={activePreview.body}
                       className="w-full h-full border-0"
                       title="תצוגה מקדימה"
                       sandbox="allow-same-origin"
