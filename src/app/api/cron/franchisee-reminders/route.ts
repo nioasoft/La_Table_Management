@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { render } from "@react-email/components";
 import { database } from "@/db";
 import {
   franchiseeReminder,
@@ -16,7 +15,7 @@ import {
   type FranchiseeReminderWithFranchisee,
 } from "@/data-access/franchiseeReminders";
 import { getActiveFranchisees } from "@/data-access/franchisees";
-import { sendDirectEmail } from "@/lib/email/service";
+import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AgreementExpiryEmail } from "@/emails/agreement-expiry";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
@@ -79,24 +78,18 @@ async function sendExpiryReminderEmail(
 
   const advanceNoticeDays = getAdvanceNoticeDays(reminder.reminderType);
 
-  const html = await render(
-    AgreementExpiryEmail({
-      franchisee_name: franchiseeName,
-      expiry_date: reminderDate.toLocaleDateString("he-IL"),
-      advance_notice_days: String(advanceNoticeDays),
-      reminder_type: reminderTypeLabels[reminder.reminderType],
-      days_remaining: String(Math.max(0, daysRemaining)),
-    })
-  );
-  const text = await render(
-    AgreementExpiryEmail({
-      franchisee_name: franchiseeName,
-      expiry_date: reminderDate.toLocaleDateString("he-IL"),
-      advance_notice_days: String(advanceNoticeDays),
-      reminder_type: reminderTypeLabels[reminder.reminderType],
-      days_remaining: String(Math.max(0, daysRemaining)),
-    }),
-    { plainText: true }
+  const expiryVars = {
+    franchisee_name: franchiseeName,
+    expiry_date: reminderDate.toLocaleDateString("he-IL"),
+    advance_notice_days: String(advanceNoticeDays),
+    reminder_type: reminderTypeLabels[reminder.reminderType],
+    days_remaining: String(Math.max(0, daysRemaining)),
+  };
+
+  const { html, text } = await renderTemplateWithFallback(
+    "agreement_expiry",
+    () => AgreementExpiryEmail(expiryVars),
+    expiryVars
   );
 
   return sendDirectEmail({

@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { render } from "@react-email/components";
 import { database } from "@/db";
 import { fileRequest, contact, type FileRequest } from "@/db/schema";
 import { eq, and, lt } from "drizzle-orm";
 import { sendFileRequestReminder, updateFileRequest } from "@/data-access/fileRequests";
-import { sendDirectEmail } from "@/lib/email/service";
+import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AdminEscalationEmail } from "@/emails/admin-escalation";
 import { BkmvOwnerEscalationEmail } from "@/emails/bkmv-owner-escalation";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -92,26 +91,19 @@ async function sendSupplierEscalation(
 
   if (dryRun) return { success: true };
 
-  const html = await render(
-    AdminEscalationEmail({
-      supplier_name: req.recipientName || req.recipientEmail,
-      period: periodDescription,
-      original_sent_date: req.sentAt
-        ? new Date(req.sentAt).toLocaleDateString("he-IL")
-        : "לא ידוע",
-      reminders_sent: String(reminders.length),
-    })
-  );
-  const text = await render(
-    AdminEscalationEmail({
-      supplier_name: req.recipientName || req.recipientEmail,
-      period: periodDescription,
-      original_sent_date: req.sentAt
-        ? new Date(req.sentAt).toLocaleDateString("he-IL")
-        : "לא ידוע",
-      reminders_sent: String(reminders.length),
-    }),
-    { plainText: true }
+  const vars = {
+    supplier_name: req.recipientName || req.recipientEmail,
+    period: periodDescription,
+    original_sent_date: req.sentAt
+      ? new Date(req.sentAt).toLocaleDateString("he-IL")
+      : "לא ידוע",
+    reminders_sent: String(reminders.length),
+  };
+
+  const { html, text } = await renderTemplateWithFallback(
+    "admin_escalation",
+    () => AdminEscalationEmail(vars),
+    vars
   );
 
   return sendDirectEmail({
@@ -152,22 +144,17 @@ async function sendBkmvOwnerEscalation(
       continue;
     }
 
-    const html = await render(
-      BkmvOwnerEscalationEmail({
-        original_sent_date: originalSentDate,
-        start_date: startDate,
-        upload_link: uploadUrl,
-        franchisee_name: req.recipientName || "",
-      })
-    );
-    const text = await render(
-      BkmvOwnerEscalationEmail({
-        original_sent_date: originalSentDate,
-        start_date: startDate,
-        upload_link: uploadUrl,
-        franchisee_name: req.recipientName || "",
-      }),
-      { plainText: true }
+    const ownerVars = {
+      original_sent_date: originalSentDate,
+      start_date: startDate,
+      upload_link: uploadUrl,
+      franchisee_name: req.recipientName || "",
+    };
+
+    const { html, text } = await renderTemplateWithFallback(
+      "bkmv_owner_escalation",
+      () => BkmvOwnerEscalationEmail(ownerVars),
+      ownerVars
     );
 
     const sendResult = await sendDirectEmail({

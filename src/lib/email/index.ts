@@ -29,6 +29,7 @@ export {
   sendEmailWithTemplateCode,
   sendEmailWithTemplateData,
   sendDirectEmail,
+  renderTemplateWithFallback,
   previewEmailTemplate,
   previewReactEmailTemplate,
   validateTemplateVariables,

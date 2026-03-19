@@ -1,3 +1,4 @@
+import * as React from "react";
 import { render } from "@react-email/components";
 import { Resend } from "resend";
 import { randomUUID } from "crypto";
@@ -339,6 +340,27 @@ export async function sendDirectEmail(options: {
     });
     return { success: true, messageId: `dev-${logId}` };
   }
+}
+
+/**
+ * Render an email using the DB template if available, otherwise fall back
+ * to a React Email component. This allows cron jobs to respect DB edits
+ * while keeping a safe fallback.
+ */
+export async function renderTemplateWithFallback(
+  templateCode: string,
+  componentFn: () => React.ReactElement,
+  variables: TemplateVariables
+): Promise<{ html: string; text: string }> {
+  const template = await getEmailTemplateByCode(templateCode);
+  if (template?.isActive) {
+    return renderCustomTemplate(template.bodyHtml, template.bodyText, variables);
+  }
+  // Fallback to React Email component
+  const element = componentFn();
+  const html = await render(element);
+  const text = await render(element, { plainText: true });
+  return { html, text };
 }
 
 /**

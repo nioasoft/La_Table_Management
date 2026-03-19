@@ -111,6 +111,91 @@ function substituteVarsClient(
   );
 }
 
+/**
+ * Pure function: apply a plain-text diff to an HTML string.
+ * Returns the updated HTML, or null if the diff could not be applied.
+ */
+function applyTextDiffToHtml(
+  oldText: string,
+  newText: string,
+  html: string
+): string | null {
+  if (!html || !oldText || oldText === newText) return null;
+
+  // Find the single contiguous diff between old and new text
+  let prefixLen = 0;
+  const minLen = Math.min(oldText.length, newText.length);
+  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
+    prefixLen++;
+  }
+  let oldEnd = oldText.length;
+  let newEnd = newText.length;
+  while (
+    oldEnd > prefixLen &&
+    newEnd > prefixLen &&
+    oldText[oldEnd - 1] === newText[newEnd - 1]
+  ) {
+    oldEnd--;
+    newEnd--;
+  }
+
+  const removed = oldText.slice(prefixLen, oldEnd);
+  const added = newText.slice(prefixLen, newEnd);
+  if (!removed && !added) return null;
+
+  const escChar = (ch: string) =>
+    ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const TAG_GAP = "(?:<[^>]*>|[\\s\\r\\n])*";
+  const charsToPattern = (text: string) =>
+    [...text]
+      .filter((ch) => ch !== "\n" && ch !== "\r")
+      .map((ch) => escChar(ch))
+      .join(TAG_GAP);
+
+  if (removed) {
+    const re = new RegExp(charsToPattern(removed));
+    const match = re.exec(html);
+    if (!match) return null;
+    return (
+      html.slice(0, match.index) +
+      added +
+      html.slice(match.index + match[0].length)
+    );
+  }
+
+  // Pure insertion: use surrounding context
+  const CTX = 8;
+  const ctxBefore = oldText.slice(Math.max(0, prefixLen - CTX), prefixLen);
+  const ctxAfter = oldText.slice(
+    prefixLen,
+    Math.min(oldText.length, prefixLen + CTX)
+  );
+
+  if (!ctxBefore && !ctxAfter) return null;
+
+  if (ctxBefore && ctxAfter) {
+    const re = new RegExp(
+      `(${charsToPattern(ctxBefore)})(${TAG_GAP})(${charsToPattern(ctxAfter)})`
+    );
+    const match = re.exec(html);
+    if (!match) return null;
+    const insertAt = match.index + match[1].length;
+    return html.slice(0, insertAt) + added + html.slice(insertAt);
+  }
+  if (ctxBefore) {
+    const re = new RegExp(charsToPattern(ctxBefore));
+    const match = re.exec(html);
+    if (!match) return null;
+    const insertAt = match.index + match[0].length;
+    return html.slice(0, insertAt) + added + html.slice(insertAt);
+  }
+  // ctxAfter only
+  const re = new RegExp(charsToPattern(ctxAfter));
+  const match = re.exec(html);
+  if (!match) return null;
+  return html.slice(0, match.index) + added + html.slice(match.index);
+}
+
 export default function EmailTemplatesTab() {
   const [filter, setFilter] = useState<"all" | "active">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -172,21 +257,24 @@ export default function EmailTemplatesTab() {
   // Ref to store the original bodyText when a template is loaded/opened
   const originalBodyTextRef = useRef<string>("");
 
-  /** Sync plain text edits into HTML body on demand (refresh button).
-   *  Handles removal, replacement, AND insertion.
-   *  Uses functional setState to avoid stale closure issues. */
+  /** Sync plain text edits into HTML body on demand (refresh button). */
   const syncPlainTextToHtml = () => {
     setFormData((prev) => {
       const oldText = originalBodyTextRef.current;
       const newText = prev.bodyText;
-      const html = prev.bodyHtml;
 
-      if (!html) {
+      if (!prev.bodyHtml) {
         setTimeout(() => toast.error("אין תוכן HTML לסנכרן אליו."), 0);
         return prev;
       }
       if (!oldText) {
-        setTimeout(() => toast.error("לא נמצא טקסט מקורי לסנכרון. ערוך ישירות בלשונית HTML."), 0);
+        setTimeout(
+          () =>
+            toast.error(
+              "לא נמצא טקסט מקורי לסנכרון. ערוך ישירות בלשונית HTML."
+            ),
+          0
+        );
         return prev;
       }
       if (oldText === newText) {
@@ -194,93 +282,26 @@ export default function EmailTemplatesTab() {
         return prev;
       }
 
-      // Find the single contiguous diff between old and new text
-      let prefixLen = 0;
-      const minLen = Math.min(oldText.length, newText.length);
-      while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
-        prefixLen++;
-      }
-      let oldEnd = oldText.length;
-      let newEnd = newText.length;
-      while (oldEnd > prefixLen && newEnd > prefixLen && oldText[oldEnd - 1] === newText[newEnd - 1]) {
-        oldEnd--;
-        newEnd--;
-      }
-
-      const removed = oldText.slice(prefixLen, oldEnd);
-      const added = newText.slice(prefixLen, newEnd);
-
-      if (!removed && !added) {
-        setTimeout(() => toast.info("אין שינויים לסנכרן."), 0);
+      const updatedHtml = applyTextDiffToHtml(oldText, newText, prev.bodyHtml);
+      if (!updatedHtml) {
+        setTimeout(
+          () =>
+            toast.error(
+              "לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."
+            ),
+          0
+        );
         return prev;
       }
 
-      // Helper: escape a char for regex
-      const esc = (ch: string) => ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      // Allow HTML tags and whitespace between plain-text characters
-      const TAG_GAP = "(?:<[^>]*>|[\\s\\r\\n])*";
-      const charsToPattern = (text: string) =>
-        [...text]
-          .filter((ch) => ch !== "\n" && ch !== "\r")
-          .map((ch) => esc(ch))
-          .join(TAG_GAP);
-
-      let updatedHtml: string;
-
-      if (removed) {
-        // Removal or replacement: find removed text in HTML, replace with added
-        const re = new RegExp(charsToPattern(removed));
-        const match = re.exec(html);
-        if (!match) {
-          setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
-          return prev;
-        }
-        updatedHtml = html.slice(0, match.index) + added + html.slice(match.index + match[0].length);
-      } else {
-        // Pure insertion: use surrounding context to find the insertion point in HTML
-        const CTX = 8;
-        const ctxBefore = oldText.slice(Math.max(0, prefixLen - CTX), prefixLen);
-        const ctxAfter = oldText.slice(prefixLen, Math.min(oldText.length, prefixLen + CTX));
-
-        if (!ctxBefore && !ctxAfter) {
-          setTimeout(() => toast.error("לא ניתן לסנכרן — אין הקשר מספיק. ערוך ישירות בלשונית HTML."), 0);
-          return prev;
-        }
-
-        if (ctxBefore && ctxAfter) {
-          // Find contextBefore + (gap) + contextAfter, insert added after contextBefore
-          const re = new RegExp(
-            `(${charsToPattern(ctxBefore)})(${TAG_GAP})(${charsToPattern(ctxAfter)})`
-          );
-          const match = re.exec(html);
-          if (!match) {
-            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
-            return prev;
-          }
-          const insertAt = match.index + match[1].length;
-          updatedHtml = html.slice(0, insertAt) + added + html.slice(insertAt);
-        } else if (ctxBefore) {
-          const re = new RegExp(charsToPattern(ctxBefore));
-          const match = re.exec(html);
-          if (!match) {
-            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
-            return prev;
-          }
-          const insertAt = match.index + match[0].length;
-          updatedHtml = html.slice(0, insertAt) + added + html.slice(insertAt);
-        } else {
-          const re = new RegExp(charsToPattern(ctxAfter));
-          const match = re.exec(html);
-          if (!match) {
-            setTimeout(() => toast.error("לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."), 0);
-            return prev;
-          }
-          updatedHtml = html.slice(0, match.index) + added + html.slice(match.index);
-        }
-      }
-
       originalBodyTextRef.current = newText;
-      setTimeout(() => toast.success("התצוגה עודכנה בהצלחה"), 0);
+      setTimeout(
+        () =>
+          toast.success(
+            "התצוגה המקדימה עודכנה — לחצו ׳שמור׳ כדי להחיל את השינויים"
+          ),
+        0
+      );
       return { ...prev, bodyHtml: updatedHtml };
     });
   };
@@ -293,6 +314,36 @@ export default function EmailTemplatesTab() {
       iframe.srcdoc = livePreviewHtml.body;
     }
   }, [livePreviewHtml]);
+
+  /**
+   * Build the save payload, auto-syncing text→HTML if needed.
+   * Returns the formData to save (with potentially updated bodyHtml).
+   */
+  const buildSavePayload = (): TemplateFormData => {
+    const oldText = originalBodyTextRef.current;
+    const hasTextEdits = oldText && formData.bodyText !== oldText;
+
+    if (!hasTextEdits) return formData;
+
+    // Auto-sync text edits into HTML
+    const syncedHtml = applyTextDiffToHtml(
+      oldText,
+      formData.bodyText,
+      formData.bodyHtml
+    );
+    if (syncedHtml) {
+      // Update form state + original ref so preview reflects the change
+      originalBodyTextRef.current = formData.bodyText;
+      setFormData((prev) => ({ ...prev, bodyHtml: syncedHtml }));
+      return { ...formData, bodyHtml: syncedHtml };
+    }
+
+    // Sync failed — save bodyText anyway, warn user
+    toast.warning(
+      "השינויים בטקסט נשמרו, אך לא הצלחנו לעדכן את ה-HTML אוטומטית. ערכו ישירות בלשונית HTML."
+    );
+    return formData;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -307,6 +358,8 @@ export default function EmailTemplatesTab() {
       setFormError(t.form.validation.required);
       return;
     }
+
+    const payload = buildSavePayload();
 
     const onSuccess = () => {
       setShowFormDialog(false);
@@ -323,11 +376,60 @@ export default function EmailTemplatesTab() {
 
     if (editingTemplate) {
       updateMutation.mutate(
-        { id: editingTemplate.id, data: formData },
+        { id: editingTemplate.id, data: payload },
         { onSuccess, onError }
       );
     } else {
-      createMutation.mutate(formData, { onSuccess, onError });
+      createMutation.mutate(payload, { onSuccess, onError });
+    }
+  };
+
+  /** Save and then open the Send Test Email dialog */
+  const handleSaveAndTest = async () => {
+    setFormError(null);
+
+    if (
+      !formData.name ||
+      !formData.code ||
+      !formData.subject ||
+      !formData.bodyHtml
+    ) {
+      setFormError(t.form.validation.required);
+      return;
+    }
+
+    const payload = buildSavePayload();
+
+    try {
+      if (editingTemplate) {
+        const result = await updateMutation.mutateAsync({
+          id: editingTemplate.id,
+          data: payload,
+        });
+        // Close dialog and open test email dialog with the saved template
+        setShowFormDialog(false);
+        setEditingTemplate(null);
+        setFormData(initialFormData);
+        toast.success(t.messages.updateSuccess);
+        // Open test email dialog — use the returned template or reconstruct
+        const savedTemplate =
+          result?.template ??
+          ({ ...editingTemplate, ...payload } as EmailTemplate);
+        setSendTestTemplate(savedTemplate);
+      } else {
+        const result = await createMutation.mutateAsync(payload);
+        setShowFormDialog(false);
+        setEditingTemplate(null);
+        setFormData(initialFormData);
+        toast.success(t.messages.createSuccess);
+        if (result?.template) {
+          setSendTestTemplate(result.template as EmailTemplate);
+        }
+      }
+    } catch (error) {
+      setFormError(
+        error instanceof Error ? error.message : t.messages.saveError
+      );
     }
   };
 
@@ -1010,6 +1112,23 @@ export default function EmailTemplatesTab() {
               >
                 {tCommon.cancel}
               </Button>
+              {editingTemplate && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSaveAndTest}
+                  disabled={isSubmitting}
+                  size="sm"
+                  className="gap-1.5"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  שמור ושלח ניסיון
+                </Button>
+              )}
               <Button type="submit" disabled={isSubmitting} size="sm">
                 {isSubmitting ? (
                   <>
