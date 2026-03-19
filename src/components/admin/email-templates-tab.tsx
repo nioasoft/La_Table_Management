@@ -163,8 +163,11 @@ function applyTextDiffToHtml(
     );
   }
 
-  // Pure insertion: use surrounding context
-  const CTX = 8;
+  // Pure insertion: use surrounding context to find the insertion point.
+  // Strategy: try combined before+after context first, then fall back to
+  // before-only (handles cases where "after" text doesn't exist in HTML,
+  // e.g. a plain-text separator rendered as <hr> in the HTML).
+  const CTX = 12;
   const ctxBefore = oldText.slice(Math.max(0, prefixLen - CTX), prefixLen);
   const ctxAfter = oldText.slice(
     prefixLen,
@@ -173,27 +176,39 @@ function applyTextDiffToHtml(
 
   if (!ctxBefore && !ctxAfter) return null;
 
+  // Try combined before+after first (most precise)
   if (ctxBefore && ctxAfter) {
     const re = new RegExp(
       `(${charsToPattern(ctxBefore)})(${TAG_GAP})(${charsToPattern(ctxAfter)})`
     );
     const match = re.exec(html);
-    if (!match) return null;
-    const insertAt = match.index + match[1].length;
-    return html.slice(0, insertAt) + added + html.slice(insertAt);
+    if (match) {
+      const insertAt = match.index + match[1].length;
+      return html.slice(0, insertAt) + added + html.slice(insertAt);
+    }
+    // Fall through to before-only if combined match failed
   }
+
+  // Try before-only (handles footer boundary, <hr> separators, etc.)
   if (ctxBefore) {
     const re = new RegExp(charsToPattern(ctxBefore));
     const match = re.exec(html);
-    if (!match) return null;
-    const insertAt = match.index + match[0].length;
-    return html.slice(0, insertAt) + added + html.slice(insertAt);
+    if (match) {
+      const insertAt = match.index + match[0].length;
+      return html.slice(0, insertAt) + added + html.slice(insertAt);
+    }
   }
-  // ctxAfter only
-  const re = new RegExp(charsToPattern(ctxAfter));
-  const match = re.exec(html);
-  if (!match) return null;
-  return html.slice(0, match.index) + added + html.slice(match.index);
+
+  // Try after-only as last resort
+  if (ctxAfter) {
+    const re = new RegExp(charsToPattern(ctxAfter));
+    const match = re.exec(html);
+    if (match) {
+      return html.slice(0, match.index) + added + html.slice(match.index);
+    }
+  }
+
+  return null;
 }
 
 export default function EmailTemplatesTab() {
