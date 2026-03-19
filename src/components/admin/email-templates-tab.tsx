@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +13,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailEditor } from "@/components/editor/EmailEditor";
+import {
+  $getSelection,
+  $isRangeSelection,
+  $getRoot,
+} from "lexical";
+import type { LexicalEditor as LexicalEditorType } from "lexical";
 import {
   Select,
   SelectContent,
@@ -86,131 +93,6 @@ const initialFormData: TemplateFormData = {
   isActive: true,
 };
 
-// Sample variables for live preview
-const SAMPLE_VARS: Record<string, string> = {
-  entity_name: "ספק לדוגמה",
-  period: "ינואר 2025",
-  upload_link: "https://example.com/upload",
-  deadline: "31/01/2025",
-  brand_name: "Pat Vini",
-  brand_names: "Pat Vini, Mina Tomai",
-  recipient_name: "ישראל ישראלי",
-  document_type: "דוח עמלות",
-  due_date: "31/01/2025",
-  description: "נא להעלות את הדוח",
-};
-
-/** Client-side variable substitution for live preview */
-function substituteVarsClient(
-  template: string,
-  vars: Record<string, string>
-): string {
-  return template.replace(
-    /\{\{(\w+)\}\}/g,
-    (match, name) => vars[name] || match
-  );
-}
-
-/**
- * Pure function: apply a plain-text diff to an HTML string.
- * Returns the updated HTML, or null if the diff could not be applied.
- */
-function applyTextDiffToHtml(
-  oldText: string,
-  newText: string,
-  html: string
-): string | null {
-  if (!html || !oldText || oldText === newText) return null;
-
-  // Find the single contiguous diff between old and new text
-  let prefixLen = 0;
-  const minLen = Math.min(oldText.length, newText.length);
-  while (prefixLen < minLen && oldText[prefixLen] === newText[prefixLen]) {
-    prefixLen++;
-  }
-  let oldEnd = oldText.length;
-  let newEnd = newText.length;
-  while (
-    oldEnd > prefixLen &&
-    newEnd > prefixLen &&
-    oldText[oldEnd - 1] === newText[newEnd - 1]
-  ) {
-    oldEnd--;
-    newEnd--;
-  }
-
-  const removed = oldText.slice(prefixLen, oldEnd);
-  const added = newText.slice(prefixLen, newEnd);
-  if (!removed && !added) return null;
-
-  const escChar = (ch: string) =>
-    ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const TAG_GAP = "(?:<[^>]*>|[\\s\\r\\n])*";
-  const charsToPattern = (text: string) =>
-    [...text]
-      .filter((ch) => ch !== "\n" && ch !== "\r")
-      .map((ch) => escChar(ch))
-      .join(TAG_GAP);
-
-  if (removed) {
-    const re = new RegExp(charsToPattern(removed));
-    const match = re.exec(html);
-    if (!match) return null;
-    return (
-      html.slice(0, match.index) +
-      added +
-      html.slice(match.index + match[0].length)
-    );
-  }
-
-  // Pure insertion: use surrounding context to find the insertion point.
-  // Strategy: try combined before+after context first, then fall back to
-  // before-only (handles cases where "after" text doesn't exist in HTML,
-  // e.g. a plain-text separator rendered as <hr> in the HTML).
-  const CTX = 12;
-  const ctxBefore = oldText.slice(Math.max(0, prefixLen - CTX), prefixLen);
-  const ctxAfter = oldText.slice(
-    prefixLen,
-    Math.min(oldText.length, prefixLen + CTX)
-  );
-
-  if (!ctxBefore && !ctxAfter) return null;
-
-  // Try combined before+after first (most precise)
-  if (ctxBefore && ctxAfter) {
-    const re = new RegExp(
-      `(${charsToPattern(ctxBefore)})(${TAG_GAP})(${charsToPattern(ctxAfter)})`
-    );
-    const match = re.exec(html);
-    if (match) {
-      const insertAt = match.index + match[1].length;
-      return html.slice(0, insertAt) + added + html.slice(insertAt);
-    }
-    // Fall through to before-only if combined match failed
-  }
-
-  // Try before-only (handles footer boundary, <hr> separators, etc.)
-  if (ctxBefore) {
-    const re = new RegExp(charsToPattern(ctxBefore));
-    const match = re.exec(html);
-    if (match) {
-      const insertAt = match.index + match[0].length;
-      return html.slice(0, insertAt) + added + html.slice(insertAt);
-    }
-  }
-
-  // Try after-only as last resort
-  if (ctxAfter) {
-    const re = new RegExp(charsToPattern(ctxAfter));
-    const match = re.exec(html);
-    if (match) {
-      return html.slice(0, match.index) + added + html.slice(match.index);
-    }
-  }
-
-  return null;
-}
-
 export default function EmailTemplatesTab() {
   const [filter, setFilter] = useState<"all" | "active">("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -231,14 +113,18 @@ export default function EmailTemplatesTab() {
   const [sendTestTemplate, setSendTestTemplate] =
     useState<EmailTemplate | null>(null);
 
-  // Active editor tab: "text" | "html"
-  const [activeEditorTab, setActiveEditorTab] = useState<"text" | "html">(
-    "text"
+  // Active editor tab: "wysiwyg" | "html"
+  const [activeEditorTab, setActiveEditorTab] = useState<"wysiwyg" | "html">(
+    "wysiwyg"
   );
 
-  // Refs for each editor textarea (cursor-position insert)
+  // Lexical editor ref (for inserting variables at cursor)
+  const editorRef = useRef<LexicalEditorType | null>(null);
+  // Increment to force Lexical remount when switching back to WYSIWYG
+  const [editorKey, setEditorKey] = useState(0);
+
+  // Ref for HTML textarea (cursor-position insert)
   const htmlTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const textTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { data: session } = authClient.useSession();
   const userRole = session
@@ -261,104 +147,9 @@ export default function EmailTemplatesTab() {
   const stats = templatesData?.stats ?? null;
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
-  // Live preview HTML for the editor
-  const livePreviewHtml = useMemo(() => {
-    if (!formData.bodyHtml) return null;
-    const subject = substituteVarsClient(formData.subject, SAMPLE_VARS);
-    const body = substituteVarsClient(formData.bodyHtml, SAMPLE_VARS);
-    return { subject, body };
-  }, [formData.bodyHtml, formData.subject]);
-
-  // Ref to store the original bodyText when a template is loaded/opened
-  const originalBodyTextRef = useRef<string>("");
-
-  /** Sync plain text edits into HTML body on demand (refresh button). */
-  const syncPlainTextToHtml = () => {
-    setFormData((prev) => {
-      const oldText = originalBodyTextRef.current;
-      const newText = prev.bodyText;
-
-      if (!prev.bodyHtml) {
-        setTimeout(() => toast.error("אין תוכן HTML לסנכרן אליו."), 0);
-        return prev;
-      }
-      if (!oldText) {
-        setTimeout(
-          () =>
-            toast.error(
-              "לא נמצא טקסט מקורי לסנכרון. ערוך ישירות בלשונית HTML."
-            ),
-          0
-        );
-        return prev;
-      }
-      if (oldText === newText) {
-        setTimeout(() => toast.info("אין שינויים לסנכרן."), 0);
-        return prev;
-      }
-
-      const updatedHtml = applyTextDiffToHtml(oldText, newText, prev.bodyHtml);
-      if (!updatedHtml) {
-        setTimeout(
-          () =>
-            toast.error(
-              "לא ניתן לסנכרן — לא נמצא הטקסט ב-HTML. ערוך ישירות בלשונית HTML."
-            ),
-          0
-        );
-        return prev;
-      }
-
-      originalBodyTextRef.current = newText;
-      setTimeout(
-        () =>
-          toast.success(
-            "התצוגה המקדימה עודכנה — לחצו ׳שמור׳ כדי להחיל את השינויים"
-          ),
-        0
-      );
-      return { ...prev, bodyHtml: updatedHtml };
-    });
-  };
-
-  // Update iframe content via ref
-  const previewIframeRef = useRef<HTMLIFrameElement>(null);
-  useEffect(() => {
-    const iframe = previewIframeRef.current;
-    if (iframe && livePreviewHtml?.body) {
-      iframe.srcdoc = livePreviewHtml.body;
-    }
-  }, [livePreviewHtml]);
-
-  /**
-   * Build the save payload, auto-syncing text→HTML if needed.
-   * Returns the formData to save (with potentially updated bodyHtml).
-   */
-  const buildSavePayload = (): TemplateFormData => {
-    const oldText = originalBodyTextRef.current;
-    const hasTextEdits = oldText && formData.bodyText !== oldText;
-
-    if (!hasTextEdits) return formData;
-
-    // Auto-sync text edits into HTML
-    const syncedHtml = applyTextDiffToHtml(
-      oldText,
-      formData.bodyText,
-      formData.bodyHtml
-    );
-    if (syncedHtml) {
-      // Update form state + original ref so preview reflects the change
-      originalBodyTextRef.current = formData.bodyText;
-      setFormData((prev) => ({ ...prev, bodyHtml: syncedHtml }));
-      return { ...formData, bodyHtml: syncedHtml };
-    }
-
-    // Sync failed — save bodyText anyway, warn user
-    toast.warning(
-      "השינויים בטקסט נשמרו, אך לא הצלחנו לעדכן את ה-HTML אוטומטית. ערכו ישירות בלשונית HTML."
-    );
-    return formData;
-  };
+  /** Strip HTML tags to generate plain-text fallback */
+  const stripHtmlTags = (html: string): string =>
+    html.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -374,7 +165,11 @@ export default function EmailTemplatesTab() {
       return;
     }
 
-    const payload = buildSavePayload();
+    // Auto-generate bodyText from bodyHtml
+    const payload = {
+      ...formData,
+      bodyText: stripHtmlTags(formData.bodyHtml),
+    };
 
     const onSuccess = () => {
       setShowFormDialog(false);
@@ -413,7 +208,10 @@ export default function EmailTemplatesTab() {
       return;
     }
 
-    const payload = buildSavePayload();
+    const payload = {
+      ...formData,
+      bodyText: stripHtmlTags(formData.bodyHtml),
+    };
 
     try {
       if (editingTemplate) {
@@ -460,7 +258,7 @@ export default function EmailTemplatesTab() {
       category: (template.category as EmailTemplateType) || "custom",
       isActive: template.isActive,
     });
-    originalBodyTextRef.current = template.bodyText || "";
+    setEditorKey((k) => k + 1);
     setShowFormDialog(true);
     setFormError(null);
   };
@@ -500,13 +298,14 @@ export default function EmailTemplatesTab() {
     setEditingTemplate(null);
     setFormData(initialFormData);
     setFormError(null);
-    setActiveEditorTab("text");
+    setActiveEditorTab("wysiwyg");
   };
 
   const insertVariable = (variable: string) => {
     const variableText = `{{${variable}}}`;
 
     if (activeEditorTab === "html") {
+      // HTML tab — insert at textarea cursor
       const textarea = htmlTextareaRef.current;
       if (textarea) {
         const start = textarea.selectionStart;
@@ -529,26 +328,25 @@ export default function EmailTemplatesTab() {
         }));
       }
     } else {
-      // Plain text tab — insert into bodyText
-      const textarea = textTextareaRef.current;
-      if (textarea) {
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const before = formData.bodyText.substring(0, start);
-        const after = formData.bodyText.substring(end);
-        setFormData((prev) => ({
-          ...prev,
-          bodyText: before + variableText + after,
-        }));
-        requestAnimationFrame(() => {
-          textarea.selectionStart = textarea.selectionEnd =
-            start + variableText.length;
-          textarea.focus();
+      // WYSIWYG tab — insert text at Lexical cursor
+      const editor = editorRef.current;
+      if (editor) {
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            selection.insertText(variableText);
+          } else {
+            // No active selection — select end of document and insert
+            const root = $getRoot();
+            root.selectEnd().insertText(variableText);
+          }
         });
+        editor.focus();
       } else {
+        // Fallback: append to bodyHtml
         setFormData((prev) => ({
           ...prev,
-          bodyText: prev.bodyText + variableText,
+          bodyHtml: prev.bodyHtml + variableText,
         }));
       }
     }
@@ -562,9 +360,9 @@ export default function EmailTemplatesTab() {
   const openCreateForm = () => {
     setEditingTemplate(null);
     setFormData(initialFormData);
-    originalBodyTextRef.current = "";
     setFormError(null);
-    setActiveEditorTab("text");
+    setActiveEditorTab("wysiwyg");
+    setEditorKey((k) => k + 1);
     setShowFormDialog(true);
   };
 
@@ -973,147 +771,89 @@ export default function EmailTemplatesTab() {
               </div>
             )}
 
-            {/* Split pane: right = editor, left = preview (RTL) */}
-            <div className="flex-1 min-h-0 grid grid-cols-2 divide-x divide-x-reverse">
-              {/* ── Editor panel (right side in RTL) ───────────────────── */}
-              <div className="flex flex-col min-h-0 overflow-hidden">
-                <Tabs
-                  value={activeEditorTab}
-                  onValueChange={(v) =>
-                    setActiveEditorTab(v as "text" | "html")
+            {/* Full-width editor */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <Tabs
+                value={activeEditorTab}
+                onValueChange={(v) => {
+                  const next = v as "wysiwyg" | "html";
+                  if (next === "wysiwyg") {
+                    setEditorKey((k) => k + 1);
                   }
-                  className="flex flex-col flex-1 min-h-0"
-                >
-                  {/* Tab bar + variable buttons */}
-                  <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 space-y-2">
-                    <TabsList className="h-8">
-                      <TabsTrigger value="text" className="text-xs h-7 px-3">
-                        טקסט פשוט
-                      </TabsTrigger>
-                      <TabsTrigger value="html" className="text-xs h-7 px-3">
-                        HTML
-                      </TabsTrigger>
-                    </TabsList>
+                  setActiveEditorTab(next);
+                }}
+                className="flex flex-col flex-1 min-h-0"
+              >
+                {/* Tab bar + variable buttons */}
+                <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 space-y-2">
+                  <TabsList className="h-8">
+                    <TabsTrigger value="wysiwyg" className="text-xs h-7 px-3">
+                      עורך ויזואלי
+                    </TabsTrigger>
+                    <TabsTrigger value="html" className="text-xs h-7 px-3">
+                      HTML
+                    </TabsTrigger>
+                  </TabsList>
 
-                    {/* Variable insertion chips */}
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {t.form.fields.insertVariables}:
-                      </span>
-                      {Object.entries(t.variableDescriptions).map(
-                        ([key, { description }]) => (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => insertVariable(key)}
-                            title={description}
-                            className="inline-flex items-center rounded-full border border-dashed border-muted-foreground/40 bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
-                          >
-                            {`{{${key}}}`}
-                          </button>
-                        )
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Plain text editor */}
-                  <TabsContent
-                    value="text"
-                    className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
-                  >
-                    <Textarea
-                      ref={textTextareaRef}
-                      id="bodyText"
-                      value={formData.bodyText}
-                      onChange={(e) =>
-                        setFormData({ ...formData, bodyText: e.target.value })
-                      }
-                      placeholder={t.form.fields.plainTextBodyPlaceholder}
-                      disabled={isSubmitting}
-                      dir="auto"
-                      className="flex-1 min-h-0 h-full resize-none rounded-none border-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm leading-relaxed font-mono"
-                    />
-                  </TabsContent>
-
-                  {/* HTML editor */}
-                  <TabsContent
-                    value="html"
-                    className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
-                  >
-                    <Textarea
-                      ref={htmlTextareaRef}
-                      id="bodyHtml"
-                      value={formData.bodyHtml}
-                      onChange={(e) =>
-                        setFormData({ ...formData, bodyHtml: e.target.value })
-                      }
-                      placeholder={t.form.fields.htmlBodyPlaceholder}
-                      disabled={isSubmitting}
-                      required
-                      dir="ltr"
-                      className="flex-1 min-h-0 h-full resize-none rounded-none border-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm leading-relaxed font-mono"
-                    />
-                  </TabsContent>
-                </Tabs>
-              </div>
-
-              {/* ── Preview panel (left side in RTL) ───────────────── */}
-              <div className="flex flex-col min-h-0 overflow-hidden bg-muted/10">
-                {/* Preview header */}
-                <div className="shrink-0 border-b bg-muted/30 px-4 pt-3 pb-2 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">
-                      תצוגה מקדימה — HTML
+                  {/* Variable insertion chips */}
+                  <div className="flex flex-wrap gap-1.5 items-center">
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {t.form.fields.insertVariables}:
                     </span>
-                  </div>
-                  {activeEditorTab === "text" && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2.5 text-xs gap-1.5"
-                      onClick={syncPlainTextToHtml}
-                      title="סנכרן שינויים מטקסט פשוט → HTML"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      רענן תצוגה
-                    </Button>
-                  )}
-                </div>
-
-                {/* Subject preview strip */}
-                <div className="shrink-0 border-b px-4 py-2 bg-background">
-                  <p className="text-[11px] text-muted-foreground mb-0.5">
-                    נושא:
-                  </p>
-                  <p className="text-sm font-medium truncate" dir="auto">
-                    {livePreviewHtml?.subject || (
-                      <span className="text-muted-foreground italic text-xs">
-                        (ריק)
-                      </span>
+                    {Object.entries(t.variableDescriptions).map(
+                      ([key, { description }]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => insertVariable(key)}
+                          title={description}
+                          className="inline-flex items-center rounded-full border border-dashed border-muted-foreground/40 bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground transition-colors hover:border-primary hover:bg-primary/5 hover:text-primary"
+                        >
+                          {`{{${key}}}`}
+                        </button>
+                      )
                     )}
-                  </p>
+                  </div>
                 </div>
 
-                {/* Body preview — iframe shows active tab content */}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {livePreviewHtml?.body ? (
-                    <iframe
-                      ref={previewIframeRef}
-                      srcDoc={livePreviewHtml.body}
-                      className="w-full h-full border-0"
-                      title="תצוגה מקדימה"
-                      sandbox="allow-same-origin"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                      <Eye className="h-10 w-10 opacity-15" />
-                      <p className="text-sm">הכנס תוכן כדי לראות תצוגה מקדימה</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+                {/* WYSIWYG editor */}
+                <TabsContent
+                  value="wysiwyg"
+                  className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
+                >
+                  <EmailEditor
+                    key={editorKey}
+                    value={formData.bodyHtml}
+                    onChange={(html) =>
+                      setFormData((prev) => ({ ...prev, bodyHtml: html }))
+                    }
+                    onEditorReady={(editor) => {
+                      editorRef.current = editor;
+                    }}
+                    disabled={isSubmitting}
+                  />
+                </TabsContent>
+
+                {/* HTML editor */}
+                <TabsContent
+                  value="html"
+                  className="flex-1 min-h-0 m-0 p-0 data-[state=active]:flex flex-col"
+                >
+                  <Textarea
+                    ref={htmlTextareaRef}
+                    id="bodyHtml"
+                    value={formData.bodyHtml}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bodyHtml: e.target.value })
+                    }
+                    placeholder={t.form.fields.htmlBodyPlaceholder}
+                    disabled={isSubmitting}
+                    required
+                    dir="ltr"
+                    className="flex-1 min-h-0 h-full resize-none rounded-none border-0 border-none focus-visible:ring-0 focus-visible:ring-offset-0 text-sm leading-relaxed font-mono"
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
 
             {/* ── Footer ───────────────────────────────────────────────────── */}
