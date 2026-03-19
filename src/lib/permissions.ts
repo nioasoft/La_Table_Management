@@ -212,6 +212,7 @@ export function getModuleLabel(module: SystemModule): string {
     users: "Users",
     email_templates: "Email Templates",
     management_companies: "Management Companies",
+    clients: "Clients",
   };
   return labels[module];
 }

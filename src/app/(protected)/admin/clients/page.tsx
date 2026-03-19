@@ -40,6 +40,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Pencil,
   Loader2,
   Plus,
@@ -49,6 +56,8 @@ import {
   X,
   Check,
   Search,
+  FileText,
+  Settings2,
 } from "lucide-react";
 import { he } from "@/lib/translations/he";
 import {
@@ -68,10 +77,15 @@ type ActiveFilter = "all" | "active" | "inactive";
 
 interface ClientFormData {
   name: string;
+  code: string;
   companyId: string;
   email: string;
   contactName: string;
   hashavshevetName: string;
+  hashavshevetCode: string;
+  fileFormat: string;
+  gmailSearchQuery: string;
+  gmailSenderEmail: string;
   posTerminalCommission: string;
   dineInCommission: string;
   deliveryCommission: string;
@@ -86,10 +100,15 @@ interface ClientFormData {
 
 const initialFormData: ClientFormData = {
   name: "",
+  code: "",
   companyId: "",
   email: "",
   contactName: "",
   hashavshevetName: "",
+  hashavshevetCode: "",
+  fileFormat: "",
+  gmailSearchQuery: "",
+  gmailSenderEmail: "",
   posTerminalCommission: "",
   dineInCommission: "",
   deliveryCommission: "",
@@ -219,10 +238,15 @@ export default function ClientsPage() {
     setEditingClient(c);
     setFormData({
       name: c.name,
+      code: c.code ?? "",
       companyId: c.companyId ?? "",
       email: c.email ?? "",
       contactName: c.contactName ?? "",
       hashavshevetName: c.hashavshevetName ?? "",
+      hashavshevetCode: c.hashavshevetCode ?? "",
+      fileFormat: c.fileFormat ?? "",
+      gmailSearchQuery: c.gmailSearchQuery ?? "",
+      gmailSenderEmail: c.gmailSenderEmail ?? "",
       posTerminalCommission: c.posTerminalCommission ?? "",
       dineInCommission: c.dineInCommission ?? "",
       deliveryCommission: c.deliveryCommission ?? "",
@@ -276,10 +300,15 @@ export default function ClientsPage() {
 
     const payload = {
       name: formData.name.trim(),
+      code: formData.code.trim().toUpperCase() || null,
       companyId: formData.companyId.trim() || null,
       email: formData.email.trim() || null,
       contactName: formData.contactName.trim() || null,
       hashavshevetName: formData.hashavshevetName.trim() || null,
+      hashavshevetCode: formData.hashavshevetCode.trim() || null,
+      fileFormat: formData.fileFormat || null,
+      gmailSearchQuery: formData.gmailSearchQuery.trim() || null,
+      gmailSenderEmail: formData.gmailSenderEmail.trim() || null,
       posTerminalCommission: formData.posTerminalCommission.trim() || null,
       dineInCommission: formData.dineInCommission.trim() || null,
       deliveryCommission: formData.deliveryCommission.trim() || null,
@@ -444,6 +473,9 @@ export default function ClientsPage() {
                     {he.clients.table.name}
                   </TableHead>
                   <TableHead className="text-right">
+                    {he.clients.table.code}
+                  </TableHead>
+                  <TableHead className="text-right">
                     {he.clients.table.companyId}
                   </TableHead>
                   <TableHead className="text-right">
@@ -478,6 +510,17 @@ export default function ClientsPage() {
                       {/* Name */}
                       <TableCell className="pe-4">
                         <span className="font-medium">{c.name}</span>
+                      </TableCell>
+
+                      {/* Code */}
+                      <TableCell>
+                        {c.code ? (
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {c.code}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-muted-foreground/50">-</span>
+                        )}
                       </TableCell>
 
                       {/* Company ID */}
@@ -638,20 +681,36 @@ export default function ClientsPage() {
               </div>
             )}
 
-            {/* Row 1 – Name (full width, required) */}
-            <div className="space-y-2">
-              <Label htmlFor="client-name">
-                {he.clients.form.name}{" "}
-                <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="client-name"
-                value={formData.name}
-                onChange={(e) => updateField("name", e.target.value)}
-                placeholder={he.clients.form.namePlaceholder}
-                disabled={isSubmitting}
-                autoFocus
-              />
+            {/* Row 1 – Name + Code */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="client-name">
+                  {he.clients.form.name}{" "}
+                  <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="client-name"
+                  value={formData.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  placeholder={he.clients.form.namePlaceholder}
+                  disabled={isSubmitting}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-code">
+                  {he.clients.form.code}
+                </Label>
+                <Input
+                  id="client-code"
+                  dir="ltr"
+                  value={formData.code}
+                  onChange={(e) => updateField("code", e.target.value.toUpperCase())}
+                  placeholder={he.clients.form.codePlaceholder}
+                  disabled={isSubmitting}
+                  className="font-mono uppercase"
+                />
+              </div>
             </div>
 
             {/* Row 2 – Company ID + Contact Name */}
@@ -683,8 +742,8 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            {/* Row 3 – Email + Hashavshevet Name */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Row 3 – Email + Hashavshevet Name + Code */}
+            <div className="grid grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="client-email">{he.clients.form.email}</Label>
                 <Input
@@ -709,6 +768,20 @@ export default function ClientsPage() {
                   }
                   placeholder={he.clients.form.hashavshevetNamePlaceholder}
                   disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-hashavshevetCode">
+                  {he.clients.form.hashavshevetCode}
+                </Label>
+                <Input
+                  id="client-hashavshevetCode"
+                  dir="ltr"
+                  value={formData.hashavshevetCode}
+                  onChange={(e) => updateField("hashavshevetCode", e.target.value)}
+                  placeholder={he.clients.form.hashavshevetCodePlaceholder}
+                  disabled={isSubmitting}
+                  className="font-mono"
                 />
               </div>
             </div>
@@ -820,7 +893,73 @@ export default function ClientsPage() {
               )}
             </div>
 
-            {/* Row 8 – Notes (textarea, full width) */}
+            {/* Reconciliation settings section header */}
+            <div className="relative flex items-center gap-3 py-1">
+              <div className="flex-1 border-t" />
+              <span className="text-xs font-medium text-muted-foreground shrink-0 flex items-center gap-1.5">
+                <Settings2 className="h-3.5 w-3.5" />
+                {he.clients.form.reconciliationSettings}
+              </span>
+              <div className="flex-1 border-t" />
+            </div>
+
+            {/* File format + Gmail sender email */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="client-fileFormat">
+                  {he.clients.form.fileFormat}
+                </Label>
+                <Select
+                  value={formData.fileFormat}
+                  onValueChange={(v) => updateField("fileFormat", v)}
+                  disabled={isSubmitting}
+                >
+                  <SelectTrigger id="client-fileFormat">
+                    <SelectValue placeholder={he.clients.form.fileFormatPlaceholder} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pdf">{he.clients.form.fileFormatOptions.pdf}</SelectItem>
+                    <SelectItem value="excel">{he.clients.form.fileFormatOptions.excel}</SelectItem>
+                    <SelectItem value="csv">{he.clients.form.fileFormatOptions.csv}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="client-gmailSenderEmail">
+                  {he.clients.form.gmailSenderEmail}
+                </Label>
+                <Input
+                  id="client-gmailSenderEmail"
+                  type="email"
+                  dir="ltr"
+                  value={formData.gmailSenderEmail}
+                  onChange={(e) => updateField("gmailSenderEmail", e.target.value)}
+                  placeholder={he.clients.form.gmailSenderEmailPlaceholder}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            {/* Gmail search query */}
+            <div className="space-y-2">
+              <Label htmlFor="client-gmailSearchQuery">
+                {he.clients.form.gmailSearchQuery}
+              </Label>
+              <Input
+                id="client-gmailSearchQuery"
+                dir="ltr"
+                value={formData.gmailSearchQuery}
+                onChange={(e) => updateField("gmailSearchQuery", e.target.value)}
+                placeholder={he.clients.form.gmailSearchQueryPlaceholder}
+                disabled={isSubmitting}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                {he.clients.form.gmailSearchQueryHelp}
+              </p>
+            </div>
+
+            {/* Notes section */}
             <div className="space-y-2">
               <Label htmlFor="client-notes">{he.clients.form.notes}</Label>
               <Textarea

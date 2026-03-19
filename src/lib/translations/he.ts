@@ -2857,6 +2857,7 @@ export const he = {
         users: "משתמשים",
         email_templates: "תבניות אימייל",
         management_companies: "חברות ניהול",
+        clients: "לקוחות",
       },
 
       // Permission actions
@@ -3352,6 +3353,9 @@ export const he = {
     form: {
       name: "שם לקוח",
       namePlaceholder: "לדוגמה: Wolt, Cibus",
+      code: "קוד לקוח",
+      codePlaceholder: "לדוגמה: CIBUS, TENBIS",
+      codeHelp: "קוד ייחודי באנגלית לזיהוי במערכת (אותיות גדולות)",
       companyId: 'ח.פ',
       companyIdPlaceholder: "מספר חברה",
       email: "כתובת מייל",
@@ -3360,6 +3364,20 @@ export const he = {
       contactNamePlaceholder: "שם איש הקשר",
       hashavshevetName: "שם לחשבשבת",
       hashavshevetNamePlaceholder: "שם בתוכנת החשבשבת",
+      hashavshevetCode: "מפתח חשבון חשבשבת",
+      hashavshevetCodePlaceholder: "מפתח חשבון ליצוא",
+      fileFormat: "פורמט קבצים",
+      fileFormatPlaceholder: "בחר פורמט",
+      fileFormatOptions: {
+        pdf: "PDF",
+        excel: "Excel",
+        csv: "CSV",
+      },
+      gmailSearchQuery: "חיפוש Gmail",
+      gmailSearchQueryPlaceholder: 'from:reports@cibus.co.il subject:"דוח"',
+      gmailSearchQueryHelp: "שאילתת חיפוש Gmail לזיהוי מיילים מלקוח זה",
+      gmailSenderEmail: "מייל שולח",
+      gmailSenderEmailPlaceholder: "reports@cibus.co.il",
       commissionRates: "שיעורי עמלה",
       posTerminalCommission: "עמלת מסופון",
       dineInCommission: "עמלת ישיבה",
@@ -3373,10 +3391,13 @@ export const he = {
       notesPlaceholder: "הערות נוספות",
       franchisees: "זכיינים משויכים",
       searchFranchisees: "חפש זכיין...",
+      reconciliationSettings: "הגדרות התאמה",
+      emailSettings: "הגדרות מייל",
     },
 
     table: {
       name: "שם לקוח",
+      code: "קוד",
       companyId: 'ח.פ',
       contactName: "איש קשר",
       email: "אימייל",

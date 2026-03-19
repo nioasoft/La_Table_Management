@@ -160,6 +160,48 @@ export const contactRoleEnum = pgEnum("contact_role", [
   "other", // אחר
 ]);
 
+// Reconciliation session status enum (shared by supplier and client reconciliation)
+export const reconciliationSessionStatusEnum = pgEnum("reconciliation_session_status", [
+  "in_progress",
+  "completed",
+  "file_approved",
+  "file_rejected",
+]);
+
+// Reconciliation comparison status enum (shared by supplier and client reconciliation)
+export const reconciliationComparisonStatusEnum = pgEnum("reconciliation_comparison_status", [
+  "pending",
+  "auto_approved",
+  "needs_review",
+  "manually_approved",
+  "sent_to_review_queue",
+]);
+
+// Reconciliation review queue status enum
+export const reconciliationReviewQueueStatusEnum = pgEnum("reconciliation_review_queue_status", [
+  "pending",
+  "resolved",
+]);
+
+// Client document type enum
+export const clientDocumentTypeEnum = pgEnum("client_document_type", [
+  "client_report",  // Document from client (Cibus, Tenbis, etc.)
+  "tabit_report",   // Tabit POS report
+]);
+
+// Client document source enum
+export const clientDocumentSourceEnum = pgEnum("client_document_source", [
+  "manual_upload",
+  "gmail_fetch",
+]);
+
+// Gmail sync status enum
+export const gmailSyncStatusEnum = pgEnum("gmail_sync_status", [
+  "running",
+  "completed",
+  "failed",
+]);
+
 // Uploaded file review status for BKMVDATA automatic processing workflow
 export const uploadedFileReviewStatusEnum = pgEnum("uploaded_file_review_status", [
   "pending", // Initial state, not processed yet
@@ -191,7 +233,8 @@ export type SystemModule =
   | "reminders"
   | "users"
   | "email_templates"
-  | "management_companies";
+  | "management_companies"
+  | "clients";
 
 // Permission for a single module
 export type ModulePermission = {
@@ -220,6 +263,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     users: { view: true, edit: true, create: true, delete: true, approve: true },
     email_templates: { view: true, edit: true, create: true, delete: true, approve: true },
     management_companies: { view: true, edit: true, create: true, delete: true, approve: true },
+    clients: { view: true, edit: true, create: true, delete: true, approve: true },
   },
   admin: {
     brands: { view: true, edit: true, create: true, delete: false, approve: false },
@@ -232,6 +276,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     users: { view: true, edit: false, create: false, delete: false, approve: false },
     email_templates: { view: true, edit: true, create: true, delete: false, approve: false },
     management_companies: { view: true, edit: true, create: false, delete: false, approve: false },
+    clients: { view: true, edit: true, create: true, delete: false, approve: true },
   },
   franchisee_owner: {
     brands: { view: true, edit: false, create: false, delete: false, approve: false },
@@ -244,6 +289,7 @@ export const DEFAULT_PERMISSIONS: Record<UserRole, UserPermissions> = {
     users: { view: false, edit: false, create: false, delete: false, approve: false },
     email_templates: { view: false, edit: false, create: false, delete: false, approve: false },
     management_companies: { view: true, edit: false, create: false, delete: false, approve: false },
+    clients: { view: true, edit: false, create: false, delete: false, approve: false },
   },
 };
 
@@ -259,6 +305,7 @@ export const SYSTEM_MODULES: SystemModule[] = [
   "users",
   "email_templates",
   "management_companies",
+  "clients",
 ];
 
 // List of all permission actions (for iteration)
@@ -1978,6 +2025,8 @@ export const auditEntityTypeEnum = pgEnum("audit_entity_type", [
   "document",
   "file_processing",
   "management_company",
+  "client_document",
+  "client_reconciliation",
 ]);
 
 // Comprehensive Audit Log - Track all sensitive actions across the system
@@ -2469,6 +2518,7 @@ export type AuditLog = typeof auditLog.$inferSelect;
 export type CreateAuditLogData = typeof auditLog.$inferInsert;
 export type AuditAction = (typeof auditActionEnum.enumValues)[number];
 export type AuditEntityType = (typeof auditEntityTypeEnum.enumValues)[number];
+export type UploadedFileReviewStatus = (typeof uploadedFileReviewStatusEnum.enumValues)[number];
 
 // ============================================================================
 // VAT RATE TABLE
@@ -2807,6 +2857,13 @@ export const client = pgTable(
     email: text("email"),
     contactName: text("contact_name"),
     hashavshevetName: text("hashavshevet_name"),
+    // New fields for reconciliation module
+    code: text("code"), // Unique client code e.g. "CIBUS", "TENBIS" (for parser registry)
+    parserCode: text("parser_code"), // Nullable override, defaults to code
+    hashavshevetCode: text("hashavshevet_code"), // Account key for Hashavshevet export
+    fileFormat: text("file_format"), // Expected file format: "pdf", "excel", "csv"
+    gmailSearchQuery: text("gmail_search_query"), // Gmail API search query for auto-fetch
+    gmailSenderEmail: text("gmail_sender_email"), // Sender email for verification
     posTerminalCommission: decimal("pos_terminal_commission", {
       precision: 5,
       scale: 2,
@@ -2848,6 +2905,7 @@ export const client = pgTable(
   (table) => [
     index("idx_client_is_active").on(table.isActive),
     index("idx_client_name").on(table.name),
+    uniqueIndex("idx_client_code").on(table.code),
   ]
 );
 
@@ -2909,31 +2967,338 @@ export type UpdateClientData = Partial<
 export type ClientFranchisee = typeof clientFranchisee.$inferSelect;
 
 // ============================================================================
-// RECONCILIATION V2 TABLES (Supplier Reconciliation Module)
+// CLIENT DOCUMENT & RECONCILIATION TABLES
 // ============================================================================
 
-// Reconciliation session status enum
-export const reconciliationSessionStatusEnum = pgEnum("reconciliation_session_status", [
-  "in_progress",
-  "completed",
-  "file_approved",
-  "file_rejected",
-]);
+// Client Document table - tracks all documents (client reports + Tabit reports)
+export const clientDocument = pgTable(
+  "client_document",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id").references(() => client.id, {
+      onDelete: "set null",
+    }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    documentType: clientDocumentTypeEnum("document_type").notNull(),
+    source: clientDocumentSourceEnum("source").notNull(),
+    // File info
+    originalFileName: text("original_file_name").notNull(),
+    fileUrl: text("file_url"),
+    fileSize: integer("file_size"),
+    mimeType: text("mime_type"),
+    // Period
+    periodMonth: integer("period_month").notNull(),
+    periodYear: integer("period_year").notNull(),
+    // Processing
+    processingStatus: uploadedFileReviewStatusEnum("processing_status")
+      .$default(() => "pending")
+      .notNull(),
+    processingResult: jsonb("processing_result"),
+    ocrResult: jsonb("ocr_result"),
+    // Parsed amounts (denormalized for quick queries)
+    totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+    commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }),
+    commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }),
+    netAmount: decimal("net_amount", { precision: 12, scale: 2 }),
+    // Email tracking
+    gmailMessageId: text("gmail_message_id"),
+    // Review
+    reviewedBy: text("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+    // Audit
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_client_doc_client").on(table.clientId),
+    index("idx_client_doc_franchisee").on(table.franchiseeId),
+    index("idx_client_doc_period").on(table.periodMonth, table.periodYear),
+    index("idx_client_doc_type").on(table.documentType),
+    index("idx_client_doc_status").on(table.processingStatus),
+    index("idx_client_doc_created").on(table.createdAt),
+  ]
+);
 
-// Reconciliation comparison status enum
-export const reconciliationComparisonStatusEnum = pgEnum("reconciliation_comparison_status", [
-  "pending",
-  "auto_approved",
-  "needs_review",
-  "manually_approved",
-  "sent_to_review_queue",
-]);
+// Client Reconciliation Session table
+export const clientReconciliationSession = pgTable(
+  "client_reconciliation_session",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => client.id, { onDelete: "cascade" }),
+    periodMonth: integer("period_month").notNull(),
+    periodYear: integer("period_year").notNull(),
+    status: reconciliationSessionStatusEnum("status")
+      .$default(() => "in_progress")
+      .notNull(),
+    // Statistics
+    totalFranchisees: integer("total_franchisees")
+      .$default(() => 0)
+      .notNull(),
+    matchedCount: integer("matched_count")
+      .$default(() => 0)
+      .notNull(),
+    needsReviewCount: integer("needs_review_count")
+      .$default(() => 0)
+      .notNull(),
+    approvedCount: integer("approved_count")
+      .$default(() => 0)
+      .notNull(),
+    // Totals
+    totalClientAmount: decimal("total_client_amount", { precision: 12, scale: 2 }),
+    totalTabitAmount: decimal("total_tabit_amount", { precision: 12, scale: 2 }),
+    totalDifference: decimal("total_difference", { precision: 12, scale: 2 }),
+    // Approval
+    fileApprovedAt: timestamp("file_approved_at"),
+    fileApprovedBy: text("file_approved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    fileRejectionReason: text("file_rejection_reason"),
+    // Audit
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_client_recon_session_client").on(table.clientId),
+    index("idx_client_recon_session_status").on(table.status),
+    index("idx_client_recon_session_period").on(table.periodMonth, table.periodYear),
+    uniqueIndex("idx_client_recon_session_unique").on(
+      table.clientId,
+      table.periodMonth,
+      table.periodYear
+    ),
+  ]
+);
 
-// Reconciliation review queue status enum
-export const reconciliationReviewQueueStatusEnum = pgEnum("reconciliation_review_queue_status", [
-  "pending",
-  "resolved",
-]);
+// Client Reconciliation Comparison table
+export const clientReconciliationComparison = pgTable(
+  "client_reconciliation_comparison",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => clientReconciliationSession.id, { onDelete: "cascade" }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    // Document references
+    clientDocumentId: text("client_document_id").references(() => clientDocument.id, {
+      onDelete: "set null",
+    }),
+    tabitDocumentId: text("tabit_document_id").references(() => clientDocument.id, {
+      onDelete: "set null",
+    }),
+    // Amounts
+    clientAmount: decimal("client_amount", { precision: 12, scale: 2 }),
+    tabitAmount: decimal("tabit_amount", { precision: 12, scale: 2 }),
+    difference: decimal("difference", { precision: 12, scale: 2 }),
+    absoluteDifference: decimal("absolute_difference", { precision: 12, scale: 2 }),
+    // Commission validation
+    expectedCommissionRate: decimal("expected_commission_rate", { precision: 5, scale: 2 }),
+    actualCommissionRate: decimal("actual_commission_rate", { precision: 5, scale: 2 }),
+    commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }),
+    netAmount: decimal("net_amount", { precision: 12, scale: 2 }),
+    // Status
+    status: reconciliationComparisonStatusEnum("status")
+      .$default(() => "pending")
+      .notNull(),
+    // Review
+    reviewedBy: text("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+    notes: text("notes"),
+  },
+  (table) => [
+    index("idx_client_recon_comp_session").on(table.sessionId),
+    index("idx_client_recon_comp_franchisee").on(table.franchiseeId),
+    index("idx_client_recon_comp_status").on(table.status),
+    uniqueIndex("idx_client_recon_comp_unique").on(table.sessionId, table.franchiseeId),
+  ]
+);
+
+// Gmail Sync Log table
+export const gmailSyncLog = pgTable(
+  "gmail_sync_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    runStartedAt: timestamp("run_started_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    runCompletedAt: timestamp("run_completed_at"),
+    status: gmailSyncStatusEnum("status")
+      .$default(() => "running")
+      .notNull(),
+    // Stats
+    messagesScanned: integer("messages_scanned")
+      .$default(() => 0)
+      .notNull(),
+    documentsCreated: integer("documents_created")
+      .$default(() => 0)
+      .notNull(),
+    duplicatesSkipped: integer("duplicates_skipped")
+      .$default(() => 0)
+      .notNull(),
+    errorCount: integer("error_count")
+      .$default(() => 0)
+      .notNull(),
+    // Error details
+    errorDetails: jsonb("error_details"),
+    // Audit
+    triggeredBy: text("triggered_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("idx_gmail_sync_log_status").on(table.status),
+    index("idx_gmail_sync_log_created").on(table.createdAt),
+  ]
+);
+
+// ---- Client Document Relations ----
+
+export const clientDocumentRelations = relations(clientDocument, ({ one }) => ({
+  client: one(client, {
+    fields: [clientDocument.clientId],
+    references: [client.id],
+  }),
+  franchisee: one(franchisee, {
+    fields: [clientDocument.franchiseeId],
+    references: [franchisee.id],
+  }),
+  reviewedByUser: one(user, {
+    fields: [clientDocument.reviewedBy],
+    references: [user.id],
+    relationName: "reviewedClientDocuments",
+  }),
+  createdByUser: one(user, {
+    fields: [clientDocument.createdBy],
+    references: [user.id],
+    relationName: "createdClientDocuments",
+  }),
+}));
+
+// ---- Client Reconciliation Session Relations ----
+
+export const clientReconciliationSessionRelations = relations(
+  clientReconciliationSession,
+  ({ one, many }) => ({
+    client: one(client, {
+      fields: [clientReconciliationSession.clientId],
+      references: [client.id],
+    }),
+    comparisons: many(clientReconciliationComparison),
+    approvedByUser: one(user, {
+      fields: [clientReconciliationSession.fileApprovedBy],
+      references: [user.id],
+      relationName: "approvedClientReconciliationSessions",
+    }),
+    createdByUser: one(user, {
+      fields: [clientReconciliationSession.createdBy],
+      references: [user.id],
+      relationName: "createdClientReconciliationSessions",
+    }),
+  })
+);
+
+// ---- Client Reconciliation Comparison Relations ----
+
+export const clientReconciliationComparisonRelations = relations(
+  clientReconciliationComparison,
+  ({ one }) => ({
+    session: one(clientReconciliationSession, {
+      fields: [clientReconciliationComparison.sessionId],
+      references: [clientReconciliationSession.id],
+    }),
+    franchisee: one(franchisee, {
+      fields: [clientReconciliationComparison.franchiseeId],
+      references: [franchisee.id],
+    }),
+    clientDocumentRef: one(clientDocument, {
+      fields: [clientReconciliationComparison.clientDocumentId],
+      references: [clientDocument.id],
+      relationName: "clientDocComparisons",
+    }),
+    tabitDocumentRef: one(clientDocument, {
+      fields: [clientReconciliationComparison.tabitDocumentId],
+      references: [clientDocument.id],
+      relationName: "tabitDocComparisons",
+    }),
+    reviewedByUser: one(user, {
+      fields: [clientReconciliationComparison.reviewedBy],
+      references: [user.id],
+    }),
+  })
+);
+
+// ---- Gmail Sync Log Relations ----
+
+export const gmailSyncLogRelations = relations(gmailSyncLog, ({ one }) => ({
+  triggeredByUser: one(user, {
+    fields: [gmailSyncLog.triggeredBy],
+    references: [user.id],
+  }),
+}));
+
+// ---- Client Document & Reconciliation Types ----
+
+export type ClientDocument = typeof clientDocument.$inferSelect;
+export type CreateClientDocumentData = typeof clientDocument.$inferInsert;
+export type UpdateClientDocumentData = Partial<Omit<CreateClientDocumentData, "id" | "createdAt">>;
+export type ClientDocumentType = (typeof clientDocumentTypeEnum.enumValues)[number];
+export type ClientDocumentSource = (typeof clientDocumentSourceEnum.enumValues)[number];
+
+export type ClientReconciliationSession = typeof clientReconciliationSession.$inferSelect;
+export type CreateClientReconciliationSessionData = typeof clientReconciliationSession.$inferInsert;
+export type UpdateClientReconciliationSessionData = Partial<
+  Omit<CreateClientReconciliationSessionData, "id" | "createdAt">
+>;
+
+export type ClientReconciliationComparison = typeof clientReconciliationComparison.$inferSelect;
+export type CreateClientReconciliationComparisonData = typeof clientReconciliationComparison.$inferInsert;
+export type UpdateClientReconciliationComparisonData = Partial<
+  Omit<CreateClientReconciliationComparisonData, "id">
+>;
+
+export type GmailSyncLog = typeof gmailSyncLog.$inferSelect;
+export type CreateGmailSyncLogData = typeof gmailSyncLog.$inferInsert;
+export type GmailSyncStatus = (typeof gmailSyncStatusEnum.enumValues)[number];
+
+// ============================================================================
+// RECONCILIATION V2 TABLES (Supplier Reconciliation Module)
+// ============================================================================
 
 // Reconciliation Session table - Main session for supplier vs franchisee comparison
 export const reconciliationSession = pgTable(

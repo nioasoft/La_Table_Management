@@ -167,10 +167,26 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/staff",
                 icon: <UserRound className="h-4 w-4" />,
               },
+            ],
+          },
+          {
+            label: "טיפול בלקוחות",
+            icon: <Handshake className="h-5 w-5" />,
+            children: [
               {
-                label: he.sidebar.subNavigation.clients,
+                label: "ניהול לקוחות",
                 href: "/admin/clients",
                 icon: <Handshake className="h-4 w-4" />,
+              },
+              {
+                label: "מסמכים ומעקב",
+                href: "/admin/clients/documents",
+                icon: <FileText className="h-4 w-4" />,
+              },
+              {
+                label: "התאמת לקוחות",
+                href: "/admin/clients/reconciliation",
+                icon: <Scale className="h-4 w-4" />,
               },
             ],
           },

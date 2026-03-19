@@ -48,6 +48,7 @@ const MODULE_LABELS: Record<SystemModule, string> = {
   users: t.modules.users,
   email_templates: t.modules.email_templates,
   management_companies: t.modules.management_companies,
+  clients: t.modules.clients ?? "לקוחות",
 };
 
 const ACTION_LABELS: Record<PermissionAction, string> = {
