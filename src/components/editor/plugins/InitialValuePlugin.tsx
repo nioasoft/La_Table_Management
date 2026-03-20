@@ -16,8 +16,17 @@ import { $getRoot } from "lexical";
 function stripEmailFooter(html: string): string {
   if (!html) return html;
 
+  // If wrapped in the email layout container (from inlineEmailStyles),
+  // extract just the content from inside the inner container div
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
+  let doc = parser.parseFromString(html, "text/html");
+
+  // Find innermost container (white card div with max-width: 600px)
+  const containers = doc.querySelectorAll('div[style*="max-width"]');
+  if (containers.length > 0) {
+    const inner = containers[containers.length - 1];
+    doc = parser.parseFromString(inner.innerHTML, "text/html");
+  }
 
   const SIGNATURE_MARKERS = ["רעות", "LA TABLE", "VINNI", "KING KONG"];
 
