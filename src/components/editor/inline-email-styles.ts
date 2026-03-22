@@ -111,6 +111,43 @@ function styleContentElements(html: string): string {
     el.removeAttribute("class");
   });
 
+  // Convert standalone links to CTA buttons:
+  // If a <p> contains ONLY a single <a> (no other text), style it as a button
+  doc.body.querySelectorAll("p").forEach((p) => {
+    const links = p.querySelectorAll("a");
+    if (links.length !== 1) return;
+
+    // Check that the <p> has no other meaningful text content besides the link
+    const linkText = links[0].textContent || "";
+    const pText = (p.textContent || "").trim();
+    if (linkText.trim() !== pText) return;
+
+    const a = links[0];
+    // Style the link as a button
+    a.setAttribute(
+      "style",
+      [
+        "background-color: #2563eb",
+        "border-radius: 6px",
+        "border: 1px solid #2563eb",
+        "color: #ffffff",
+        `font-family: ${BASE_FONT}`,
+        "font-size: 14px",
+        "font-weight: 600",
+        "text-decoration: none",
+        "text-align: center",
+        "display: inline-block",
+        "padding: 12px 24px",
+      ].join("; ")
+    );
+
+    // Center the parent paragraph
+    p.setAttribute(
+      "style",
+      "text-align: center; margin: 24px 0; direction: rtl;"
+    );
+  });
+
   return doc.body.innerHTML;
 }
 
