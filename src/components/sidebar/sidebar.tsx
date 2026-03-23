@@ -74,9 +74,11 @@ interface SidebarProps {
   userRole?: UserRole | null;
   userName?: string;
   userEmail?: string;
+  /** When true, sidebar is visible on all breakpoints (for mobile overlay) */
+  mobile?: boolean;
 }
 
-export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
+export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { isCollapsed, toggle } = useSidebar();
@@ -535,9 +537,10 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 start-0 z-50 flex flex-col bg-sidebar text-sidebar-foreground border-e border-sidebar-border shadow-sm",
+        "fixed inset-y-0 start-0 z-50 flex-col bg-sidebar text-sidebar-foreground border-e border-sidebar-border shadow-sm",
         "transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]",
-        isCollapsed ? "w-16" : "w-64"
+        isCollapsed ? "w-16" : "w-64",
+        mobile ? "flex" : "hidden lg:flex"
       )}
     >
       {/* Header */}

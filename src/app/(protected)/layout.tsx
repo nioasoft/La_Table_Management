@@ -113,29 +113,26 @@ function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar
-          userRole={userRole}
-          userName={userName}
-          userEmail={userEmail}
-        />
-      </div>
+      {/* Desktop Sidebar — hidden on mobile via aside's own hidden lg:flex */}
+      <Sidebar
+        userRole={userRole}
+        userName={userName}
+        userEmail={userEmail}
+      />
 
       {/* Mobile Sidebar Overlay */}
       {isMobileSidebarOpen && (
         <>
-          {/* Backdrop */}
           <div
             className="fixed inset-0 z-40 bg-black/50 lg:hidden"
             onClick={() => setIsMobileSidebarOpen(false)}
           />
-          {/* Mobile Sidebar */}
           <div className="lg:hidden">
             <Sidebar
               userRole={userRole}
               userName={userName}
               userEmail={userEmail}
+              mobile
             />
           </div>
         </>
