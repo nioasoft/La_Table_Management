@@ -18,58 +18,96 @@ import {
 import type { EmailStatus } from "@/db/schema";
 
 /**
- * Verify Resend webhook signature
- * @see https://resend.com/docs/dashboard/webhooks/secure-your-webhooks
+ * Verify Resend webhook signature (Svix format)
+ *
+ * Svix uses 3 headers:
+ * - svix-id: message ID
+ * - svix-timestamp: unix timestamp (seconds)
+ * - svix-signature: "v1,base64_signature" (comma-separated, may have multiple)
+ *
+ * Signed content: `${svix-id}.${svix-timestamp}.${body}`
+ * Secret: strip "whsec_" prefix, base64-decode to get raw key
+ * HMAC-SHA256, then base64-encode result
+ *
+ * @see https://docs.svix.com/receiving/verifying-payloads/how
  */
 export function verifyResendWebhookSignature(
   payload: string,
-  signature: string,
-  webhookSecret: string
+  signatureHeader: string,
+  webhookSecret: string,
+  svixId?: string,
+  svixTimestamp?: string
 ): boolean {
-  if (!signature || !webhookSecret) {
+  if (!signatureHeader || !webhookSecret) {
     console.error("Missing signature or webhook secret for verification");
     return false;
   }
 
   try {
-    // Resend uses svix for webhook signing
-    // The signature header contains a timestamp and signature
-    // Format: "t=timestamp,v1=signature"
-    const parts = signature.split(",");
-    const timestamp = parts.find((p) => p.startsWith("t="))?.split("=")[1];
-    const v1Signature = parts.find((p) => p.startsWith("v1="))?.split("=")[1];
+    // Extract timestamp — from separate header or from signature header
+    let msgId = svixId ?? "";
+    let timestamp = svixTimestamp ?? "";
+    let signatures: string[] = [];
 
-    if (!timestamp || !v1Signature) {
-      console.error("Invalid signature format");
+    if (svixId && svixTimestamp) {
+      // New format: separate headers
+      signatures = signatureHeader
+        .split(" ")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    } else {
+      // Legacy format fallback: "t=timestamp,v1=signature"
+      const parts = signatureHeader.split(",");
+      timestamp =
+        parts.find((p) => p.startsWith("t="))?.split("=")[1] ?? "";
+      const v1 = parts.find((p) => p.startsWith("v1="));
+      if (v1) signatures = [v1];
+    }
+
+    if (!timestamp) {
+      console.error("Missing timestamp in webhook signature");
       return false;
     }
 
     // Verify timestamp is within tolerance (5 minutes)
-    const timestampMs = parseInt(timestamp, 10) * 1000;
-    const now = Date.now();
-    const tolerance = 5 * 60 * 1000; // 5 minutes
+    const timestampSec = parseInt(timestamp, 10);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const tolerance = 5 * 60;
 
-    if (Math.abs(now - timestampMs) > tolerance) {
+    if (Math.abs(nowSec - timestampSec) > tolerance) {
       console.error("Webhook timestamp too old or in the future");
       return false;
     }
 
-    // Compute expected signature
-    const signedPayload = `${timestamp}.${payload}`;
+    // Decode secret: strip "whsec_" prefix and base64-decode
+    const secretStr = webhookSecret.startsWith("whsec_")
+      ? webhookSecret.slice(6)
+      : webhookSecret;
+    const secretBytes = Buffer.from(secretStr, "base64");
+
+    // Compute expected signature: HMAC-SHA256 of "msgId.timestamp.body"
+    const signedContent = `${msgId}.${timestamp}.${payload}`;
     const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(signedPayload)
-      .digest("hex");
+      .createHmac("sha256", secretBytes)
+      .update(signedContent)
+      .digest("base64");
 
-    // Compare signatures using timing-safe comparison
-    const signatureBuffer = Buffer.from(v1Signature, "hex");
-    const expectedBuffer = Buffer.from(expectedSignature, "hex");
+    // Compare against all provided signatures (v1,xxx format)
+    for (const sig of signatures) {
+      const sigValue = sig.startsWith("v1,") ? sig.slice(3) : sig;
 
-    if (signatureBuffer.length !== expectedBuffer.length) {
-      return false;
+      const sigBuf = Buffer.from(sigValue, "base64");
+      const expBuf = Buffer.from(expectedSignature, "base64");
+
+      if (sigBuf.length === expBuf.length) {
+        if (crypto.timingSafeEqual(sigBuf, expBuf)) {
+          return true;
+        }
+      }
     }
 
-    return crypto.timingSafeEqual(signatureBuffer, expectedBuffer);
+    console.error("No matching signature found");
+    return false;
   } catch (error) {
     console.error("Error verifying webhook signature:", error);
     return false;

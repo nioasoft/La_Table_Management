@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Resend } from "resend";
 import {
-  verifyResendWebhookSignature,
   processResendWebhookEvent,
   parseWebhookEvent,
 } from "@/lib/email";
+
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 /**
  * POST /api/webhooks/resend - Handle Resend webhook events
@@ -11,52 +15,43 @@ import {
  * This endpoint receives webhook notifications from Resend for email delivery events.
  * Events include: email.sent, email.delivered, email.bounced, email.complained, etc.
  *
- * Security: Webhook signatures are verified using the RESEND_WEBHOOK_SECRET.
+ * Security: Webhook signatures are verified using resend.webhooks.verify().
  *
  * @see https://resend.com/docs/dashboard/webhooks/introduction
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get raw body for signature verification
     const body = await request.text();
-
-    // Get signature from headers
-    const signature = request.headers.get("svix-signature");
-
-    // Verify webhook signature in production
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
 
-    if (process.env.NODE_ENV === "production") {
-      if (!webhookSecret) {
-        console.error("RESEND_WEBHOOK_SECRET is not configured");
-        return NextResponse.json(
-          { error: "Webhook secret not configured" },
-          { status: 500 }
-        );
-      }
+    // Verify webhook signature
+    if (webhookSecret && resend) {
+      const svixId = request.headers.get("svix-id");
+      const svixTimestamp = request.headers.get("svix-timestamp");
+      const svixSignature = request.headers.get("svix-signature");
 
-      if (!signature) {
-        console.error("Missing webhook signature header");
+      if (!svixId || !svixTimestamp || !svixSignature) {
         return NextResponse.json(
-          { error: "Missing signature" },
+          { error: "Missing signature headers" },
           { status: 401 }
         );
       }
 
-      const isValid = verifyResendWebhookSignature(body, signature, webhookSecret);
-
-      if (!isValid) {
-        console.error("Invalid webhook signature");
+      try {
+        resend.webhooks.verify({
+          payload: body,
+          headers: {
+            id: svixId,
+            timestamp: svixTimestamp,
+            signature: svixSignature,
+          },
+          webhookSecret,
+        });
+      } catch (verifyError) {
+        console.error("Invalid webhook signature:", verifyError);
         return NextResponse.json(
           { error: "Invalid signature" },
           { status: 401 }
-        );
-      }
-    } else {
-      // In development, log a warning if signature verification is skipped
-      if (!signature || !webhookSecret) {
-        console.warn(
-          "Skipping webhook signature verification in development mode"
         );
       }
     }
@@ -75,8 +70,6 @@ export async function POST(request: NextRequest) {
     const result = await processResendWebhookEvent(event);
 
     if (!result.success) {
-      // Log the error but return 200 to prevent Resend from retrying
-      // (since the issue is likely that we don't have the email log)
       console.error("Webhook processing error:", result.error);
       return NextResponse.json({
         received: true,
@@ -105,8 +98,6 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/webhooks/resend - Health check endpoint
- *
- * Can be used to verify the webhook endpoint is accessible.
  */
 export async function GET() {
   return NextResponse.json({

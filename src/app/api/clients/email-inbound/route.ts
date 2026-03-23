@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { verifyResendWebhookSignature } from "@/lib/email/webhook-service";
+import { Resend } from "resend";
 import {
   fetchInboundEmail,
   downloadAttachment,
@@ -48,37 +48,41 @@ export async function POST(request: NextRequest) {
   try {
     // ─── Step 1: Verify webhook signature ──────────────────────────────
     const body = await request.text();
-    const signature = request.headers.get("svix-signature");
     const webhookSecret = process.env.RESEND_INBOUND_WEBHOOK_SECRET;
 
-    if (process.env.NODE_ENV === "production") {
-      if (!webhookSecret) {
-        console.error("RESEND_INBOUND_WEBHOOK_SECRET is not configured");
-        await finalizeSyncLog(syncLog.id, "failed", {
-          messagesScanned,
-          documentsCreated,
-          duplicatesSkipped,
-          errorCount: 1,
-          errorDetails: ["RESEND_INBOUND_WEBHOOK_SECRET not configured"],
-        });
-        return NextResponse.json({ received: true, error: "Not configured" });
-      }
+    // Verify webhook signature using Resend SDK
+    if (webhookSecret) {
+      const svixId = request.headers.get("svix-id");
+      const svixTimestamp = request.headers.get("svix-timestamp");
+      const svixSignature = request.headers.get("svix-signature");
 
-      if (!signature) {
+      if (!svixId || !svixTimestamp || !svixSignature) {
         await finalizeSyncLog(syncLog.id, "failed", {
           messagesScanned,
           documentsCreated,
           duplicatesSkipped,
           errorCount: 1,
-          errorDetails: ["Missing webhook signature"],
+          errorDetails: ["Missing svix headers"],
         });
         return NextResponse.json(
-          { error: "Missing signature" },
+          { error: "Missing signature headers" },
           { status: 401 }
         );
       }
 
-      if (!verifyResendWebhookSignature(body, signature, webhookSecret)) {
+      try {
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        resend.webhooks.verify({
+          payload: body,
+          headers: {
+            id: svixId,
+            timestamp: svixTimestamp,
+            signature: svixSignature,
+          },
+          webhookSecret,
+        });
+      } catch (verifyError) {
+        console.error("[email-inbound] Signature verification failed:", verifyError);
         await finalizeSyncLog(syncLog.id, "failed", {
           messagesScanned,
           documentsCreated,
