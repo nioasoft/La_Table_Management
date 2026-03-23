@@ -1040,9 +1040,11 @@ export const he = {
           documents: "מסמכים",
         },
         overview: {
+          brandInfo: "פרטי מותג",
           description: "תיאור",
+          contactInfo: "פרטי קשר",
           website: "אתר",
-          contactEmail: "אימייל ליצירת קשר",
+          contactEmail: "אימייל",
           contactPhone: "טלפון",
           address: "כתובת",
           created: "נוצר",
