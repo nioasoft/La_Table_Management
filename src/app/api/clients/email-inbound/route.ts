@@ -347,7 +347,7 @@ function matchFranchiseeFromSubject(
 
   // Try the full subject first (after removing common prefixes)
   const cleanedSubject = subject
-    .replace(/^(fwd?|re|fw):\s*/i, "")
+    .replace(/^(fwd?|re|fw|subject):\s*/gi, "")
     .replace(/ריכוז חיוב חודשי\s*[-–—]\s*/g, "")
     .replace(/דוח חודשי\s*[-–—]\s*/g, "")
     .replace(/monthly\s+report\s*[-–—]\s*/gi, "")
