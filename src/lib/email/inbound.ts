@@ -152,7 +152,7 @@ export async function fetchInboundEmail(
     subject: data.subject,
     html: data.html,
     text: data.text,
-    headers: data.headers,
+    headers: data.headers ?? {},
     createdAt: data.created_at,
     attachments,
   };
