@@ -74,7 +74,14 @@ const ENTITY_DOCUMENT_TYPES: Record<string, readonly { value: string; label: str
     { value: "invoice", label: t.documentTypes.invoice },
     { value: "other", label: t.documentTypes.other },
   ],
-  brand: [...BASE_DOCUMENT_TYPES],
+  brand: [
+    { value: "commercial_terms", label: t.documentTypes.commercial_terms },
+    { value: "franchise_document", label: t.documentTypes.franchise_document },
+    { value: "agreement", label: t.documentTypes.agreement },
+    { value: "correspondence", label: t.documentTypes.correspondence },
+    { value: "invoice", label: t.documentTypes.invoice },
+    { value: "other", label: t.documentTypes.other },
+  ],
   client: [
     { value: "agreement", label: t.documentTypes.agreement },
     { value: "correspondence", label: t.documentTypes.correspondence },
@@ -84,7 +91,7 @@ const ENTITY_DOCUMENT_TYPES: Record<string, readonly { value: string; label: str
 };
 
 // All possible document type values
-type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "other";
+type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "commercial_terms" | "franchise_document" | "other";
 
 // Extended document type with uploader info
 interface DocumentWithUploader extends Document {
@@ -138,6 +145,8 @@ const ALL_DOCUMENT_TYPE_LABELS: Record<string, string> = {
   price_list: t.documentTypes.price_list,
   rental_agreement: t.documentTypes.rental_agreement,
   franchise_agreement: t.documentTypes.franchise_agreement,
+  commercial_terms: t.documentTypes.commercial_terms,
+  franchise_document: t.documentTypes.franchise_document,
   other: t.documentTypes.other,
 };
 

@@ -1032,6 +1032,26 @@ export const he = {
         title: "הפעלת מותג",
         description: "האם להפעיל מחדש את המותג?",
       },
+
+      detail: {
+        backToList: "חזרה למותגים",
+        tabs: {
+          overview: "סקירה כללית",
+          documents: "מסמכים",
+        },
+        overview: {
+          description: "תיאור",
+          website: "אתר",
+          contactEmail: "אימייל ליצירת קשר",
+          contactPhone: "טלפון",
+          address: "כתובת",
+          created: "נוצר",
+          status: "סטטוס",
+          code: "קוד",
+          noDescription: "לא הוזן תיאור",
+          noContactInfo: "לא הוזנו פרטי קשר",
+        },
+      },
     },
 
     // Settlements Management
@@ -3032,6 +3052,8 @@ export const he = {
         rental_agreement: "הסכם שכירות",
         franchise_agreement: "הסכם זכיינות",
         other: "אחר",
+        commercial_terms: "תנאים מסחריים",
+        franchise_document: "מסמך זיכיון",
       },
 
       // Document statuses
@@ -3229,6 +3251,7 @@ export const he = {
       settings: "הגדרות",
       archive: "ארכיון",
       files: "קבצים",
+      brandManagement: "ניהול מותגים",
     },
 
     // Sub-navigation items

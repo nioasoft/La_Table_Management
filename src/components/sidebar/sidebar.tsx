@@ -47,6 +47,7 @@ import {
   UserRound,
   Coins,
   Handshake,
+  Tag,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
@@ -166,6 +167,17 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 label: he.sidebar.subNavigation.staff,
                 href: "/admin/staff",
                 icon: <UserRound className="h-4 w-4" />,
+              },
+            ],
+          },
+          {
+            label: he.sidebar.navigation.brandManagement,
+            icon: <Tag className="h-5 w-5" />,
+            children: [
+              {
+                label: he.sidebar.subNavigation.brands,
+                href: "/admin/brands",
+                icon: <Tag className="h-4 w-4" />,
               },
             ],
           },

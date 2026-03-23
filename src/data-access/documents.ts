@@ -10,7 +10,7 @@ import {
 import { eq, desc, and, or } from "drizzle-orm";
 
 // Document types supported by the system
-export type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "other";
+export type DocumentType = "agreement" | "correspondence" | "invoice" | "price_list" | "rental_agreement" | "franchise_agreement" | "commercial_terms" | "franchise_document" | "other";
 
 // Entity types that can have documents
 export type DocumentEntityType = "supplier" | "franchisee" | "brand";
@@ -292,7 +292,7 @@ export async function updateDocumentStatus(
  * Validate document type
  */
 export function isValidDocumentType(type: string): type is DocumentType {
-  return ["agreement", "correspondence", "invoice", "price_list", "rental_agreement", "franchise_agreement", "other"].includes(type);
+  return ["agreement", "correspondence", "invoice", "price_list", "rental_agreement", "franchise_agreement", "commercial_terms", "franchise_document", "other"].includes(type);
 }
 
 /**
@@ -306,6 +306,8 @@ export function getDocumentTypeLabel(type: DocumentType): string {
     price_list: "Price List",
     rental_agreement: "Rental Agreement",
     franchise_agreement: "Franchise Agreement",
+    commercial_terms: "Commercial Terms",
+    franchise_document: "Franchise Document",
     other: "Other",
   };
   return labels[type] || type;
@@ -322,6 +324,8 @@ export function getDocumentTypeLabelHe(type: DocumentType): string {
     price_list: "מחירונים",
     rental_agreement: "הסכם שכירות",
     franchise_agreement: "הסכם זכיינות",
+    commercial_terms: "תנאים מסחריים",
+    franchise_document: "מסמך זיכיון",
     other: "אחר",
   };
   return labels[type] || type;

@@ -368,9 +368,10 @@ export default function AdminBrandsPage() {
           {brands.map((brand) => (
             <Card
               key={brand.id}
-              className={`relative overflow-hidden transition-all hover:shadow-lg ${
+              className={`relative overflow-hidden transition-all hover:shadow-lg cursor-pointer ${
                 !brand.isActive ? "opacity-60" : ""
               }`}
+              onClick={() => router.push(`/admin/brands/${brand.id}`)}
             >
               {/* Content */}
               <CardContent className="p-6">
@@ -410,7 +411,7 @@ export default function AdminBrandsPage() {
                 )}
 
                 {/* Actions */}
-                <div className="mt-4 pt-4 border-t flex justify-center gap-2">
+                <div className="mt-4 pt-4 border-t flex justify-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -434,7 +435,7 @@ export default function AdminBrandsPage() {
 
                 {/* Expanded options */}
                 {expandedBrand === brand.id && (
-                  <div className="mt-2 pt-2 border-t">
+                  <div className="mt-2 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
                     <Button
                       size="sm"
                       variant="ghost"
