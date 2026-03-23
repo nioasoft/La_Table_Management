@@ -168,12 +168,6 @@ export function Sidebar({ userRole, userName, userEmail }: SidebarProps) {
                 href: "/admin/staff",
                 icon: <UserRound className="h-4 w-4" />,
               },
-            ],
-          },
-          {
-            label: he.sidebar.navigation.brandManagement,
-            icon: <Tag className="h-5 w-5" />,
-            children: [
               {
                 label: he.sidebar.subNavigation.brands,
                 href: "/admin/brands",
