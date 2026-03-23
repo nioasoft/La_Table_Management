@@ -51,3 +51,16 @@ export {
   processResendWebhookEvent,
   parseWebhookEvent,
 } from "./webhook-service";
+
+// Inbound email processing (Resend Inbound)
+export {
+  fetchInboundEmail,
+  downloadAttachment,
+  identifyClientFromEmail,
+  extractPeriodFromSubject,
+  resolvePeriod,
+  type ResendInboundWebhookPayload,
+  type InboundEmail,
+  type InboundAttachment,
+  type IdentifiedClient,
+} from "./inbound";
