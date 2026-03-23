@@ -537,7 +537,7 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 start-0 z-50 flex-col bg-sidebar text-sidebar-foreground border-e border-sidebar-border shadow-sm",
+        "fixed inset-y-0 start-0 z-50 flex-col bg-white dark:bg-zinc-950 text-sidebar-foreground border-e border-sidebar-border shadow-sm",
         "transition-[width] duration-250 ease-[cubic-bezier(0.4,0,0.2,1)]",
         isCollapsed ? "w-16" : "w-64",
         mobile ? "flex" : "hidden lg:flex"
