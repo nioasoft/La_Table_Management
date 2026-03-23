@@ -22,6 +22,9 @@ const rateLimitedRoutes: Array<{
   pattern: RegExp;
   config: { limit: number; windowSeconds: number };
 }> = [
+  // Session reads are frequent (every page load) — generous limit
+  { pattern: /^\/api\/auth\/get-session/, config: RateLimitConfigs.api },
+  // Auth mutations (sign-in, sign-up, etc.) — strict limit
   { pattern: /^\/api\/auth/, config: RateLimitConfigs.auth },
   { pattern: /^\/api\/public\/upload/, config: RateLimitConfigs.upload },
   { pattern: /^\/api\/cron/, config: RateLimitConfigs.cron },
