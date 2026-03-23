@@ -86,6 +86,7 @@ interface ClientFormData {
   fileFormat: string;
   gmailSearchQuery: string;
   gmailSenderEmail: string;
+  tabitColumnNames: string;
   posTerminalCommission: string;
   dineInCommission: string;
   deliveryCommission: string;
@@ -109,6 +110,7 @@ const initialFormData: ClientFormData = {
   fileFormat: "",
   gmailSearchQuery: "",
   gmailSenderEmail: "",
+  tabitColumnNames: "",
   posTerminalCommission: "",
   dineInCommission: "",
   deliveryCommission: "",
@@ -247,6 +249,9 @@ export default function ClientsPage() {
       fileFormat: c.fileFormat ?? "",
       gmailSearchQuery: c.gmailSearchQuery ?? "",
       gmailSenderEmail: c.gmailSenderEmail ?? "",
+      tabitColumnNames: Array.isArray(c.tabitColumnNames)
+        ? (c.tabitColumnNames as string[]).join(", ")
+        : "",
       posTerminalCommission: c.posTerminalCommission ?? "",
       dineInCommission: c.dineInCommission ?? "",
       deliveryCommission: c.deliveryCommission ?? "",
@@ -309,6 +314,12 @@ export default function ClientsPage() {
       fileFormat: formData.fileFormat || null,
       gmailSearchQuery: formData.gmailSearchQuery.trim() || null,
       gmailSenderEmail: formData.gmailSenderEmail.trim() || null,
+      tabitColumnNames: formData.tabitColumnNames.trim()
+        ? formData.tabitColumnNames
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : null,
       posTerminalCommission: formData.posTerminalCommission.trim() || null,
       dineInCommission: formData.dineInCommission.trim() || null,
       deliveryCommission: formData.deliveryCommission.trim() || null,
@@ -956,6 +967,23 @@ export default function ClientsPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {he.clients.form.gmailSearchQueryHelp}
+              </p>
+            </div>
+
+            {/* Tabit column names */}
+            <div className="space-y-2">
+              <Label htmlFor="client-tabitColumnNames">
+                שמות עמודות בטאביט
+              </Label>
+              <Input
+                id="client-tabitColumnNames"
+                value={formData.tabitColumnNames}
+                onChange={(e) => updateField("tabitColumnNames", e.target.value)}
+                placeholder='למשל: סיבוס, סיבוס Online, סיבוס אונליין'
+                disabled={isSubmitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                שמות אמצעי התשלום בקובץ טאביט, מופרדים בפסיק. משמש לפיוס אוטומטי.
               </p>
             </div>
 

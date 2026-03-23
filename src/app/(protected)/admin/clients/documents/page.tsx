@@ -149,22 +149,38 @@ export default function ClientDocumentsPage() {
   }, []);
 
   const handleUpload = async () => {
-    if (!uploadFile || !uploadFranchiseeId) return;
-    if (uploadDocType === "client_report" && !uploadClientId) return;
+    if (!uploadFile) return;
+    // For client_report: franchisee + client required
+    if (uploadDocType === "client_report" && (!uploadFranchiseeId || !uploadClientId)) return;
 
     const formData = new FormData();
     formData.set("file", uploadFile);
     formData.set("documentType", uploadDocType);
-    formData.set("franchiseeId", uploadFranchiseeId);
     formData.set("periodMonth", String(periodMonth));
     formData.set("periodYear", String(periodYear));
+
     if (uploadDocType === "client_report") {
+      formData.set("franchiseeId", uploadFranchiseeId);
       formData.set("clientId", uploadClientId);
     }
 
     uploadMutation.mutate(formData, {
-      onSuccess: () => {
-        toast.success("המסמך הועלה בהצלחה");
+      onSuccess: (data) => {
+        if (data.tabitUpload && data.summary) {
+          const s = data.summary;
+          const parts: string[] = [];
+          parts.push(`נוצרו ${s.documentsCreated} מסמכים`);
+          if (s.documentsUpdated > 0) parts.push(`עודכנו ${s.documentsUpdated}`);
+          if (s.unmatchedBranches?.length > 0) {
+            parts.push(`סניפים לא מזוהים: ${s.unmatchedBranches.join(", ")}`);
+          }
+          if (s.unmappedColumns?.length > 0) {
+            parts.push(`עמודות ללא לקוח: ${s.unmappedColumns.join(", ")}`);
+          }
+          toast.success(parts.join(" | "), { duration: 8000 });
+        } else {
+          toast.success("המסמך הועלה בהצלחה");
+        }
         setUploadDialogOpen(false);
         resetUploadForm();
       },
@@ -535,52 +551,61 @@ export default function ClientDocumentsPage() {
               </Select>
             </div>
 
-            {/* Client (only for client_report) */}
-            {uploadDocType === "client_report" && (
-              <div className="space-y-2">
-                <Label>לקוח</Label>
-                <Select
-                  value={uploadClientId}
-                  onValueChange={setUploadClientId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="בחר לקוח..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeClients.map(
-                      (c: { id: string; name: string; code: string | null }) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
-                          {c.code ? ` (${c.code})` : ""}
-                        </SelectItem>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
+            {/* Tabit info */}
+            {uploadDocType === "tabit_report" && (
+              <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                קובץ טאביט מכיל נתונים של כל הסניפים וכל אמצעי התשלום.
+                הזכיינים והלקוחות יזוהו אוטומטית מתוך הקובץ.
               </div>
             )}
 
-            {/* Franchisee */}
-            <div className="space-y-2">
-              <Label>זכיין</Label>
-              <Select
-                value={uploadFranchiseeId}
-                onValueChange={setUploadFranchiseeId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="בחר זכיין..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(allFranchisees ?? []).map(
-                    (f: { id: string; name: string; code: string }) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name} ({f.code})
-                      </SelectItem>
-                    )
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Client (only for client_report) */}
+            {uploadDocType === "client_report" && (
+              <>
+                <div className="space-y-2">
+                  <Label>לקוח</Label>
+                  <Select
+                    value={uploadClientId}
+                    onValueChange={setUploadClientId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="בחר לקוח..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activeClients.map(
+                        (c: { id: string; name: string; code: string | null }) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                            {c.code ? ` (${c.code})` : ""}
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>זכיין</Label>
+                  <Select
+                    value={uploadFranchiseeId}
+                    onValueChange={setUploadFranchiseeId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="בחר זכיין..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(allFranchisees ?? []).map(
+                        (f: { id: string; name: string; code: string }) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.name} ({f.code})
+                          </SelectItem>
+                        )
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
 
             {/* File input */}
             <div className="space-y-2">
@@ -615,8 +640,7 @@ export default function ClientDocumentsPage() {
               disabled={
                 uploadMutation.isPending ||
                 !uploadFile ||
-                !uploadFranchiseeId ||
-                (uploadDocType === "client_report" && !uploadClientId)
+                (uploadDocType === "client_report" && (!uploadFranchiseeId || !uploadClientId))
               }
             >
               {uploadMutation.isPending ? (

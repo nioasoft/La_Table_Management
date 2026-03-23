@@ -24,10 +24,16 @@ export async function PATCH(
     const body = await request.json();
     const {
       name,
+      code,
       companyId,
       email,
       contactName,
       hashavshevetName,
+      hashavshevetCode,
+      fileFormat,
+      gmailSearchQuery,
+      gmailSenderEmail,
+      tabitColumnNames,
       posTerminalCommission,
       dineInCommission,
       deliveryCommission,
@@ -42,11 +48,23 @@ export async function PATCH(
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
+    if (code !== undefined) updateData.code = code || null;
     if (companyId !== undefined) updateData.companyId = companyId || null;
     if (email !== undefined) updateData.email = email || null;
     if (contactName !== undefined) updateData.contactName = contactName || null;
     if (hashavshevetName !== undefined)
       updateData.hashavshevetName = hashavshevetName || null;
+    if (hashavshevetCode !== undefined)
+      updateData.hashavshevetCode = hashavshevetCode || null;
+    if (fileFormat !== undefined) updateData.fileFormat = fileFormat || null;
+    if (gmailSearchQuery !== undefined)
+      updateData.gmailSearchQuery = gmailSearchQuery || null;
+    if (gmailSenderEmail !== undefined)
+      updateData.gmailSenderEmail = gmailSenderEmail || null;
+    if (tabitColumnNames !== undefined)
+      updateData.tabitColumnNames = Array.isArray(tabitColumnNames)
+        ? tabitColumnNames
+        : null;
     if (posTerminalCommission !== undefined)
       updateData.posTerminalCommission = posTerminalCommission || null;
     if (dineInCommission !== undefined)

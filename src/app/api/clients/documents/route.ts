@@ -12,7 +12,10 @@ import {
   getDocumentTrackingMatrix,
   getDocumentPeriodSummary,
 } from "@/data-access/client-documents";
-import { processClientDocument } from "@/lib/client-document-processor";
+import {
+  processClientDocument,
+  processTabitUpload,
+} from "@/lib/client-document-processor";
 import { database } from "@/db";
 import { client } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -102,14 +105,43 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "נדרש קובץ" }, { status: 400 });
     }
-    if (!franchiseeId) {
-      return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
-    }
     if (!documentType || !["client_report", "tabit_report"].includes(documentType)) {
       return NextResponse.json(
         { error: "סוג מסמך לא תקין (client_report / tabit_report)" },
         { status: 400 }
       );
+    }
+
+    // Convert File to Buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // ---- TABIT PIVOT TABLE UPLOAD ----
+    // No franchiseeId or clientId needed — derived from file content
+    if (documentType === "tabit_report") {
+      const result = await processTabitUpload({
+        buffer,
+        fileName: file.name,
+        mimeType: file.type || "application/octet-stream",
+        periodMonth: periodMonth ? parseInt(periodMonth) : undefined,
+        periodYear: periodYear ? parseInt(periodYear) : undefined,
+        source: "manual_upload",
+        userId: user.id,
+      });
+
+      if (!result.success) {
+        return NextResponse.json(
+          { error: result.error ?? "שגיאה בעיבוד קובץ טאביט" },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ tabitUpload: true, summary: result.summary }, { status: 201 });
+    }
+
+    // ---- CLIENT REPORT UPLOAD ----
+    if (!franchiseeId) {
+      return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
     }
     if (!periodMonth || !periodYear) {
       return NextResponse.json(
@@ -117,9 +149,7 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // For client_report, clientId is required
-    if (documentType === "client_report" && !clientId) {
+    if (!clientId) {
       return NextResponse.json(
         { error: "נדרש לקוח עבור דוח לקוח" },
         { status: 400 }
@@ -127,36 +157,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine parser code
-    let parserCode = "TABIT";
-    if (documentType === "client_report" && clientId) {
-      const [clientRecord] = await database
-        .select({ code: client.code, parserCode: client.parserCode })
-        .from(client)
-        .where(eq(client.id, clientId))
-        .limit(1);
+    const [clientRecord] = await database
+      .select({ code: client.code, parserCode: client.parserCode })
+      .from(client)
+      .where(eq(client.id, clientId))
+      .limit(1);
 
-      if (!clientRecord) {
-        return NextResponse.json({ error: "לקוח לא נמצא" }, { status: 404 });
-      }
-
-      parserCode = clientRecord.parserCode ?? clientRecord.code ?? "";
+    if (!clientRecord) {
+      return NextResponse.json({ error: "לקוח לא נמצא" }, { status: 404 });
     }
 
-    // Convert File to Buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const parserCode = clientRecord.parserCode ?? clientRecord.code ?? "";
 
     // Process through unified pipeline
     const result = await processClientDocument({
       buffer,
       fileName: file.name,
       mimeType: file.type || "application/octet-stream",
-      clientId: documentType === "client_report" ? clientId : null,
+      clientId,
       parserCode,
       franchiseeId,
       periodMonth: parseInt(periodMonth),
       periodYear: parseInt(periodYear),
-      documentType: documentType as "client_report" | "tabit_report",
+      documentType: "client_report",
       source: "manual_upload",
       userId: user.id,
     });

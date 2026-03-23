@@ -12,12 +12,14 @@
  */
 
 import { database } from "@/db";
-import { clientDocument } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { clientDocument, client, franchisee } from "@/db/schema";
+import { eq, and, isNotNull } from "drizzle-orm";
 import { uploadDocument } from "@/lib/storage";
 import { getClientParser } from "@/lib/client-parsers";
-import type { ClientDocumentProcessingResult } from "@/lib/client-parsers/types";
-import type { ClientDocument } from "@/db/schema";
+import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
+import { matchFranchiseeName } from "@/lib/franchisee-matcher";
+import type { ClientDocumentProcessingResult, TabitUploadSummary } from "@/lib/client-parsers/types";
+import type { ClientDocument, Franchisee } from "@/db/schema";
 
 /** Input for processing a client document */
 export interface ProcessClientDocumentInput {
@@ -215,6 +217,248 @@ export async function processClientDocument(
       document: null,
       processingResult: null,
       error: `שגיאה בעיבוד מסמך: ${errorMessage}`,
+    };
+  }
+}
+
+// ============================================================================
+// TABIT PIVOT TABLE UPLOAD
+// ============================================================================
+
+/** Input for processing a Tabit pivot table upload */
+export interface ProcessTabitUploadInput {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  periodMonth?: number;
+  periodYear?: number;
+  source: "manual_upload" | "gmail_fetch";
+  userId?: string;
+  gmailMessageId?: string;
+}
+
+/** Result of a Tabit upload */
+export interface ProcessTabitUploadResult {
+  success: boolean;
+  summary: TabitUploadSummary | null;
+  error?: string;
+}
+
+/**
+ * Process a Tabit pivot table Excel file.
+ *
+ * One Tabit file → multiple client_document records (one per franchisee × client pair).
+ *
+ * Steps:
+ * 1. Parse the Excel pivot table
+ * 2. Upload original file to blob storage
+ * 3. Load clients with tabitColumnNames from DB → build column→clientId mapping
+ * 4. Load franchisees → match branch names via fuzzy matching
+ * 5. For each (franchisee × client) with non-zero amount → upsert client_document
+ * 6. Return summary with created/updated counts and unmapped columns
+ */
+export async function processTabitUpload(
+  input: ProcessTabitUploadInput
+): Promise<ProcessTabitUploadResult> {
+  const { buffer, fileName, mimeType, source, userId, gmailMessageId } = input;
+
+  try {
+    // Step 1: Parse the Tabit file
+    const parseResult = await parseTabitFile(buffer, mimeType);
+
+    if (!parseResult.success || !parseResult.data) {
+      return {
+        success: false,
+        summary: null,
+        error: parseResult.errors.join("; ") || "שגיאה בפענוח קובץ טאביט",
+      };
+    }
+
+    const { period, branches, paymentMethods } = parseResult.data;
+
+    // Use file-extracted period or fall back to input
+    const periodMonth = period?.month ?? input.periodMonth;
+    const periodYear = period?.year ?? input.periodYear;
+
+    if (!periodMonth || !periodYear) {
+      return {
+        success: false,
+        summary: null,
+        error: "לא ניתן לזהות תקופה מהקובץ ולא סופקו חודש/שנה",
+      };
+    }
+
+    // Step 2: Upload original file once
+    const uploadResult = await uploadDocument(
+      buffer,
+      fileName,
+      mimeType,
+      "tabit",
+      `pivot-${periodYear}-${String(periodMonth).padStart(2, "0")}`
+    );
+
+    // Step 3: Load clients with tabitColumnNames and build column→client mapping
+    const clientsWithColumns = await database
+      .select({
+        id: client.id,
+        code: client.code,
+        tabitColumnNames: client.tabitColumnNames,
+      })
+      .from(client)
+      .where(
+        and(eq(client.isActive, true), isNotNull(client.tabitColumnNames))
+      );
+
+    // Map: column name → { clientId, clientCode }
+    const columnToClient = new Map<
+      string,
+      { clientId: string; clientCode: string | null }
+    >();
+    for (const c of clientsWithColumns) {
+      const columns = c.tabitColumnNames as string[] | null;
+      if (!columns) continue;
+      for (const colName of columns) {
+        columnToClient.set(colName, { clientId: c.id, clientCode: c.code });
+      }
+    }
+
+    // Step 4: Load franchisees for matching
+    const allFranchisees = await database
+      .select()
+      .from(franchisee)
+      .where(eq(franchisee.isActive, true));
+
+    // Step 5: Process each branch row
+    let documentsCreated = 0;
+    let documentsUpdated = 0;
+    let skippedZeroAmounts = 0;
+    const unmatchedBranches: string[] = [];
+    const unmappedColumnsSet = new Set<string>();
+
+    for (const branch of branches) {
+      // Match branch name to franchisee
+      const matchResult = matchFranchiseeName(
+        branch.branchName,
+        allFranchisees as Franchisee[]
+      );
+
+      if (!matchResult.matchedFranchisee) {
+        unmatchedBranches.push(branch.branchName);
+        continue;
+      }
+
+      const franchiseeId = matchResult.matchedFranchisee.id;
+
+      // Group amounts by client (sum columns that map to the same client)
+      const clientAmounts = new Map<
+        string,
+        { clientId: string; clientCode: string | null; amount: number }
+      >();
+
+      for (const [colName, amount] of Object.entries(branch.amounts)) {
+        const mapping = columnToClient.get(colName);
+        if (!mapping) {
+          // Column not mapped to any client
+          if (amount !== 0) {
+            unmappedColumnsSet.add(colName);
+          }
+          continue;
+        }
+
+        const existing = clientAmounts.get(mapping.clientId);
+        if (existing) {
+          existing.amount += amount;
+        } else {
+          clientAmounts.set(mapping.clientId, {
+            clientId: mapping.clientId,
+            clientCode: mapping.clientCode,
+            amount,
+          });
+        }
+      }
+
+      // Create/update a client_document for each client with non-zero amount
+      for (const [clientId, { amount }] of clientAmounts) {
+        if (amount === 0) {
+          skippedZeroAmounts++;
+          continue;
+        }
+
+        // Check for existing document
+        const existingDoc = await database
+          .select({ id: clientDocument.id })
+          .from(clientDocument)
+          .where(
+            and(
+              eq(clientDocument.franchiseeId, franchiseeId),
+              eq(clientDocument.clientId, clientId),
+              eq(clientDocument.periodMonth, periodMonth),
+              eq(clientDocument.periodYear, periodYear),
+              eq(clientDocument.documentType, "tabit_report")
+            )
+          )
+          .limit(1);
+
+        const docData = {
+          clientId,
+          franchiseeId,
+          documentType: "tabit_report" as const,
+          source,
+          originalFileName: fileName,
+          fileUrl: uploadResult.url,
+          fileSize: uploadResult.fileSize,
+          mimeType,
+          periodMonth,
+          periodYear,
+          processingStatus: "auto_approved" as const,
+          processingResult: {
+            success: true,
+            branchName: branch.branchName,
+            matchConfidence: matchResult.confidence,
+            matchType: matchResult.matchType,
+          } as unknown as Record<string, unknown>,
+          totalAmount: amount.toString(),
+          commissionAmount: null,
+          commissionRate: null,
+          netAmount: null,
+          gmailMessageId: gmailMessageId ?? null,
+          createdBy: userId ?? null,
+          updatedAt: new Date(),
+        };
+
+        if (existingDoc.length > 0) {
+          await database
+            .update(clientDocument)
+            .set(docData)
+            .where(eq(clientDocument.id, existingDoc[0].id));
+          documentsUpdated++;
+        } else {
+          await database.insert(clientDocument).values(docData);
+          documentsCreated++;
+        }
+      }
+    }
+
+    const summary: TabitUploadSummary = {
+      documentsCreated,
+      documentsUpdated,
+      unmatchedBranches,
+      unmappedColumns: Array.from(unmappedColumnsSet),
+      skippedZeroAmounts,
+      period: { month: periodMonth, year: periodYear },
+      fileUrl: uploadResult.url,
+    };
+
+    return { success: true, summary };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    console.error("Error processing Tabit upload:", errorMessage);
+
+    return {
+      success: false,
+      summary: null,
+      error: `שגיאה בעיבוד קובץ טאביט: ${errorMessage}`,
     };
   }
 }

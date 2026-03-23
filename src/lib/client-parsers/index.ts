@@ -9,14 +9,19 @@
 
 import type { ClientParserFn } from "./types";
 
-export type { ClientParserFn, ClientParsedData, ClientDocumentProcessingResult } from "./types";
+export type {
+  ClientParserFn,
+  ClientParsedData,
+  ClientDocumentProcessingResult,
+  TabitParsedMatrix,
+  TabitProcessingResult,
+  TabitUploadSummary,
+} from "./types";
 
 // Registry of client parsers by client code (lazy-loaded)
+// NOTE: TABIT is NOT registered here — it uses processTabitUpload() directly
+// because it returns a matrix, not a per-franchisee result.
 const CLIENT_PARSERS: Record<string, ClientParserFn> = {
-  TABIT: async (buffer, mimeType) => {
-    const { parseTabitFile } = await import("./tabit-parser");
-    return parseTabitFile(buffer, mimeType);
-  },
   CIBUS: async (buffer, mimeType) => {
     const { parseCibusFile } = await import("./cibus-parser");
     return parseCibusFile(buffer, mimeType);

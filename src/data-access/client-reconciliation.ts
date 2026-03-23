@@ -117,7 +117,7 @@ export async function createClientReconciliationSession(
   for (const doc of docs) {
     if (doc.documentType === "client_report" && doc.clientId === clientId) {
       clientDocs.set(doc.franchiseeId, doc);
-    } else if (doc.documentType === "tabit_report") {
+    } else if (doc.documentType === "tabit_report" && doc.clientId === clientId) {
       tabitDocs.set(doc.franchiseeId, doc);
     }
   }

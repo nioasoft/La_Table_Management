@@ -2864,6 +2864,7 @@ export const client = pgTable(
     fileFormat: text("file_format"), // Expected file format: "pdf", "excel", "csv"
     gmailSearchQuery: text("gmail_search_query"), // Gmail API search query for auto-fetch
     gmailSenderEmail: text("gmail_sender_email"), // Sender email for verification
+    tabitColumnNames: jsonb("tabit_column_names").$type<string[]>(), // Tabit pivot table column names mapped to this client
     posTerminalCommission: decimal("pos_terminal_commission", {
       precision: 5,
       scale: 2,

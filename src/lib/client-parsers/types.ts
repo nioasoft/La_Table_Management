@@ -50,3 +50,53 @@ export type ClientParserFn = (
   buffer: Buffer,
   mimeType: string
 ) => Promise<ClientDocumentProcessingResult>;
+
+// ============================================================================
+// TABIT PIVOT TABLE TYPES
+// ============================================================================
+
+/** A single branch row from the Tabit pivot table */
+export interface TabitBranchRow {
+  /** Branch name as it appears in the Tabit file */
+  branchName: string;
+  /** Payment method → amount mapping */
+  amounts: Record<string, number>;
+  /** Total column value */
+  total: number;
+}
+
+/** Parsed Tabit pivot table matrix */
+export interface TabitParsedMatrix {
+  /** Extracted period from the file */
+  period: { month: number; year: number } | null;
+  /** All branch data rows (excluding Total/summary rows) */
+  branches: TabitBranchRow[];
+  /** All payment method column names found in the file */
+  paymentMethods: string[];
+}
+
+/** Result of parsing a Tabit Excel file */
+export interface TabitProcessingResult {
+  success: boolean;
+  data: TabitParsedMatrix | null;
+  errors: string[];
+  warnings: string[];
+}
+
+/** Summary returned after processing a Tabit upload into client_document records */
+export interface TabitUploadSummary {
+  /** Number of new client_document records created */
+  documentsCreated: number;
+  /** Number of existing client_document records updated */
+  documentsUpdated: number;
+  /** Branch names that could not be matched to a franchisee */
+  unmatchedBranches: string[];
+  /** Payment method columns with non-zero amounts that have no matching client */
+  unmappedColumns: string[];
+  /** Number of (franchisee × client) pairs skipped because amount was 0 */
+  skippedZeroAmounts: number;
+  /** Period extracted from the file */
+  period: { month: number; year: number } | null;
+  /** URL of the uploaded original file */
+  fileUrl: string;
+}

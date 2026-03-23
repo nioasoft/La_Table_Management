@@ -176,6 +176,13 @@
       "when": 1742342400000,
       "tag": "0048_client_reconciliation",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1742860800000,
+      "tag": "0049_add_tabit_column_names",
+      "breakpoints": true
     }
   ]
 }
