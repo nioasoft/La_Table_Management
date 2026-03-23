@@ -113,7 +113,7 @@ export function ReportPeriodSelector({
   return (
     <div className={isHorizontal ? "flex items-end gap-2" : "space-y-4"}>
       {/* Period Type Selector */}
-      <div className={isHorizontal ? "space-y-1 w-[132px]" : "space-y-2"}>
+      <div className={isHorizontal ? "space-y-1 w-[110px] sm:w-[132px]" : "space-y-2"}>
         {showLabels && <Label htmlFor="periodType" className="text-xs">סוג תקופה</Label>}
         <Select
           value={periodType || "custom"}
@@ -140,7 +140,7 @@ export function ReportPeriodSelector({
 
       {/* Period Selector (only shown when a type is selected) */}
       {periodType && (
-        <div className={isHorizontal ? "space-y-1 w-[180px]" : "space-y-2"}>
+        <div className={isHorizontal ? "space-y-1 w-[150px] sm:w-[180px]" : "space-y-2"}>
           {showLabels && <Label htmlFor="periodKey" className="text-xs">תקופה</Label>}
           <Select
             value={periodKey}

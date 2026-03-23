@@ -213,26 +213,26 @@ export default function ClientDocumentsPage() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-            <FileText className="h-5 w-5 text-primary" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold">מסמכי לקוחות</h1>
-            <p className="text-sm text-muted-foreground">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold">מסמכי לקוחות</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               מעקב אחר מסמכי לקוחות ודוחות טאביט
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button variant="outline" size="sm" onClick={() => refetchMatrix()}>
             <RefreshCw className="h-4 w-4 me-1" />
-            רענן
+            <span className="hidden sm:inline">רענן</span>
           </Button>
-          <Button onClick={() => setUploadDialogOpen(true)}>
+          <Button size="sm" onClick={() => setUploadDialogOpen(true)}>
             <Upload className="h-4 w-4 me-2" />
             העלאת מסמך
           </Button>
@@ -283,7 +283,7 @@ export default function ClientDocumentsPage() {
 
       {/* Summary Cards */}
       {summary && (
-        <div className="grid grid-cols-3 gap-4 sm:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold tabular-nums">
@@ -336,7 +336,7 @@ export default function ClientDocumentsPage() {
       )}
 
       {/* Tracking Matrix */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg">מטריצת מעקב</CardTitle>
         </CardHeader>
@@ -432,7 +432,7 @@ export default function ClientDocumentsPage() {
 
       {/* Recent Documents */}
       {recentDocs && recentDocs.length > 0 && (
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">
               מסמכים אחרונים
@@ -442,6 +442,7 @@ export default function ClientDocumentsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -515,6 +516,7 @@ export default function ClientDocumentsPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
       )}

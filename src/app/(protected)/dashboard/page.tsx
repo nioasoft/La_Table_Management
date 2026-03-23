@@ -23,9 +23,9 @@ export default function DashboardPage() {
   const isSuperUserOrAdmin = userRole === "super_user" || userRole === "admin";
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{he.dashboard.title}</h1>
+    <div className="container mx-auto p-3 sm:p-6">
+      <div className="mb-4 sm:mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold">{he.dashboard.title}</h1>
       </div>
 
       {isSuperUserOrAdmin ? (
