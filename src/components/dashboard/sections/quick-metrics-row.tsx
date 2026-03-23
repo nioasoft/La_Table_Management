@@ -6,14 +6,12 @@ import {
   CheckCircle2,
   AlertTriangle,
   Clock,
-  TrendingUp,
 } from "lucide-react";
 import { MetricCard, MetricCardSkeleton } from "../shared/metric-card";
 import {
   useSupplierCompleteness,
   usePeriodStatus,
   useUploadStatus,
-  useCommissionSettlementStatus,
 } from "@/queries/dashboard";
 import type { PeriodStatusResponse } from "@/app/api/dashboard/period-status/route";
 import type { SupplierCompletenessResponse } from "@/app/api/dashboard/supplier-completeness/route";
@@ -25,12 +23,9 @@ export function QuickMetricsRow() {
   const { data: supplierData, isLoading: supplierLoading } = useSupplierCompleteness(year, startDate, endDate);
   const { data: periodStatusData, isLoading: periodLoading } = usePeriodStatus(startDate, endDate);
   const { data: uploadStatusData, isLoading: uploadLoading } = useUploadStatus(startDate, endDate);
-  const { data: commissionStatusData, isLoading: commissionLoading } = useCommissionSettlementStatus(startDate, endDate);
-
   const supplierCompleteness = supplierData as SupplierCompletenessResponse | undefined;
   const periodStatus = (periodStatusData?.data as PeriodStatusResponse) ?? null;
   const uploadStatus = uploadStatusData as FranchiseeBkmvStatus | undefined;
-  const commissionStatus = commissionStatusData?.data ?? null;
 
   // --- Card 1: Supplier files (count suppliers, not individual files) ---
   const allSuppliers = supplierCompleteness?.suppliers ?? [];
@@ -98,17 +93,6 @@ export function QuickMetricsRow() {
     periodStatus?.pendingActions?.items?.find((i) => i.type === "pending_cross_ref")
       ?.count || 0;
   const pendingApproval = pendingApprovalFiles + pendingCrossRefs;
-
-  // --- Card 6: Commission total ---
-  const totalAmount = commissionStatus?.commissionSummary?.totalAmount || 0;
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("he-IL", {
-      style: "currency",
-      currency: "ILS",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
@@ -197,20 +181,6 @@ export function QuickMetricsRow() {
         />
       )}
 
-      {/* 6 - Commission total */}
-      {commissionLoading ? (
-        <MetricCardSkeleton />
-      ) : (
-        <MetricCard
-          label="סכום עמלות"
-          value={formatCurrency(totalAmount)}
-          subtitle={`${commissionStatus?.commissionSummary?.pendingCount || 0} ממתין · ${commissionStatus?.commissionSummary?.approvedCount || 0} מאושר · ${commissionStatus?.commissionSummary?.paidCount || 0} שולם`}
-          icon={<TrendingUp className="h-5 w-5" />}
-          colorClass="text-green-600 dark:text-green-400"
-          accentColor="green"
-          href="/admin/commissions"
-        />
-      )}
     </div>
   );
 }
