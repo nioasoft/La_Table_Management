@@ -49,17 +49,17 @@ export async function POST(request: NextRequest) {
     // ─── Step 1: Verify webhook signature ──────────────────────────────
     const body = await request.text();
     const signature = request.headers.get("svix-signature");
-    const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
+    const webhookSecret = process.env.RESEND_INBOUND_WEBHOOK_SECRET;
 
     if (process.env.NODE_ENV === "production") {
       if (!webhookSecret) {
-        console.error("RESEND_WEBHOOK_SECRET is not configured");
+        console.error("RESEND_INBOUND_WEBHOOK_SECRET is not configured");
         await finalizeSyncLog(syncLog.id, "failed", {
           messagesScanned,
           documentsCreated,
           duplicatesSkipped,
           errorCount: 1,
-          errorDetails: ["RESEND_WEBHOOK_SECRET not configured"],
+          errorDetails: ["RESEND_INBOUND_WEBHOOK_SECRET not configured"],
         });
         return NextResponse.json({ received: true, error: "Not configured" });
       }
@@ -323,7 +323,7 @@ export async function GET() {
   return NextResponse.json({
     status: "ok",
     endpoint: "Resend Inbound webhook (client emails)",
-    configured: !!process.env.RESEND_WEBHOOK_SECRET,
+    configured: !!process.env.RESEND_INBOUND_WEBHOOK_SECRET,
   });
 }
 
