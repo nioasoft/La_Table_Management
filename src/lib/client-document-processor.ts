@@ -309,7 +309,8 @@ export async function processTabitUpload(
         and(eq(client.isActive, true), isNotNull(client.tabitColumnNames))
       );
 
-    // Map: column name → { clientId, clientCode }
+    // Map: column name (lowercase) → { clientId, clientCode }
+    // Case-insensitive matching since Tabit column names vary (e.g., "Haat" vs "HAAT")
     const columnToClient = new Map<
       string,
       { clientId: string; clientCode: string | null }
@@ -318,7 +319,7 @@ export async function processTabitUpload(
       const columns = c.tabitColumnNames as string[] | null;
       if (!columns) continue;
       for (const colName of columns) {
-        columnToClient.set(colName, { clientId: c.id, clientCode: c.code });
+        columnToClient.set(colName.toLowerCase(), { clientId: c.id, clientCode: c.code });
       }
     }
 
@@ -356,7 +357,7 @@ export async function processTabitUpload(
       >();
 
       for (const [colName, amount] of Object.entries(branch.amounts)) {
-        const mapping = columnToClient.get(colName);
+        const mapping = columnToClient.get(colName.toLowerCase());
         if (!mapping) {
           // Column not mapped to any client
           if (amount !== 0) {
