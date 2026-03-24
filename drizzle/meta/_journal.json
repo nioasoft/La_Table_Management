@@ -183,6 +183,13 @@
       "when": 1742860800000,
       "tag": "0049_add_tabit_column_names",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1742947200000,
+      "tag": "0050_fix_tabit_unique_index",
+      "breakpoints": true
     }
   ]
 }
