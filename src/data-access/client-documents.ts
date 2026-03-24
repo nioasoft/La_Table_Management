@@ -265,12 +265,34 @@ export async function getDocumentTrackingMatrix(
 
   // Build the matrix
   const docMap = new Map<string, typeof docs[0]>();
+  // Track aggregated tabit data per franchisee (sum across all clients)
+  const tabitByFranchisee = new Map<
+    string,
+    { totalAmount: number; count: number; status: string }
+  >();
+
   for (const doc of docs) {
-    const key =
-      doc.documentType === "tabit_report"
-        ? `tabit:${doc.franchiseeId}`
-        : `${doc.clientId}:${doc.franchiseeId}`;
-    docMap.set(key, doc);
+    if (doc.documentType === "tabit_report") {
+      // Key per client for individual matching
+      if (doc.clientId) {
+        docMap.set(`${doc.clientId}:${doc.franchiseeId}:tabit`, doc);
+      }
+      // Aggregate for the Tabit summary column
+      const existing = tabitByFranchisee.get(doc.franchiseeId);
+      const amount = doc.totalAmount ? parseFloat(doc.totalAmount) : 0;
+      if (existing) {
+        existing.totalAmount += amount;
+        existing.count++;
+      } else {
+        tabitByFranchisee.set(doc.franchiseeId, {
+          totalAmount: amount,
+          count: 1,
+          status: doc.processingStatus ?? "pending",
+        });
+      }
+    } else {
+      docMap.set(`${doc.clientId}:${doc.franchiseeId}`, doc);
+    }
   }
 
   // Get client-franchisee links
@@ -301,16 +323,16 @@ export async function getDocumentTrackingMatrix(
       };
     }
 
-    const tabitDoc = docMap.get(`tabit:${f.franchiseeId}`);
+    const tabitAgg = tabitByFranchisee.get(f.franchiseeId);
 
     return {
       franchiseeId: f.franchiseeId,
       franchiseeName: f.franchiseeName,
-      brandName: null, // TODO: join brand name if needed
+      brandName: null,
       clients,
-      tabitStatus: tabitDoc?.processingStatus ?? "missing",
-      tabitDocumentId: tabitDoc?.id ?? null,
-      tabitAmount: tabitDoc?.totalAmount ?? null,
+      tabitStatus: tabitAgg ? "auto_approved" : "missing",
+      tabitDocumentId: null,
+      tabitAmount: tabitAgg ? tabitAgg.totalAmount.toString() : null,
     };
   });
 }
