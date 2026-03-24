@@ -7,6 +7,8 @@ export const clientReconciliationKeys = {
     [...clientReconciliationKeys.sessions(), clientId] as const,
   session: (sessionId: string) =>
     [...clientReconciliationKeys.all, "session", sessionId] as const,
+  byFranchisee: (franchiseeId: string, periodMonth: number, periodYear: number) =>
+    [...clientReconciliationKeys.all, "by-franchisee", franchiseeId, periodMonth, periodYear] as const,
 };
 
 export function useClientReconciliationSessions(clientId?: string) {
@@ -81,6 +83,44 @@ export function useApproveSession() {
         queryKey: clientReconciliationKeys.all,
       });
     },
+  });
+}
+
+export interface ByFranchiseeRow {
+  clientId: string;
+  clientName: string;
+  clientCode: string | null;
+  clientAmount: number | null;
+  tabitAmount: number | null;
+  difference: number | null;
+  absoluteDifference: number | null;
+  status: "ok" | "mismatch" | "missing_client" | "missing_tabit" | "missing_both";
+}
+
+export interface ByFranchiseeResponse {
+  franchiseeName: string;
+  rows: ByFranchiseeRow[];
+  summary: { total: number; ok: number; mismatch: number; missing: number };
+}
+
+export function useReconciliationByFranchisee(
+  franchiseeId: string,
+  periodMonth: number,
+  periodYear: number
+) {
+  return useQuery({
+    queryKey: clientReconciliationKeys.byFranchisee(franchiseeId, periodMonth, periodYear),
+    queryFn: async (): Promise<ByFranchiseeResponse> => {
+      const params = new URLSearchParams({
+        franchiseeId,
+        periodMonth: String(periodMonth),
+        periodYear: String(periodYear),
+      });
+      const res = await fetch(`/api/clients/reconciliation/by-franchisee?${params}`);
+      if (!res.ok) throw new Error("שגיאה בטעינת התאמה לפי זכיין");
+      return res.json();
+    },
+    enabled: !!franchiseeId && periodMonth > 0 && periodYear > 0,
   });
 }
 

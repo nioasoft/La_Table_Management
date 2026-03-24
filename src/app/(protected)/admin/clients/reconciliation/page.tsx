@@ -41,12 +41,15 @@ import {
   Download,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
+import { useFranchisees } from "@/queries/franchisees";
 import {
   useClientReconciliationSessions,
   useClientReconciliationSession,
   useCreateClientReconciliation,
   useApproveSession,
   useUpdateComparisonStatus,
+  useReconciliationByFranchisee,
+  type ByFranchiseeRow,
 } from "@/queries/client-reconciliation";
 import { toast } from "sonner";
 
@@ -107,8 +110,13 @@ export default function ClientReconciliationPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createClientId, setCreateClientId] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [viewTab, setViewTab] = useState<"by-client" | "by-franchisee">("by-franchisee");
+  const [selectedFranchiseeId, setSelectedFranchiseeId] = useState("");
 
   const { data: clients } = useClients({ active: true });
+  const { data: allFranchisees } = useFranchisees();
+  const { data: byFranchiseeData, isLoading: byFranchiseeLoading } =
+    useReconciliationByFranchisee(selectedFranchiseeId, periodMonth, periodYear);
   const { data: sessions, isLoading: sessionsLoading } =
     useClientReconciliationSessions();
   const { data: sessionDetail, isLoading: detailLoading } =
@@ -435,8 +443,47 @@ export default function ClientReconciliationPage() {
         </Button>
       </div>
 
-      {/* Period selector */}
-      <div className="flex items-center gap-3">
+      {/* Tab toggle + Period selector */}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex items-center rounded-lg border p-1 gap-1">
+          <Button
+            variant={viewTab === "by-franchisee" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setViewTab("by-franchisee")}
+          >
+            לפי זכיין
+          </Button>
+          <Button
+            variant={viewTab === "by-client" ? "default" : "ghost"}
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => setViewTab("by-client")}
+          >
+            לפי לקוח
+          </Button>
+        </div>
+
+        {viewTab === "by-franchisee" && (
+          <Select
+            value={selectedFranchiseeId}
+            onValueChange={setSelectedFranchiseeId}
+          >
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="בחר זכיין..." />
+            </SelectTrigger>
+            <SelectContent>
+              {(allFranchisees ?? []).map(
+                (f: { id: string; name: string }) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                  </SelectItem>
+                )
+              )}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select
           value={String(periodMonth)}
           onValueChange={(v) => setPeriodMonth(parseInt(v))}
@@ -469,7 +516,155 @@ export default function ClientReconciliationPage() {
         </Select>
       </div>
 
-      {/* Sessions table */}
+      {/* ─── By Franchisee View ──────────────────────────────────────────── */}
+      {viewTab === "by-franchisee" && (
+        <Card>
+          <CardContent className="p-0">
+            {!selectedFranchiseeId ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Scale className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  בחר זכיין כדי לראות את ההתאמה מול כל הלקוחות
+                </p>
+              </div>
+            ) : byFranchiseeLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !byFranchiseeData || byFranchiseeData.rows.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <Scale className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                <p className="text-sm text-muted-foreground">
+                  אין נתונים לזכיין זה בתקופה הנבחרת
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Summary */}
+                <div className="grid grid-cols-3 gap-4 p-4 border-b">
+                  <div className="text-center">
+                    <p className="text-lg font-bold tabular-nums text-emerald-600">
+                      {byFranchiseeData.summary.ok}
+                    </p>
+                    <p className="text-xs text-muted-foreground">תקינים</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold tabular-nums text-amber-600">
+                      {byFranchiseeData.summary.mismatch}
+                    </p>
+                    <p className="text-xs text-muted-foreground">פערים</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold tabular-nums text-muted-foreground">
+                      {byFranchiseeData.summary.missing}
+                    </p>
+                    <p className="text-xs text-muted-foreground">חסרים</p>
+                  </div>
+                </div>
+
+                {/* Table */}
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="text-right pe-4">לקוח</TableHead>
+                      <TableHead className="text-right">סכום לקוח</TableHead>
+                      <TableHead className="text-right">סכום טאביט</TableHead>
+                      <TableHead className="text-right">הפרש</TableHead>
+                      <TableHead className="text-center">סטטוס</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {byFranchiseeData.rows.map((row: ByFranchiseeRow) => {
+                      const isLargeDiff =
+                        row.absoluteDifference !== null &&
+                        row.absoluteDifference > 30;
+
+                      return (
+                        <TableRow key={row.clientId}>
+                          <TableCell className="pe-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium">
+                                {row.clientName}
+                              </span>
+                              {row.clientCode && (
+                                <Badge
+                                  variant="outline"
+                                  className="font-mono text-xs"
+                                >
+                                  {row.clientCode}
+                                </Badge>
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="tabular-nums text-sm">
+                              {row.clientAmount !== null
+                                ? formatAmount(String(row.clientAmount))
+                                : "-"}
+                            </span>
+                            {row.status === "missing_client" ||
+                            row.status === "missing_both" ? (
+                              <Badge
+                                variant="outline"
+                                className="ms-2 text-[10px] text-amber-600 border-amber-300"
+                              >
+                                חסר
+                              </Badge>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <span className="tabular-nums text-sm">
+                              {row.tabitAmount !== null
+                                ? formatAmount(String(row.tabitAmount))
+                                : "-"}
+                            </span>
+                            {row.status === "missing_tabit" ||
+                            row.status === "missing_both" ? (
+                              <Badge
+                                variant="outline"
+                                className="ms-2 text-[10px] text-amber-600 border-amber-300"
+                              >
+                                חסר
+                              </Badge>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`tabular-nums text-sm ${
+                                isLargeDiff
+                                  ? "text-amber-600 font-medium"
+                                  : row.status === "ok"
+                                    ? "text-emerald-600"
+                                    : ""
+                              }`}
+                            >
+                              {row.difference !== null
+                                ? formatAmount(String(row.difference))
+                                : "-"}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {row.status === "ok" ? (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+                            ) : row.status === "mismatch" ? (
+                              <AlertCircle className="h-4 w-4 text-amber-500 mx-auto" />
+                            ) : (
+                              <Minus className="h-4 w-4 text-muted-foreground mx-auto" />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ─── By Client View (Sessions table) ─────────────────────────────── */}
+      {viewTab === "by-client" && (
       <Card>
         <CardContent className="p-0">
           {sessionsLoading ? (
@@ -599,6 +794,7 @@ export default function ClientReconciliationPage() {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Create Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
