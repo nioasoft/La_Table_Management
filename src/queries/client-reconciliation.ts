@@ -63,6 +63,27 @@ export function useCreateClientReconciliation() {
   });
 }
 
+export function useDeleteClientReconciliation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      const res = await fetch(`/api/clients/reconciliation/${sessionId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "שגיאה במחיקת התאמה");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.all,
+      });
+    },
+  });
+}
+
 export function useApproveSession() {
   const queryClient = useQueryClient();
   return useMutation({

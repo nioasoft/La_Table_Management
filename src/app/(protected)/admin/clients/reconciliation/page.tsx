@@ -46,6 +46,7 @@ import {
   useClientReconciliationSessions,
   useClientReconciliationSession,
   useCreateClientReconciliation,
+  useDeleteClientReconciliation,
   useApproveSession,
   useUpdateComparisonStatus,
   useReconciliationByFranchisee,
@@ -122,6 +123,7 @@ export default function ClientReconciliationPage() {
   const { data: sessionDetail, isLoading: detailLoading } =
     useClientReconciliationSession(selectedSessionId ?? "");
   const createMutation = useCreateClientReconciliation();
+  const deleteMutation = useDeleteClientReconciliation();
   const approveMutation = useApproveSession();
   const updateComparisonMutation = useUpdateComparisonStatus();
 
@@ -134,6 +136,13 @@ export default function ClientReconciliationPage() {
     (s: { periodMonth: number; periodYear: number }) =>
       s.periodMonth === periodMonth && s.periodYear === periodYear
   );
+
+  // Check if selected client already has a session for this period
+  const existingSessionForClient = createClientId
+    ? (periodSessions as { id: string; clientId: string }[]).find(
+        (s) => s.clientId === createClientId
+      )
+    : null;
 
   const handleCreate = () => {
     if (!createClientId) return;
@@ -149,6 +158,24 @@ export default function ClientReconciliationPage() {
         onError: (error: Error) => toast.error(error.message),
       }
     );
+  };
+
+  const handleDeleteAndRecreate = () => {
+    if (!existingSessionForClient) return;
+    deleteMutation.mutate(existingSessionForClient.id, {
+      onSuccess: () => {
+        // Now create the new session
+        handleCreate();
+      },
+      onError: (error: Error) => toast.error(error.message),
+    });
+  };
+
+  const handleContinueExisting = () => {
+    if (!existingSessionForClient) return;
+    setSelectedSessionId(existingSessionForClient.id);
+    setCreateDialogOpen(false);
+    setCreateClientId("");
   };
 
   const handleApprove = (sessionId: string) => {
@@ -829,6 +856,16 @@ export default function ClientReconciliationPage() {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Warning: session already exists */}
+            {existingSessionForClient && (
+              <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg text-sm text-amber-800 dark:text-amber-300">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <span>
+                  קיים כבר סשן התאמה לתקופה זו. ניתן להמשיך לעבוד עליו או למחוק ולהתחיל מחדש.
+                </span>
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2 pt-2">
@@ -841,17 +878,39 @@ export default function ClientReconciliationPage() {
             >
               ביטול
             </Button>
-            <Button
-              onClick={handleCreate}
-              disabled={!createClientId || createMutation.isPending}
-            >
-              {createMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin me-2" />
-              ) : (
-                <Plus className="h-4 w-4 me-2" />
-              )}
-              צור התאמה
-            </Button>
+
+            {existingSessionForClient ? (
+              <>
+                <Button
+                  variant="destructive"
+                  onClick={handleDeleteAndRecreate}
+                  disabled={deleteMutation.isPending || createMutation.isPending}
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin me-2" />
+                  ) : (
+                    <X className="h-4 w-4 me-2" />
+                  )}
+                  מחק והתחל מחדש
+                </Button>
+                <Button onClick={handleContinueExisting}>
+                  <Check className="h-4 w-4 me-2" />
+                  המשך עבודה
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={handleCreate}
+                disabled={!createClientId || createMutation.isPending}
+              >
+                {createMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin me-2" />
+                ) : (
+                  <Plus className="h-4 w-4 me-2" />
+                )}
+                צור התאמה
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

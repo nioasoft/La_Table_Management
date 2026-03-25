@@ -11,6 +11,9 @@ import {
   createClientReconciliationSession,
   getClientReconciliationSessions,
 } from "@/data-access/client-reconciliation";
+import { database } from "@/db";
+import { clientReconciliationSession } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAdminOrSuperUser(request);
@@ -36,16 +39,17 @@ export async function POST(request: NextRequest) {
   if (isAuthError(authResult)) return authResult;
   const { user } = authResult;
 
+  const body = await request.json();
+  const { clientId, periodMonth, periodYear } = body;
+
+  if (!clientId || !periodMonth || !periodYear) {
+    return NextResponse.json(
+      { error: "נדרשים לקוח, חודש ושנה" },
+      { status: 400 }
+    );
+  }
+
   try {
-    const { clientId, periodMonth, periodYear } = await request.json();
-
-    if (!clientId || !periodMonth || !periodYear) {
-      return NextResponse.json(
-        { error: "נדרשים לקוח, חודש ושנה" },
-        { status: 400 }
-      );
-    }
-
     const session = await createClientReconciliationSession(
       clientId,
       periodMonth,
@@ -55,6 +59,30 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(session, { status: 201 });
   } catch (error) {
+    // Check for unique constraint violation (session already exists)
+    const dbError = error as { code?: string };
+    if (dbError.code === "23505") {
+      const [existing] = await database
+        .select({ id: clientReconciliationSession.id })
+        .from(clientReconciliationSession)
+        .where(
+          and(
+            eq(clientReconciliationSession.clientId, clientId),
+            eq(clientReconciliationSession.periodMonth, periodMonth),
+            eq(clientReconciliationSession.periodYear, periodYear)
+          )
+        )
+        .limit(1);
+
+      return NextResponse.json(
+        {
+          error: "קיים כבר סשן התאמה לתקופה זו",
+          existingSessionId: existing?.id ?? null,
+        },
+        { status: 409 }
+      );
+    }
+
     const message = error instanceof Error ? error.message : "שגיאה ביצירת התאמה";
     console.error("Error creating client reconciliation session:", error);
     return NextResponse.json({ error: message }, { status: 500 });

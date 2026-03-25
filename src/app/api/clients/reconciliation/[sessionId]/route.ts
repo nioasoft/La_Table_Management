@@ -1,8 +1,9 @@
 /**
  * Client Reconciliation Session Detail API
  *
- * GET   - Get session with all comparisons
- * PATCH - Approve or reject session
+ * GET    - Get session with all comparisons
+ * PATCH  - Approve or reject session
+ * DELETE - Delete session (cascade deletes comparisons)
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,6 +12,7 @@ import {
   getSessionWithComparisons,
   approveSession,
   rejectSession,
+  deleteClientReconciliationSession,
 } from "@/data-access/client-reconciliation";
 
 export async function GET(
@@ -65,5 +67,26 @@ export async function PATCH(
   } catch (error) {
     console.error("Error updating session:", error);
     return NextResponse.json({ error: "שגיאה בעדכון התאמה" }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ sessionId: string }> }
+) {
+  const authResult = await requireAdminOrSuperUser(request);
+  if (isAuthError(authResult)) return authResult;
+
+  const { sessionId } = await params;
+
+  try {
+    const deleted = await deleteClientReconciliationSession(sessionId);
+    if (!deleted) {
+      return NextResponse.json({ error: "התאמה לא נמצאה" }, { status: 404 });
+    }
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting session:", error);
+    return NextResponse.json({ error: "שגיאה במחיקת התאמה" }, { status: 500 });
   }
 }
