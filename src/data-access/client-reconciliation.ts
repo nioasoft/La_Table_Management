@@ -67,6 +67,26 @@ export async function createClientReconciliationSession(
 
   if (!clientRow) throw new Error("לקוח לא נמצא");
 
+  // Delete existing session for this client+period (allows re-creation)
+  const existingSession = await database
+    .select({ id: clientReconciliationSession.id })
+    .from(clientReconciliationSession)
+    .where(
+      and(
+        eq(clientReconciliationSession.clientId, clientId),
+        eq(clientReconciliationSession.periodMonth, periodMonth),
+        eq(clientReconciliationSession.periodYear, periodYear)
+      )
+    )
+    .limit(1);
+
+  if (existingSession.length > 0) {
+    // Cascade deletes comparisons too
+    await database
+      .delete(clientReconciliationSession)
+      .where(eq(clientReconciliationSession.id, existingSession[0].id));
+  }
+
   // Get linked franchisees
   const linkedFranchisees = await database
     .select({
