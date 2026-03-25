@@ -80,6 +80,11 @@ export async function requireAuth(
     // Type the user with role information
     const user = session.user as AuthenticatedUser;
 
+    // Block non-active users (pending, suspended, etc.)
+    if (user.status && user.status !== "active") {
+      return forbiddenResponse();
+    }
+
     return {
       session: session.session,
       user,

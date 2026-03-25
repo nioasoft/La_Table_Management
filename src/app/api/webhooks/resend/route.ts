@@ -24,36 +24,42 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
 
-    // Verify webhook signature
-    if (webhookSecret && resend) {
-      const svixId = request.headers.get("svix-id");
-      const svixTimestamp = request.headers.get("svix-timestamp");
-      const svixSignature = request.headers.get("svix-signature");
+    // Verify webhook signature — fail hard if secret is not configured
+    if (!webhookSecret || !resend) {
+      console.error("RESEND_WEBHOOK_SECRET or RESEND_API_KEY is not configured");
+      return NextResponse.json(
+        { error: "Webhook not configured" },
+        { status: 503 }
+      );
+    }
 
-      if (!svixId || !svixTimestamp || !svixSignature) {
-        return NextResponse.json(
-          { error: "Missing signature headers" },
-          { status: 401 }
-        );
-      }
+    const svixId = request.headers.get("svix-id");
+    const svixTimestamp = request.headers.get("svix-timestamp");
+    const svixSignature = request.headers.get("svix-signature");
 
-      try {
-        resend.webhooks.verify({
-          payload: body,
-          headers: {
-            id: svixId,
-            timestamp: svixTimestamp,
-            signature: svixSignature,
-          },
-          webhookSecret,
-        });
-      } catch (verifyError) {
-        console.error("Invalid webhook signature:", verifyError);
-        return NextResponse.json(
-          { error: "Invalid signature" },
-          { status: 401 }
-        );
-      }
+    if (!svixId || !svixTimestamp || !svixSignature) {
+      return NextResponse.json(
+        { error: "Missing signature headers" },
+        { status: 401 }
+      );
+    }
+
+    try {
+      resend.webhooks.verify({
+        payload: body,
+        headers: {
+          id: svixId,
+          timestamp: svixTimestamp,
+          signature: svixSignature,
+        },
+        webhookSecret,
+      });
+    } catch (verifyError) {
+      console.error("Invalid webhook signature:", verifyError);
+      return NextResponse.json(
+        { error: "Invalid signature" },
+        { status: 401 }
+      );
     }
 
     // Parse the webhook event

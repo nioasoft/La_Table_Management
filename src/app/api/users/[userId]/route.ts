@@ -96,7 +96,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }> = {};
 
     if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
+    // Email changes require super_user — prevents self-service email spoofing
+    if (email !== undefined) {
+      if (user.role !== "super_user") {
+        return NextResponse.json(
+          { error: "Only Super User can change email addresses" },
+          { status: 403 }
+        );
+      }
+      updateData.email = email;
+    }
     if (image !== undefined) updateData.image = image;
     if (role !== undefined) updateData.role = role;
     if (status !== undefined) updateData.status = status;

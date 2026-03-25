@@ -66,6 +66,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate blob URL to prevent SSRF — only allow known storage hosts
+    try {
+      const parsedUrl = new URL(blobUrl);
+      const allowedHostPatterns = [
+        /\.public\.blob\.vercel-storage\.com$/,
+        /\.blob\.vercel-storage\.com$/,
+        /\.r2\.cloudflarestorage\.com$/,
+        /\.amazonaws\.com$/,
+      ];
+      if (!allowedHostPatterns.some((p) => p.test(parsedUrl.hostname))) {
+        return NextResponse.json(
+          { error: "Invalid blob URL hostname" },
+          { status: 400 }
+        );
+      }
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid blob URL format" },
+        { status: 400 }
+      );
+    }
+
     // Fetch file from Vercel Blob
     const blobResponse = await fetchWithTimeout(blobUrl);
     if (!blobResponse.ok) {
