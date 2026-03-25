@@ -53,6 +53,13 @@ next-env.d.ts
 .agent/
 .agents/
 .claude/skills/
+.claude/agents/
+.claude/commands/
+.claude/helpers/
+.claude/settings.json
+.claude/checkpoints.log
+.claude-flow/
+.mcp.json
 .continue/
 .cursor/
 .gemini/
