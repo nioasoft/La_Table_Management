@@ -313,7 +313,8 @@ export async function getDocumentTrackingMatrix(
       // Only include if this client is linked to this franchisee
       if (!linkSet.has(`${c.id}:${f.franchiseeId}`)) continue;
 
-      const doc = docMap.get(`${c.id}:${f.franchiseeId}`);
+      // Client reports take priority; fall back to tabit data for this client
+      const doc = docMap.get(`${c.id}:${f.franchiseeId}`) ?? docMap.get(`${c.id}:${f.franchiseeId}:tabit`);
       clients[c.id] = {
         clientId: c.id,
         franchiseeId: f.franchiseeId,
