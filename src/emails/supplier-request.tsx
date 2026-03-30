@@ -33,8 +33,12 @@ export function SupplierRequestEmail({
       <Section style={section}>
         <Text style={text}>שלום רב,</Text>
         <Text style={text}>
-          נבקש מכם להעלות דוח עמלות רשת עבור קבוצת{" "}
-          <span dir="ltr" style={{ unicodeBidi: "embed" }}>LA TABLE ({displayBrands})</span>{" "}
+          נבקש מכם להעלות דוח עמלות רשת עבור:
+        </Text>
+        <Text style={brandLine} dir="ltr">
+          LA TABLE ({displayBrands})
+        </Text>
+        <Text style={text}>
           לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה.
         </Text>
         <Section style={buttonSection}>
@@ -65,6 +69,16 @@ const text: React.CSSProperties = {
   lineHeight: "24px",
   margin: "16px 0",
   textAlign: "right" as const,
+};
+
+const brandLine: React.CSSProperties = {
+  color: "#1a1a1a",
+  fontSize: "16px",
+  fontWeight: "700",
+  lineHeight: "24px",
+  margin: "0 0 16px",
+  textAlign: "center" as const,
+  letterSpacing: "0.5px",
 };
 
 const buttonSection: React.CSSProperties = {
