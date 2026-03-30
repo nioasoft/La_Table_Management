@@ -150,7 +150,7 @@ const brandColumn: React.CSSProperties = {
 };
 
 const brandVinni: React.CSSProperties = {
-  color: "#c41e3a",
+  color: "#1e3a5f",
   fontSize: "13px",
   fontWeight: "700",
   fontStyle: "italic",
@@ -159,7 +159,7 @@ const brandVinni: React.CSSProperties = {
 };
 
 const brandKingKong: React.CSSProperties = {
-  color: "#333333",
+  color: "#d6006e",
   fontSize: "12px",
   fontWeight: "800",
   margin: "0",
@@ -167,7 +167,7 @@ const brandKingKong: React.CSSProperties = {
 };
 
 const brandMinna: React.CSSProperties = {
-  color: "#e67e22",
+  color: "#1a1a1a",
   fontSize: "12px",
   fontWeight: "600",
   margin: "0",
@@ -175,7 +175,7 @@ const brandMinna: React.CSSProperties = {
 };
 
 const brandNatanzon: React.CSSProperties = {
-  color: "#333333",
+  color: "#6b3a2a",
   fontSize: "13px",
   fontWeight: "700",
   margin: "0",

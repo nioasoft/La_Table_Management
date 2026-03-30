@@ -19,6 +19,8 @@ import {
 import {
   createEmailTemplate,
   isTemplateCodeUnique,
+  getEmailTemplateByCode,
+  updateEmailTemplate,
 } from "@/data-access/emailTemplates";
 
 /**
@@ -178,22 +180,28 @@ const SEED_TEMPLATES = [
 
 /**
  * POST /api/admin/seed-templates - Seed React Email templates into the DB
- * Idempotent: skips templates whose code already exists.
+ * Idempotent: skips templates whose code already exists (unless force=true).
+ * Query params:
+ *   - force=true: re-render and update ALL existing templates
  */
 export async function POST(request: NextRequest) {
   try {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
+    const { searchParams } = new URL(request.url);
+    const force = searchParams.get("force") === "true";
+
     const created: string[] = [];
+    const updated: string[] = [];
     const skipped: string[] = [];
     const errors: { code: string; error: string }[] = [];
 
     for (const template of SEED_TEMPLATES) {
       try {
-        // Skip if template code already exists
-        const isUnique = await isTemplateCodeUnique(template.code);
-        if (!isUnique) {
+        const existing = await getEmailTemplateByCode(template.code);
+
+        if (existing && !force) {
           skipped.push(template.code);
           continue;
         }
@@ -203,20 +211,33 @@ export async function POST(request: NextRequest) {
         const html = await render(element);
         const text = await render(element, { plainText: true });
 
-        await createEmailTemplate({
-          id: randomUUID(),
-          name: template.name,
-          code: template.code,
-          subject: template.subject,
-          bodyHtml: html,
-          bodyText: text,
-          description: template.description,
-          category: template.category,
-          variables: template.variables,
-          isActive: true,
-        });
-
-        created.push(template.code);
+        if (existing) {
+          // Force update existing template
+          await updateEmailTemplate(existing.id, {
+            name: template.name,
+            subject: template.subject,
+            bodyHtml: html,
+            bodyText: text,
+            description: template.description,
+            category: template.category,
+            variables: template.variables,
+          });
+          updated.push(template.code);
+        } else {
+          await createEmailTemplate({
+            id: randomUUID(),
+            name: template.name,
+            code: template.code,
+            subject: template.subject,
+            bodyHtml: html,
+            bodyText: text,
+            description: template.description,
+            category: template.category,
+            variables: template.variables,
+            isActive: true,
+          });
+          created.push(template.code);
+        }
       } catch (err) {
         console.error(`Error seeding template ${template.code}:`, err);
         errors.push({
@@ -229,9 +250,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       created,
+      updated,
       skipped,
       errors,
-      summary: `Created ${created.length}, skipped ${skipped.length}, errors ${errors.length}`,
+      summary: `Created ${created.length}, updated ${updated.length}, skipped ${skipped.length}, errors ${errors.length}`,
     });
   } catch (error) {
     console.error("Error seeding templates:", error);

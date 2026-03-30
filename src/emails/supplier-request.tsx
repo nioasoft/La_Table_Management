@@ -33,7 +33,7 @@ export function SupplierRequestEmail({
       <Section style={section}>
         <Text style={text}>שלום רב,</Text>
         <Text style={text}>
-          נבקשכם להעלות דוח עמלות רשת עבור קבוצת LA TABLE
+          נבקש מכם להעלות דוח עמלות רשת עבור קבוצת LA TABLE
           ({displayBrands}) לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה.
         </Text>
         <Section style={buttonSection}>
