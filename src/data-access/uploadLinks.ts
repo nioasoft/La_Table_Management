@@ -1243,14 +1243,16 @@ export async function getFranchiseeBkmvStatusForPeriod(
 ): Promise<{
   franchisees: Array<{ id: string; name: string; hasFile: boolean }>;
 }> {
-  // Get all active regular franchisees (exclude "other" category like Don Pedro)
+  // Get all active regular franchisees whose brand is also active
   const activeFranchisees = await database
     .select({ id: franchisee.id, name: franchisee.name })
     .from(franchisee)
+    .innerJoin(brand, eq(franchisee.brandId, brand.id))
     .where(
       and(
         eq(franchisee.isActive, true),
-        eq(franchisee.category, "regular")
+        eq(franchisee.category, "regular"),
+        eq(brand.isActive, true)
       )
     );
 

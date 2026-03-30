@@ -26,6 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
 import {
   LogOut,
   Pencil,
@@ -334,6 +335,25 @@ export default function AdminBrandsPage() {
                   dir="rtl"
                 />
               </div>
+
+              {editingBrand && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="isActive">סטטוס</Label>
+                    <div className="flex items-center gap-3 h-9">
+                      <Switch
+                        id="isActive"
+                        checked={formData.isActive}
+                        onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
+                        disabled={isSubmitting}
+                      />
+                      <Label htmlFor="isActive" className="text-sm font-normal cursor-pointer">
+                        {formData.isActive ? "פעיל" : "לא פעיל"}
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={cancelForm} disabled={isSubmitting}>

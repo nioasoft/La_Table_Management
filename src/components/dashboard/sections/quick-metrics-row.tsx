@@ -19,8 +19,8 @@ import type { FranchiseeBkmvStatus } from "@/app/api/dashboard/upload-status/rou
 import { useDashboardPeriod } from "../dashboard-period-context";
 
 export function QuickMetricsRow() {
-  const { year, startDate, endDate } = useDashboardPeriod();
-  const { data: supplierData, isLoading: supplierLoading } = useSupplierCompleteness(year, startDate, endDate);
+  const { year, startDate, endDate, periodType } = useDashboardPeriod();
+  const { data: supplierData, isLoading: supplierLoading } = useSupplierCompleteness(year, startDate, endDate, undefined, periodType);
   const { data: periodStatusData, isLoading: periodLoading } = usePeriodStatus(startDate, endDate);
   const { data: uploadStatusData, isLoading: uploadLoading } = useUploadStatus(startDate, endDate);
   const supplierCompleteness = supplierData as SupplierCompletenessResponse | undefined;

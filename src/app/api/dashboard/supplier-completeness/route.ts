@@ -121,8 +121,9 @@ export async function GET(request: NextRequest) {
     }
 
     if (frequencyFilter) {
+      const included = getIncludedFrequencies(frequencyFilter);
       filteredSuppliers = filteredSuppliers.filter(s =>
-        s.settlementFrequency === frequencyFilter
+        included.includes((s.settlementFrequency || "quarterly") as SettlementPeriodType)
       );
     }
 
@@ -321,6 +322,25 @@ export async function GET(request: NextRequest) {
       { error: "Internal server error" },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Get supplier frequencies that should be included for a given dashboard period type.
+ * Hierarchical: monthly shows only monthly, quarterly shows monthly+quarterly, etc.
+ */
+function getIncludedFrequencies(selected: string): SettlementPeriodType[] {
+  switch (selected) {
+    case "monthly":
+      return ["monthly"];
+    case "quarterly":
+      return ["monthly", "quarterly"];
+    case "semi_annual":
+      return ["monthly", "quarterly", "semi_annual"];
+    case "annual":
+      return ["monthly", "quarterly", "semi_annual", "annual"];
+    default:
+      return ["monthly", "quarterly", "semi_annual", "annual"];
   }
 }
 

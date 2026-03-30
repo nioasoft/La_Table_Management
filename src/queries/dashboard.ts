@@ -97,11 +97,12 @@ export function useSupplierCompleteness(
   year?: number,
   periodStart?: string,
   periodEnd?: string,
-  currentDue?: boolean
+  currentDue?: boolean,
+  frequency?: string
 ) {
   const currentYear = year || new Date().getFullYear();
   return useQuery({
-    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear, periodStart, periodEnd, currentDue],
+    queryKey: [...dashboardKeys.supplierCompleteness(), currentYear, periodStart, periodEnd, currentDue, frequency],
     queryFn: async () => {
       const params = new URLSearchParams({ year: String(currentYear) });
       if (currentDue) {
@@ -110,6 +111,7 @@ export function useSupplierCompleteness(
         if (periodStart) params.set("periodStart", periodStart);
         if (periodEnd) params.set("periodEnd", periodEnd);
       }
+      if (frequency) params.set("frequency", frequency);
       const res = await fetchWithTimeout(`/api/dashboard/supplier-completeness?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch supplier completeness");
       return res.json();
