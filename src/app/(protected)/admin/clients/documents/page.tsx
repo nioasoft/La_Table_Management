@@ -356,27 +356,17 @@ export default function ClientDocumentsPage() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="text-right pe-4 sticky start-0 bg-background z-10">
+                  <TableRow className="hover:bg-transparent h-8">
+                    <TableHead className="text-right pe-2 sticky start-0 bg-background z-10 text-xs">
                       זכיין
                     </TableHead>
-                    <TableHead className="text-center min-w-[80px]">
+                    <TableHead className="text-center min-w-[64px] px-1 text-xs">
                       טאביט
                     </TableHead>
                     {activeClients.map(
                       (c: { id: string; name: string; code: string | null }) => (
-                        <TableHead key={c.id} className="text-center min-w-[80px]">
-                          <div className="flex flex-col items-center gap-0.5">
-                            <span className="text-xs">{c.name}</span>
-                            {c.code && (
-                              <Badge
-                                variant="outline"
-                                className="text-[10px] font-mono px-1 py-0"
-                              >
-                                {c.code}
-                              </Badge>
-                            )}
-                          </div>
+                        <TableHead key={c.id} className="text-center min-w-[64px] px-1">
+                          <span className="text-xs">{c.name}</span>
                         </TableHead>
                       )
                     )}
@@ -384,14 +374,14 @@ export default function ClientDocumentsPage() {
                 </TableHeader>
                 <TableBody>
                   {matrix.map((row) => (
-                    <TableRow key={row.franchiseeId}>
-                      <TableCell className="pe-4 font-medium sticky start-0 bg-background z-10">
+                    <TableRow key={row.franchiseeId} className="h-8">
+                      <TableCell className="pe-2 py-1 text-xs font-medium sticky start-0 bg-background z-10 whitespace-nowrap">
                         {row.franchiseeName}
                       </TableCell>
                       <TableCell
-                        className={`text-center ${getStatusColor(row.tabitStatus)}`}
+                        className={`text-center py-1 px-1 ${getStatusColor(row.tabitStatus)}`}
                       >
-                        <div className="flex flex-col items-center gap-0.5">
+                        <div className="flex items-center justify-center gap-1">
                           {getStatusIcon(row.tabitStatus)}
                           {row.tabitAmount && (
                             <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -407,9 +397,9 @@ export default function ClientDocumentsPage() {
                           return (
                             <TableCell
                               key={c.id}
-                              className={`text-center ${getStatusColor(status)}`}
+                              className={`text-center py-1 px-1 ${getStatusColor(status)}`}
                             >
-                              <div className="flex flex-col items-center gap-0.5">
+                              <div className="flex items-center justify-center gap-1">
                                 {getStatusIcon(status)}
                                 {cell?.totalAmount && (
                                   <span className="text-[10px] tabular-nums text-muted-foreground">
