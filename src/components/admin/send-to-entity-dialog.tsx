@@ -157,22 +157,20 @@ export default function SendToEntityDialog({
     if (selectedTemplate) {
       const initial: Record<string, string> = {};
       for (const v of templateVars) {
-        if (v === "entity_name") {
-          initial[v] = recipientName || "";
-        } else {
-          initial[v] = SAMPLE_VARIABLES[v] || "";
-        }
+        initial[v] = SAMPLE_VARIABLES[v] || "";
       }
       setVariables(initial);
       setShowPreview(false);
       setPreviewHtml(null);
     }
-  }, [selectedTemplate, templateVars, recipientName]);
+  }, [selectedTemplate, templateVars]);
 
-  // Auto-fill email/name when entity changes
-  useEffect(() => {
-    if (entityType === "supplier" && entityId) {
-      const supplier = suppliers.find((s) => s.id === entityId);
+  // Handle entity selection — called directly from onValueChange to avoid
+  // useEffect + Radix Select unmount race condition (Maximum update depth)
+  const handleEntitySelect = (id: string) => {
+    setEntityId(id);
+    if (entityType === "supplier") {
+      const supplier = suppliers.find((s) => s.id === id);
       if (supplier) {
         setRecipientEmail(supplier.contactEmail || "");
         setRecipientName(supplier.contactName || supplier.name);
@@ -181,18 +179,18 @@ export default function SendToEntityDialog({
           entity_name: supplier.name,
         }));
       }
-    } else if (entityType === "franchisee" && entityId) {
-      const franchisee = franchisees.find((f) => f.id === entityId);
-      if (franchisee) {
-        setRecipientName(franchisee.name);
-        setRecipientEmail(""); // Franchisees don't have direct email
+    } else {
+      const fran = franchisees.find((f) => f.id === id);
+      if (fran) {
+        setRecipientName(fran.name);
+        setRecipientEmail("");
         setVariables((prev) => ({
           ...prev,
-          entity_name: franchisee.name,
+          entity_name: fran.name,
         }));
       }
     }
-  }, [entityType, entityId, suppliers, franchisees]);
+  };
 
   const handlePreview = () => {
     if (!selectedTemplate) return;
@@ -405,7 +403,7 @@ export default function SendToEntityDialog({
 
             <div className="space-y-2">
               <Label>{entityType === "supplier" ? "ספק" : "זכיין"} *</Label>
-              <Select value={entityId} onValueChange={setEntityId}>
+              <Select value={entityId} onValueChange={handleEntitySelect}>
                 <SelectTrigger>
                   <SelectValue
                     placeholder={
