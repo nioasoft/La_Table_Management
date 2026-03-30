@@ -31,25 +31,21 @@ export function SupplierRequestEmail({
   return (
     <EmailLayout preview={subject}>
       <Section style={section}>
-        <Text style={text}>{"\u200F"}שלום רב,</Text>
+        <Text style={text}>שלום רב,</Text>
         <Text style={text}>
-          {"\u200F"}נבקש מכם להעלות דוח עמלות רשת עבור קבוצת{" "}
-          <span dir="ltr">LA TABLE ({displayBrands})</span>
-          {" "}לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה{"\u200F"}.
+          נבקש מכם להעלות דוח עמלות רשת עבור קבוצת{" "}
+          <span dir="ltr" style={{ unicodeBidi: "embed" }}>LA TABLE ({displayBrands})</span>{" "}
+          לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה.
         </Text>
         <Section style={buttonSection}>
           <Button style={button} href={upload_link}>
             קישור להעלאת הדוח
           </Button>
         </Section>
-        <Text style={text}>
-          {"\u200F"}נודה להעלאת הדוח בהקדם האפשרי{"\u200F"}.
-        </Text>
-        <Text style={text}>
-          {"\u200F"}במידה וקיימת שאלה או תקלה בתהליך ההעלאה – נשמח לסייע{"\u200F"}.
-        </Text>
+        <Text style={text}>נודה להעלאת הדוח בהקדם האפשרי.</Text>
+        <Text style={text}>במידה וקיימת שאלה או תקלה בתהליך ההעלאה – נשמח לסייע.</Text>
         <Text style={signature}>
-          {"\u200F"}תודה רבה על שיתוף הפעולה,
+          תודה רבה על שיתוף הפעולה,
           <br />
           רעות
         </Text>
