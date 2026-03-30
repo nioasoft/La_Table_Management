@@ -15,7 +15,7 @@ import { database } from "@/db";
 import { clientDocument, client, franchisee } from "@/db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { uploadDocument } from "@/lib/storage";
-import { getClientParser } from "@/lib/client-parsers";
+import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import type { ClientDocumentProcessingResult, TabitUploadSummary } from "@/lib/client-parsers/types";
@@ -40,7 +40,7 @@ export interface ProcessClientDocumentInput {
   /** Period year */
   periodYear: number;
   /** Document type */
-  documentType: "client_report" | "tabit_report";
+  documentType: "client_report" | "tabit_report" | "commission_invoice";
   /** How the document was received */
   source: "manual_upload" | "gmail_fetch";
   /** Gmail message ID for dedup (only for gmail_fetch source) */
@@ -136,8 +136,10 @@ export async function processClientDocument(
       entityId
     );
 
-    // Step 3: Route to parser
-    const parser = getClientParser(parserCode);
+    // Step 3: Route to parser (invoice parsers for commission_invoice, report parsers otherwise)
+    const parser = documentType === "commission_invoice"
+      ? getInvoiceParser(parserCode)
+      : getClientParser(parserCode);
     let processingResult: ClientDocumentProcessingResult;
 
     if (parser) {

@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
     const documents = await getClientDocuments({
       clientId: searchParams.get("clientId") ?? undefined,
       franchiseeId: searchParams.get("franchiseeId") ?? undefined,
-      documentType: (searchParams.get("documentType") as "client_report" | "tabit_report") ?? undefined,
+      documentType: (searchParams.get("documentType") as "client_report" | "tabit_report" | "commission_invoice") ?? undefined,
       periodMonth: searchParams.has("periodMonth")
         ? parseInt(searchParams.get("periodMonth")!)
         : undefined,
@@ -105,9 +105,9 @@ export async function POST(request: NextRequest) {
     if (!file) {
       return NextResponse.json({ error: "נדרש קובץ" }, { status: 400 });
     }
-    if (!documentType || !["client_report", "tabit_report"].includes(documentType)) {
+    if (!documentType || !["client_report", "tabit_report", "commission_invoice"].includes(documentType)) {
       return NextResponse.json(
-        { error: "סוג מסמך לא תקין (client_report / tabit_report)" },
+        { error: "סוג מסמך לא תקין" },
         { status: 400 }
       );
     }
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ tabitUpload: true, summary: result.summary }, { status: 201 });
     }
 
-    // ---- CLIENT REPORT UPLOAD ----
+    // ---- CLIENT REPORT / COMMISSION INVOICE UPLOAD ----
     if (!franchiseeId) {
       return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
     }
@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
       franchiseeId,
       periodMonth: parseInt(periodMonth),
       periodYear: parseInt(periodYear),
-      documentType: "client_report",
+      documentType: documentType as "client_report" | "commission_invoice",
       source: "manual_upload",
       userId: user.id,
     });

@@ -196,6 +196,11 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
                 href: "/admin/clients/reconciliation",
                 icon: <Scale className="h-4 w-4" />,
               },
+              {
+                label: "אימות חשבוניות עמלה",
+                href: "/admin/clients/commission-invoices",
+                icon: <Receipt className="h-4 w-4" />,
+              },
             ],
           },
           {

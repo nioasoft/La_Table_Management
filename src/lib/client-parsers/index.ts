@@ -38,19 +38,49 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     const { parseHeverFile } = await import("./hever-parser");
     return parseHeverFile(buffer, mimeType);
   },
-  // Mishlocha & Haat: same invoice format as Wolt (Hyp-generated PDF)
-  // But these are image-based PDFs that need OCR - deferred to Phase 6
-  // MISHLOCHA: async (buffer, mimeType) => { ... },
-  // HAAT: async (buffer, mimeType) => { ... },
+  // Mishlocha & Haat: report parsers deferred — only invoice parsers available (see INVOICE_PARSERS)
+};
+
+// Registry of commission invoice parsers by client code (lazy-loaded)
+const INVOICE_PARSERS: Record<string, ClientParserFn> = {
+  TENBIS: async (buffer, mimeType) => {
+    const { parseTenbisInvoice } = await import("./invoice-tenbis-parser");
+    return parseTenbisInvoice(buffer, mimeType);
+  },
+  CIBUS: async (buffer, mimeType) => {
+    const { parseCibusInvoice } = await import("./invoice-cibus-parser");
+    return parseCibusInvoice(buffer, mimeType);
+  },
+  WOLT: async (buffer, mimeType) => {
+    const { parseWoltInvoice } = await import("./invoice-wolt-parser");
+    return parseWoltInvoice(buffer, mimeType);
+  },
+  MISHLOHA: async (buffer, mimeType) => {
+    const { parseMishlohaFile } = await import("./invoice-mishloha-parser");
+    return parseMishlohaFile(buffer, mimeType);
+  },
+  HAAT: async (buffer, mimeType) => {
+    const { parseHaatFile } = await import("./invoice-haat-parser");
+    return parseHaatFile(buffer, mimeType);
+  },
 };
 
 /**
- * Get a parser for a client code
+ * Get a parser for a client report
  * @returns The parser function, or null if no parser exists for this code
  */
 export function getClientParser(clientCode: string | null | undefined): ClientParserFn | null {
   if (!clientCode) return null;
   return CLIENT_PARSERS[clientCode] ?? null;
+}
+
+/**
+ * Get a parser for a commission invoice
+ * @returns The parser function, or null if no parser exists for this code
+ */
+export function getInvoiceParser(clientCode: string | null | undefined): ClientParserFn | null {
+  if (!clientCode) return null;
+  return INVOICE_PARSERS[clientCode] ?? null;
 }
 
 /**

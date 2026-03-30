@@ -187,6 +187,7 @@ export const reconciliationReviewQueueStatusEnum = pgEnum("reconciliation_review
 export const clientDocumentTypeEnum = pgEnum("client_document_type", [
   "client_report",  // Document from client (Cibus, Tenbis, etc.)
   "tabit_report",   // Tabit POS report
+  "commission_invoice", // Commission invoice from client for verification
 ]);
 
 // Client document source enum
