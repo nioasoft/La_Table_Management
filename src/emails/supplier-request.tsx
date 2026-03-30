@@ -76,16 +76,17 @@ const buttonSection: React.CSSProperties = {
 };
 
 const button: React.CSSProperties = {
+  background: "#2563eb",
   backgroundColor: "#2563eb",
   borderRadius: "6px",
-  border: "1px solid #2563eb",
+  border: "none",
   color: "#ffffff",
   fontSize: "14px",
   fontWeight: "600",
   textDecoration: "none",
   textAlign: "center" as const,
   display: "inline-block",
-  padding: "12px 24px",
+  padding: "14px 32px",
 };
 
 const signature: React.CSSProperties = {
