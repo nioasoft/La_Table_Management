@@ -68,6 +68,7 @@ const text: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "24px",
   margin: "16px 0",
+  direction: "rtl" as const,
   textAlign: "right" as const,
 };
 
@@ -105,6 +106,7 @@ const signature: React.CSSProperties = {
   fontSize: "14px",
   lineHeight: "24px",
   margin: "32px 0 0",
+  direction: "rtl" as const,
   textAlign: "right" as const,
 };
 
