@@ -58,9 +58,6 @@ export function EmailLayout({
               <Column style={brandColumn}>
                 <Text style={brandMinna}>minna tomei</Text>
               </Column>
-              <Column style={brandColumn}>
-                <Text style={brandNatanzon}>NATANZON</Text>
-              </Column>
             </Row>
           </Section>
           <Hr style={hrLight} />
@@ -146,7 +143,7 @@ const brandsSection: React.CSSProperties = {
 
 const brandColumn: React.CSSProperties = {
   textAlign: "center" as const,
-  width: "25%",
+  width: "33%",
 };
 
 const brandVinni: React.CSSProperties = {

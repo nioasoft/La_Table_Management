@@ -35,11 +35,12 @@ const SEED_TEMPLATES = [
     category: "supplier_request",
     description: "בקשת דוח עמלות מספק לתקופה מסוימת - נשלח לספקים",
     subject: "בקשת דוח עמלות רשת - {{period}}",
-    variables: ["entity_name", "period", "upload_link", "deadline", "brand_name", "brand_names"],
+    variables: ["entity_name", "period", "period_end_date", "upload_link", "deadline", "brand_name", "brand_names"],
     render: () =>
       SupplierRequestEmail({
         entity_name: "{{entity_name}}",
         period: "{{period}}",
+        period_end_date: "{{period_end_date}}",
         upload_link: "{{upload_link}}",
         deadline: "{{deadline}}",
         brand_name: "{{brand_name}}",
