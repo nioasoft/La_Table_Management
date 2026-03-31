@@ -356,19 +356,26 @@ export default function ClientDocumentsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="table-fixed">
+                <colgroup>
+                  <col className="w-[80px]" />
+                  <col className="w-[100px]" />
+                  {activeClients.map((c: { id: string }) => (
+                    <col key={c.id} className="w-[90px]" />
+                  ))}
+                </colgroup>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent h-8">
-                    <TableHead className="text-right pe-2 sticky start-0 bg-background z-10 text-xs">
+                  <TableRow className="hover:bg-transparent h-7">
+                    <TableHead className="text-right pe-1 sticky start-0 bg-background z-10 text-sm">
                       זכיין
                     </TableHead>
-                    <TableHead className="text-center min-w-[64px] px-1 text-xs">
+                    <TableHead className="text-center px-0 text-sm">
                       טאביט
                     </TableHead>
                     {activeClients.map(
                       (c: { id: string; name: string; code: string | null }) => (
-                        <TableHead key={c.id} className="text-center min-w-[64px] px-1">
-                          <span className="text-xs">{c.name}</span>
+                        <TableHead key={c.id} className="text-center px-0 text-sm">
+                          {c.name}
                         </TableHead>
                       )
                     )}
@@ -376,17 +383,19 @@ export default function ClientDocumentsPage() {
                 </TableHeader>
                 <TableBody>
                   {matrix.map((row) => (
-                    <TableRow key={row.franchiseeId} className="h-8">
-                      <TableCell className="pe-2 py-1 text-xs font-medium sticky start-0 bg-background z-10 whitespace-nowrap">
-                        {row.franchiseeName}
+                    <TableRow key={row.franchiseeId} className="h-7">
+                      <TableCell className="pe-1 py-0.5 sticky start-0 bg-background z-10 overflow-hidden">
+                        <div className="truncate text-sm font-medium" title={row.franchiseeName}>
+                          {row.franchiseeName}
+                        </div>
                       </TableCell>
                       <TableCell
-                        className={`text-center py-1 px-1 ${getStatusColor(row.tabitStatus)}`}
+                        className={`text-center py-0.5 px-0 ${getStatusColor(row.tabitStatus)}`}
                       >
-                        <div className="flex items-center justify-center gap-1">
+                        <div className="flex items-center justify-center gap-0.5">
                           {getStatusIcon(row.tabitStatus)}
                           {row.tabitAmount && (
-                            <span className="text-[10px] tabular-nums text-muted-foreground">
+                            <span className="text-sm tabular-nums text-muted-foreground">
                               {formatAmount(row.tabitAmount)}
                             </span>
                           )}
@@ -399,12 +408,12 @@ export default function ClientDocumentsPage() {
                           return (
                             <TableCell
                               key={c.id}
-                              className={`text-center py-1 px-1 ${getStatusColor(status)}`}
+                              className={`text-center py-0.5 px-0 ${getStatusColor(status)}`}
                             >
-                              <div className="flex items-center justify-center gap-1">
+                              <div className="flex items-center justify-center gap-0.5">
                                 {getStatusIcon(status)}
                                 {cell?.totalAmount && (
-                                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                                  <span className="text-sm tabular-nums text-muted-foreground">
                                     {formatAmount(cell.totalAmount)}
                                   </span>
                                 )}
