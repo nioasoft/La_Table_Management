@@ -48,11 +48,7 @@ export function SupplierRequestEmail({
         </Section>
         <Text style={text}>נודה להעלאת הדוח בהקדם האפשרי.</Text>
         <Text style={text}>במידה וקיימת שאלה או תקלה בתהליך ההעלאה – נשמח לסייע.</Text>
-        <Text style={signature}>
-          תודה רבה על שיתוף הפעולה,
-          <br />
-          רעות
-        </Text>
+        <Text style={text}>תודה רבה על שיתוף הפעולה,</Text>
       </Section>
     </EmailLayout>
   );
@@ -99,15 +95,6 @@ const button: React.CSSProperties = {
   textAlign: "center" as const,
   display: "inline-block",
   padding: "14px 32px",
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  direction: "rtl" as const,
-  textAlign: "right" as const,
 };
 
 export default SupplierRequestEmail;

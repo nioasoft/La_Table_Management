@@ -9,7 +9,6 @@ import { EmailLayout } from "./components/email-layout";
 import {
   emailTranslations,
   emailSubjects,
-  emailSignOff,
 } from "@/lib/translations/emails";
 
 interface UploadNotificationEmailProps {
@@ -96,10 +95,6 @@ export function UploadNotificationEmail({
           {t.helpText}
         </Text>
 
-        <Text style={signature}>
-          {common.bestRegards}<br />
-          {emailSignOff.system(brand_name)}
-        </Text>
       </Section>
     </EmailLayout>
   );
@@ -179,14 +174,6 @@ const helpText: React.CSSProperties = {
   lineHeight: "20px",
   margin: "16px 0",
   textAlign: "center" as const,
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 const notificationBadge: React.CSSProperties = {

@@ -37,9 +37,6 @@ export function AdminEscalationEmail({
         <Text style={text}>
           נדרשת פנייה ידנית לספק לקבלת הדוח.
         </Text>
-        <Text style={signature}>
-          מערכת La Table Management
-        </Text>
       </Section>
     </EmailLayout>
   );
@@ -77,14 +74,6 @@ const detailsText: React.CSSProperties = {
   padding: "12px 16px",
   borderRadius: "6px",
   borderRight: "3px solid #dc2626",
-};
-
-const signature: React.CSSProperties = {
-  color: "#666666",
-  fontSize: "12px",
-  lineHeight: "20px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 export default AdminEscalationEmail;

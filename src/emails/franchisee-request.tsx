@@ -10,7 +10,6 @@ import {
   emailTranslations,
   interpolateEmail,
   emailSubjects,
-  emailSignOff,
 } from "@/lib/translations/emails";
 
 interface FranchiseeRequestEmailProps {
@@ -61,10 +60,6 @@ export function FranchiseeRequestEmail({
         </Section>
         <Text style={text}>
           {t.helpText}
-        </Text>
-        <Text style={signature}>
-          {common.bestRegards}<br />
-          {emailSignOff.managementTeam(brand_name)}
         </Text>
       </Section>
     </EmailLayout>
@@ -124,14 +119,6 @@ const button: React.CSSProperties = {
   textAlign: "center" as const,
   display: "inline-block",
   padding: "12px 24px",
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 export default FranchiseeRequestEmail;

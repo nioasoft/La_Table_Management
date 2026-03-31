@@ -10,7 +10,6 @@ import {
   emailTranslations,
   interpolateEmail,
   emailSubjects,
-  emailSignOff,
 } from "@/lib/translations/emails";
 
 interface FileRequestEmailProps {
@@ -87,10 +86,6 @@ export function FileRequestEmail({
         <Text style={text}>
           {common.contactUs}
         </Text>
-        <Text style={signature}>
-          {common.bestRegards}<br />
-          {emailSignOff.team(brand_name)}
-        </Text>
       </Section>
     </EmailLayout>
   );
@@ -141,14 +136,6 @@ const helpText: React.CSSProperties = {
   lineHeight: "20px",
   margin: "16px 0",
   textAlign: "center" as const,
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 const reminderBadge: React.CSSProperties = {

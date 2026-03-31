@@ -48,11 +48,7 @@ export function BkmvOwnerEscalationEmail({
         <Text style={text}>
           במידה וקיימת שאלה או תקלה בתהליך ההעלאה – נשמח לסייע.
         </Text>
-        <Text style={signature}>
-          תודה רבה על שיתוף הפעולה,
-          <br />
-          רעות
-        </Text>
+        <Text style={text}>תודה רבה על שיתוף הפעולה,</Text>
       </Section>
     </EmailLayout>
   );
@@ -86,14 +82,6 @@ const button: React.CSSProperties = {
   textAlign: "center" as const,
   display: "inline-block",
   padding: "12px 24px",
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 export default BkmvOwnerEscalationEmail;

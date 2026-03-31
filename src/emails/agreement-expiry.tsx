@@ -41,11 +41,7 @@ export function AgreementExpiryEmail({
         <Text style={text}>
           בכל שאלה ניתן לפנות אליי.
         </Text>
-        <Text style={signature}>
-          תודה,
-          <br />
-          רעות
-        </Text>
+        <Text style={text}>תודה,</Text>
       </Section>
     </EmailLayout>
   );
@@ -83,14 +79,6 @@ const detailsText: React.CSSProperties = {
   padding: "12px 16px",
   borderRadius: "6px",
   borderRight: "3px solid #f59e0b",
-};
-
-const signature: React.CSSProperties = {
-  color: "#333333",
-  fontSize: "14px",
-  lineHeight: "24px",
-  margin: "32px 0 0",
-  textAlign: "right" as const,
 };
 
 export default AgreementExpiryEmail;
