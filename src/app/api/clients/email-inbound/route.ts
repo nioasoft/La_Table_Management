@@ -238,10 +238,61 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // ── Attachment-based client ──
+
+      // If no attachments, try to extract download links from email body (e.g. Tenbis)
       if (email.attachments.length === 0) {
-        const msg = `מייל ${email_id} ללא קבצים מצורפים`;
-        errorCount++;
-        errorDetails.push(msg);
+        const downloadedFiles = await extractAndDownloadLinks(
+          email.html || email.text || "",
+          identifiedClient.clientCode
+        );
+
+        if (downloadedFiles.length === 0) {
+          const msg = `מייל ${email_id} ללא קבצים מצורפים ולא נמצאו לינקים להורדה`;
+          errorCount++;
+          errorDetails.push(msg);
+        }
+
+        for (const file of downloadedFiles) {
+          const franchiseeMatch = await resolveFranchisee(
+            file.buffer,
+            "application/pdf",
+            identifiedClient.parserCode,
+            subject,
+            allFranchisees as Franchisee[]
+          );
+
+          if (!franchiseeMatch) {
+            const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
+            errorCount++;
+            errorDetails.push(msg);
+            continue;
+          }
+
+          const result = await processClientDocument({
+            buffer: file.buffer,
+            fileName: file.fileName,
+            mimeType: "application/pdf",
+            clientId: identifiedClient.clientId,
+            parserCode: identifiedClient.parserCode,
+            franchiseeId: franchiseeMatch.franchiseeId,
+            periodMonth: period.month,
+            periodYear: period.year,
+            documentType: "client_report",
+            source: "gmail_fetch",
+            gmailMessageId: email_id,
+          });
+
+          if (result.skippedDuplicate) {
+            duplicatesSkipped++;
+          } else if (result.success) {
+            documentsCreated++;
+          } else {
+            errorCount++;
+            errorDetails.push(
+              `${file.fileName}: ${result.error ?? "שגיאה בעיבוד"}`
+            );
+          }
+        }
       }
 
       for (const attachment of email.attachments) {
@@ -437,6 +488,83 @@ function matchFranchiseeFromSubject(
   }
 
   return null;
+}
+
+/**
+ * Extract download links from email HTML body and download the PDFs.
+ * Supports:
+ * - Tenbis: Mandrill tracking links wrapping cdn.10bis.co.il PDF URLs
+ * - Direct PDF links
+ */
+async function extractAndDownloadLinks(
+  htmlBody: string,
+  clientCode: string
+): Promise<Array<{ buffer: Buffer; fileName: string }>> {
+  const results: Array<{ buffer: Buffer; fileName: string }> = [];
+
+  // Pattern 1: Tenbis — Mandrill tracking links with base64-encoded target URL
+  // The base64 `p` param contains JSON with the actual cdn.10bis.co.il URL
+  if (clientCode === "TENBIS") {
+    const mandrillLinks = htmlBody.match(
+      /https?:\/\/mandrillapp\.com\/track\/click\/[^"'\s<>]+/g
+    ) || [];
+
+    for (const trackingLink of mandrillLinks) {
+      try {
+        const url = new URL(trackingLink.replace(/&amp;/g, "&"));
+        const pParam = url.searchParams.get("p");
+        if (!pParam) continue;
+
+        const decoded = JSON.parse(Buffer.from(pParam, "base64").toString());
+        const innerData = JSON.parse(decoded.p);
+        const pdfUrl: string = innerData.url;
+
+        // Only download report PDFs (skip refund reports)
+        if (!pdfUrl.includes("cdn.10bis.co.il") || !pdfUrl.endsWith(".pdf")) continue;
+        if (pdfUrl.includes("refund_")) continue;
+
+        console.log(`[email-inbound] Tenbis: downloading PDF from ${pdfUrl}`);
+        const response = await fetch(pdfUrl);
+        if (!response.ok) {
+          console.warn(`[email-inbound] Failed to download ${pdfUrl}: ${response.status}`);
+          continue;
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const fileName = pdfUrl.split("/").pop() ?? "tenbis-report.pdf";
+
+        results.push({ buffer, fileName });
+      } catch (err) {
+        console.warn("[email-inbound] Failed to decode Mandrill link:", err);
+      }
+    }
+  }
+
+  // Pattern 2: Direct PDF links (generic fallback)
+  if (results.length === 0) {
+    const directLinks = htmlBody.match(
+      /https?:\/\/[^\s"'<>]+\.pdf/gi
+    ) || [];
+
+    for (const pdfUrl of directLinks) {
+      try {
+        console.log(`[email-inbound] Downloading direct PDF: ${pdfUrl}`);
+        const response = await fetch(pdfUrl);
+        if (!response.ok) continue;
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const fileName = pdfUrl.split("/").pop() ?? "report.pdf";
+
+        results.push({ buffer, fileName });
+      } catch (err) {
+        console.warn("[email-inbound] Failed to download PDF:", err);
+      }
+    }
+  }
+
+  return results;
 }
 
 async function finalizeSyncLog(
