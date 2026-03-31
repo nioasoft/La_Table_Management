@@ -133,6 +133,11 @@ export async function GET(request: NextRequest) {
         difference = clientAmt - tabitAmt;
         absoluteDifference = Math.abs(difference);
         status = absoluteDifference <= THRESHOLD ? "ok" : "mismatch";
+      } else if (c.code === "GIFTCARD" && tabitAmt !== null) {
+        // Gift Card: Tabit is the sole source of truth — auto-approve
+        difference = 0;
+        absoluteDifference = 0;
+        status = "ok";
       } else if (clientAmt !== null) {
         status = "missing_tabit";
       } else if (tabitAmt !== null) {
@@ -145,7 +150,8 @@ export async function GET(request: NextRequest) {
         clientId,
         clientName: c.name,
         clientCode: c.code,
-        clientAmount: clientAmt,
+        // Gift Card: use Tabit amount as client amount
+        clientAmount: clientAmt ?? (c.code === "GIFTCARD" ? tabitAmt : null),
         tabitAmount: tabitAmt,
         difference,
         absoluteDifference,

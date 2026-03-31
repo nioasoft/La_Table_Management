@@ -186,6 +186,15 @@ export async function createClientReconciliationSession(
 
       totalClientAmount += clientAmount;
       totalTabitAmount += tabitAmount;
+    } else if (clientRow.code === "GIFTCARD" && tabitAmount !== null) {
+      // Gift Card: Tabit is the sole source of truth — no separate client report.
+      // Auto-approve using Tabit amount for both sides.
+      difference = 0;
+      absDifference = 0;
+      status = "auto_approved";
+      matchedCount++;
+      totalTabitAmount += tabitAmount;
+      totalClientAmount += tabitAmount; // Use Tabit amount as client amount too
     } else {
       // Missing one or both documents
       status = "needs_review";
@@ -200,7 +209,8 @@ export async function createClientReconciliationSession(
       franchiseeId: f.franchiseeId,
       clientDocumentId: clientDoc?.id ?? null,
       tabitDocumentId: tabitDoc?.id ?? null,
-      clientAmount: clientAmount?.toString() ?? null,
+      // Gift Card: use Tabit amount as client amount (Tabit is sole source of truth)
+      clientAmount: (clientAmount ?? (clientRow.code === "GIFTCARD" ? tabitAmount : null))?.toString() ?? null,
       tabitAmount: tabitAmount?.toString() ?? null,
       difference: difference?.toString() ?? null,
       absoluteDifference: absDifference?.toString() ?? null,
