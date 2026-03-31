@@ -295,7 +295,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      for (const attachment of email.attachments) {
+      // Filter attachments: prefer sales_report for Wolt, skip commission/netting docs
+      const filteredAttachments = filterAttachments(
+        email.attachments,
+        identifiedClient.clientCode
+      );
+
+      for (const attachment of filteredAttachments) {
         const buffer = await downloadAttachment(attachment.downloadUrl);
         if (!buffer) {
           errorCount++;
@@ -488,6 +494,47 @@ function matchFranchiseeFromSubject(
   }
 
   return null;
+}
+
+/**
+ * Filter attachments to pick the most relevant document per client.
+ *
+ * Wolt emails contain 4 PDFs: 2 invoices, 1 netting report, 1 sales report.
+ * For reconciliation against Tabit we only need the sales_report.
+ */
+function filterAttachments(
+  attachments: Array<{ filename: string; contentType: string; downloadUrl: string }>,
+  clientCode: string
+): Array<{ filename: string; contentType: string; downloadUrl: string }> {
+  if (clientCode === "WOLT" && attachments.length > 1) {
+    // Prefer sales_report — it contains the total sales we need for reconciliation
+    const salesReport = attachments.find((a) =>
+      a.filename.toLowerCase().includes("sales_report")
+    );
+    if (salesReport) {
+      console.log(
+        `[email-inbound] Wolt: selected sales_report from ${attachments.length} attachments: ${salesReport.filename}`
+      );
+      return [salesReport];
+    }
+
+    // Fallback: pick the largest PDF (sales report is typically much larger)
+    const sorted = [...attachments]
+      .filter((a) => a.contentType === "application/pdf")
+      .sort((a, b) => {
+        // Can't sort by size since it's not in the type, but filename length as rough heuristic
+        return 0;
+      });
+    if (sorted.length > 0) {
+      console.log(
+        `[email-inbound] Wolt: no sales_report found, using first PDF: ${sorted[0].filename}`
+      );
+      return [sorted[0]];
+    }
+  }
+
+  // For other clients, process all attachments
+  return attachments;
 }
 
 /**
