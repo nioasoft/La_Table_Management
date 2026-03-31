@@ -110,8 +110,10 @@ function formatAmount(amount: string | null): string {
 
 export default function ClientDocumentsPage() {
   const now = new Date();
-  const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1); // 1-based
-  const [periodYear, setPeriodYear] = useState(now.getFullYear());
+  // Default to previous month — client reports arrive ~1 month after the period they cover
+  const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const [periodMonth, setPeriodMonth] = useState(prevMonth.getMonth() + 1); // 1-based
+  const [periodYear, setPeriodYear] = useState(prevMonth.getFullYear());
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   const { data: clients } = useClients({ active: true });

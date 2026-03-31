@@ -106,24 +106,6 @@ export async function processClientDocument(
       }
     }
 
-    // Check for existing document for same client+franchisee+period
-    // For manual uploads, we replace the existing document
-    const existingConditions = [
-      eq(clientDocument.franchiseeId, franchiseeId),
-      eq(clientDocument.periodMonth, periodMonth),
-      eq(clientDocument.periodYear, periodYear),
-      eq(clientDocument.documentType, documentType),
-    ];
-    if (clientId) {
-      existingConditions.push(eq(clientDocument.clientId, clientId));
-    }
-
-    const existingDoc = await database
-      .select({ id: clientDocument.id })
-      .from(clientDocument)
-      .where(and(...existingConditions))
-      .limit(1);
-
     // Step 2: Upload file to Vercel Blob
     const entityType = documentType === "tabit_report" ? "tabit" : "client";
     const entityId = clientId ?? "tabit";
@@ -155,6 +137,30 @@ export async function processClientDocument(
       };
     }
 
+    // Step 4b: Use parser-extracted period if available (same pattern as Tabit handler).
+    // Client documents arrive ~1 month after the period they cover, so the parser's
+    // extracted period is more accurate than the user-selected input period.
+    const finalPeriodMonth = processingResult.data?.periodMonth ?? periodMonth;
+    const finalPeriodYear = processingResult.data?.periodYear ?? periodYear;
+
+    // Step 4c: Dedup check — runs AFTER parsing so it uses the corrected period.
+    // For manual uploads, we replace the existing document.
+    const existingConditions = [
+      eq(clientDocument.franchiseeId, franchiseeId),
+      eq(clientDocument.periodMonth, finalPeriodMonth),
+      eq(clientDocument.periodYear, finalPeriodYear),
+      eq(clientDocument.documentType, documentType),
+    ];
+    if (clientId) {
+      existingConditions.push(eq(clientDocument.clientId, clientId));
+    }
+
+    const existingDoc = await database
+      .select({ id: clientDocument.id })
+      .from(clientDocument)
+      .where(and(...existingConditions))
+      .limit(1);
+
     // Determine processing status based on result
     const processingStatus = !processingResult.success
       ? ("needs_review" as const)
@@ -172,8 +178,8 @@ export async function processClientDocument(
       fileUrl: uploadResult.url,
       fileSize: uploadResult.fileSize,
       mimeType,
-      periodMonth,
-      periodYear,
+      periodMonth: finalPeriodMonth,
+      periodYear: finalPeriodYear,
       processingStatus,
       processingResult: processingResult as unknown as Record<string, unknown>,
       totalAmount: processingResult.data?.totalAmount?.toString() ?? null,
