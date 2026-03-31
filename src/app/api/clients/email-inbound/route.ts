@@ -23,6 +23,7 @@ import {
   type ResendInboundWebhookPayload,
 } from "@/lib/email/inbound";
 import { processClientDocument } from "@/lib/client-document-processor";
+import { getClientParser } from "@/lib/client-parsers";
 import {
   createSyncLogEntry,
   updateSyncLogEntry,
@@ -197,14 +198,17 @@ export async function POST(request: NextRequest) {
         const buffer = Buffer.from(emailContent, "utf-8");
         const mimeType = email.html ? "text/html" : "text/plain";
 
-        // Try to extract franchisee from subject
-        const franchiseeMatch = matchFranchiseeFromSubject(
+        // Resolve franchisee: parse document first, fall back to subject
+        const franchiseeMatch = await resolveFranchisee(
+          buffer,
+          mimeType,
+          identifiedClient.parserCode,
           subject,
           allFranchisees as Franchisee[]
         );
 
         if (!franchiseeMatch) {
-          const msg = `לא זוהה זכיין מנושא המייל: "${subject}"`;
+          const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
           errorCount++;
           errorDetails.push(msg);
         } else {
@@ -248,14 +252,17 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Try to extract franchisee from subject
-        const franchiseeMatch = matchFranchiseeFromSubject(
+        // Resolve franchisee: parse document first, fall back to subject
+        const franchiseeMatch = await resolveFranchisee(
+          buffer,
+          attachment.contentType,
+          identifiedClient.parserCode,
           subject,
           allFranchisees as Franchisee[]
         );
 
         if (!franchiseeMatch) {
-          const msg = `לא זוהה זכיין מנושא המייל: "${subject}"`;
+          const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
           errorCount++;
           errorDetails.push(msg);
           continue;
@@ -347,6 +354,50 @@ export async function GET() {
 // ============================================================================
 // HELPERS
 // ============================================================================
+
+/**
+ * Resolve franchisee by parsing the document first, falling back to subject matching.
+ *
+ * Priority:
+ * 1. Parse document → extract franchiseeName → fuzzy match
+ * 2. Fall back to email subject matching
+ */
+async function resolveFranchisee(
+  buffer: Buffer,
+  mimeType: string,
+  parserCode: string,
+  subject: string,
+  franchisees: Franchisee[]
+): Promise<{ franchiseeId: string; franchiseeName: string } | null> {
+  // Strategy 1: Parse document and use extracted franchisee name
+  const parser = getClientParser(parserCode);
+  if (parser) {
+    try {
+      const parseResult = await parser(buffer, mimeType);
+      if (parseResult.success && parseResult.data?.franchiseeName) {
+        const match = matchFranchiseeName(
+          parseResult.data.franchiseeName,
+          franchisees,
+          { minConfidence: 0.6 }
+        );
+        if (match.matchedFranchisee) {
+          console.log(
+            `[email-inbound] Matched franchisee from document content: "${parseResult.data.franchiseeName}" → "${match.matchedFranchisee.name}"`
+          );
+          return {
+            franchiseeId: match.matchedFranchisee.id,
+            franchiseeName: match.matchedFranchisee.name,
+          };
+        }
+      }
+    } catch (err) {
+      console.warn("[email-inbound] Pre-parse for franchisee extraction failed:", err);
+    }
+  }
+
+  // Strategy 2: Fall back to subject matching
+  return matchFranchiseeFromSubject(subject, franchisees);
+}
 
 /**
  * Try to match a franchisee from the email subject.
