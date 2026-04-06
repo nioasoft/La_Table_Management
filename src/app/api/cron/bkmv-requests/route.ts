@@ -12,6 +12,7 @@ import { createFileRequest } from "@/data-access/fileRequests";
 import { sendDirectEmail } from "@/lib/email/service";
 import { BkmvRequestEmail } from "@/emails/bkmv-request";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { startCronLog } from "@/lib/cron-logger";
 
 /**
  * BKMV File Requests Cron Job
@@ -214,7 +215,17 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const cronLog = dryRun ? null : await startCronLog("bkmv-requests");
     const bkmvResults = await processBkmvRequests(dryRun);
+
+    await cronLog?.complete({
+      emailsSent: bkmvResults.processed,
+      emailsFailed: bkmvResults.failed,
+      totalProcessed: bkmvResults.processed,
+      totalSkipped: bkmvResults.skipped,
+      totalFailed: bkmvResults.failed + bkmvResults.noAccountant,
+      summary: bkmvResults as unknown as Record<string, unknown>,
+    }, bkmvResults.errors.length > 0 ? bkmvResults.errors.join("; ") : undefined);
 
     return NextResponse.json({
       success: true,

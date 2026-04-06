@@ -7,6 +7,7 @@ import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service
 import { AdminEscalationEmail } from "@/emails/admin-escalation";
 import { BkmvOwnerEscalationEmail } from "@/emails/bkmv-owner-escalation";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { startCronLog } from "@/lib/cron-logger";
 
 /**
  * Upload Reminders Cron Job
@@ -313,7 +314,16 @@ export async function POST(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const dryRun = searchParams.get("dryRun") === "true";
 
+    const cronLog = dryRun ? null : await startCronLog("upload-reminders");
     const reminderResults = await processReminders(dryRun);
+
+    await cronLog?.complete({
+      emailsSent: reminderResults.processed + reminderResults.escalated,
+      emailsFailed: reminderResults.failed,
+      totalProcessed: reminderResults.processed,
+      totalFailed: reminderResults.failed,
+      summary: reminderResults as unknown as Record<string, unknown>,
+    }, reminderResults.errors.length > 0 ? reminderResults.errors.join("; ") : undefined);
 
     return NextResponse.json({
       success: true,

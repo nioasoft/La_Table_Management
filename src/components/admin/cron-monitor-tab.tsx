@@ -30,13 +30,15 @@ import {
   Bell,
   Users,
   Send,
+  History,
+  XCircle,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { he } from "@/lib/translations/he";
 import { cn } from "@/lib/utils";
 
 const t = he.admin.cronMonitor;
-const tCommon = he.common;
 
 interface CronJob {
   id: string;
@@ -60,6 +62,21 @@ interface FileRequestStats {
   pending: number;
   sent: number;
   submitted: number;
+}
+
+interface CronExecutionLog {
+  id: string;
+  jobName: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: string;
+  triggerType: string;
+  emailsSent: number;
+  emailsFailed: number;
+  totalProcessed: number;
+  totalSkipped: number;
+  totalFailed: number;
+  errorMessage: string | null;
 }
 
 const CRON_JOBS: CronJob[] = [
@@ -151,6 +168,18 @@ export default function CronMonitorTab() {
     },
   });
 
+  // Fetch execution history
+  const { data: executionLogs, isLoading: logsLoading } = useQuery<CronExecutionLog[]>({
+    queryKey: ["cron-monitor", "execution-logs"],
+    queryFn: async () => {
+      const response = await fetch("/api/admin/cron-executions?limit=30");
+      if (!response.ok) throw new Error("Failed to fetch execution logs");
+      const data = await response.json();
+      return data.logs;
+    },
+    refetchInterval: 30000,
+  });
+
   // Run cron job mutation via server-side proxy (keeps CRON_SECRET on server)
   const runJobMutation = useMutation({
     mutationFn: async ({ endpoint, dryRun }: { endpoint: string; dryRun: boolean }) => {
@@ -169,7 +198,7 @@ export default function CronMonitorTab() {
 
       return response.json();
     },
-    onSuccess: (data, { dryRun }) => {
+    onSuccess: (_data, { dryRun }) => {
       if (dryRun) {
         toast.success(t.messages.dryRunSuccess);
       } else {
@@ -330,6 +359,104 @@ export default function CronMonitorTab() {
           );
         })}
       </div>
+
+      {/* Execution History */}
+      <Card>
+        <CardHeader className="border-b bg-muted/30">
+          <div className="flex items-center justify-between flex-row-reverse">
+            <div className="flex items-center gap-3 flex-row-reverse">
+              <div className="rounded-lg bg-primary/10 p-2">
+                <History className="h-5 w-5 text-primary" />
+              </div>
+              <div className="text-right">
+                <CardTitle>{t.executionHistory.title}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">כל הרצה אוטומטית ידנית של משימות</p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {logsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : !executionLogs?.length ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <History className="h-12 w-12 mx-auto mb-4 opacity-20" />
+              <p>{t.executionHistory.emptyState}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="text-right font-semibold">משימה</TableHead>
+                    <TableHead className="text-right font-semibold">{t.executionHistory.startedAt}</TableHead>
+                    <TableHead className="text-center font-semibold">סטטוס</TableHead>
+                    <TableHead className="text-center font-semibold">{t.executionHistory.emailsSent}</TableHead>
+                    <TableHead className="text-center font-semibold">{t.executionHistory.processed}</TableHead>
+                    <TableHead className="text-center font-semibold">{t.executionHistory.failed}</TableHead>
+                    <TableHead className="text-right font-semibold">שגיאה</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {executionLogs.map((log, index) => {
+                    const jobLabel = CRON_JOBS.find((j) => j.id === log.jobName)?.name || log.jobName;
+                    const statusConfig: Record<string, { badge: string; icon: React.ReactNode; label: string }> = {
+                      success: { badge: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300", icon: <CheckCircle className="h-3.5 w-3.5" />, label: t.executionHistory.status.success },
+                      partial: { badge: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300", icon: <AlertTriangle className="h-3.5 w-3.5" />, label: t.executionHistory.status.partial },
+                      failed: { badge: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300", icon: <XCircle className="h-3.5 w-3.5" />, label: t.executionHistory.status.failed },
+                      running: { badge: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300", icon: <Loader2 className="h-3.5 w-3.5 animate-spin" />, label: t.executionHistory.status.running },
+                    };
+                    const st = statusConfig[log.status] || statusConfig.failed;
+
+                    return (
+                      <TableRow
+                        key={log.id}
+                        className={cn("transition-colors", index % 2 === 0 ? "bg-background" : "bg-muted/20")}
+                      >
+                        <TableCell className="text-right font-medium">{jobLabel}</TableCell>
+                        <TableCell className="text-right text-sm text-muted-foreground">
+                          {new Date(log.startedAt).toLocaleString("he-IL", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge className={cn("gap-1.5", st.badge)}>
+                            {st.icon}
+                            {st.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {log.emailsSent > 0 ? (
+                            <span className="font-semibold text-green-700 dark:text-green-400">{log.emailsSent}</span>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">{log.totalProcessed}</TableCell>
+                        <TableCell className="text-center">
+                          {log.totalFailed > 0 ? (
+                            <span className="font-semibold text-red-600 dark:text-red-400">{log.totalFailed}</span>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground max-w-[200px] truncate" title={log.errorMessage || ""}>
+                          {log.errorMessage || "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Pending Requests */}
       <Card>

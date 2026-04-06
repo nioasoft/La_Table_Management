@@ -1825,6 +1825,29 @@ export const emailTemplate = pgTable(
   ]
 );
 
+// Cron Execution Log - tracks every cron job execution
+export const cronExecutionLog = pgTable(
+  "cron_execution_log",
+  {
+    id: text("id").primaryKey(),
+    jobName: text("job_name").notNull(),
+    startedAt: timestamp("started_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    status: text("status").notNull().$default(() => "running"),
+    triggerType: text("trigger_type").notNull().$default(() => "cron"),
+    emailsSent: integer("emails_sent").default(0),
+    emailsFailed: integer("emails_failed").default(0),
+    totalProcessed: integer("total_processed").default(0),
+    totalSkipped: integer("total_skipped").default(0),
+    totalFailed: integer("total_failed").default(0),
+    resultSummary: jsonb("result_summary"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }
+);
+
 // Email Logs table - Log of sent emails
 export const emailLog = pgTable(
   "email_log",

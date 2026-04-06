@@ -197,6 +197,13 @@
       "when": 1743292800000,
       "tag": "0051_commission_invoice",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1743897600000,
+      "tag": "0052_cron_execution_log",
+      "breakpoints": true
     }
   ]
 }

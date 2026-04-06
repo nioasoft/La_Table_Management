@@ -4,6 +4,7 @@ import {
   expireOutdatedFileRequests,
   sendDueDateReminders,
 } from "@/data-access/fileRequests";
+import { startCronLog } from "@/lib/cron-logger";
 
 // This endpoint is intended to be called by a cron job (e.g., Vercel Cron)
 // It processes scheduled file requests, expires outdated ones, and sends reminders
@@ -59,6 +60,8 @@ export async function POST(request: NextRequest) {
       };
     } = {};
 
+    const cronLog = await startCronLog("file-requests");
+
     // Process scheduled file requests
     if (action === "all" || action === "scheduled") {
       results.scheduled = await processScheduledFileRequests();
@@ -73,6 +76,17 @@ export async function POST(request: NextRequest) {
     if (action === "all" || action === "reminders") {
       results.reminders = await sendDueDateReminders(reminderDays);
     }
+
+    const processed = (results.scheduled?.processed ?? 0) + (results.reminders?.sent ?? 0);
+    const failed = (results.scheduled?.failed ?? 0) + (results.reminders?.failed ?? 0);
+    await cronLog.complete({
+      emailsSent: processed,
+      emailsFailed: failed,
+      totalProcessed: processed,
+      totalSkipped: results.expired ?? 0,
+      totalFailed: failed,
+      summary: results as Record<string, unknown>,
+    });
 
     return NextResponse.json({
       success: true,

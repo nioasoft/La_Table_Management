@@ -18,6 +18,7 @@ import { getActiveFranchisees } from "@/data-access/franchisees";
 import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AgreementExpiryEmail } from "@/emails/agreement-expiry";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { startCronLog } from "@/lib/cron-logger";
 
 /**
  * Franchisee Reminders Cron Job
@@ -480,12 +481,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const cronLog = dryRun ? null : await startCronLog("franchisee-reminders");
+
     const reminderType = action === "all" ? "all" : (action as FranchiseeReminderType);
     results.reminders = await processReminders(reminderType, dryRun);
     results.totals.processed += results.reminders.processed;
     results.totals.failed += results.reminders.failed;
     results.totals.emailsSent += results.reminders.emailsSent;
     results.totals.errors.push(...results.reminders.errors);
+
+    await cronLog?.complete({
+      emailsSent: results.totals.emailsSent,
+      emailsFailed: results.totals.failed,
+      totalProcessed: results.totals.processed + results.totals.created,
+      totalFailed: results.totals.failed,
+      summary: { autoCreate: results.autoCreate, reminders: results.reminders } as Record<string, unknown>,
+    }, results.totals.errors.length > 0 ? results.totals.errors.join("; ") : undefined);
 
     return NextResponse.json({ success: true, ...results });
   } catch (error) {

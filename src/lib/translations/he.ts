@@ -2453,6 +2453,22 @@ export const he = {
         runSuccess: "המשימה הופעלה בהצלחה",
         dryRunSuccess: "הרצה יבשה הושלמה",
       },
+
+      executionHistory: {
+        title: "היסטוריית הרצות",
+        emptyState: "אין הרצות רשומות",
+        startedAt: "הופעל",
+        duration: "משך",
+        emailsSent: "מיילים נשלחו",
+        processed: "עובדו",
+        failed: "נכשלו",
+        status: {
+          running: "פועל",
+          success: "הצליח",
+          partial: "חלקי",
+          failed: "נכשל",
+        },
+      },
     },
 
     // Email Logs

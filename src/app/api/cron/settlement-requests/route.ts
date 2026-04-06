@@ -15,6 +15,7 @@ import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlement
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import { getEmailTemplateByCode } from "@/data-access/emailTemplates";
+import { startCronLog } from "@/lib/cron-logger";
 
 /**
  * Settlement File Requests Cron Job
@@ -414,6 +415,8 @@ export async function POST(request: NextRequest) {
 
     results.activeFrequencies = frequenciesToProcess;
 
+    const cronLog = dryRun ? null : await startCronLog("settlement-requests", "manual");
+
     for (const frequency of frequenciesToProcess) {
       const frequencyResults = await processFrequency(frequency, emailTemplateId, dryRun, referenceDate);
       results.byFrequency[frequency] = frequencyResults;
@@ -429,6 +432,15 @@ export async function POST(request: NextRequest) {
         });
       }
     }
+
+    await cronLog?.complete({
+      emailsSent: results.totals.processed,
+      emailsFailed: results.totals.failed,
+      totalProcessed: results.totals.processed,
+      totalSkipped: results.totals.skipped,
+      totalFailed: results.totals.failed,
+      summary: { activeFrequencies: results.activeFrequencies, byFrequency: results.byFrequency },
+    }, results.totals.errors.length > 0 ? results.totals.errors.join("; ") : undefined);
 
     return NextResponse.json({ success: true, ...results });
   } catch (error) {
