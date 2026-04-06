@@ -363,15 +363,13 @@ export default function CronMonitorTab() {
       {/* Execution History */}
       <Card>
         <CardHeader className="border-b bg-muted/30">
-          <div className="flex items-center justify-between flex-row-reverse">
-            <div className="flex items-center gap-3 flex-row-reverse">
-              <div className="rounded-lg bg-primary/10 p-2">
-                <History className="h-5 w-5 text-primary" />
-              </div>
-              <div className="text-right">
-                <CardTitle>{t.executionHistory.title}</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">כל הרצה אוטומטית ידנית של משימות</p>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-primary/10 p-2">
+              <History className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>{t.executionHistory.title}</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">כל הרצה אוטומטית וידנית של משימות</p>
             </div>
           </div>
         </CardHeader>
@@ -461,12 +459,12 @@ export default function CronMonitorTab() {
       {/* Pending Requests */}
       <Card>
         <CardHeader className="border-b bg-muted/30">
-          <div className="flex items-center justify-between flex-row-reverse">
-            <div className="flex items-center gap-3 flex-row-reverse">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
               <div className="rounded-lg bg-primary/10 p-2">
                 <Clock className="h-5 w-5 text-primary" />
               </div>
-              <div className="text-right">
+              <div>
                 <CardTitle>{t.pendingRequests.title}</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">בקשות שנשלחו וטרם התקבל מענה</p>
               </div>
