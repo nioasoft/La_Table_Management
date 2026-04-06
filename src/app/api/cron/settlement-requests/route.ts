@@ -229,7 +229,8 @@ function getPeriodDescription(frequency: SettlementFrequency, date: Date): strin
 async function processFrequency(
   frequency: SettlementFrequency,
   emailTemplateId?: string,
-  dryRun: boolean = false
+  dryRun: boolean = false,
+  referenceDate?: Date
 ): Promise<{
   processed: number;
   skipped: number;
@@ -247,7 +248,7 @@ async function processFrequency(
     settlementPeriodCreated: undefined as { periodKey: string; created: boolean } | undefined,
   };
 
-  const now = new Date();
+  const now = referenceDate || new Date();
   const periodDescription = getPeriodDescription(frequency, now);
 
   // Create settlement period for this frequency if applicable
@@ -359,6 +360,9 @@ export async function POST(request: NextRequest) {
     const action = searchParams.get("action") || "all";
     const dryRun = searchParams.get("dryRun") === "true";
     const emailTemplateId = searchParams.get("emailTemplateId") || undefined;
+    // Optional date override for retroactive sends (format: YYYY-MM-DD)
+    const dateParam = searchParams.get("date");
+    const referenceDate = dateParam ? new Date(dateParam) : undefined;
 
     const results: {
       timestamp: string;
@@ -386,7 +390,7 @@ export async function POST(request: NextRequest) {
     let frequenciesToProcess: SettlementFrequency[];
 
     if (action === "all") {
-      frequenciesToProcess = getActiveFrequencies(new Date());
+      frequenciesToProcess = getActiveFrequencies(referenceDate || new Date());
     } else if (
       ["monthly", "quarterly", "semi_annual", "annual", "bi_weekly", "weekly"].includes(action)
     ) {
@@ -401,7 +405,7 @@ export async function POST(request: NextRequest) {
     results.activeFrequencies = frequenciesToProcess;
 
     for (const frequency of frequenciesToProcess) {
-      const frequencyResults = await processFrequency(frequency, emailTemplateId, dryRun);
+      const frequencyResults = await processFrequency(frequency, emailTemplateId, dryRun, referenceDate);
       results.byFrequency[frequency] = frequencyResults;
       results.totals.processed += frequencyResults.processed;
       results.totals.skipped += frequencyResults.skipped;
