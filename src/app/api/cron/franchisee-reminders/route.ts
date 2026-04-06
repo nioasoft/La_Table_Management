@@ -500,35 +500,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET /api/cron/franchisee-reminders - Called by Vercel Cron
+ * Vercel Cron sends GET requests, so this must execute the same logic as POST.
+ */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
-  }
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const pendingReminders = await getPendingRemindersForNotification();
-
-  return NextResponse.json({
-    status: "ok",
-    endpoint: "/api/cron/franchisee-reminders",
-    description: "Franchisee contract/lease reminder scheduler",
-    currentDate: formatDateAsLocal(new Date()),
-    statistics: {
-      pendingRemindersTotal: pendingReminders.length,
-    },
-    reminderSchedule: {
-      daysBeforeExpiry: REMINDER_DAYS,
-      recipient: ADMIN_EMAIL,
-      note: "All reminders sent to admin only, not to franchisees",
-    },
-    features: {
-      autoCreate: "Creates 3 reminders (30/15/0 days) per expiry date",
-      handled: "Marking as 'handled' stops future reminders for that date",
-    },
-  });
+  return POST(request);
 }

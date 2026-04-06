@@ -429,32 +429,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET /api/cron/settlement-requests - Called by Vercel Cron
+ * Vercel Cron sends GET requests, so this must execute the same logic as POST.
+ */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
-  }
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const now = new Date();
-  const activeFrequencies = getActiveFrequencies(now);
-
-  return NextResponse.json({
-    status: "ok",
-    endpoint: "/api/cron/settlement-requests",
-    description: "Settlement file request scheduler - sends on last day of each period",
-    currentDate: formatDateAsLocal(now),
-    isLastDayOfMonth: now.getDate() === new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate(),
-    activeFrequencies,
-    schedulingNotes: {
-      monthly: "Last day of every month",
-      quarterly: "Last day of March, June, September, December",
-      semi_annual: "Last day of June, December",
-      annual: "Last day of December",
-    },
-  });
+  return POST(request);
 }

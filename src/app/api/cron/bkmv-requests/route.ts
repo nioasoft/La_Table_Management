@@ -235,42 +235,12 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET /api/cron/bkmv-requests - Called by Vercel Cron
+ * Vercel Cron sends GET requests, so this must execute the same logic as POST.
+ */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
-  }
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const now = new Date();
-  const franchisees = await getActiveFranchisees();
-
-  // Count franchisees with accountant contacts
-  let withAccountant = 0;
-  for (const f of franchisees) {
-    const email = await getAccountantEmail(f.id);
-    if (email) withAccountant++;
-  }
-
-  return NextResponse.json({
-    status: "ok",
-    endpoint: "/api/cron/bkmv-requests",
-    description: "BKMV file request scheduler for franchisee accountants",
-    currentDate: formatDateAsLocal(now),
-    isBkmvRequestDate: isBkmvRequestDate(now),
-    nextBkmvDate: getNextBkmvDate(),
-    statistics: {
-      activeFranchisees: franchisees.length,
-      withAccountantContact: withAccountant,
-      withoutAccountantContact: franchisees.length - withAccountant,
-    },
-    schedule: "15th of January, April, July, October",
-    period: `From ${getBkmvStartDate()} until today`,
-  });
+  return POST(request);
 }
 
 // Helper to get next BKMV date

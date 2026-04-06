@@ -333,39 +333,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET /api/cron/upload-reminders - Called by Vercel Cron
+ * Vercel Cron sends GET requests, so this must execute the same logic as POST.
+ */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret) {
-    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
-  }
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const sentRequests = await getSentFileRequests();
-
-  return NextResponse.json({
-    status: "ok",
-    endpoint: "/api/cron/upload-reminders",
-    description: "Upload reminder scheduler with escalation support",
-    statistics: {
-      totalSentRequests: sentRequests.length,
-      supplierRequests: sentRequests.filter((r) => r.entityType === "supplier").length,
-      franchiseeRequests: sentRequests.filter((r) => r.entityType === "franchisee").length,
-    },
-    reminderSchedule: {
-      supplier: {
-        firstReminder: "7 days after initial request",
-        secondReminder: "3 days after first reminder",
-        escalation: "After 2 reminders → alert to Reut",
-      },
-      bkmv: {
-        interval: "Every 2 days",
-        escalation: "After 2 reminders → include owners",
-        continues: "Every 2 days to both accountant and owners",
-      },
-    },
-  });
+  return POST(request);
 }

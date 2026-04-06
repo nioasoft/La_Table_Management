@@ -92,41 +92,9 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/cron/file-requests - Health check for cron endpoint
+ * GET /api/cron/file-requests - Called by Vercel Cron
+ * Vercel Cron sends GET requests, so this must execute the same logic as POST.
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret for health check too
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization");
-
-  if (!cronSecret) {
-    console.error("CRON_SECRET must be configured");
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 503 }
-    );
-  }
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  return NextResponse.json({
-    status: "ok",
-    endpoint: "/api/cron/file-requests",
-    description: "File request scheduled jobs processor",
-    actions: {
-      all: "Process all tasks (scheduled, expire, reminders)",
-      scheduled: "Process scheduled file requests only",
-      expire: "Expire outdated file requests only",
-      reminders: "Send due date reminders only",
-    },
-    usage: {
-      method: "POST",
-      queryParams: {
-        action: "all | scheduled | expire | reminders",
-        reminderDays: "number of days before due date (default: 3)",
-      },
-      authentication: "Bearer token in Authorization header (CRON_SECRET)",
-    },
-  });
+  return POST(request);
 }
