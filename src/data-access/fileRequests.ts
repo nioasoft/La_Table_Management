@@ -208,12 +208,25 @@ export async function createFileRequest(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + expiryDays);
 
+  // Map document types to Hebrew names for the upload page
+  const documentTypeLabels: Record<string, string> = {
+    settlement_report: "העלאת דוח עמלות רשת",
+    bkmv: "העלאת קובץ מבנה אחיד BKMV",
+  };
+
+  // Allowed file types per document type
+  const documentTypeFileTypes: Record<string, string> = {
+    settlement_report: ".xlsx,.xls,.csv",
+    bkmv: ".xlsx,.xls,.csv,.txt",
+  };
+
   // Generate secure upload link
   const generatedLink = await generateSecureUploadLink({
     entityType,
     entityId,
-    name: `File Request: ${documentType}`,
+    name: documentTypeLabels[documentType] || description || `בקשת קובץ: ${documentType}`,
     description: description || `Request for ${documentType}`,
+    allowedFileTypes: documentTypeFileTypes[documentType] || undefined,
     maxFiles: maxFiles ?? 1,
     expiryDays,
     createdBy,
