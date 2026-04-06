@@ -14,6 +14,7 @@ import { createFileRequest } from "@/data-access/fileRequests";
 import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
+import { getEmailTemplateByCode } from "@/data-access/emailTemplates";
 
 /**
  * Settlement File Requests Cron Job
@@ -225,6 +226,15 @@ function getPeriodDescription(frequency: SettlementFrequency, date: Date): strin
   }
 }
 
+// Resolve default email template for supplier settlement requests
+let cachedTemplateId: string | undefined;
+async function resolveDefaultTemplateId(): Promise<string | undefined> {
+  if (cachedTemplateId) return cachedTemplateId;
+  const template = await getEmailTemplateByCode("supplier_request");
+  cachedTemplateId = template?.id;
+  return cachedTemplateId;
+}
+
 // Process file requests for a specific frequency
 async function processFrequency(
   frequency: SettlementFrequency,
@@ -316,7 +326,7 @@ async function processFrequency(
         description: `דוח עמלות רשת עבור ${periodDescription}`,
         recipientEmail,
         recipientName: supplierData.contactName || supplierData.name,
-        emailTemplateId: emailTemplateId || undefined,
+        emailTemplateId: emailTemplateId || await resolveDefaultTemplateId(),
         dueDate,
         maxFiles,
         sendImmediately: true,
