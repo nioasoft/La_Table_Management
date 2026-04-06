@@ -368,7 +368,10 @@ export async function sendFileRequestEmail(
   // Extract extra variables from file request metadata
   const meta = request.metadata as Record<string, unknown> | null;
   const metaVariables: Record<string, string> = {};
-  if (meta?.brandNames) metaVariables.brand_names = String(meta.brandNames);
+  if (meta?.brandNames) {
+    metaVariables.brand_names = String(meta.brandNames);
+    metaVariables.brand_name = String(meta.brandNames);
+  }
   if (meta?.periodDescription) metaVariables.period = String(meta.periodDescription);
 
   const templateVariables: Record<string, string> = {
@@ -377,6 +380,7 @@ export async function sendFileRequestEmail(
     document_type: request.documentType,
     upload_link: uploadUrl || "",
     due_date: request.dueDate || "",
+    period_end_date: request.dueDate || "",
     description: request.description || "",
     ...metaVariables,
     ...variables,
