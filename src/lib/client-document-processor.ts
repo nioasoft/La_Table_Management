@@ -551,19 +551,18 @@ export async function processHeverUpload(
       .from(franchisee)
       .where(eq(franchisee.isActive, true));
 
-    // Step 4: Process each business
-    let documentsCreated = 0;
-    let documentsUpdated = 0;
-    let skippedZeroAmounts = 0;
+    // Step 4: Match businesses to franchisees and AGGREGATE per franchisee
+    // Multiple Hever businesses can map to the same franchisee
+    // (e.g., "קינג קונג ביג בע"מ" + "קינג קונג ביג" → same franchisee)
     const unmatchedBranches: string[] = [];
+    const franchiseeAgg = new Map<
+      string,
+      { amount: number; count: number; businessNames: string[] }
+    >();
 
     for (const biz of parseResult.businesses) {
-      if (biz.totalAmount === 0) {
-        skippedZeroAmounts++;
-        continue;
-      }
+      if (biz.totalAmount === 0) continue;
 
-      // Fuzzy-match business name to franchisee
       const matchResult = matchFranchiseeName(
         biz.businessName,
         allFranchisees as Franchisee[]
@@ -574,9 +573,29 @@ export async function processHeverUpload(
         continue;
       }
 
-      const franchiseeId = matchResult.matchedFranchisee.id;
+      const fId = matchResult.matchedFranchisee.id;
+      const existing = franchiseeAgg.get(fId);
+      if (existing) {
+        existing.amount += biz.totalAmount;
+        existing.count += biz.transactionCount;
+        existing.businessNames.push(biz.businessName);
+      } else {
+        franchiseeAgg.set(fId, {
+          amount: biz.totalAmount,
+          count: biz.transactionCount,
+          businessNames: [biz.businessName],
+        });
+      }
+    }
 
-      // Check for existing document
+    // Step 5: Upsert one document per franchisee (with aggregated amounts)
+    let documentsCreated = 0;
+    let documentsUpdated = 0;
+    const skippedZeroAmounts = 0;
+
+    for (const [franchiseeId, agg] of franchiseeAgg) {
+      const totalAmount = Math.round(agg.amount * 100) / 100;
+
       const existingDoc = await database
         .select({ id: clientDocument.id })
         .from(clientDocument)
@@ -606,20 +625,20 @@ export async function processHeverUpload(
         processingResult: {
           success: true,
           data: {
-            franchiseeName: biz.businessName,
-            totalAmount: biz.totalAmount,
+            franchiseeName: agg.businessNames.join(" + "),
+            totalAmount,
             commissionAmount: 0,
             commissionRate: 0,
-            netAmount: biz.totalAmount,
-            transactionCount: biz.transactionCount,
+            netAmount: totalAmount,
+            transactionCount: agg.count,
           },
           errors: [],
           warnings: [],
         } as unknown as Record<string, unknown>,
-        totalAmount: biz.totalAmount.toString(),
+        totalAmount: totalAmount.toString(),
         commissionAmount: "0",
         commissionRate: null,
-        netAmount: biz.totalAmount.toString(),
+        netAmount: totalAmount.toString(),
         gmailMessageId: null,
         createdBy: userId ?? null,
         updatedAt: new Date(),
