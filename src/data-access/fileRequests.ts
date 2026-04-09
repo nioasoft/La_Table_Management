@@ -214,10 +214,10 @@ export async function createFileRequest(
     bkmv: "העלאת קובץ מבנה אחיד BKMV",
   };
 
-  // Allowed file types per document type
+  // Allowed MIME types per document type (must match file.type in browser)
   const documentTypeFileTypes: Record<string, string> = {
-    settlement_report: ".xlsx,.xls,.csv",
-    bkmv: ".xlsx,.xls,.csv,.txt",
+    settlement_report: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/csv",
+    bkmv: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/csv,text/plain",
   };
 
   // Generate secure upload link
