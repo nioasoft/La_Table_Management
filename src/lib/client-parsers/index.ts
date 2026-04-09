@@ -38,7 +38,11 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     const { parseHeverFile } = await import("./hever-parser");
     return parseHeverFile(buffer, mimeType);
   },
-  // Mishlocha & Haat: report parsers deferred — only invoice parsers available (see INVOICE_PARSERS)
+  MISHLOCHA: async (buffer, mimeType) => {
+    const { parseMishlohaFile } = await import("./mishloha-parser");
+    return parseMishlohaFile(buffer, mimeType);
+  },
+  // Haat: report parser deferred — only invoice parser available (see INVOICE_PARSERS)
 };
 
 // Registry of commission invoice parsers by client code (lazy-loaded)
