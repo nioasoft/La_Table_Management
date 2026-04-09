@@ -14,16 +14,24 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
-import sharp from "sharp";
 
-// Lazy-loaded dependencies (heavy — only import when needed)
-let Tesseract: typeof import("tesseract.js") | null = null;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const sharp = require("sharp");
 
-async function getTesseract() {
-  if (!Tesseract) {
-    Tesseract = await import("tesseract.js");
-  }
-  return Tesseract;
+/**
+ * Dynamic imports that bypass Turbopack static analysis.
+ * Turbopack resolves string-literal imports at build time and fails
+ * on WASM/ESM packages. Using variables prevents static resolution.
+ */
+const PDFJS_MODULE = "pdfjs-dist/legacy/build/pdf.mjs";
+const TESSERACT_MODULE = "tesseract.js";
+
+async function loadPdfjs() {
+  return import(/* webpackIgnore: true */ PDFJS_MODULE);
+}
+
+async function loadTesseract() {
+  return import(/* webpackIgnore: true */ TESSERACT_MODULE);
 }
 
 /**
@@ -32,8 +40,7 @@ async function getTesseract() {
  * then sharp to convert to PNG buffer for OCR.
  */
 async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjsLib = await loadPdfjs();
 
   const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
     .promise;
@@ -74,7 +81,7 @@ async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
  * Run OCR on an image buffer using tesseract.js with Hebrew + English.
  */
 async function ocrImage(imageBuffer: Buffer): Promise<string> {
-  const tess = await getTesseract();
+  const tess = await loadTesseract();
   const { data } = await tess.recognize(imageBuffer, "heb+eng");
   return data.text;
 }
