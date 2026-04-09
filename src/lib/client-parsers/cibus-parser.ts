@@ -41,6 +41,7 @@ export async function parseCibusFile(
         .replace(/<\/th>/gi, "\t")
         .replace(/<[^>]+>/g, "")
         .replace(/&nbsp;/g, " ")
+        .replace(/&quot;/g, '"')
         .replace(/&amp;/g, "&")
         .replace(/&lt;/g, "<")
         .replace(/&gt;/g, ">")
@@ -82,28 +83,28 @@ export async function parseCibusFile(
     }
 
     // Extract total commission
-    // In Cibus text, the number appears BEFORE the label:
-    // "1261.32\nסה"כחיובי מפלאקסי"
+    // Label variants: "סה"כ חיובי מפלאקסי" / "סה"כ חיובים מפלאקסי"
     let totalCommission = 0;
+    // Pattern 1: number BEFORE label (number\nסה"כ חיובי/ם מפלאקסי)
     const commMatch = text.match(
-      /([\d,.]+)\s*\n\s*סה"כ\s*חיובי\s*מ?פלאקסי/
+      /([\d,.]+)\s*\n\s*סה"כ\s*חיובי[ם]?\s*מ?פלאקסי/
     );
     if (commMatch) {
       totalCommission = parseFloat(commMatch[1].replace(/,/g, ""));
     }
-    // Alternative pattern: number after label
+    // Pattern 2: number AFTER label (סה"כ חיובי/ם מפלאקסי\nnumber)
     if (totalCommission === 0) {
       const altMatch = text.match(
-        /סה"כ\s*חיובי\s*מ?פלאקסי\s*\n?\s*([\d,.]+)/
+        /סה"כ\s*חיובי[ם]?\s*מ?פלאקסי\s*\n?\s*([\d,.]+)/
       );
       if (altMatch) {
         totalCommission = parseFloat(altMatch[1].replace(/,/g, ""));
       }
     }
-    // Last resort: look for "סיכום עמלות ושירותים" followed by a number
+    // Pattern 3: "סיכום עמלות ושירותים" section header, number follows
     if (totalCommission === 0) {
       const summaryMatch = text.match(
-        /סיכום\s+עמלות\s+ושירותים\s*\n\s*\n?\s*([\d,.]+)/
+        /סיכום\s+עמלות\s+ושירותים[\s\S]*?([\d,.]+)\s*\n\s*סה"כ\s*חיובי[ם]?\s*מ?פלאקסי/
       );
       if (summaryMatch) {
         totalCommission = parseFloat(summaryMatch[1].replace(/,/g, ""));
@@ -118,20 +119,25 @@ export async function parseCibusFile(
       /(\d{4}-\d{2}-\d{2})/g;
     const dates = [...text.matchAll(dateLinePattern)];
 
-    // Calculate total from invoice amount or sum
-    const totalAmount = invoiceAmount || 0;
-    const netAmount = invoiceAmount > 0 ? invoiceAmount : totalAmount - totalCommission;
+    // The invoice amount IS the gross sales (total order value).
+    // Net = gross - commission (what the restaurant actually receives).
+    const grossAmount = invoiceAmount;
+    const netAmount = grossAmount > 0 ? grossAmount - totalCommission : 0;
 
-    // Calculate commission rate
+    // Calculate commission rate as % of gross
     const commissionRate =
-      totalAmount > 0
-        ? Math.round((totalCommission / (totalAmount + totalCommission)) * 10000) / 100
+      grossAmount > 0
+        ? Math.round((totalCommission / grossAmount) * 10000) / 100
         : 0;
 
     // Validate
-    if (totalAmount === 0 && totalCommission === 0) {
+    if (grossAmount === 0 && totalCommission === 0) {
       errors.push("לא נמצאו סכומים בדוח סיבוס");
       return { success: false, data: null, errors, warnings };
+    }
+
+    if (grossAmount === 0 && totalCommission > 0) {
+      warnings.push("לא נמצא סכום חשבונית — רק עמלה");
     }
 
     if (!franchiseeName && restaurantNumber) {
@@ -145,11 +151,11 @@ export async function parseCibusFile(
     return {
       success: true,
       data: {
-        franchiseeName: franchiseeName || "לא זוהה",
-        totalAmount: totalAmount + totalCommission, // Gross = net (invoice) + commission
+        franchiseeName: franchiseeName || "",
+        totalAmount: grossAmount, // Gross sales = invoice amount
         commissionAmount: totalCommission,
         commissionRate,
-        netAmount, // This is the amount we invoice Pluxee
+        netAmount, // Gross - commission = what restaurant receives
         transactionCount: dates.length,
         periodMonth,
         periodYear,

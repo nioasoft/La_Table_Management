@@ -258,7 +258,8 @@ export async function POST(request: NextRequest) {
             "application/pdf",
             identifiedClient.parserCode,
             subject,
-            allFranchisees as Franchisee[]
+            allFranchisees as Franchisee[],
+            file.fileName
           );
 
           if (!franchiseeMatch) {
@@ -309,13 +310,14 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Resolve franchisee: parse document first, fall back to subject
+        // Resolve franchisee: parse document first, fall back to filename/subject
         const franchiseeMatch = await resolveFranchisee(
           buffer,
           attachment.contentType,
           identifiedClient.parserCode,
           subject,
-          allFranchisees as Franchisee[]
+          allFranchisees as Franchisee[],
+          attachment.filename
         );
 
         if (!franchiseeMatch) {
@@ -412,26 +414,34 @@ export async function GET() {
 // HELPERS
 // ============================================================================
 
+/** Sentinel values the parser uses when it cannot identify the franchisee */
+const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
+
 /**
- * Resolve franchisee by parsing the document first, falling back to subject matching.
+ * Resolve franchisee using multiple strategies, in order:
  *
- * Priority:
  * 1. Parse document → extract franchiseeName → fuzzy match
- * 2. Fall back to email subject matching
+ * 2. Attachment filename (e.g. Wolt: "קינג קונג חדרה הכשר__sales_report__...")
+ * 3. Email subject matching
  */
 async function resolveFranchisee(
   buffer: Buffer,
   mimeType: string,
   parserCode: string,
   subject: string,
-  franchisees: Franchisee[]
+  franchisees: Franchisee[],
+  attachmentFilename?: string
 ): Promise<{ franchiseeId: string; franchiseeName: string } | null> {
   // Strategy 1: Parse document and use extracted franchisee name
   const parser = getClientParser(parserCode);
   if (parser) {
     try {
       const parseResult = await parser(buffer, mimeType);
-      if (parseResult.success && parseResult.data?.franchiseeName) {
+      if (
+        parseResult.success &&
+        parseResult.data?.franchiseeName &&
+        !UNKNOWN_FRANCHISEE_NAMES.has(parseResult.data.franchiseeName)
+      ) {
         const match = matchFranchiseeName(
           parseResult.data.franchiseeName,
           franchisees,
@@ -452,8 +462,75 @@ async function resolveFranchisee(
     }
   }
 
-  // Strategy 2: Fall back to subject matching
+  // Strategy 2: Extract branch name from attachment filename
+  // Wolt filenames: "{branch}__sales_report__monthly__{start}__{end}.pdf"
+  if (attachmentFilename) {
+    const filenameMatch = matchFranchiseeFromFilename(attachmentFilename, franchisees);
+    if (filenameMatch) {
+      console.log(
+        `[email-inbound] Matched franchisee from filename: "${attachmentFilename}" → "${filenameMatch.franchiseeName}"`
+      );
+      return filenameMatch;
+    }
+  }
+
+  // Strategy 3: Fall back to subject matching
   return matchFranchiseeFromSubject(subject, franchisees);
+}
+
+/**
+ * Try to match a franchisee from the attachment filename.
+ * Handles patterns like:
+ * - Wolt: "קינג קונג חדרה הכשר__sales_report__monthly__2026-03-01__2026-04-01.pdf"
+ * - Generic: "branch_name_report.pdf"
+ */
+function matchFranchiseeFromFilename(
+  filename: string,
+  franchisees: Franchisee[]
+): { franchiseeId: string; franchiseeName: string } | null {
+  if (!filename || franchisees.length === 0) return null;
+
+  // Strip extension
+  const withoutExt = filename.replace(/\.[^.]+$/, "");
+
+  // Split on double underscore — Wolt uses "{branch}__sales_report__..."
+  const doubleUnderscoreParts = withoutExt.split("__");
+  if (doubleUnderscoreParts.length > 1) {
+    const branchPart = doubleUnderscoreParts[0].trim();
+    if (branchPart.length >= 3) {
+      const result = matchFranchiseeName(branchPart, franchisees, {
+        minConfidence: 0.6,
+      });
+      if (result.matchedFranchisee) {
+        return {
+          franchiseeId: result.matchedFranchisee.id,
+          franchiseeName: result.matchedFranchisee.name,
+        };
+      }
+    }
+  }
+
+  // Also try the full filename (minus extension) for less structured names
+  const cleaned = withoutExt
+    .replace(/[_-]+/g, " ")
+    .replace(/\d{4}[-/]\d{2}[-/]\d{2}/g, "") // remove dates
+    .replace(/\b(sales|report|monthly|invoice|חשבונית|דוח)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned.length >= 3) {
+    const result = matchFranchiseeName(cleaned, franchisees, {
+      minConfidence: 0.7,
+    });
+    if (result.matchedFranchisee) {
+      return {
+        franchiseeId: result.matchedFranchisee.id,
+        franchiseeName: result.matchedFranchisee.name,
+      };
+    }
+  }
+
+  return null;
 }
 
 /**
