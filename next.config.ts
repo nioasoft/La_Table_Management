@@ -10,11 +10,7 @@ const nextConfig: NextConfig = {
   },
 
   // Externalize react-pdf for server-side rendering
-  serverExternalPackages: [
-    "@react-pdf/renderer",
-    "pdfjs-dist",
-    "tesseract.js",
-  ],
+  serverExternalPackages: ["@react-pdf/renderer"],
 
   // Image optimization domains (add as needed)
   images: {
