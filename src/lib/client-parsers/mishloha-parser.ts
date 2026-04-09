@@ -82,7 +82,9 @@ async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
  */
 async function ocrImage(imageBuffer: Buffer): Promise<string> {
   const tess = await loadTesseract();
-  const { data } = await tess.recognize(imageBuffer, "heb+eng");
+  // tesseract.js v7: `recognize` is on `default` export when using dynamic import
+  const recognize = tess.default?.recognize ?? tess.recognize;
+  const { data } = await recognize(imageBuffer, "heb+eng");
   return data.text;
 }
 
