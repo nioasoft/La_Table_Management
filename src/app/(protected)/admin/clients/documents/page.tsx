@@ -38,6 +38,9 @@ import {
   Clock,
   Minus,
   RefreshCw,
+  Search,
+  Copy,
+  X,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -116,6 +119,9 @@ export default function ClientDocumentsPage() {
   const [periodMonth, setPeriodMonth] = useState(prevMonth.getMonth() + 1); // 1-based
   const [periodYear, setPeriodYear] = useState(prevMonth.getFullYear());
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterClientId, setFilterClientId] = useState<string>("all");
 
   const { data: clients } = useClients({ active: true });
   const { data: allFranchisees } = useFranchisees();
@@ -135,6 +141,91 @@ export default function ClientDocumentsPage() {
       ),
     [clients]
   );
+
+  // Client email lookup
+  const clientEmailMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of activeClients) {
+      const email = (c as { gmailSenderEmail?: string | null; email?: string | null }).gmailSenderEmail
+        || (c as { email?: string | null }).email;
+      if (email) map.set(c.id, email);
+    }
+    return map;
+  }, [activeClients]);
+
+  // Visible clients (filtered by client dropdown)
+  const visibleClients = useMemo(
+    () =>
+      filterClientId === "all"
+        ? activeClients
+        : activeClients.filter((c: { id: string }) => c.id === filterClientId),
+    [activeClients, filterClientId]
+  );
+
+  // Filtered matrix rows
+  const filteredMatrix = useMemo(() => {
+    if (!matrix) return [];
+    const search = searchTerm.trim().toLowerCase();
+    return matrix.filter((row) => {
+      // Search filter
+      if (search && !row.franchiseeName.toLowerCase().includes(search)) return false;
+      // Status filter
+      if (filterStatus !== "all") {
+        const statuses: string[] = [row.tabitStatus];
+        for (const c of visibleClients) {
+          statuses.push(row.clients[c.id]?.status ?? "missing");
+        }
+        if (!statuses.includes(filterStatus)) return false;
+      }
+      return true;
+    });
+  }, [matrix, searchTerm, filterStatus, visibleClients]);
+
+  // Filtered recent docs
+  const filteredRecentDocs = useMemo(() => {
+    if (!recentDocs) return [];
+    const search = searchTerm.trim().toLowerCase();
+    return recentDocs.filter((doc: {
+      franchiseeName: string;
+      processingStatus: string;
+      clientName: string | null;
+    }) => {
+      if (search && !doc.franchiseeName.toLowerCase().includes(search)) return false;
+      if (filterStatus !== "all" && doc.processingStatus !== filterStatus) return false;
+      if (filterClientId !== "all" && doc.clientName !== activeClients.find((c: { id: string }) => c.id === filterClientId)?.name) return false;
+      return true;
+    });
+  }, [recentDocs, searchTerm, filterStatus, filterClientId, activeClients]);
+
+  // Column totals
+  const columnTotals = useMemo(() => {
+    if (!filteredMatrix || filteredMatrix.length === 0) return null;
+    let tabitTotal = 0;
+    const clientTotals: Record<string, number> = {};
+    for (const row of filteredMatrix) {
+      if (row.tabitAmount) tabitTotal += parseFloat(row.tabitAmount);
+      for (const c of visibleClients) {
+        const cell = row.clients[c.id];
+        if (cell?.totalAmount) {
+          clientTotals[c.id] = (clientTotals[c.id] ?? 0) + parseFloat(cell.totalAmount);
+        }
+      }
+    }
+    return { tabitTotal, clientTotals };
+  }, [filteredMatrix, visibleClients]);
+
+  const hasActiveFilters = searchTerm !== "" || filterStatus !== "all" || filterClientId !== "all";
+
+  const clearFilters = useCallback(() => {
+    setSearchTerm("");
+    setFilterStatus("all");
+    setFilterClientId("all");
+  }, []);
+
+  function copyEmailToClipboard(email: string) {
+    navigator.clipboard.writeText(email);
+    toast.success("אימייל הועתק ללוח");
+  }
 
   // ─── Upload Dialog State ──────────────────────────────────────────────────
 
@@ -342,21 +433,76 @@ export default function ClientDocumentsPage() {
         </div>
       )}
 
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="חיפוש זכיין..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 text-sm pe-9"
+          />
+        </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-[150px] h-8 text-sm">
+            <SelectValue placeholder="סטטוס" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">כל הסטטוסים</SelectItem>
+            <SelectItem value="approved">אושר</SelectItem>
+            <SelectItem value="auto_approved">אושר אוטומטית</SelectItem>
+            <SelectItem value="needs_review">לבדיקה</SelectItem>
+            <SelectItem value="pending">ממתין</SelectItem>
+            <SelectItem value="missing">חסר</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterClientId} onValueChange={setFilterClientId}>
+          <SelectTrigger className="w-[150px] h-8 text-sm">
+            <SelectValue placeholder="לקוח" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">כל הלקוחות</SelectItem>
+            {activeClients.map(
+              (c: { id: string; name: string }) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              )
+            )}
+          </SelectContent>
+        </Select>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={clearFilters}>
+            <X className="h-3.5 w-3.5 me-1" />
+            נקה סינון
+          </Button>
+        )}
+      </div>
+
       {/* Tracking Matrix */}
       <Card className="overflow-hidden">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg">מטריצת מעקב</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">מטריצת מעקב</CardTitle>
+            <Badge variant="secondary" className="text-xs font-normal">
+              כל הסכומים כוללים מע&quot;מ
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {matrixLoading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : !matrix || matrix.length === 0 ? (
+          ) : filteredMatrix.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText className="h-10 w-10 text-muted-foreground/40 mb-3" />
               <p className="text-sm text-muted-foreground">
-                אין נתונים לתקופה זו. העלה מסמכים או שייך לקוחות לזכיינים.
+                {hasActiveFilters
+                  ? "אין תוצאות לסינון הנוכחי"
+                  : "אין נתונים לתקופה זו. העלה מסמכים או שייך לקוחות לזכיינים."}
               </p>
             </div>
           ) : (
@@ -368,8 +514,8 @@ export default function ClientDocumentsPage() {
                 <colgroup>
                   <col className="w-[140px]" />
                   <col className="w-[120px]" />
-                  {activeClients.map((c: { id: string }) => (
-                    <col key={c.id} className="w-[120px]" />
+                  {visibleClients.map((c: { id: string }) => (
+                    <col key={c.id} className="w-[140px]" />
                   ))}
                 </colgroup>
                 <thead>
@@ -380,17 +526,37 @@ export default function ClientDocumentsPage() {
                     <th className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
                       טאביט
                     </th>
-                    {activeClients.map(
-                      (c: { id: string; name: string; code: string | null }) => (
-                        <th key={c.id} className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
-                          {c.name}
-                        </th>
-                      )
+                    {visibleClients.map(
+                      (c: { id: string; name: string }) => {
+                        const email = clientEmailMap.get(c.id);
+                        return (
+                          <th key={c.id} className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span>{c.name}</span>
+                              {email && (
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[10px] font-normal text-muted-foreground/70 truncate max-w-[110px]" dir="ltr">
+                                    {email}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyEmailToClipboard(email)}
+                                    className="inline-flex items-center justify-center h-4 w-4 rounded hover:bg-muted transition-colors"
+                                    title="העתק אימייל"
+                                  >
+                                    <Copy className="h-2.5 w-2.5 text-muted-foreground/60" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </th>
+                        );
+                      }
                     )}
                   </tr>
                 </thead>
                 <tbody>
-                  {matrix.map((row) => (
+                  {filteredMatrix.map((row) => (
                     <tr key={row.franchiseeId} className="hover:bg-muted/30">
                       <td className="pe-2 py-1.5 border border-border sticky start-0 bg-background z-10 overflow-hidden">
                         <div className="truncate text-sm font-medium" title={row.franchiseeName}>
@@ -409,8 +575,8 @@ export default function ClientDocumentsPage() {
                           )}
                         </div>
                       </td>
-                      {activeClients.map(
-                        (c: { id: string; name: string }) => {
+                      {visibleClients.map(
+                        (c: { id: string }) => {
                           const cell = row.clients[c.id];
                           const status = cell?.status ?? "missing";
                           return (
@@ -433,6 +599,31 @@ export default function ClientDocumentsPage() {
                     </tr>
                   ))}
                 </tbody>
+                {columnTotals && (
+                  <tfoot>
+                    <tr className="bg-muted/70 font-bold border-t-2 border-border">
+                      <td className="pe-2 py-2 border border-border sticky start-0 bg-muted/70 z-10 text-sm">
+                        סה&quot;כ
+                      </td>
+                      <td className="text-center py-2 px-1 border border-border">
+                        <span className="text-xs tabular-nums font-bold">
+                          {formatAmount(columnTotals.tabitTotal > 0 ? String(columnTotals.tabitTotal) : null)}
+                        </span>
+                      </td>
+                      {visibleClients.map((c: { id: string }) => (
+                        <td key={c.id} className="text-center py-2 px-1 border border-border">
+                          <span className="text-xs tabular-nums font-bold">
+                            {formatAmount(
+                              columnTotals.clientTotals[c.id]
+                                ? String(columnTotals.clientTotals[c.id])
+                                : null
+                            )}
+                          </span>
+                        </td>
+                      ))}
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           )}
@@ -440,13 +631,13 @@ export default function ClientDocumentsPage() {
       </Card>
 
       {/* Recent Documents */}
-      {recentDocs && recentDocs.length > 0 && (
+      {filteredRecentDocs.length > 0 && (
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">
               מסמכים אחרונים
               <Badge variant="secondary" className="ms-2 tabular-nums">
-                {recentDocs.length}
+                {filteredRecentDocs.length}
               </Badge>
             </CardTitle>
           </CardHeader>
@@ -465,7 +656,7 @@ export default function ClientDocumentsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {recentDocs.map(
+                {filteredRecentDocs.map(
                   (doc: {
                     id: string;
                     originalFileName: string;
