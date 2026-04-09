@@ -17,6 +17,7 @@ import { eq, and, isNotNull } from "drizzle-orm";
 import { uploadDocument } from "@/lib/storage";
 import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
+import { parseHeverFile } from "@/lib/client-parsers/hever-parser";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import type { ClientDocumentProcessingResult, TabitUploadSummary } from "@/lib/client-parsers/types";
 import type { ClientDocument, Franchisee } from "@/db/schema";
@@ -468,6 +469,194 @@ export async function processTabitUpload(
       success: false,
       summary: null,
       error: `שגיאה בעיבוד קובץ טאביט: ${errorMessage}`,
+    };
+  }
+}
+
+// ============================================================================
+// HEVER (חבר) UPLOAD — one file → multiple client_document records
+// ============================================================================
+
+export interface ProcessHeverUploadInput {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  clientId: string;
+  periodMonth?: number;
+  periodYear?: number;
+  source: "manual_upload" | "gmail_fetch";
+  userId?: string;
+}
+
+export interface ProcessHeverUploadResult {
+  success: boolean;
+  summary: {
+    documentsCreated: number;
+    documentsUpdated: number;
+    unmatchedBranches: string[];
+    skippedZeroAmounts: number;
+    period: { month: number; year: number } | null;
+    fileUrl: string;
+  } | null;
+  error?: string;
+}
+
+/**
+ * Process a Hever (חבר) Excel report.
+ *
+ * One Hever file → multiple client_document records (one per franchisee).
+ * Similar to processTabitUpload but all records share the same client (HEVER).
+ */
+export async function processHeverUpload(
+  input: ProcessHeverUploadInput
+): Promise<ProcessHeverUploadResult> {
+  const { buffer, fileName, mimeType, clientId, source, userId } = input;
+
+  try {
+    // Step 1: Parse the Hever file
+    const parseResult = parseHeverFile(buffer);
+
+    if (!parseResult.success || parseResult.businesses.length === 0) {
+      return {
+        success: false,
+        summary: null,
+        error: parseResult.errors.join("; ") || "שגיאה בפענוח קובץ חבר",
+      };
+    }
+
+    // Use file-extracted period or fall back to input
+    const periodMonth = parseResult.period?.month ?? input.periodMonth;
+    const periodYear = parseResult.period?.year ?? input.periodYear;
+
+    if (!periodMonth || !periodYear) {
+      return {
+        success: false,
+        summary: null,
+        error: "לא ניתן לזהות תקופה מהקובץ ולא סופקו חודש/שנה",
+      };
+    }
+
+    // Step 2: Upload original file once
+    const uploadResult = await uploadDocument(
+      buffer,
+      fileName,
+      mimeType,
+      "client",
+      `hever-${periodYear}-${String(periodMonth).padStart(2, "0")}`
+    );
+
+    // Step 3: Load franchisees for matching
+    const allFranchisees = await database
+      .select()
+      .from(franchisee)
+      .where(eq(franchisee.isActive, true));
+
+    // Step 4: Process each business
+    let documentsCreated = 0;
+    let documentsUpdated = 0;
+    let skippedZeroAmounts = 0;
+    const unmatchedBranches: string[] = [];
+
+    for (const biz of parseResult.businesses) {
+      if (biz.totalAmount === 0) {
+        skippedZeroAmounts++;
+        continue;
+      }
+
+      // Fuzzy-match business name to franchisee
+      const matchResult = matchFranchiseeName(
+        biz.businessName,
+        allFranchisees as Franchisee[]
+      );
+
+      if (!matchResult.matchedFranchisee) {
+        unmatchedBranches.push(biz.businessName);
+        continue;
+      }
+
+      const franchiseeId = matchResult.matchedFranchisee.id;
+
+      // Check for existing document
+      const existingDoc = await database
+        .select({ id: clientDocument.id })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.franchiseeId, franchiseeId),
+            eq(clientDocument.clientId, clientId),
+            eq(clientDocument.periodMonth, periodMonth),
+            eq(clientDocument.periodYear, periodYear),
+            eq(clientDocument.documentType, "client_report")
+          )
+        )
+        .limit(1);
+
+      const docData = {
+        clientId,
+        franchiseeId,
+        documentType: "client_report" as const,
+        source,
+        originalFileName: fileName,
+        fileUrl: uploadResult.url,
+        fileSize: uploadResult.fileSize,
+        mimeType,
+        periodMonth,
+        periodYear,
+        processingStatus: "auto_approved" as const,
+        processingResult: {
+          success: true,
+          data: {
+            franchiseeName: biz.businessName,
+            totalAmount: biz.totalAmount,
+            commissionAmount: 0,
+            commissionRate: 0,
+            netAmount: biz.totalAmount,
+            transactionCount: biz.transactionCount,
+          },
+          errors: [],
+          warnings: [],
+        } as unknown as Record<string, unknown>,
+        totalAmount: biz.totalAmount.toString(),
+        commissionAmount: "0",
+        commissionRate: null,
+        netAmount: biz.totalAmount.toString(),
+        gmailMessageId: null,
+        createdBy: userId ?? null,
+        updatedAt: new Date(),
+      };
+
+      if (existingDoc.length > 0) {
+        await database
+          .update(clientDocument)
+          .set(docData)
+          .where(eq(clientDocument.id, existingDoc[0].id));
+        documentsUpdated++;
+      } else {
+        await database.insert(clientDocument).values(docData);
+        documentsCreated++;
+      }
+    }
+
+    return {
+      success: true,
+      summary: {
+        documentsCreated,
+        documentsUpdated,
+        unmatchedBranches,
+        skippedZeroAmounts,
+        period: { month: periodMonth, year: periodYear },
+        fileUrl: uploadResult.url,
+      },
+    };
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    console.error("Error processing Hever upload:", errorMessage);
+
+    return {
+      success: false,
+      summary: null,
+      error: `שגיאה בעיבוד קובץ חבר: ${errorMessage}`,
     };
   }
 }

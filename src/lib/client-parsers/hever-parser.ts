@@ -2,199 +2,149 @@
  * Hever (חבר) Excel parser
  *
  * Hever sends an Excel file with ALL franchisees' transaction data.
- * The file has multiple sheets:
- *   - "מימושים  " - Raw transactions per franchisee
- *   - "מימושים - סיכומי" - Summary totals per franchisee
+ * Unlike other clients, one file → multiple franchisees (like Tabit).
  *
- * The summary sheet has columns:
- *   Row 6: Headers - סכום ברוטו לפני הנחה, סכום הנחה לספק, סכום מימוש נטו לספק לאחר הנחה, שם אב רשת, מספר אב רשת, שיוך
- *   Row 7+: Data rows per franchisee
+ * Sheet: "מימושים  " (Redemptions)
+ *   - Sections per business, each starting with a header row
+ *   - Columns: מחזור קניות סליקה בתוספת סכום הנחה, סכום הנחה לספק,
+ *              מחזור קניות סליקה, מספר כרטיס, מספר הזמנה כרטיס מתנה,
+ *              שם בית עסק, מספר בית עסק, תאריך קליטה, תאריך קניה
+ *   - Column A = gross amount (with discount)
+ *   - Column F = business name (maps to franchisee)
  *
- * We extract per-franchisee gross amounts. The commission is NOT in the file -
- * it's calculated from the commission rate configured on the client entity.
- *
- * Returns one result per call (the whole file), with line items per franchisee.
+ * Multiple "שיוך" sections (e.g., 391 = "חבר טעמים", 392 = "חבר שלי")
+ * share the same businesses — amounts from all sections are summed.
  */
 
 import * as XLSX from "xlsx";
-import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-interface HeverFranchiseeRow {
-  grossAmount: number;
-  discount: number;
-  netAmount: number;
-  networkName: string;
-  networkId: string | number;
-  shiyuch: string | number;
+/** Per-business aggregated result */
+export interface HeverBusinessResult {
+  businessName: string;
+  businessNumber: number | null;
+  totalAmount: number;
+  transactionCount: number;
 }
+
+/** Full parsed result from a Hever file */
+export interface HeverParsedResult {
+  success: boolean;
+  businesses: HeverBusinessResult[];
+  period: { month: number; year: number } | null;
+  errors: string[];
+  warnings: string[];
+}
+
+const HEADER_MARKER = "שם בית עסק";
 
 /**
  * Parse a Hever Excel report.
- * Extracts per-franchisee totals from the summary sheet.
+ * Returns per-business totals from the redemptions sheet.
  */
-export async function parseHeverFile(
+export function parseHeverFile(
   buffer: Buffer,
-  mimeType: string
-): Promise<ClientDocumentProcessingResult> {
+): HeverParsedResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
   try {
     const workbook = XLSX.read(buffer, { type: "buffer" });
 
-    // Find summary sheet
-    const summarySheetName = workbook.SheetNames.find(
-      (name) => name.includes("סיכומי") && name.includes("מימושים")
+    // Find the redemptions detail sheet (מימושים, not סיכומי)
+    const detailSheet = workbook.SheetNames.find(
+      (name) => name.includes("מימושים") && !name.includes("סיכומ")
     );
 
-    if (!summarySheetName) {
-      // Try to find by index or partial match
-      const altSheet = workbook.SheetNames.find((name) =>
-        name.includes("סיכומ")
+    if (!detailSheet) {
+      errors.push(
+        `לא נמצא גיליון מימושים. גיליונות: ${workbook.SheetNames.join(", ")}`
       );
-      if (!altSheet) {
-        errors.push(
-          `לא נמצא גיליון סיכומי מימושים. גיליונות: ${workbook.SheetNames.join(", ")}`
-        );
-        return { success: false, data: null, errors, warnings };
-      }
+      return { success: false, businesses: [], period: null, errors, warnings };
     }
 
-    const sheetName = summarySheetName || workbook.SheetNames[2]; // Fallback to 3rd sheet
-    const sheet = workbook.Sheets[sheetName];
+    const sheet = workbook.Sheets[detailSheet];
     const rows = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
-      defval: "",
-    }) as unknown as unknown[][];
+      defval: null,
+    }) as unknown[][];
 
-    // Find header row (contains "סכום ברוטו" or "שם אב רשת")
-    let headerRowIdx = -1;
-    for (let i = 0; i < Math.min(20, rows.length); i++) {
+    // Extract period from early rows (e.g., "03/2026")
+    let period: { month: number; year: number } | null = null;
+    for (let i = 0; i < Math.min(10, rows.length); i++) {
       const row = rows[i];
-      if (
-        Array.isArray(row) &&
-        row.some(
-          (cell) =>
-            typeof cell === "string" &&
-            (cell.includes("סכום ברוטו") || cell.includes("שם אב רשת"))
-        )
-      ) {
-        headerRowIdx = i;
-        break;
-      }
-    }
-
-    if (headerRowIdx === -1) {
-      errors.push("לא נמצאה שורת כותרות בגיליון הסיכומי");
-      return { success: false, data: null, errors, warnings };
-    }
-
-    // Parse header columns
-    const headerRow = rows[headerRowIdx] as string[];
-    const colMap: Record<string, number> = {};
-    headerRow.forEach((cell, idx) => {
-      const s = String(cell).trim();
-      if (s.includes("סכום ברוטו")) colMap.grossAmount = idx;
-      else if (s.includes("סכום הנחה")) colMap.discount = idx;
-      else if (s.includes("סכום מימוש נטו")) colMap.netAmount = idx;
-      else if (s.includes("שם אב רשת") || s.includes("שם")) colMap.networkName = idx;
-      else if (s.includes("מספר אב רשת") || s.includes("מספר")) colMap.networkId = idx;
-      else if (s.includes("שיוך")) colMap.shiyuch = idx;
-    });
-
-    // Parse data rows (after header)
-    const franchiseeRows: HeverFranchiseeRow[] = [];
-    let totalGross = 0;
-
-    for (let i = headerRowIdx + 1; i < rows.length; i++) {
-      const row = rows[i] as (string | number)[];
       if (!Array.isArray(row)) continue;
-
-      const gross =
-        typeof row[colMap.grossAmount] === "number"
-          ? row[colMap.grossAmount] as number
-          : parseFloat(String(row[colMap.grossAmount] || "0"));
-
-      const name = String(row[colMap.networkName] || "").trim();
-
-      // Skip empty rows and summary rows
-      if (!name || gross === 0 || isNaN(gross)) continue;
-
-      const discount =
-        typeof row[colMap.discount] === "number"
-          ? row[colMap.discount] as number
-          : parseFloat(String(row[colMap.discount] || "0"));
-
-      const net =
-        typeof row[colMap.netAmount] === "number"
-          ? row[colMap.netAmount] as number
-          : parseFloat(String(row[colMap.netAmount] || "0"));
-
-      franchiseeRows.push({
-        grossAmount: gross,
-        discount,
-        netAmount: net,
-        networkName: name,
-        networkId: row[colMap.networkId] || "",
-        shiyuch: row[colMap.shiyuch] || "",
-      });
-
-      totalGross += gross;
-    }
-
-    if (franchiseeRows.length === 0) {
-      errors.push("לא נמצאו שורות נתונים בגיליון הסיכומי");
-      return { success: false, data: null, errors, warnings };
-    }
-
-    // Extract period from sheet data (row 2 typically has "02/2026")
-    let periodMonth: number | undefined;
-    let periodYear: number | undefined;
-    for (let i = 0; i < Math.min(5, rows.length); i++) {
-      const row = rows[i];
-      if (Array.isArray(row)) {
-        for (const cell of row) {
-          const s = String(cell).trim();
-          const m = s.match(/(\d{2})\/(\d{4})/);
-          if (m) {
-            periodMonth = parseInt(m[1]);
-            periodYear = parseInt(m[2]);
-            break;
-          }
+      for (const cell of row) {
+        const s = String(cell ?? "").trim();
+        const m = s.match(/^(\d{2})\/(\d{4})$/);
+        if (m) {
+          period = { month: parseInt(m[1]), year: parseInt(m[2]) };
+          break;
         }
       }
-      if (periodMonth) break;
+      if (period) break;
     }
 
-    // Build line items per franchisee
-    const lineItems: ClientParsedLineItem[] = franchiseeRows.map((fr) => ({
-      date: null,
-      description: `${fr.networkName} (${fr.shiyuch})`,
-      amount: fr.grossAmount,
-      commission: 0, // Commission calculated from client config rate, not in file
-    }));
+    // Scan all rows: sum column A (index 0) per business name (column F, index 5)
+    // Skip header rows (detected by HEADER_MARKER in column F)
+    const businessTotals = new Map<
+      string,
+      { amount: number; count: number; businessNumber: number | null }
+    >();
 
-    return {
-      success: true,
-      data: {
-        franchiseeName: "כל הרשת", // Hever file covers all franchisees
-        totalAmount: totalGross,
-        commissionAmount: 0, // Will be calculated from client's configured rate
-        commissionRate: 0, // Will be filled from client config
-        netAmount: totalGross, // Gross = what we need to invoice (minus commission)
-        transactionCount: franchiseeRows.length,
-        periodMonth,
-        periodYear,
-        lineItems,
-        rawText: `${franchiseeRows.length} זכיינים, סה"כ ברוטו: ${totalGross.toLocaleString("he-IL")} ₪`,
-      },
-      errors,
-      warnings,
-    };
+    for (const row of rows) {
+      if (!Array.isArray(row)) continue;
+
+      const bizName = row[5];
+      if (
+        typeof bizName !== "string" ||
+        bizName.trim().length < 2 ||
+        bizName.includes(HEADER_MARKER) ||
+        bizName.includes("סה\"כ") ||
+        bizName.includes("דו\"ח")
+      ) {
+        continue;
+      }
+
+      const amount = typeof row[0] === "number" ? row[0] : 0;
+      if (amount === 0) continue;
+
+      const name = bizName.trim();
+      const existing = businessTotals.get(name);
+      const bizNum = typeof row[6] === "number" ? row[6] : null;
+
+      if (existing) {
+        existing.amount += amount;
+        existing.count++;
+        if (!existing.businessNumber && bizNum) existing.businessNumber = bizNum;
+      } else {
+        businessTotals.set(name, {
+          amount,
+          count: 1,
+          businessNumber: bizNum,
+        });
+      }
+    }
+
+    if (businessTotals.size === 0) {
+      errors.push("לא נמצאו עסקאות בגיליון המימושים");
+      return { success: false, businesses: [], period: null, errors, warnings };
+    }
+
+    const businesses: HeverBusinessResult[] = [];
+    for (const [name, data] of businessTotals) {
+      businesses.push({
+        businessName: name,
+        businessNumber: data.businessNumber,
+        totalAmount: Math.round(data.amount * 100) / 100,
+        transactionCount: data.count,
+      });
+    }
+
+    return { success: true, businesses, period, errors, warnings };
   } catch (error) {
     errors.push(
       `שגיאה בקריאת Excel חבר: ${error instanceof Error ? error.message : String(error)}`
     );
-    return { success: false, data: null, errors, warnings };
+    return { success: false, businesses: [], period: null, errors, warnings };
   }
 }

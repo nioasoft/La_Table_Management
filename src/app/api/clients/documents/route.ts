@@ -15,6 +15,7 @@ import {
 import {
   processClientDocument,
   processTabitUpload,
+  processHeverUpload,
 } from "@/lib/client-document-processor";
 import { database } from "@/db";
 import { client } from "@/db/schema";
@@ -137,6 +138,38 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json({ tabitUpload: true, summary: result.summary }, { status: 201 });
+    }
+
+    // ---- HEVER (חבר) UPLOAD ----
+    // Like Tabit: one file → multiple franchisee records, no franchiseeId needed
+    if (clientId) {
+      const [clientRecord] = await database
+        .select({ code: client.code })
+        .from(client)
+        .where(eq(client.id, clientId))
+        .limit(1);
+
+      if (clientRecord?.code === "HEVER") {
+        const result = await processHeverUpload({
+          buffer,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          clientId,
+          periodMonth: periodMonth ? parseInt(periodMonth) : undefined,
+          periodYear: periodYear ? parseInt(periodYear) : undefined,
+          source: "manual_upload",
+          userId: user.id,
+        });
+
+        if (!result.success) {
+          return NextResponse.json(
+            { error: result.error ?? "שגיאה בעיבוד קובץ חבר" },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({ heverUpload: true, summary: result.summary }, { status: 201 });
+      }
     }
 
     // ---- CLIENT REPORT / COMMISSION INVOICE UPLOAD ----

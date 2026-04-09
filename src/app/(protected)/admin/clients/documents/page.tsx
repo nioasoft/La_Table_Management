@@ -153,8 +153,10 @@ export default function ClientDocumentsPage() {
 
   const handleUpload = async () => {
     if (!uploadFile) return;
-    // For client_report: franchisee + client required
-    if (uploadDocType === "client_report" && (!uploadFranchiseeId || !uploadClientId)) return;
+    // For client_report: franchisee + client required (except multi-franchisee clients like Hever)
+    const selectedClient = activeClients.find((c: { id: string; code: string | null }) => c.id === uploadClientId);
+    const isMultiFranchisee = selectedClient?.code === "HEVER";
+    if (uploadDocType === "client_report" && !isMultiFranchisee && (!uploadFranchiseeId || !uploadClientId)) return;
 
     const formData = new FormData();
     formData.set("file", uploadFile);
@@ -163,13 +165,15 @@ export default function ClientDocumentsPage() {
     formData.set("periodYear", String(periodYear));
 
     if (uploadDocType === "client_report") {
-      formData.set("franchiseeId", uploadFranchiseeId);
       formData.set("clientId", uploadClientId);
+      if (!isMultiFranchisee) {
+        formData.set("franchiseeId", uploadFranchiseeId);
+      }
     }
 
     uploadMutation.mutate(formData, {
       onSuccess: (data) => {
-        if (data.tabitUpload && data.summary) {
+        if ((data.tabitUpload || data.heverUpload) && data.summary) {
           const s = data.summary;
           const parts: string[] = [];
           parts.push(`נוצרו ${s.documentsCreated} מסמכים`);
@@ -570,7 +574,10 @@ export default function ClientDocumentsPage() {
                   <Label>לקוח</Label>
                   <Select
                     value={uploadClientId}
-                    onValueChange={setUploadClientId}
+                    onValueChange={(v) => {
+                      setUploadClientId(v);
+                      setUploadFranchiseeId("");
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="בחר לקוח..." />
@@ -588,26 +595,40 @@ export default function ClientDocumentsPage() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>זכיין</Label>
-                  <Select
-                    value={uploadFranchiseeId}
-                    onValueChange={setUploadFranchiseeId}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="בחר זכיין..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(allFranchisees ?? []).map(
-                        (f: { id: string; name: string; code: string }) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.name} ({f.code})
-                          </SelectItem>
-                        )
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {/* Multi-franchisee clients (Hever) — no franchisee selection needed */}
+                {(() => {
+                  const sc = activeClients.find((c: { id: string; code: string | null }) => c.id === uploadClientId);
+                  if (sc?.code === "HEVER") {
+                    return (
+                      <div className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">
+                        קובץ חבר מכיל נתונים של כל הזכיינים.
+                        הזכיינים יזוהו אוטומטית מתוך הקובץ.
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2">
+                      <Label>זכיין</Label>
+                      <Select
+                        value={uploadFranchiseeId}
+                        onValueChange={setUploadFranchiseeId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="בחר זכיין..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(allFranchisees ?? []).map(
+                            (f: { id: string; name: string; code: string }) => (
+                              <SelectItem key={f.id} value={f.id}>
+                                {f.name} ({f.code})
+                              </SelectItem>
+                            )
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
@@ -644,7 +665,10 @@ export default function ClientDocumentsPage() {
               disabled={
                 uploadMutation.isPending ||
                 !uploadFile ||
-                (uploadDocType === "client_report" && (!uploadFranchiseeId || !uploadClientId))
+                (uploadDocType === "client_report" && !uploadClientId) ||
+                (uploadDocType === "client_report" &&
+                  !activeClients.find((c: { id: string; code: string | null }) => c.id === uploadClientId && c.code === "HEVER") &&
+                  !uploadFranchiseeId)
               }
             >
               {uploadMutation.isPending ? (

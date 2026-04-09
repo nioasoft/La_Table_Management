@@ -34,10 +34,7 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     const { parseWoltFile } = await import("./wolt-parser");
     return parseWoltFile(buffer, mimeType);
   },
-  HEVER: async (buffer, mimeType) => {
-    const { parseHeverFile } = await import("./hever-parser");
-    return parseHeverFile(buffer, mimeType);
-  },
+  // HEVER: handled by processHeverUpload() directly (multi-franchisee, like Tabit)
   MISHLOCHA: async (buffer, mimeType) => {
     const { parseMishlohaFile } = await import("./mishloha-parser");
     return parseMishlohaFile(buffer, mimeType);
