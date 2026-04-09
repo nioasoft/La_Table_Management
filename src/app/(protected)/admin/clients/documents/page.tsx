@@ -361,25 +361,25 @@ export default function ClientDocumentsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table className="table-fixed">
+              <Table className="table-fixed border-collapse">
                 <colgroup>
-                  <col className="w-[80px]" />
-                  <col className="w-[100px]" />
+                  <col className="w-[140px]" />
+                  <col className="w-[120px]" />
                   {activeClients.map((c: { id: string }) => (
-                    <col key={c.id} className="w-[90px]" />
+                    <col key={c.id} className="w-[120px]" />
                   ))}
                 </colgroup>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent h-7">
-                    <TableHead className="text-right pe-1 sticky start-0 bg-background z-10 text-sm">
+                  <TableRow className="hover:bg-transparent border-b-2 border-border">
+                    <TableHead className="text-right pe-2 sticky start-0 bg-background z-10 text-sm font-bold border-e border-border">
                       זכיין
                     </TableHead>
-                    <TableHead className="text-center px-0 text-sm">
+                    <TableHead className="text-center px-1 text-sm font-bold border-e border-border">
                       טאביט
                     </TableHead>
                     {activeClients.map(
                       (c: { id: string; name: string; code: string | null }) => (
-                        <TableHead key={c.id} className="text-center px-0 text-sm">
+                        <TableHead key={c.id} className="text-center px-1 text-sm font-bold border-e border-border last:border-e-0">
                           {c.name}
                         </TableHead>
                       )
@@ -388,19 +388,19 @@ export default function ClientDocumentsPage() {
                 </TableHeader>
                 <TableBody>
                   {matrix.map((row) => (
-                    <TableRow key={row.franchiseeId} className="h-7">
-                      <TableCell className="pe-1 py-0.5 sticky start-0 bg-background z-10 overflow-hidden">
+                    <TableRow key={row.franchiseeId} className="border-b border-border hover:bg-muted/30">
+                      <TableCell className="pe-2 py-1.5 sticky start-0 bg-background z-10 overflow-hidden border-e border-border">
                         <div className="truncate text-sm font-medium" title={row.franchiseeName}>
                           {row.franchiseeName}
                         </div>
                       </TableCell>
                       <TableCell
-                        className={`text-center py-0.5 px-0 ${getStatusColor(row.tabitStatus)}`}
+                        className={`text-center py-1.5 px-1 border-e border-border ${getStatusColor(row.tabitStatus)}`}
                       >
-                        <div className="flex items-center justify-center gap-0.5">
+                        <div className="flex items-center justify-center gap-1">
                           {getStatusIcon(row.tabitStatus)}
                           {row.tabitAmount && (
-                            <span className="text-sm tabular-nums text-muted-foreground">
+                            <span className="text-xs tabular-nums text-muted-foreground">
                               {formatAmount(row.tabitAmount)}
                             </span>
                           )}
@@ -413,12 +413,12 @@ export default function ClientDocumentsPage() {
                           return (
                             <TableCell
                               key={c.id}
-                              className={`text-center py-0.5 px-0 ${getStatusColor(status)}`}
+                              className={`text-center py-1.5 px-1 border-e border-border last:border-e-0 ${getStatusColor(status)}`}
                             >
-                              <div className="flex items-center justify-center gap-0.5">
+                              <div className="flex items-center justify-center gap-1">
                                 {getStatusIcon(status)}
                                 {cell?.totalAmount && (
-                                  <span className="text-sm tabular-nums text-muted-foreground">
+                                  <span className="text-xs tabular-nums text-muted-foreground">
                                     {formatAmount(cell.totalAmount)}
                                   </span>
                                 )}
