@@ -360,8 +360,11 @@ export default function ClientDocumentsPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table className="table-fixed border-collapse">
+            <div className="overflow-x-auto border border-border rounded-md">
+              <table
+                dir="rtl"
+                className="w-full table-fixed border-collapse text-sm"
+              >
                 <colgroup>
                   <col className="w-[140px]" />
                   <col className="w-[120px]" />
@@ -369,33 +372,33 @@ export default function ClientDocumentsPage() {
                     <col key={c.id} className="w-[120px]" />
                   ))}
                 </colgroup>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent border-b-2 border-border">
-                    <TableHead className="text-right pe-2 sticky start-0 bg-background z-10 text-sm font-bold border-e border-border">
+                <thead>
+                  <tr className="bg-muted/50">
+                    <th className="text-right pe-2 py-2 text-sm font-bold text-muted-foreground border border-border sticky start-0 bg-muted/50 z-10">
                       זכיין
-                    </TableHead>
-                    <TableHead className="text-center px-1 text-sm font-bold border-e border-border">
+                    </th>
+                    <th className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
                       טאביט
-                    </TableHead>
+                    </th>
                     {activeClients.map(
                       (c: { id: string; name: string; code: string | null }) => (
-                        <TableHead key={c.id} className="text-center px-1 text-sm font-bold border-e border-border last:border-e-0">
+                        <th key={c.id} className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
                           {c.name}
-                        </TableHead>
+                        </th>
                       )
                     )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+                  </tr>
+                </thead>
+                <tbody>
                   {matrix.map((row) => (
-                    <TableRow key={row.franchiseeId} className="border-b border-border hover:bg-muted/30">
-                      <TableCell className="pe-2 py-1.5 sticky start-0 bg-background z-10 overflow-hidden border-e border-border">
+                    <tr key={row.franchiseeId} className="hover:bg-muted/30">
+                      <td className="pe-2 py-1.5 border border-border sticky start-0 bg-background z-10 overflow-hidden">
                         <div className="truncate text-sm font-medium" title={row.franchiseeName}>
                           {row.franchiseeName}
                         </div>
-                      </TableCell>
-                      <TableCell
-                        className={`text-center py-1.5 px-1 border-e border-border ${getStatusColor(row.tabitStatus)}`}
+                      </td>
+                      <td
+                        className={`text-center py-1.5 px-1 border border-border ${getStatusColor(row.tabitStatus)}`}
                       >
                         <div className="flex items-center justify-center gap-1">
                           {getStatusIcon(row.tabitStatus)}
@@ -405,15 +408,15 @@ export default function ClientDocumentsPage() {
                             </span>
                           )}
                         </div>
-                      </TableCell>
+                      </td>
                       {activeClients.map(
                         (c: { id: string; name: string }) => {
                           const cell = row.clients[c.id];
                           const status = cell?.status ?? "missing";
                           return (
-                            <TableCell
+                            <td
                               key={c.id}
-                              className={`text-center py-1.5 px-1 border-e border-border last:border-e-0 ${getStatusColor(status)}`}
+                              className={`text-center py-1.5 px-1 border border-border ${getStatusColor(status)}`}
                             >
                               <div className="flex items-center justify-center gap-1">
                                 {getStatusIcon(status)}
@@ -423,14 +426,14 @@ export default function ClientDocumentsPage() {
                                   </span>
                                 )}
                               </div>
-                            </TableCell>
+                            </td>
                           );
                         }
                       )}
-                    </TableRow>
+                    </tr>
                   ))}
-                </TableBody>
-              </Table>
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
