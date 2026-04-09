@@ -4,16 +4,17 @@
  * Hever sends an Excel file with ALL franchisees' transaction data.
  * Unlike other clients, one file → multiple franchisees (like Tabit).
  *
- * Sheet: "מימושים  " (Redemptions)
- *   - Sections per business, each starting with a header row
- *   - Columns: מחזור קניות סליקה בתוספת סכום הנחה, סכום הנחה לספק,
- *              מחזור קניות סליקה, מספר כרטיס, מספר הזמנה כרטיס מתנה,
- *              שם בית עסק, מספר בית עסק, תאריך קליטה, תאריך קניה
- *   - Column A = gross amount (with discount)
- *   - Column F = business name (maps to franchisee)
+ * TWO sheets are used:
  *
- * Multiple "שיוך" sections (e.g., 391 = "חבר טעמים", 392 = "חבר שלי")
- * share the same businesses — amounts from all sections are summed.
+ * 1. "מימושים" (Redemptions) — positive amounts
+ *    - Column A = gross amount, Column F = business name
+ *    - Multiple "שיוך" sections (391, 392) — same business can appear in both, amounts summed
+ *
+ * 2. "טעינות/זיכויים" (Refunds/Credits) — negative amounts
+ *    - Column A = credit amount (negative), Column D = business name
+ *    - Same שיוך sections — credits subtracted from redemptions per business
+ *
+ * Final amount per business = sum(redemptions) + sum(credits)
  */
 
 import * as XLSX from "xlsx";
@@ -130,6 +131,59 @@ export function parseHeverFile(
       return { success: false, businesses: [], period: null, errors, warnings };
     }
 
+    // ── Parse refunds/credits sheet (טעינות/זיכויים) ──
+    // Column layout: A = credit amount (negative), D = business name, E = business number
+    const creditsSheet = workbook.SheetNames.find(
+      (name) =>
+        (name.includes("טעינות") || name.includes("זיכויים")) &&
+        !name.includes("סיכומ")
+    );
+
+    if (creditsSheet) {
+      const creditWs = workbook.Sheets[creditsSheet];
+      const creditRows = XLSX.utils.sheet_to_json(creditWs, {
+        header: 1,
+        defval: null,
+      }) as unknown[][];
+
+      for (const row of creditRows) {
+        if (!Array.isArray(row)) continue;
+
+        // Business name is in column D (index 3) for the credits sheet
+        const bizName = row[3];
+        if (
+          typeof bizName !== "string" ||
+          bizName.trim().length < 2 ||
+          bizName.includes("סה\"כ") ||
+          bizName.includes("טעינה/זיכוי") ||
+          bizName.includes(HEADER_MARKER)
+        ) {
+          continue;
+        }
+
+        const amount = typeof row[0] === "number" ? row[0] : 0;
+        if (amount === 0) continue; // Credits are negative, skip zero
+
+        const name = bizName.trim();
+        const existing = businessTotals.get(name);
+
+        if (existing) {
+          existing.amount += amount; // amount is negative, so this subtracts
+        } else {
+          // Credit for a business not in redemptions — still track it
+          const bizNum = typeof row[4] === "number" ? row[4] : null;
+          businessTotals.set(name, {
+            amount,
+            count: 0,
+            businessNumber: bizNum,
+          });
+        }
+      }
+    } else {
+      warnings.push("לא נמצא גיליון טעינות/זיכויים — לא הופחתו זיכויים");
+    }
+
+    // ── Build final result ──
     const businesses: HeverBusinessResult[] = [];
     for (const [name, data] of businessTotals) {
       businesses.push({
