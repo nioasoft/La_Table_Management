@@ -239,8 +239,19 @@ export async function POST(request: NextRequest) {
     } else {
       // ── Attachment-based client ──
 
-      // If no attachments, try to extract download links from email body (e.g. Tenbis)
-      if (email.attachments.length === 0) {
+      // Filter to PDF/Excel attachments only — skip inline images (logo, icons)
+      const documentAttachments = email.attachments.filter(
+        (a) =>
+          a.contentType === "application/pdf" ||
+          a.contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+          a.contentType === "application/vnd.ms-excel" ||
+          a.filename.endsWith(".pdf") ||
+          a.filename.endsWith(".xlsx") ||
+          a.filename.endsWith(".xls")
+      );
+
+      // If no document attachments, try to extract download links from email body
+      if (documentAttachments.length === 0) {
         const downloadedFiles = await extractAndDownloadLinks(
           email.html || email.text || "",
           identifiedClient.clientCode
@@ -298,7 +309,7 @@ export async function POST(request: NextRequest) {
 
       // Filter attachments: prefer sales_report for Wolt, skip commission/netting docs
       const filteredAttachments = filterAttachments(
-        email.attachments,
+        documentAttachments,
         identifiedClient.clientCode
       );
 
