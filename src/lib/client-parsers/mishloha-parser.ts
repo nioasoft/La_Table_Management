@@ -152,44 +152,64 @@ function parseInvoiceText(
   }
 
   // ── Date → period ──
+  // Two formats: "תאריך: DD/MM/YYYY" (OCR/LTR) or "DD/MM/YYYY :תאריך" (mPDF/RTL)
   let periodMonth: number | undefined;
   let periodYear: number | undefined;
-  const dateMatch = text.match(/תאריך:\s*(\d{2})\/(\d{2})\/(\d{4})/);
+  const dateMatch =
+    text.match(/תאריך:\s*(\d{2})\/(\d{2})\/(\d{4})/) ||
+    text.match(/(\d{2})\/(\d{2})\/(\d{4})\s*:תאריך/);
   if (dateMatch) {
     periodMonth = parseInt(dateMatch[2]);
     periodYear = parseInt(dateMatch[3]);
   }
 
-  // ── Total incl VAT: "סה"כ: ₪XX,XXX.XX" ──
+  // ── Total incl VAT ──
+  // OCR format: "סה"כ: ₪XX,XXX.XX" (same line)
+  // mPDF format: "₪XX,XXX.XX\nסה"כ:" (amount on line BEFORE label)
   let totalAmount = 0;
-  const totalMatch = text.match(/סה"כ:\s*₪?([\d,]+\.?\d*)/);
+  const totalMatch =
+    text.match(/סה"כ:\s*₪?([\d,]+\.?\d*)/) ||
+    text.match(/₪([\d,]+\.\d{2})\s*\n\s*סה"כ:/);
   if (totalMatch) {
     totalAmount = parseFloat(totalMatch[1].replace(/,/g, ""));
   }
 
-  // ── Subtotal before VAT: "סה"כ חייב במע"מ: ₪XX,XXX.XX" ──
+  // ── Subtotal before VAT ──
+  // mPDF: "₪9,886.64\nסה"כ חייב במע"מ:" (amount on previous line) — check this FIRST
+  // OCR:  "סה"כ חייב במע"מ: ₪9,886.64" (same line)
   let subtotalBeforeVat = 0;
-  const subtotalMatch = text.match(
-    /סה"כ\s+חייב\s+במע"מ:\s*₪?([\d,]+\.?\d*)/
-  );
+  const subtotalMatch =
+    text.match(/₪([\d,]+\.\d{2})\s*\n\s*סה"כ\s+חייב\s+במע"מ:/) ||
+    text.match(/סה"כ\s+חייב\s+במע"מ:[^\S\n]*₪?([\d,]+\.?\d*)/);
   if (subtotalMatch) {
     subtotalBeforeVat = parseFloat(subtotalMatch[1].replace(/,/g, ""));
   }
 
-  // ── VAT: "מע"מ XX.XX%: ₪X,XXX.XX" ──
+  // ── VAT ──
   let vatAmount = 0;
-  const vatMatch = text.match(/מע"מ\s+[\d.]+%:\s*₪?([\d,]+\.?\d*)/);
+  const vatMatch =
+    text.match(/מע"מ\s+[\d.]+%:\s*₪?([\d,]+\.?\d*)/) ||
+    text.match(/₪([\d,]+\.\d{2})\s*:\s*[\d.]+%\s*מע"מ/);
   if (vatMatch) {
     vatAmount = parseFloat(vatMatch[1].replace(/,/g, ""));
   }
 
-  // ── Online orders amount (line item) ──
+  // ── Online orders amounts (all line items with "הזמנות אונליין") ──
   let onlineOrdersAmount = 0;
-  const ordersMatch = text.match(
-    /הזמנות\s+אונליין[\s\S]*?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/
+  const orderMatches = text.matchAll(
+    /₪([\d,]+\.\d{2}).*הזמנות\s+אונליין/g
   );
-  if (ordersMatch) {
-    onlineOrdersAmount = parseFloat(ordersMatch[2].replace(/,/g, ""));
+  for (const m of orderMatches) {
+    onlineOrdersAmount += parseFloat(m[1].replace(/,/g, ""));
+  }
+  // Also try OCR format (amount after description)
+  if (onlineOrdersAmount === 0) {
+    const ocrMatches = text.matchAll(
+      /הזמנות\s+אונליין[\s\S]*?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/g
+    );
+    for (const m of ocrMatches) {
+      onlineOrdersAmount += parseFloat(m[2].replace(/,/g, ""));
+    }
   }
 
   // Fallback: if total is 0, try the largest number
