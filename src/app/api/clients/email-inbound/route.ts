@@ -567,6 +567,8 @@ function matchFranchiseeFromSubject(
     .replace(/monthly\s+report\s*[-–—]\s*/gi, "")
     // Invoice subjects: "חשבונית מס 10013 מאת ..." → keep only what's after "מאת"
     .replace(/חשבונית\s+(?:מס\s*)?\d+\s+מאת\s*/g, "")
+    // ezcount generic subjects: "EasyCount Invoice for HAAT" → no franchisee info
+    .replace(/EasyCount\s+Invoice\s+for\s+\w+/gi, "")
     .trim();
 
   // Split by common delimiters and try each part

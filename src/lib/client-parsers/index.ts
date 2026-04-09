@@ -39,7 +39,11 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     const { parseMishlohaFile } = await import("./mishloha-parser");
     return parseMishlohaFile(buffer, mimeType);
   },
-  // Haat: report parser deferred — only invoice parser available (see INVOICE_PARSERS)
+  HAAT: async (buffer, mimeType) => {
+    // Haat uses the same ezcount format as Mishloha
+    const { parseMishlohaFile } = await import("./mishloha-parser");
+    return parseMishlohaFile(buffer, mimeType);
+  },
 };
 
 // Registry of commission invoice parsers by client code (lazy-loaded)
