@@ -545,11 +545,17 @@ function matchFranchiseeFromSubject(
 
   // Try the full subject first (after removing common prefixes)
   const cleanedSubject = subject
+    // Standard forward/reply prefixes (English + Hebrew)
     .replace(/^(fwd?|re|fw|subject):\s*/gi, "")
+    .replace(/\[העתק\]\s*/g, "")
+    .replace(/\[העברה\]\s*/g, "")
+    // Monthly report prefixes
     .replace(/ריכוז חיוב חודשי\s*[-–—]\s*/g, "")
     .replace(/דוח חודשי\s*(מתן ביס|תן ביס|סיבוס|pluxee|cibus|tenbis|וולט|wolt|האט|haat|משלוחה|חבר)\s*[-–—ל]?\s*/gi, "")
     .replace(/דוח חודשי\s*[-–—]\s*/g, "")
     .replace(/monthly\s+report\s*[-–—]\s*/gi, "")
+    // Invoice subjects: "חשבונית מס 10013 מאת ..." → keep only what's after "מאת"
+    .replace(/חשבונית\s+(?:מס\s*)?\d+\s+מאת\s*/g, "")
     .trim();
 
   // Split by common delimiters and try each part
