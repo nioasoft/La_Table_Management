@@ -119,12 +119,12 @@ export async function notifySuperUsersAboutUpload(
       };
     }
 
-    // Get all active super users
-    const superUsers = await getUsersByRole("super_user");
-    const activeSuperUsers = superUsers.filter(u => u.status === "active" && u.email);
+    // Send upload notifications only to the designated admin
+    const UPLOAD_NOTIFICATION_EMAIL = "reutl@latableg.com";
+    const activeSuperUsers = [{ id: "admin", email: UPLOAD_NOTIFICATION_EMAIL, notificationEmail: null, status: "active" as const }];
 
     if (activeSuperUsers.length === 0) {
-      console.log("No active super users to notify about upload");
+      console.log("No recipients configured for upload notifications");
       return {
         success: true,
         totalSent: 0,
