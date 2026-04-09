@@ -671,7 +671,46 @@ async function extractAndDownloadLinks(
     }
   }
 
-  // Pattern 2: Direct PDF links (generic fallback)
+  // Pattern 2: ezcount (Mishloha, Haat) — files.ezcount.co.il download links
+  // These redirect (302) to an S3 URL with the actual PDF
+  if (results.length === 0) {
+    const ezLinks =
+      htmlBody.match(
+        /https?:\/\/files\.ezcount\.co\.il\/front\/documents\/get\/[^"'\s<>]+/g
+      ) || [];
+
+    for (const ezUrl of ezLinks) {
+      try {
+        const cleanUrl = ezUrl.replace(/&amp;/g, "&");
+        console.log(`[email-inbound] ezcount: downloading PDF from ${cleanUrl}`);
+        // Follow the 302 redirect to S3
+        const response = await fetch(cleanUrl, { redirect: "follow" });
+        if (!response.ok) {
+          console.warn(
+            `[email-inbound] Failed to download ezcount PDF: ${response.status}`
+          );
+          continue;
+        }
+
+        const arrayBuffer = await response.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        // Extract UUID from URL for filename
+        const uuidMatch = cleanUrl.match(
+          /get\/([0-9a-f-]+)\//
+        );
+        const fileName = uuidMatch
+          ? `ezcount-${uuidMatch[1]}.pdf`
+          : "ezcount-invoice.pdf";
+
+        results.push({ buffer, fileName });
+      } catch (err) {
+        console.warn("[email-inbound] Failed to download ezcount PDF:", err);
+      }
+    }
+  }
+
+  // Pattern 3: Direct PDF links (generic fallback)
   if (results.length === 0) {
     const directLinks = htmlBody.match(
       /https?:\/\/[^\s"'<>]+\.pdf/gi
