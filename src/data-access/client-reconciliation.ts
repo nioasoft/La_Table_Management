@@ -411,6 +411,24 @@ export async function updateComparisonStatus(
 }
 
 /**
+ * Update only the notes field of a comparison (without changing status)
+ */
+export async function updateComparisonNotes(
+  comparisonId: string,
+  notes: string
+): Promise<ClientReconciliationComparison> {
+  const [updated] = await database
+    .update(clientReconciliationComparison)
+    .set({
+      notes,
+    })
+    .where(eq(clientReconciliationComparison.id, comparisonId))
+    .returning();
+
+  return updated;
+}
+
+/**
  * Approve all auto_approved + manually update session status
  */
 export async function approveSession(

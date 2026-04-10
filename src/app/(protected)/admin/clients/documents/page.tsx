@@ -41,6 +41,7 @@ import {
   Search,
   Copy,
   X,
+  Download,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -137,18 +138,20 @@ export default function ClientDocumentsPage() {
   const activeClients = useMemo(
     () =>
       (clients ?? []).filter(
-        (c: { id: string; name: string; code: string | null; isActive: boolean }) => c.isActive
+        (c: { id: string; name: string; code: string | null; isActive: boolean }) =>
+          c.isActive && c.code !== "GIFTCARD"
       ),
     [clients]
   );
 
-  // Client email lookup
+  // Client inbound email lookup (our receiving address, not the sender's)
   const clientEmailMap = useMemo(() => {
     const map = new Map<string, string>();
     for (const c of activeClients) {
-      const email = (c as { gmailSenderEmail?: string | null; email?: string | null }).gmailSenderEmail
-        || (c as { email?: string | null }).email;
-      if (email) map.set(c.id, email);
+      const code = (c as { code?: string | null }).code;
+      if (code) {
+        map.set(c.id, `${code.toLowerCase()}@inbound.latable.co.il`);
+      }
     }
     return map;
   }, [activeClients]);
@@ -591,6 +594,18 @@ export default function ClientDocumentsPage() {
                                     {formatAmount(cell.totalAmount)}
                                   </span>
                                 )}
+                                {cell?.documentId && (
+                                  <a
+                                    href={`/api/clients/documents/${cell.documentId}/download`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex"
+                                    title="הורד קובץ"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <Download className="h-3 w-3 text-muted-foreground hover:text-primary transition-colors" />
+                                  </a>
+                                )}
                               </div>
                             </td>
                           );
@@ -669,9 +684,16 @@ export default function ClientDocumentsPage() {
                   }) => (
                     <TableRow key={doc.id}>
                       <TableCell className="pe-4">
-                        <span className="text-sm font-medium truncate max-w-[200px] block">
-                          {doc.originalFileName}
-                        </span>
+                        <a
+                          href={`/api/clients/documents/${doc.id}/download`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 text-sm font-medium truncate max-w-[250px] hover:text-primary transition-colors"
+                          title={`הורד ${doc.originalFileName}`}
+                        >
+                          <Download className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{doc.originalFileName}</span>
+                        </a>
                       </TableCell>
                       <TableCell>
                         <Badge

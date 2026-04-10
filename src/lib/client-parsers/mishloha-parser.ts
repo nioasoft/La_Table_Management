@@ -102,17 +102,25 @@ export async function parseMishlohaFile(
     const pdfData = await pdfParse(buffer);
     let text = (pdfData.text as string).trim();
 
-    // Step 2: If no text, extract image and OCR
+    // Step 2: If no text, try image extraction and OCR
     if (text.length < 30) {
-      const imageBuffer = await extractImageFromPDF(buffer);
-      if (!imageBuffer) {
-        errors.push("לא ניתן לחלץ תמונה מקובץ ה-PDF של משלוחה");
-        return { success: false, data: null, errors, warnings };
-      }
+      try {
+        const imageBuffer = await extractImageFromPDF(buffer);
+        if (!imageBuffer) {
+          errors.push("לא ניתן לחלץ תמונה מקובץ ה-PDF של משלוחה. אם מדובר בחשבונית עמלה — יש להעלות דרך מסך אימות חשבוניות עמלה.");
+          return { success: false, data: null, errors, warnings };
+        }
 
-      text = await ocrImage(imageBuffer);
-      if (text.length < 30) {
-        errors.push("OCR לא הצליח לחלץ טקסט מחשבונית משלוחה");
+        text = await ocrImage(imageBuffer);
+        if (text.length < 30) {
+          errors.push("OCR לא הצליח לחלץ טקסט מחשבונית משלוחה");
+          return { success: false, data: null, errors, warnings };
+        }
+      } catch (ocrError) {
+        // pdfjs-dist may not be available in serverless environments
+        errors.push(
+          `חילוץ תמונה/OCR נכשל (ייתכן שהקובץ הוא חשבונית עמלה — יש להעלות דרך מסך אימות חשבוניות עמלה): ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`
+        );
         return { success: false, data: null, errors, warnings };
       }
     }

@@ -37,6 +37,32 @@ import type { Franchisee } from "@/db/schema";
 /** Client codes that parse from email body instead of attachments */
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
 
+/** Keywords in email subject that indicate a commission invoice (not a client report) */
+const INVOICE_SUBJECT_KEYWORDS = [
+  "חשבונית מס",
+  "חשבונית עמלה",
+  "חשבונית מס/קבלה",
+  "tax invoice",
+  "commission invoice",
+];
+
+/**
+ * Detect document type from email subject.
+ * Returns "commission_invoice" if subject contains invoice keywords,
+ * otherwise "client_report".
+ */
+function detectDocumentType(
+  subject: string
+): "client_report" | "commission_invoice" {
+  const lower = subject.toLowerCase();
+  for (const keyword of INVOICE_SUBJECT_KEYWORDS) {
+    if (lower.includes(keyword.toLowerCase())) {
+      return "commission_invoice";
+    }
+  }
+  return "client_report";
+}
+
 export async function POST(request: NextRequest) {
   // Create sync log early
   const syncLog = await createSyncLogEntry();
@@ -176,6 +202,12 @@ export async function POST(request: NextRequest) {
     // ─── Step 5: Resolve period ────────────────────────────────────────
     const period = resolvePeriod(subject, email.createdAt);
 
+    // ─── Step 5b: Detect document type from subject ─────────────────────
+    const documentType = detectDocumentType(subject);
+    if (documentType === "commission_invoice") {
+      console.log(`[email-inbound] Detected commission invoice from subject: "${subject}"`);
+    }
+
     // ─── Step 6: Load franchisees for matching ─────────────────────────
     const allFranchisees = await database
       .select()
@@ -221,7 +253,7 @@ export async function POST(request: NextRequest) {
             franchiseeId: franchiseeMatch.franchiseeId,
             periodMonth: period.month,
             periodYear: period.year,
-            documentType: "client_report",
+            documentType,
             source: "gmail_fetch",
             gmailMessageId: email_id,
           });
@@ -289,7 +321,7 @@ export async function POST(request: NextRequest) {
             franchiseeId: franchiseeMatch.franchiseeId,
             periodMonth: period.month,
             periodYear: period.year,
-            documentType: "client_report",
+            documentType,
             source: "gmail_fetch",
             gmailMessageId: email_id,
           });

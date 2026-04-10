@@ -26,6 +26,64 @@ import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./typ
 const pdfParse = require("pdf-parse");
 
 /**
+ * Dynamic imports for OCR dependencies (pdfjs-dist + tesseract.js).
+ * These use variables to prevent Turbopack from trying to resolve
+ * WASM/ESM packages at build time.
+ */
+const PDFJS_MODULE = "pdfjs-dist/legacy/build/pdf.mjs";
+const TESSERACT_MODULE = "tesseract.js";
+
+async function loadPdfjs() {
+  return import(/* webpackIgnore: true */ PDFJS_MODULE);
+}
+
+async function loadTesseract() {
+  return import(/* webpackIgnore: true */ TESSERACT_MODULE);
+}
+
+/**
+ * Extract the first embedded image from a PDF using pdfjs-dist.
+ * jsPDF-generated invoices embed the entire page as a single image.
+ */
+async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
+  const pdfjsLib = await loadPdfjs();
+
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+    .promise;
+  const page = await doc.getPage(1);
+  const ops = await page.getOperatorList();
+
+  const OPS = pdfjsLib.OPS;
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    if (ops.fnArray[i] === OPS.paintImageXObject) {
+      const imgName = ops.argsArray[i][0] as string;
+      const imgData = await new Promise<{
+        data: Uint8Array;
+        width: number;
+        height: number;
+      } | null>((resolve) => page.objs.get(imgName, resolve));
+
+      if (imgData?.data && imgData.width && imgData.height) {
+        // Raw RGBA bitmap → PNG via sharp (optional) or return raw for tesseract
+        // Tesseract.js accepts raw bitmap with dimensions
+        return Buffer.from(imgData.data);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Run OCR on an image buffer using tesseract.js with Hebrew + English.
+ */
+async function ocrImage(imageBuffer: Buffer): Promise<string> {
+  const tess = await loadTesseract();
+  const recognize = tess.default?.recognize ?? tess.recognize;
+  const { data } = await recognize(imageBuffer, "heb+eng");
+  return data.text;
+}
+
+/**
  * Parse a Mishloha PDF invoice.
  * Extracts totals, franchisee name, and period from a Hyp/EasyCount invoice.
  */
@@ -41,8 +99,28 @@ export async function parseMishlohaFile(
     const text = data.text as string;
 
     if (!text || text.length < 50) {
-      errors.push("לא ניתן לחלץ טקסט מקובץ ה-PDF של משלוחה");
-      return { success: false, data: null, errors, warnings };
+      // jsPDF-generated invoices embed content as images — try OCR
+      try {
+        const imageBuffer = await extractImageFromPDF(buffer);
+        if (!imageBuffer) {
+          errors.push("לא ניתן לחלץ טקסט או תמונה מקובץ ה-PDF של משלוחה");
+          return { success: false, data: null, errors, warnings };
+        }
+        const ocrText = await ocrImage(imageBuffer);
+        if (!ocrText || ocrText.length < 50) {
+          errors.push("OCR לא הצליח לחלץ טקסט מחשבונית משלוחה");
+          return { success: false, data: null, errors, warnings };
+        }
+        warnings.push("טקסט חולץ באמצעות OCR (חשבונית jsPDF)");
+        // Replace text variables for parsing below
+        const ocrLines = ocrText.split("\n").map((l) => l.trim()).filter(Boolean);
+        return parseOcrInvoice(ocrLines, ocrText, warnings, errors);
+      } catch (ocrError) {
+        errors.push(
+          `חילוץ טקסט נכשל ו-OCR לא זמין: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`
+        );
+        return { success: false, data: null, errors, warnings };
+      }
     }
 
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -323,4 +401,116 @@ export async function parseMishlohaFile(
     );
     return { success: false, data: null, errors, warnings };
   }
+}
+
+/**
+ * Parse OCR-extracted text from a jsPDF Mishloha invoice.
+ * OCR text preserves visual layout, so we look for key Hebrew patterns:
+ * - "סה"כ חייב במע"מ:" or "סה"כ חייב" for pre-VAT total
+ * - "מע"מ" line for VAT amount
+ * - "סה"כ:" for grand total
+ * - "לכבוד:" for franchisee name
+ * - "חשבונית מס מספר" for invoice number
+ */
+function parseOcrInvoice(
+  lines: string[],
+  rawText: string,
+  warnings: string[],
+  errors: string[]
+): ClientDocumentProcessingResult {
+  let franchiseeName = "";
+  let preVatTotal = 0;
+  let grandTotal = 0;
+  let invoiceNumber = "";
+  let periodMonth: number | undefined = undefined;
+  let periodYear: number | undefined = undefined;
+
+  for (const line of lines) {
+    // Franchisee name
+    const lekavodMatch = line.match(/לכבוד[:\s]+(.+)/);
+    if (lekavodMatch && !franchiseeName) {
+      franchiseeName = lekavodMatch[1]
+        .replace(/[,،]/g, "")
+        .replace(/ח\.?פ\.?.*$/, "")
+        .replace(/ת\.?ז\.?.*$/, "")
+        .trim();
+    }
+
+    // Invoice number
+    const invMatch = line.match(/חשבונית\s*מס\s*מספר\s*(\d+)/);
+    if (invMatch) {
+      invoiceNumber = invMatch[1];
+    }
+
+    // Pre-VAT total: "סה"כ חייב במע"מ:" or just amounts after "סה"כ חייב"
+    const preVatMatch = line.match(/סה[""״]כ\s*חייב[^:]*:\s*([\d,]+\.?\d*)/);
+    if (preVatMatch) {
+      preVatTotal = parseFloat(preVatMatch[1].replace(/,/g, ""));
+    }
+
+    // Grand total: "סה"כ:" at the end (the final total including VAT)
+    const grandMatch = line.match(/^סה[""״]כ:\s*([\d,]+\.?\d*)/);
+    if (grandMatch) {
+      grandTotal = parseFloat(grandMatch[1].replace(/,/g, ""));
+    }
+
+    // Period from date range: "01/03/2026-31/03/2026" or "מתאריך ... עד"
+    const dateRange = line.match(/(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/);
+    if (dateRange && !periodMonth) {
+      periodMonth = parseInt(dateRange[2]);
+      periodYear = parseInt(dateRange[3]);
+    }
+  }
+
+  // Fallback: try to find amounts with ₪ symbol
+  if (!preVatTotal) {
+    const amounts: number[] = [];
+    for (const line of lines) {
+      const matches = line.match(/₪?([\d,]+\.?\d+)₪?/g);
+      if (matches) {
+        for (const m of matches) {
+          const val = parseFloat(m.replace(/[₪,]/g, ""));
+          if (val > 100) amounts.push(val);
+        }
+      }
+    }
+    // The largest amount is likely the grand total, second largest is pre-VAT
+    amounts.sort((a, b) => b - a);
+    if (amounts.length >= 2) {
+      grandTotal = amounts[0];
+      preVatTotal = amounts[1];
+    } else if (amounts.length === 1) {
+      grandTotal = amounts[0];
+      preVatTotal = Math.round(amounts[0] / 1.18 * 100) / 100;
+    }
+  }
+
+  if (!preVatTotal && !grandTotal) {
+    errors.push("לא ניתן לזהות סכומים מהחשבונית (OCR)");
+    return { success: false, data: null, errors, warnings };
+  }
+
+  return {
+    success: true,
+    data: {
+      franchiseeName: franchiseeName || "לא זוהה",
+      totalAmount: preVatTotal,
+      commissionAmount: preVatTotal,
+      commissionRate: 0,
+      netAmount: grandTotal || preVatTotal,
+      periodMonth,
+      periodYear,
+      lineItems: [
+        {
+          date: null,
+          description: `חשבונית מס ${invoiceNumber || "משלוחה"} (OCR)`,
+          amount: preVatTotal,
+          commission: preVatTotal,
+        },
+      ],
+      rawText,
+    },
+    errors,
+    warnings,
+  };
 }

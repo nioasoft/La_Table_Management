@@ -178,3 +178,29 @@ export function useUpdateComparisonStatus() {
     },
   });
 }
+
+export function useUpdateComparisonNotes() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, notes }: { id: string; notes: string }) => {
+      const res = await fetch(
+        `/api/clients/reconciliation/comparisons/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ notes }),
+        }
+      );
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "שגיאה בעדכון הערה");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.all,
+      });
+    },
+  });
+}

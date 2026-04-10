@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Scale,
   Loader2,
   Plus,
@@ -39,6 +51,8 @@ import {
   X,
   FileSpreadsheet,
   Download,
+  MessageSquare,
+  Pencil,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -49,6 +63,7 @@ import {
   useDeleteClientReconciliation,
   useApproveSession,
   useUpdateComparisonStatus,
+  useUpdateComparisonNotes,
   useReconciliationByFranchisee,
   type ByFranchiseeRow,
 } from "@/queries/client-reconciliation";
@@ -102,6 +117,93 @@ function getComparisonStatusIcon(status: string) {
   }
 }
 
+// ─── Notes Cell ──────────────────────────────────────────────────────────────
+
+function NotesCell({
+  comparisonId,
+  notes,
+  onSave,
+  isSaving,
+}: {
+  comparisonId: string;
+  notes: string | null;
+  onSave: (id: string, notes: string) => void;
+  isSaving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(notes ?? "");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(notes ?? "");
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [open, notes]);
+
+  const handleSave = () => {
+    onSave(comparisonId, draft);
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors max-w-[150px]"
+          title={notes || "הוסף הערה"}
+        >
+          {notes ? (
+            <span className="truncate">{notes}</span>
+          ) : (
+            <MessageSquare className="h-3.5 w-3.5" />
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3" dir="rtl" align="start">
+        <div className="space-y-2">
+          <Textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="הערה..."
+            className="text-sm min-h-[60px] resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                handleSave();
+              }
+            }}
+          />
+          <div className="flex justify-end gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setOpen(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-3 w-3 animate-spin me-1" />
+              ) : (
+                <Check className="h-3 w-3 me-1" />
+              )}
+              שמור
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ClientReconciliationPage() {
@@ -123,6 +225,7 @@ export default function ClientReconciliationPage() {
   const { data: sessionDetail, isLoading: detailLoading } =
     useClientReconciliationSession(selectedSessionId ?? "");
   const createMutation = useCreateClientReconciliation();
+  const notesMutation = useUpdateComparisonNotes();
   const deleteMutation = useDeleteClientReconciliation();
   const approveMutation = useApproveSession();
   const updateComparisonMutation = useUpdateComparisonStatus();
@@ -195,10 +298,10 @@ export default function ClientReconciliationPage() {
     );
   };
 
-  const handleExportHashavshevet = async (sessionId: string) => {
+  const handleExportHashavshevet = async (sessionId: string, exportType: "invoice" | "journal" = "invoice") => {
     try {
       const res = await fetch(
-        `/api/reports/hashavshevet/client-export?sessionId=${sessionId}`
+        `/api/reports/hashavshevet/client-export?sessionId=${sessionId}&exportType=${exportType}`
       );
       if (!res.ok) {
         const data = await res.json();
@@ -264,14 +367,24 @@ export default function ClientReconciliationPage() {
             )}
             {(session.status === "file_approved" ||
               session.status === "in_progress") && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleExportHashavshevet(session.id)}
-              >
-                <Download className="h-4 w-4 me-1" />
-                ייצוא לחשבשבת
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm">
+                    <Download className="h-4 w-4 me-1" />
+                    ייצוא לחשבשבת
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleExportHashavshevet(session.id, "invoice")}>
+                    <FileSpreadsheet className="h-4 w-4 me-2" />
+                    חשבונית
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExportHashavshevet(session.id, "journal")}>
+                    <FileSpreadsheet className="h-4 w-4 me-2" />
+                    פקודת יומן
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>
@@ -324,6 +437,7 @@ export default function ClientReconciliationPage() {
                   <TableHead className="text-right">סכום עמלה</TableHead>
                   <TableHead className="text-right">סכום לחשבונית</TableHead>
                   <TableHead className="text-center">סטטוס</TableHead>
+                  <TableHead className="text-right">הערות</TableHead>
                   <TableHead className="text-center w-[100px]">פעולות</TableHead>
                 </TableRow>
               </TableHeader>
@@ -339,6 +453,7 @@ export default function ClientReconciliationPage() {
                     commissionAmount: string | null;
                     netAmount: string | null;
                     status: string;
+                    notes: string | null;
                     clientDocFileName: string | null;
                     tabitDocFileName: string | null;
                   }) => {
@@ -409,6 +524,22 @@ export default function ClientReconciliationPage() {
                         </TableCell>
                         <TableCell className="text-center">
                           {getComparisonStatusIcon(comp.status)}
+                        </TableCell>
+                        <TableCell>
+                          <NotesCell
+                            comparisonId={comp.id}
+                            notes={comp.notes}
+                            onSave={(id, notes) =>
+                              notesMutation.mutate(
+                                { id, notes },
+                                {
+                                  onSuccess: () => toast.success("הערה נשמרה"),
+                                  onError: (err: Error) => toast.error(err.message),
+                                }
+                              )
+                            }
+                            isSaving={notesMutation.isPending}
+                          />
                         </TableCell>
                         <TableCell className="text-center">
                           {comp.status === "needs_review" && (
@@ -797,20 +928,28 @@ export default function ClientReconciliationPage() {
                       <TableCell className="text-center">
                         {getStatusBadge(s.status)}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         {s.status === "file_approved" && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleExportHashavshevet(s.id);
-                            }}
-                          >
-                            <FileSpreadsheet className="h-3 w-3 me-1" />
-                            ייצוא
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                              >
+                                <FileSpreadsheet className="h-3 w-3 me-1" />
+                                ייצוא
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleExportHashavshevet(s.id, "invoice")}>
+                                חשבונית
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleExportHashavshevet(s.id, "journal")}>
+                                פקודת יומן
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                       </TableCell>
                     </TableRow>

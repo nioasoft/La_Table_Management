@@ -219,7 +219,7 @@ export default function CommissionInvoicesPage() {
                   <TableHead className="text-center">תקין</TableHead>
                   <TableHead className="text-center">חריג</TableHead>
                   <TableHead className="text-center">חסר</TableHead>
-                  <TableHead className="text-start">סכום מחושבונית</TableHead>
+                  <TableHead className="text-start">סכום מחשבונית</TableHead>
                   <TableHead className="text-start">סכום צפוי</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
@@ -264,7 +264,10 @@ export default function CommissionInvoicesPage() {
                     <TableCell>{formatAmount(row.totalInvoiced)}</TableCell>
                     <TableCell>{formatAmount(row.totalExpected)}</TableCell>
                     <TableCell>
-                      <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        פירוט
+                        <ChevronLeft className="h-4 w-4" />
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -342,6 +345,14 @@ function ClientVerificationDetail({
   isLoading,
   onClose,
 }: ClientVerificationDetailProps) {
+  const [search, setSearch] = useState("");
+
+  const filteredRows = search
+    ? rows.filter((r) =>
+        r.franchiseeName.toLowerCase().includes(search.toLowerCase())
+      )
+    : rows;
+
   return (
     <Card>
       <CardHeader>
@@ -353,15 +364,23 @@ function ClientVerificationDetail({
             סגור
           </Button>
         </div>
+        {rows.length > 0 && (
+          <Input
+            placeholder="חיפוש זכיין..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs mt-2"
+          />
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
           <div className="flex items-center justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
-        ) : rows.length === 0 ? (
+        ) : filteredRows.length === 0 ? (
           <div className="py-8 text-center text-muted-foreground">
-            אין זכיינים מקושרים ללקוח זה
+            {search ? "לא נמצאו זכיינים תואמים" : "אין זכיינים מקושרים ללקוח זה"}
           </div>
         ) : (
           <Table dir="rtl">
@@ -376,7 +395,7 @@ function ClientVerificationDetail({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <TableRow key={row.franchiseeId}>
                   <TableCell className="font-medium">
                     {row.franchiseeName}

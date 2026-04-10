@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const sessionId = searchParams.get("sessionId");
+  const exportType = searchParams.get("exportType") ?? "invoice"; // "invoice" | "journal"
 
   if (!sessionId) {
     return NextResponse.json(
@@ -31,6 +32,9 @@ export async function GET(request: NextRequest) {
       { status: 400 }
     );
   }
+
+  // Document type: 11 = invoice (חשבונית), 1 = journal entry (פקודת יומן)
+  const documentTypeNumber = exportType === "journal" ? 1 : 11;
 
   try {
     // Get session info for filename
@@ -80,14 +84,14 @@ export async function GET(request: NextRequest) {
         const net = comp.netAmount ? parseFloat(comp.netAmount) : 0;
         return net !== 0;
       })
-      .map((comp, idx) => [
+      .map((comp) => [
         accountKey, // מפתח חשבון
         "", // שם
         `עמלות ${comp.franchiseeName}`, // מפתח פריט
         "", // שם פריט
         1, // כמות
         comp.netAmount ? Math.round(parseFloat(comp.netAmount)) : 0, // מחיר
-        11, // סוג המסמך (חשבונית)
+        documentTypeNumber, // סוג המסמך (11=חשבונית, 1=פקודת יומן)
         "", // מספר מסמך
       ]);
 
@@ -166,7 +170,8 @@ export async function GET(request: NextRequest) {
       "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
     ];
     const monthName = MONTHS[session.periodMonth - 1] || String(session.periodMonth);
-    const filename = `חשבוניות ${session.clientName} ${monthName} ${session.periodYear}.xlsx`;
+    const typeLabel = exportType === "journal" ? "פקודת יומן" : "חשבוניות";
+    const filename = `${typeLabel} ${session.clientName} ${monthName} ${session.periodYear}.xlsx`;
 
     return new NextResponse(buffer, {
       headers: {

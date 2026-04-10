@@ -28,7 +28,15 @@ export async function PATCH(
   const { id } = await params;
 
   try {
-    const { status, reviewNotes } = await request.json();
+    const body = await request.json();
+    const { status, reviewNotes, notes } = body;
+
+    // Allow updating just notes without changing status
+    if (!status && notes !== undefined) {
+      const { updateComparisonNotes } = await import("@/data-access/client-reconciliation");
+      const comparison = await updateComparisonNotes(id, notes);
+      return NextResponse.json(comparison);
+    }
 
     if (!status || !VALID_STATUSES.includes(status)) {
       return NextResponse.json(

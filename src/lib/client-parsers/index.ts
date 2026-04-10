@@ -60,7 +60,7 @@ const INVOICE_PARSERS: Record<string, ClientParserFn> = {
     const { parseWoltInvoice } = await import("./invoice-wolt-parser");
     return parseWoltInvoice(buffer, mimeType);
   },
-  MISHLOHA: async (buffer, mimeType) => {
+  MISHLOCHA: async (buffer, mimeType) => {
     const { parseMishlohaFile } = await import("./invoice-mishloha-parser");
     return parseMishlohaFile(buffer, mimeType);
   },
