@@ -63,6 +63,40 @@ export function useCreateClientReconciliation() {
   });
 }
 
+export interface BatchReconciliationResult {
+  created: number;
+  skipped: number;
+  failed: number;
+  total: number;
+  errors?: string[];
+}
+
+export function useCreateBatchReconciliation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      periodMonth: number;
+      periodYear: number;
+    }): Promise<BatchReconciliationResult> => {
+      const res = await fetch("/api/clients/reconciliation/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "שגיאה ביצירת התאמות");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.all,
+      });
+    },
+  });
+}
+
 export function useDeleteClientReconciliation() {
   const queryClient = useQueryClient();
   return useMutation({

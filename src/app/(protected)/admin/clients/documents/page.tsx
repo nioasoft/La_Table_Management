@@ -594,18 +594,6 @@ export default function ClientDocumentsPage() {
                                     {formatAmount(cell.totalAmount)}
                                   </span>
                                 )}
-                                {cell?.documentId && (
-                                  <a
-                                    href={`/api/clients/documents/${cell.documentId}/download`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex"
-                                    title="הורד קובץ"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <Download className="h-3 w-3 text-muted-foreground hover:text-primary transition-colors" />
-                                  </a>
-                                )}
                               </div>
                             </td>
                           );

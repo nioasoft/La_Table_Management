@@ -53,6 +53,7 @@ import {
   Download,
   MessageSquare,
   Pencil,
+  Zap,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -60,6 +61,7 @@ import {
   useClientReconciliationSessions,
   useClientReconciliationSession,
   useCreateClientReconciliation,
+  useCreateBatchReconciliation,
   useDeleteClientReconciliation,
   useApproveSession,
   useUpdateComparisonStatus,
@@ -225,6 +227,7 @@ export default function ClientReconciliationPage() {
   const { data: sessionDetail, isLoading: detailLoading } =
     useClientReconciliationSession(selectedSessionId ?? "");
   const createMutation = useCreateClientReconciliation();
+  const batchMutation = useCreateBatchReconciliation();
   const notesMutation = useUpdateComparisonNotes();
   const deleteMutation = useDeleteClientReconciliation();
   const approveMutation = useApproveSession();
@@ -286,6 +289,30 @@ export default function ClientReconciliationPage() {
       onSuccess: () => toast.success("ההתאמה אושרה"),
       onError: (error: Error) => toast.error(error.message),
     });
+  };
+
+  const handleBatchCreate = () => {
+    batchMutation.mutate(
+      { periodMonth, periodYear },
+      {
+        onSuccess: (result) => {
+          if (result.created > 0) {
+            toast.success(
+              `נוצרו ${result.created} התאמות` +
+                (result.skipped > 0 ? ` (${result.skipped} כבר קיימות)` : "")
+            );
+          } else if (result.skipped > 0) {
+            toast.info(`כל ההתאמות כבר קיימות לתקופה זו (${result.skipped})`);
+          }
+          if (result.failed > 0) {
+            toast.error(`${result.failed} התאמות נכשלו`);
+          }
+          // Switch to by-client view to see results
+          setViewTab("by-client");
+        },
+        onError: (error: Error) => toast.error(error.message),
+      }
+    );
   };
 
   const handleComparisonApprove = (comparisonId: string) => {
@@ -595,10 +622,24 @@ export default function ClientReconciliationPage() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="h-4 w-4 me-2" />
-          יצירת התאמה
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            onClick={handleBatchCreate}
+            disabled={batchMutation.isPending}
+          >
+            {batchMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin me-2" />
+            ) : (
+              <Zap className="h-4 w-4 me-2" />
+            )}
+            התאם הכל
+          </Button>
+          <Button variant="outline" onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 me-2" />
+            התאמה ללקוח
+          </Button>
+        </div>
       </div>
 
       {/* Tab toggle + Period selector */}
@@ -679,10 +720,11 @@ export default function ClientReconciliationPage() {
         <Card>
           <CardContent className="p-0">
             {!selectedFranchiseeId ? (
-              <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
                 <Scale className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  בחר זכיין כדי לראות את ההתאמה מול כל הלקוחות
+                <p className="text-sm font-medium mb-1">בדיקת זכיין מול כל הלקוחות</p>
+                <p className="text-xs text-muted-foreground">
+                  בחר זכיין כדי לראות סיכום של כל הדוחות שהתקבלו מהלקוחות (סיבוס, טנביס, וולט וכו&apos;) מול דוח טאביט — ללא צורך ביצירת התאמה.
                 </p>
               </div>
             ) : byFranchiseeLoading ? (
@@ -929,7 +971,7 @@ export default function ClientReconciliationPage() {
                         {getStatusBadge(s.status)}
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
-                        {s.status === "file_approved" && (
+                        {(s.status === "file_approved" || s.status === "in_progress" || s.status === "completed") && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
