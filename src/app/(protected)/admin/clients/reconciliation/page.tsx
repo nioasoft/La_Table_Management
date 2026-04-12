@@ -15,6 +15,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -1050,6 +1051,46 @@ export default function ClientReconciliationPage() {
                       );
                     })}
                   </TableBody>
+                  {(() => {
+                    const totalClient = byFranchiseeData.rows.reduce(
+                      (s, r) => s + (r.clientAmount ?? 0),
+                      0
+                    );
+                    const totalTabit = byFranchiseeData.rows.reduce(
+                      (s, r) => s + (r.tabitAmount ?? 0),
+                      0
+                    );
+                    const totalDiff = byFranchiseeData.rows.reduce(
+                      (s, r) => s + (r.difference ?? 0),
+                      0
+                    );
+                    return (
+                      <TableFooter>
+                        <TableRow>
+                          <TableCell className="pe-4 font-medium">
+                            סה&quot;כ
+                          </TableCell>
+                          <TableCell className="tabular-nums text-sm font-medium">
+                            {formatAmount(String(totalClient))}
+                          </TableCell>
+                          <TableCell className="tabular-nums text-sm font-medium">
+                            {formatAmount(String(totalTabit))}
+                          </TableCell>
+                          <TableCell
+                            className={`tabular-nums text-sm font-medium ${
+                              Math.abs(totalDiff) > 30
+                                ? "text-amber-600"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            {formatAmount(String(totalDiff))}
+                          </TableCell>
+                          <TableCell />
+                          <TableCell />
+                        </TableRow>
+                      </TableFooter>
+                    );
+                  })()}
                 </Table>
               </>
             )}
