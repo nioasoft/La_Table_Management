@@ -123,7 +123,7 @@ export async function getClientDocuments(
     .leftJoin(client, eq(clientDocument.clientId, client.id))
     .innerJoin(franchisee, eq(clientDocument.franchiseeId, franchisee.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(clientDocument.createdAt));
+    .orderBy(desc(clientDocument.updatedAt));
 
   if (filters.limit) {
     return query.limit(filters.limit).offset(filters.offset ?? 0);
