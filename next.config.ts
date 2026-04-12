@@ -9,12 +9,11 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // Externalize packages with native/WASM binaries for server-side rendering
-  serverExternalPackages: [
-    "@react-pdf/renderer",
-    "pdfjs-dist",
-    "tesseract.js",
-  ],
+  // Externalize react-pdf only. pdfjs-dist and tesseract.js must be BUNDLED
+  // (not externalized) so they ship with the Vercel serverless function.
+  // The parsers use variable-based dynamic imports to bypass Turbopack static
+  // analysis at build time.
+  serverExternalPackages: ["@react-pdf/renderer"],
 
   // Image optimization domains (add as needed)
   images: {
