@@ -98,15 +98,29 @@ export async function parseWoltFile(
  *   ניכויים כ"סה ...
  *   כ"סה <exclVAT> <vatAmt> <inclVAT>                         ← net after adjustments
  *
- * Franchisee name is intentionally NOT extracted here — downstream
- * `resolveFranchisee` uses `matchFranchiseeFromFilename` on the ezcount filename
- * (e.g. "נתנזון_NATANZON_חיפה_...pdf"), which is more reliable.
+ * Franchisee name is extracted from the pipe-separated branch line so documents
+ * with `נתנזון` in the body route to the Natanzon franchisee and those with
+ * `פט ויני` / `ויני` route to the Pat Vini franchisee. Falls back to filename
+ * matching (via downstream `resolveFranchisee`) if the branch line is missing.
  */
 function parseEzcountWoltInvoice(
   text: string,
   warnings: string[]
 ): ClientDocumentProcessingResult {
   const errors: string[] = [];
+
+  // ── Franchisee from branch line: "<hebCity> | <ENG> | <hebName>" ──
+  // The longer Hebrew token is the business name, the shorter one the city.
+  let franchiseeName = "";
+  const branchLineMatch = text.match(
+    /([\u0590-\u05FF][\u0590-\u05FF ]*)\s*\|\s*[A-Za-z][A-Za-z ]*\s*\|\s*([\u0590-\u05FF][\u0590-\u05FF ]*)/
+  );
+  if (branchLineMatch) {
+    const hebA = branchLineMatch[1].trim();
+    const hebB = branchLineMatch[2].trim();
+    const [bizName, city] = hebA.length >= hebB.length ? [hebA, hebB] : [hebB, hebA];
+    franchiseeName = `${bizName} ${city}`.trim();
+  }
 
   // ── Period: pick the LATER date from "DD.MM.YYYY - DD.MM.YYYY" ──
   // pdf-parse emits the range in RTL order (end - start), so we parse both
@@ -189,7 +203,7 @@ function parseEzcountWoltInvoice(
   return {
     success: true,
     data: {
-      franchiseeName: "", // resolved downstream from filename
+      franchiseeName, // from PDF branch line; falls back to filename via resolveFranchisee when empty
       totalAmount: gross,
       commissionAmount: 0,
       commissionRate: 0,
