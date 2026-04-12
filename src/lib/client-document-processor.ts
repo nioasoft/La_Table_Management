@@ -187,6 +187,7 @@ export async function processClientDocument(
       commissionAmount: processingResult.data?.commissionAmount?.toString() ?? null,
       commissionRate: processingResult.data?.commissionRate?.toString() ?? null,
       netAmount: processingResult.data?.netAmount?.toString() ?? null,
+      invoiceNumber: processingResult.data?.invoiceNumber ?? null,
       gmailMessageId: gmailMessageId ?? null,
       createdBy: userId ?? null,
       updatedAt: new Date(),

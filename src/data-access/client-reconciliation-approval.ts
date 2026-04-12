@@ -173,9 +173,12 @@ export interface ExportRow {
   hashavshevetCode: string | null;
   hashavshevetName: string | null;
   invoiceGeneration: boolean;
+  journalEntryGeneration: boolean;
   clientAmount: number;
   tabitAmount: number;
   netAmount: number | null;
+  /** Last invoice number seen on the client_report documents for this client+period. */
+  invoiceNumber: string | null;
   approvedAt: Date;
 }
 
@@ -216,6 +219,7 @@ export async function getApprovedForExport(input: {
       hashavshevetCode: client.hashavshevetCode,
       hashavshevetName: client.hashavshevetName,
       invoiceGeneration: client.invoiceGeneration,
+      journalEntryGeneration: client.journalEntryGeneration,
     })
     .from(client)
     .where(inArray(client.id, approvedClientIds));
@@ -227,6 +231,7 @@ export async function getApprovedForExport(input: {
       documentType: clientDocument.documentType,
       totalAmount: clientDocument.totalAmount,
       netAmount: clientDocument.netAmount,
+      invoiceNumber: clientDocument.invoiceNumber,
     })
     .from(clientDocument)
     .where(
@@ -241,6 +246,7 @@ export async function getApprovedForExport(input: {
   const clientAmounts = new Map<string, number>();
   const tabitAmounts = new Map<string, number>();
   const netAmounts = new Map<string, number | null>();
+  const invoiceNumbers = new Map<string, string>();
 
   for (const d of docs) {
     if (!d.clientId) continue;
@@ -251,6 +257,9 @@ export async function getApprovedForExport(input: {
       clientAmounts.set(d.clientId, (clientAmounts.get(d.clientId) ?? 0) + total);
       if (net !== null) {
         netAmounts.set(d.clientId, (netAmounts.get(d.clientId) ?? 0) + net);
+      }
+      if (d.invoiceNumber) {
+        invoiceNumbers.set(d.clientId, d.invoiceNumber);
       }
     } else if (d.documentType === "tabit_report") {
       tabitAmounts.set(d.clientId, (tabitAmounts.get(d.clientId) ?? 0) + total);
@@ -264,9 +273,11 @@ export async function getApprovedForExport(input: {
     hashavshevetCode: c.hashavshevetCode,
     hashavshevetName: c.hashavshevetName,
     invoiceGeneration: c.invoiceGeneration,
+    journalEntryGeneration: c.journalEntryGeneration,
     clientAmount: clientAmounts.get(c.id) ?? 0,
     tabitAmount: tabitAmounts.get(c.id) ?? 0,
     netAmount: netAmounts.get(c.id) ?? null,
+    invoiceNumber: invoiceNumbers.get(c.id) ?? null,
     approvedAt: approvedAtByClient.get(c.id) ?? new Date(),
   }));
 }

@@ -2913,6 +2913,9 @@ export const client = pgTable(
     invoiceGeneration: boolean("invoice_generation")
       .notNull()
       .$default(() => false),
+    journalEntryGeneration: boolean("journal_entry_generation")
+      .notNull()
+      .$default(() => false),
     notes: text("notes"),
     isActive: boolean("is_active")
       .notNull()
@@ -3029,6 +3032,8 @@ export const clientDocument = pgTable(
     commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }),
     commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }),
     netAmount: decimal("net_amount", { precision: 12, scale: 2 }),
+    // Invoice number extracted by parser (used for Hashavshevet journal export)
+    invoiceNumber: text("invoice_number"),
     // Email tracking
     gmailMessageId: text("gmail_message_id"),
     // Review

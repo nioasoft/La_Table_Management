@@ -381,7 +381,11 @@ export default function ClientReconciliationPage() {
   };
 
   const handleByFranchiseeExport = async (
-    exportType: "invoice" | "journal" | "client_invoices"
+    exportType:
+      | "invoice"
+      | "journal"
+      | "client_invoices"
+      | "journal_entries"
   ) => {
     if (!selectedFranchiseeId) return;
     try {
@@ -390,10 +394,14 @@ export default function ClientReconciliationPage() {
         periodMonth: String(periodMonth),
         periodYear: String(periodYear),
       };
-      const endpointUrl =
-        exportType === "client_invoices"
-          ? `/api/reports/hashavshevet/franchisee-client-invoices-export?${new URLSearchParams(baseParams)}`
-          : `/api/reports/hashavshevet/franchisee-export?${new URLSearchParams({ ...baseParams, exportType })}`;
+      let endpointUrl: string;
+      if (exportType === "client_invoices") {
+        endpointUrl = `/api/reports/hashavshevet/franchisee-client-invoices-export?${new URLSearchParams(baseParams)}`;
+      } else if (exportType === "journal_entries") {
+        endpointUrl = `/api/reports/hashavshevet/franchisee-journal-entries-export?${new URLSearchParams(baseParams)}`;
+      } else {
+        endpointUrl = `/api/reports/hashavshevet/franchisee-export?${new URLSearchParams({ ...baseParams, exportType })}`;
+      }
       const res = await fetch(endpointUrl);
       if (!res.ok) {
         const data = await res.json();
@@ -910,6 +918,13 @@ export default function ClientReconciliationPage() {
                           }
                         >
                           חשבוניות לקוחות
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleByFranchiseeExport("journal_entries")
+                          }
+                        >
+                          תנועות יומן
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>

@@ -35,6 +35,8 @@ export interface ClientParsedData {
   lineItems?: ClientParsedLineItem[];
   /** Raw text from OCR (for PDF documents) */
   rawText?: string;
+  /** Invoice number extracted from the source document (used in Hashavshevet journal export) */
+  invoiceNumber?: string;
 }
 
 /** Processing result wrapping parsed data with errors/warnings */

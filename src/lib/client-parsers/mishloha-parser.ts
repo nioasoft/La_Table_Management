@@ -246,6 +246,7 @@ function parseInvoiceText(
       netAmount: subtotalBeforeVat || totalAmount,
       periodMonth,
       periodYear,
+      invoiceNumber: invoiceNumber || undefined,
       lineItems: [
         {
           date: null,

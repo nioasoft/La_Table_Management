@@ -375,6 +375,7 @@ export async function parseHaatFile(
         netAmount: grandTotal || preVatTotal, // Total incl. VAT
         periodMonth,
         periodYear,
+        invoiceNumber: invoiceNumber || undefined,
         lineItems:
           lineItems.length > 0
             ? lineItems

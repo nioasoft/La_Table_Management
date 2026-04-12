@@ -210,6 +210,7 @@ function parseEzcountWoltInvoice(
       netAmount: net,
       periodMonth,
       periodYear,
+      invoiceNumber: invoiceNumber || undefined,
       lineItems: [
         {
           date: null,
@@ -483,6 +484,7 @@ function parseTaxInvoice(
       netAmount: totalAmount,
       periodMonth,
       periodYear,
+      invoiceNumber: invoiceNumber || undefined,
       lineItems: [
         {
           date: null,

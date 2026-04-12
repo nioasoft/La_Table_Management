@@ -41,6 +41,7 @@ export async function PATCH(
       eventsCommission,
       additionalBenefits,
       invoiceGeneration,
+      journalEntryGeneration,
       notes,
       isActive,
       franchiseeIds,
@@ -79,6 +80,8 @@ export async function PATCH(
       updateData.additionalBenefits = additionalBenefits || null;
     if (invoiceGeneration !== undefined)
       updateData.invoiceGeneration = invoiceGeneration;
+    if (journalEntryGeneration !== undefined)
+      updateData.journalEntryGeneration = journalEntryGeneration;
     if (notes !== undefined) updateData.notes = notes || null;
     if (isActive !== undefined) updateData.isActive = isActive;
 

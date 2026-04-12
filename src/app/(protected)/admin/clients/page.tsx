@@ -94,6 +94,7 @@ interface ClientFormData {
   eventsCommission: string;
   additionalBenefits: string;
   invoiceGeneration: boolean;
+  journalEntryGeneration: boolean;
   notes: string;
   isActive: boolean;
   franchiseeIds: string[];
@@ -118,6 +119,7 @@ const initialFormData: ClientFormData = {
   eventsCommission: "",
   additionalBenefits: "",
   invoiceGeneration: false,
+  journalEntryGeneration: false,
   notes: "",
   isActive: true,
   franchiseeIds: [],
@@ -259,6 +261,7 @@ export default function ClientsPage() {
       eventsCommission: c.eventsCommission ?? "",
       additionalBenefits: c.additionalBenefits ?? "",
       invoiceGeneration: c.invoiceGeneration,
+      journalEntryGeneration: c.journalEntryGeneration,
       notes: c.notes ?? "",
       isActive: c.isActive,
       franchiseeIds: c.franchisees.map((f) => f.id),
@@ -327,6 +330,7 @@ export default function ClientsPage() {
       eventsCommission: formData.eventsCommission.trim() || null,
       additionalBenefits: formData.additionalBenefits.trim() || null,
       invoiceGeneration: formData.invoiceGeneration,
+      journalEntryGeneration: formData.journalEntryGeneration,
       notes: formData.notes.trim() || null,
       isActive: formData.isActive,
       franchiseeIds: formData.franchiseeIds,
@@ -882,6 +886,22 @@ export default function ClientsPage() {
                   className="cursor-pointer font-normal"
                 >
                   {he.clients.form.invoiceGeneration}
+                </Label>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="client-journalEntryGeneration"
+                  checked={formData.journalEntryGeneration}
+                  onCheckedChange={(checked) =>
+                    updateField("journalEntryGeneration", checked === true)
+                  }
+                  disabled={isSubmitting}
+                />
+                <Label
+                  htmlFor="client-journalEntryGeneration"
+                  className="cursor-pointer font-normal"
+                >
+                  פקודת יומן
                 </Label>
               </div>
               {editingClient && (

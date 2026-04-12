@@ -64,6 +64,7 @@ export async function POST(request: NextRequest) {
       eventsCommission,
       additionalBenefits,
       invoiceGeneration,
+      journalEntryGeneration,
       notes,
       franchiseeIds,
     } = body;
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       eventsCommission: eventsCommission || null,
       additionalBenefits: additionalBenefits || null,
       invoiceGeneration: invoiceGeneration ?? false,
+      journalEntryGeneration: journalEntryGeneration ?? false,
       notes: notes || null,
       createdBy: user.id,
     });
