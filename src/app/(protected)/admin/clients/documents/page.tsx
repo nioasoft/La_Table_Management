@@ -669,7 +669,9 @@ export default function ClientDocumentsPage() {
                     totalAmount: string | null;
                     source: string;
                     processingStatus: string;
-                  }) => (
+                  }) => {
+                    const isTabit = doc.documentType === "tabit_report";
+                    return (
                     <TableRow key={doc.id}>
                       <TableCell className="pe-4">
                         <a
@@ -688,19 +690,18 @@ export default function ClientDocumentsPage() {
                           variant="outline"
                           className="text-xs"
                         >
-                          {doc.documentType === "tabit_report"
-                            ? "טאביט"
-                            : "לקוח"}
+                          {isTabit ? "טאביט" : "לקוח"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">
-                          {doc.clientName ?? "-"}
+                        {/* Tabit files contain data for ALL clients — client/franchisee columns are not meaningful per-row */}
+                        <span className="text-sm text-muted-foreground">
+                          {isTabit ? "—" : (doc.clientName ?? "-")}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm">
-                          {doc.franchiseeName}
+                        <span className="text-sm text-muted-foreground">
+                          {isTabit ? "—" : doc.franchiseeName}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -722,7 +723,8 @@ export default function ClientDocumentsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  )
+                    );
+                  }
                 )}
               </TableBody>
             </Table>
