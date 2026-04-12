@@ -185,19 +185,68 @@ export default function ClientDocumentsPage() {
   }, [matrix, searchTerm, filterStatus, visibleClients]);
 
   // Filtered recent docs
+  // Tabit uploads create multiple records (one per franchisee × client) — deduplicate
+  // to show a single row per uploaded file with the SUM of all its amounts.
   const filteredRecentDocs = useMemo(() => {
     if (!recentDocs) return [];
     const search = searchTerm.trim().toLowerCase();
-    return recentDocs.filter((doc: {
+    type Doc = {
+      id: string;
+      originalFileName: string;
+      documentType: string;
+      fileUrl: string | null;
       franchiseeName: string;
       processingStatus: string;
       clientName: string | null;
-    }) => {
+      totalAmount: string | null;
+      source: string;
+    };
+
+    // Step 1: apply filters
+    const filtered = (recentDocs as Doc[]).filter((doc) => {
       if (search && !doc.franchiseeName.toLowerCase().includes(search)) return false;
       if (filterStatus !== "all" && doc.processingStatus !== filterStatus) return false;
-      if (filterClientId !== "all" && doc.clientName !== activeClients.find((c: { id: string }) => c.id === filterClientId)?.name) return false;
+      if (
+        filterClientId !== "all" &&
+        doc.clientName !== activeClients.find((c: { id: string }) => c.id === filterClientId)?.name
+      ) {
+        return false;
+      }
       return true;
     });
+
+    // Step 2: deduplicate Tabit rows by fileUrl (or filename as fallback)
+    // Collapse multiple records from the same Tabit file into one aggregate row
+    const tabitGroups = new Map<
+      string,
+      { doc: Doc; totalSum: number; count: number }
+    >();
+    const nonTabit: Doc[] = [];
+    for (const doc of filtered) {
+      if (doc.documentType === "tabit_report") {
+        const key = doc.fileUrl ?? doc.originalFileName;
+        const amt = doc.totalAmount ? parseFloat(doc.totalAmount) : 0;
+        const existing = tabitGroups.get(key);
+        if (existing) {
+          existing.totalSum += amt;
+          existing.count++;
+        } else {
+          tabitGroups.set(key, { doc, totalSum: amt, count: 1 });
+        }
+      } else {
+        nonTabit.push(doc);
+      }
+    }
+
+    // Build aggregated Tabit rows
+    const tabitAggregated: Doc[] = Array.from(tabitGroups.values()).map(
+      ({ doc, totalSum }) => ({
+        ...doc,
+        totalAmount: totalSum.toString(),
+      })
+    );
+
+    return [...tabitAggregated, ...nonTabit];
   }, [recentDocs, searchTerm, filterStatus, filterClientId, activeClients]);
 
   // Column totals
