@@ -536,7 +536,7 @@ function matchFranchiseeFromFilename(
   // Strip extension
   const withoutExt = filename.replace(/\.[^.]+$/, "");
 
-  // Split on double underscore — Wolt uses "{branch}__sales_report__..."
+  // Split on double underscore — Wolt legacy: "{branch}__sales_report__..."
   const doubleUnderscoreParts = withoutExt.split("__");
   if (doubleUnderscoreParts.length > 1) {
     const branchPart = doubleUnderscoreParts[0].trim();
@@ -550,6 +550,30 @@ function matchFranchiseeFromFilename(
           franchiseeName: result.matchedFranchisee.name,
         };
       }
+    }
+  }
+
+  // Wolt ezcount (File B): "<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf"
+  const singleUnderscoreParts = withoutExt.split("_");
+  if (
+    singleUnderscoreParts.length >= 3 &&
+    /^[\u0590-\u05FF]+$/.test(singleUnderscoreParts[0]) &&
+    /^[A-Za-z]+$/.test(singleUnderscoreParts[1])
+  ) {
+    const hebCity = /^[\u0590-\u05FF]+$/.test(singleUnderscoreParts[2])
+      ? singleUnderscoreParts[2]
+      : "";
+    const candidate = hebCity
+      ? `${singleUnderscoreParts[0]} ${hebCity}`
+      : singleUnderscoreParts[0];
+    const result = matchFranchiseeName(candidate, franchisees, {
+      minConfidence: 0.6,
+    });
+    if (result.matchedFranchisee) {
+      return {
+        franchiseeId: result.matchedFranchisee.id,
+        franchiseeName: result.matchedFranchisee.name,
+      };
     }
   }
 
@@ -627,38 +651,49 @@ function matchFranchiseeFromSubject(
 /**
  * Filter attachments to pick the most relevant document per client.
  *
- * Wolt emails contain 4 PDFs: 2 invoices, 1 netting report, 1 sales report.
- * For reconciliation against Tabit we only need the sales_report.
+ * Wolt emails contain ~4 PDFs per branch:
+ *   - Tax invoice A: "לכבוד = restaurant" (Wolt's commission invoice)
+ *   - Tax invoice B: "לכבוד = Wolt Enterprises", ezcount-generated ← PREFERRED
+ *   - sales_report: transaction breakdown
+ *   - netting/settlement doc
+ *
+ * File B filename pattern: `<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf`
+ * (starts with a Hebrew token and a single underscore).
  */
 function filterAttachments(
   attachments: Array<{ filename: string; contentType: string; downloadUrl: string }>,
   clientCode: string
 ): Array<{ filename: string; contentType: string; downloadUrl: string }> {
   if (clientCode === "WOLT" && attachments.length > 1) {
-    // Prefer sales_report — it contains the total sales we need for reconciliation
+    // Primary: ezcount sales tax invoice to Wolt Enterprises (File B)
+    const ezcountInvoice = attachments.find((a) => {
+      const name = a.filename.toLowerCase();
+      if (a.contentType !== "application/pdf") return false;
+      if (/sales_report|netting|commission/.test(name)) return false;
+      // Must start with a Hebrew token followed by a single underscore
+      return /^[\u0590-\u05FF]+_/.test(a.filename);
+    });
+    if (ezcountInvoice) {
+      console.log(
+        `[email-inbound] Wolt: selected ezcount tax invoice from ${attachments.length} attachments: ${ezcountInvoice.filename}`
+      );
+      return [ezcountInvoice];
+    }
+
+    // Defensive fallback: sales_report (no netAmount will be extracted)
     const salesReport = attachments.find((a) =>
       a.filename.toLowerCase().includes("sales_report")
     );
     if (salesReport) {
-      console.log(
-        `[email-inbound] Wolt: selected sales_report from ${attachments.length} attachments: ${salesReport.filename}`
+      console.warn(
+        `[email-inbound] Wolt: no ezcount tax invoice found — falling back to sales_report: ${salesReport.filename}`
       );
       return [salesReport];
     }
 
-    // Fallback: pick the largest PDF (sales report is typically much larger)
-    const sorted = [...attachments]
-      .filter((a) => a.contentType === "application/pdf")
-      .sort((a, b) => {
-        // Can't sort by size since it's not in the type, but filename length as rough heuristic
-        return 0;
-      });
-    if (sorted.length > 0) {
-      console.log(
-        `[email-inbound] Wolt: no sales_report found, using first PDF: ${sorted[0].filename}`
-      );
-      return [sorted[0]];
-    }
+    console.warn(
+      `[email-inbound] Wolt: neither ezcount tax invoice nor sales_report found in ${attachments.length} attachments`
+    );
   }
 
   // For other clients, process all attachments

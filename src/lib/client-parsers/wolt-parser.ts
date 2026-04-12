@@ -1,17 +1,19 @@
 /**
  * Wolt PDF parser
  *
- * Handles TWO document types:
+ * Handles THREE document types:
  *
- * 1. **Sales Report** (sales_report PDF) — the primary document for reconciliation.
- *    Contains a transaction-by-transaction breakdown of all Wolt orders for a branch.
- *    Key data: franchisee name (English or Hebrew in filename), total sales,
- *    additions (refunds), deductions (compensations), extra fees.
+ * 1. **ezcount Sales Tax Invoice** (File B, `לכבוד Wolt Enterprises`) — the preferred
+ *    document as of 2026-04. Invoice the restaurant issues to Wolt, ezcount-generated.
+ *    Provides both gross sales (Tabit comparison) and net payable (future invoicing).
  *
- * 2. **Tax Invoice** (חשבונית מס מקור) — legacy format, kept for backwards compat.
- *    Contains invoice-level summary. Franchisee name in "XXX | YYY" Hebrew pattern.
+ * 2. **Sales Report** (sales_report PDF) — legacy primary, kept as fallback.
+ *    Transaction-by-transaction breakdown of all Wolt orders for a branch.
  *
- * The email-inbound handler prefers the sales_report attachment when available.
+ * 3. **Tax Invoice** (חשבונית מס מקור, legacy) — older concise format without the
+ *    "Wolt Enterprises" recipient.
+ *
+ * The email-inbound handler prefers the ezcount sales tax invoice (File B).
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
@@ -35,24 +37,158 @@ export async function parseWoltFile(
       return { success: false, data: null, errors, warnings };
     }
 
-    // Detect document type: sales_report has transaction lines with order numbers
+    // Detect File B (ezcount sales tax invoice to Wolt Enterprises)
+    const isEzcountWoltInvoice = /לכבוד[\s\S]{0,80}?Wolt\s+Enterprises/.test(
+      text
+    );
+
+    if (isEzcountWoltInvoice) {
+      return parseEzcountWoltInvoice(text, warnings);
+    }
+
+    // Detect sales_report: transaction lines with 8-digit order numbers
     const isSalesReport =
       text.includes("תואקסע טוריפ") || // "פירוט עסקאות" reversed
       text.includes("פירוט עסקאות") ||
       /Wolt\+הזמנה מספר/.test(text) ||
-      /\d{8}\s/.test(text); // 8-digit order numbers
+      /\d{8}\s/.test(text);
 
     if (isSalesReport) {
       return parseSalesReport(text, warnings);
-    } else {
-      return parseTaxInvoice(text, warnings);
     }
+
+    return parseTaxInvoice(text, warnings);
   } catch (error) {
     errors.push(
       `שגיאה בקריאת PDF וולט: ${error instanceof Error ? error.message : String(error)}`
     );
     return { success: false, data: null, errors, warnings };
   }
+}
+
+/**
+ * Parse the ezcount-generated sales tax invoice the restaurant issues to Wolt.
+ *
+ * Structure (RTL, partially reversed by pdf-parse):
+ *   Issuer (restaurant) at the top (e.g. "פט ויני עזריאלי בע״מ")
+ *   Branch line: "<city> | <ENG_NAME> | <hebName>"
+ *   לכבוד / Wolt Enterprises Israel Ltd
+ *   תקופת החיוב DD.MM.YYYY - DD.MM.YYYY
+ *   מכירות כ"סה <exclVAT> <vatPct> <vatAmt> <inclVAT>        ← gross sales
+ *   תוספות כ"סה ...
+ *   ניכויים כ"סה ...
+ *   כ"סה <exclVAT> <vatAmt> <inclVAT>                         ← net after adjustments
+ *
+ * Franchisee name is intentionally NOT extracted here — downstream
+ * `resolveFranchisee` uses `matchFranchiseeFromFilename` on the ezcount filename
+ * (e.g. "נתנזון_NATANZON_חיפה_...pdf"), which is more reliable.
+ */
+function parseEzcountWoltInvoice(
+  text: string,
+  warnings: string[]
+): ClientDocumentProcessingResult {
+  const errors: string[] = [];
+
+  // ── Period: pick the LATER date from "DD.MM.YYYY - DD.MM.YYYY" ──
+  // pdf-parse emits the range in RTL order (end - start), so we parse both
+  // and take the max to be safe.
+  let periodMonth: number | undefined;
+  let periodYear: number | undefined;
+  const periodMatch = text.match(
+    /(\d{2})\.(\d{2})\.(\d{4})\s*-\s*(\d{2})\.(\d{2})\.(\d{4})/
+  );
+  if (periodMatch) {
+    const d1 = new Date(
+      parseInt(periodMatch[3]),
+      parseInt(periodMatch[2]) - 1,
+      parseInt(periodMatch[1])
+    );
+    const d2 = new Date(
+      parseInt(periodMatch[6]),
+      parseInt(periodMatch[5]) - 1,
+      parseInt(periodMatch[4])
+    );
+    const end = d1 > d2 ? d1 : d2;
+    periodMonth = end.getMonth() + 1;
+    periodYear = end.getFullYear();
+  }
+
+  // ── Gross sales: line containing "מכירות כ"סה" — take the LAST decimal number ──
+  let gross = 0;
+  const lines = text.split(/\n/);
+  for (const line of lines) {
+    if (/מכירות\s+כ"סה/.test(line)) {
+      const nums = [...line.matchAll(/(-?[\d,]+\.\d{2})/g)].map((m) =>
+        parseFloat(m[1].replace(/,/g, ""))
+      );
+      if (nums.length > 0) {
+        gross = nums[nums.length - 1];
+        break;
+      }
+    }
+  }
+
+  // ── Net: standalone "כ"סה" line (not the "מכירות/תוספות/ניכויים" rows) ──
+  // There can be multiple matches (totals block); take the LAST one in the document.
+  let net = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!/^כ"סה\s/.test(trimmed)) continue;
+    if (/מכירות|תוספות|ניכויים|בחיוב/.test(trimmed)) continue;
+    const nums = [...trimmed.matchAll(/(-?[\d,]+\.\d{2})/g)].map((m) =>
+      parseFloat(m[1].replace(/,/g, ""))
+    );
+    if (nums.length > 0) {
+      net = nums[nums.length - 1];
+    }
+  }
+
+  // ── Invoice number (optional, for description) ──
+  let invoiceNumber = "";
+  const invoiceMatch = text.match(/חשבונית\s*'מס\s*\n?\s*(\d+)/);
+  if (invoiceMatch) {
+    invoiceNumber = invoiceMatch[1];
+  }
+
+  if (gross === 0) {
+    errors.push("לא נמצא סכום מכירות (סה\"כ מכירות) בחשבונית וולט");
+    return { success: false, data: null, errors, warnings };
+  }
+
+  if (net === 0) {
+    // Rare — degrade gracefully
+    warnings.push('לא נמצא סכום נטו (סה"כ) — נשמר הסכום ברוטו בלבד');
+    net = gross;
+  }
+
+  if (Math.abs(gross - net) > 0.01) {
+    warnings.push(
+      `סה"כ מכירות: ${gross.toLocaleString()} ₪ | סה"כ נטו לתשלום: ${net.toLocaleString()} ₪`
+    );
+  }
+
+  return {
+    success: true,
+    data: {
+      franchiseeName: "", // resolved downstream from filename
+      totalAmount: gross,
+      commissionAmount: 0,
+      commissionRate: 0,
+      netAmount: net,
+      periodMonth,
+      periodYear,
+      lineItems: [
+        {
+          date: null,
+          description: `חשבונית וולט${invoiceNumber ? ` ${invoiceNumber}` : ""}`,
+          amount: gross,
+          commission: 0,
+        },
+      ],
+    },
+    errors,
+    warnings,
+  };
 }
 
 /**
