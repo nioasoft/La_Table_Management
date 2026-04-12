@@ -271,6 +271,13 @@ export async function POST(request: NextRequest) {
     } else {
       // ── Attachment-based client ──
 
+      // Log ALL raw attachments so we can diagnose filter/selection issues.
+      console.log(
+        `[email-inbound] ${identifiedClient.clientCode}: ${email.attachments.length} raw attachments: ${email.attachments
+          .map((a) => `"${a.filename}" (${a.contentType})`)
+          .join(", ")}`
+      );
+
       // Filter to PDF/Excel attachments only — skip inline images (logo, icons)
       const documentAttachments = email.attachments.filter(
         (a) =>
