@@ -29,6 +29,7 @@ import {
   updateSyncLogEntry,
 } from "@/data-access/gmail-sync";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
+import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -346,10 +347,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Filter attachments: prefer sales_report for Wolt, skip commission/netting docs
-      const filteredAttachments = filterAttachments(
+      // Filter attachments: for Wolt, peek content to pick File B (sales
+      // invoice to Wolt Enterprises); for others, pass through unchanged.
+      const filteredAttachments = await filterAttachments(
         documentAttachments,
-        identifiedClient.clientCode
+        identifiedClient.clientCode,
+        downloadAttachment
       );
 
       for (const attachment of filteredAttachments) {
@@ -560,27 +563,26 @@ function matchFranchiseeFromFilename(
     }
   }
 
-  // Wolt ezcount (File B): "<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf"
+  // Wolt ezcount (File B): "<heb...>_<...>_<hebCity>_<date>_<time>_<hash>.pdf"
+  // Filename may be all-Hebrew (e.g. "מינה_טומיי_חיפה_...") or include an
+  // English business-name token (e.g. "נתנזון_NATANZON_חיפה_..."). In both
+  // cases we collect the Hebrew tokens to build the branch candidate.
   const singleUnderscoreParts = withoutExt.split("_");
-  if (
-    singleUnderscoreParts.length >= 3 &&
-    /^[\u0590-\u05FF]+$/.test(singleUnderscoreParts[0]) &&
-    /^[A-Za-z]+$/.test(singleUnderscoreParts[1])
-  ) {
-    const hebCity = /^[\u0590-\u05FF]+$/.test(singleUnderscoreParts[2])
-      ? singleUnderscoreParts[2]
-      : "";
-    const candidate = hebCity
-      ? `${singleUnderscoreParts[0]} ${hebCity}`
-      : singleUnderscoreParts[0];
-    const result = matchFranchiseeName(candidate, franchisees, {
-      minConfidence: 0.6,
-    });
-    if (result.matchedFranchisee) {
-      return {
-        franchiseeId: result.matchedFranchisee.id,
-        franchiseeName: result.matchedFranchisee.name,
-      };
+  const hebrewTokens = singleUnderscoreParts.filter((p) =>
+    /^[\u0590-\u05FF][\u0590-\u05FF ]*$/.test(p)
+  );
+  if (hebrewTokens.length >= 1) {
+    const candidate = hebrewTokens.join(" ").trim();
+    if (candidate.length >= 3) {
+      const result = matchFranchiseeName(candidate, franchisees, {
+        minConfidence: 0.6,
+      });
+      if (result.matchedFranchisee) {
+        return {
+          franchiseeId: result.matchedFranchisee.id,
+          franchiseeName: result.matchedFranchisee.name,
+        };
+      }
     }
   }
 
@@ -655,58 +657,69 @@ function matchFranchiseeFromSubject(
   return null;
 }
 
+type Attachment = { filename: string; contentType: string; downloadUrl: string };
+
 /**
  * Filter attachments to pick the most relevant document per client.
  *
- * Wolt emails contain ~4 PDFs per branch:
- *   - Tax invoice A: "לכבוד = restaurant" (Wolt's commission invoice)
- *   - Tax invoice B: "לכבוד = Wolt Enterprises", ezcount-generated ← PREFERRED
- *   - sales_report: transaction breakdown
- *   - netting/settlement doc
+ * Wolt emails contain ~4-5 attachments per branch:
+ *   - `image001.png` (email signature, inline image — ignore)
+ *   - Two ezcount PDFs (File A = Wolt's commission invoice to restaurant,
+ *     File B = restaurant's sales invoice to Wolt). Filenames are IDENTICAL
+ *     except for the trailing hash, so we must peek content to tell them apart.
+ *   - `__sales_report__` (transaction breakdown, fallback data source)
+ *   - `__netting_report__` (settlement doc, ignored)
  *
- * File B filename pattern: `<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf`
- * (starts with a Hebrew token and a single underscore).
+ * For non-Wolt clients, returns all attachments unchanged.
  */
-function filterAttachments(
-  attachments: Array<{ filename: string; contentType: string; downloadUrl: string }>,
-  clientCode: string
-): Array<{ filename: string; contentType: string; downloadUrl: string }> {
-  if (clientCode === "WOLT" && attachments.length > 1) {
-    // Primary: ezcount sales tax invoice to Wolt Enterprises (File B)
-    // Filename pattern: "<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf"
-    // The English uppercase token in position 2 is the key differentiator from
-    // Wolt's commission invoice (File A), which only has Hebrew tokens.
-    const ezcountInvoice = attachments.find((a) => {
-      const name = a.filename.toLowerCase();
-      if (a.contentType !== "application/pdf") return false;
-      if (/sales_report|netting|commission/.test(name)) return false;
-      return /^[\u0590-\u05FF]+_[A-Z]+_/.test(a.filename);
-    });
-    if (ezcountInvoice) {
+async function filterAttachments(
+  attachments: Attachment[],
+  clientCode: string,
+  download: (url: string) => Promise<Buffer | null>
+): Promise<Attachment[]> {
+  if (clientCode !== "WOLT") return attachments;
+
+  // Candidate ezcount PDFs: Hebrew-first single-underscore filename, not a
+  // report/netting/commission doc.
+  const ezcountCandidates = attachments.filter((a) => {
+    if (a.contentType !== "application/pdf") return false;
+    const lower = a.filename.toLowerCase();
+    if (/sales_report|netting|commission/.test(lower)) return false;
+    // Hebrew token followed by a single underscore (not "__")
+    return /^[\u0590-\u05FF][\u0590-\u05FF ]*_(?!_)/.test(a.filename);
+  });
+
+  // Peek content of each candidate; pick the one that's File B
+  for (const candidate of ezcountCandidates) {
+    const buf = await download(candidate.downloadUrl);
+    if (!buf) continue;
+    const isFileB = await isWoltEzcountFileB(buf);
+    if (isFileB) {
       console.log(
-        `[email-inbound] Wolt: selected ezcount tax invoice from ${attachments.length} attachments: ${ezcountInvoice.filename}`
+        `[email-inbound] Wolt: selected File B (sales invoice to Wolt Enterprises): ${candidate.filename}`
       );
-      return [ezcountInvoice];
+      return [candidate];
     }
-
-    // Defensive fallback: sales_report (no netAmount will be extracted)
-    const salesReport = attachments.find((a) =>
-      a.filename.toLowerCase().includes("sales_report")
-    );
-    if (salesReport) {
-      console.warn(
-        `[email-inbound] Wolt: no ezcount tax invoice found — falling back to sales_report: ${salesReport.filename}`
-      );
-      return [salesReport];
-    }
-
-    console.warn(
-      `[email-inbound] Wolt: neither ezcount tax invoice nor sales_report found in ${attachments.length} attachments`
+    console.log(
+      `[email-inbound] Wolt: skipping ezcount PDF (not File B): ${candidate.filename}`
     );
   }
 
-  // For other clients, process all attachments
-  return attachments;
+  // Defensive fallback: sales_report (no netAmount will be extracted)
+  const salesReport = attachments.find((a) =>
+    a.filename.toLowerCase().includes("sales_report")
+  );
+  if (salesReport) {
+    console.warn(
+      `[email-inbound] Wolt: no File B found among ${ezcountCandidates.length} ezcount PDFs — falling back to sales_report: ${salesReport.filename}`
+    );
+    return [salesReport];
+  }
+
+  console.warn(
+    `[email-inbound] Wolt: neither File B nor sales_report found in ${attachments.length} attachments`
+  );
+  return [];
 }
 
 /**

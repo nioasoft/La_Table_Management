@@ -21,6 +21,25 @@ import type { ClientDocumentProcessingResult } from "./types";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfParse = require("pdf-parse");
 
+/**
+ * Quick content check: is this buffer the ezcount "restaurant → Wolt" sales
+ * invoice (File B), i.e. has `לכבוד Wolt Enterprises` near the recipient block?
+ *
+ * Used by the email-inbound selector to pick the right attachment when Wolt
+ * sends multiple ezcount PDFs (File A = Wolt's commission invoice to the
+ * restaurant; File B = restaurant's sales invoice to Wolt) with filenames
+ * that differ only by the trailing hash.
+ */
+export async function isWoltEzcountFileB(buffer: Buffer): Promise<boolean> {
+  try {
+    const data = await pdfParse(buffer);
+    const text = (data.text as string) ?? "";
+    return /לכבוד[\s\S]{0,80}?Wolt\s+Enterprises/.test(text);
+  } catch {
+    return false;
+  }
+}
+
 export async function parseWoltFile(
   buffer: Buffer,
   mimeType: string
