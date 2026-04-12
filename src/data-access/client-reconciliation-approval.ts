@@ -172,6 +172,7 @@ export interface ExportRow {
   clientName: string;
   hashavshevetCode: string | null;
   hashavshevetName: string | null;
+  invoiceGeneration: boolean;
   clientAmount: number;
   tabitAmount: number;
   netAmount: number | null;
@@ -214,6 +215,7 @@ export async function getApprovedForExport(input: {
       name: client.name,
       hashavshevetCode: client.hashavshevetCode,
       hashavshevetName: client.hashavshevetName,
+      invoiceGeneration: client.invoiceGeneration,
     })
     .from(client)
     .where(inArray(client.id, approvedClientIds));
@@ -261,6 +263,7 @@ export async function getApprovedForExport(input: {
     clientName: c.name,
     hashavshevetCode: c.hashavshevetCode,
     hashavshevetName: c.hashavshevetName,
+    invoiceGeneration: c.invoiceGeneration,
     clientAmount: clientAmounts.get(c.id) ?? 0,
     tabitAmount: tabitAmounts.get(c.id) ?? 0,
     netAmount: netAmounts.get(c.id) ?? null,

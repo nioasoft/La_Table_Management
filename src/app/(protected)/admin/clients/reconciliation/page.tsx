@@ -381,19 +381,20 @@ export default function ClientReconciliationPage() {
   };
 
   const handleByFranchiseeExport = async (
-    exportType: "invoice" | "journal"
+    exportType: "invoice" | "journal" | "client_invoices"
   ) => {
     if (!selectedFranchiseeId) return;
     try {
-      const params = new URLSearchParams({
+      const baseParams = {
         franchiseeId: selectedFranchiseeId,
         periodMonth: String(periodMonth),
         periodYear: String(periodYear),
-        exportType,
-      });
-      const res = await fetch(
-        `/api/reports/hashavshevet/franchisee-export?${params}`
-      );
+      };
+      const endpointUrl =
+        exportType === "client_invoices"
+          ? `/api/reports/hashavshevet/franchisee-client-invoices-export?${new URLSearchParams(baseParams)}`
+          : `/api/reports/hashavshevet/franchisee-export?${new URLSearchParams({ ...baseParams, exportType })}`;
+      const res = await fetch(endpointUrl);
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "שגיאה בייצוא");
@@ -902,6 +903,13 @@ export default function ClientReconciliationPage() {
                           onClick={() => handleByFranchiseeExport("journal")}
                         >
                           פקודת יומן
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            handleByFranchiseeExport("client_invoices")
+                          }
+                        >
+                          חשבוניות לקוחות
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
