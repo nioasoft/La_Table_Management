@@ -666,12 +666,14 @@ function filterAttachments(
 ): Array<{ filename: string; contentType: string; downloadUrl: string }> {
   if (clientCode === "WOLT" && attachments.length > 1) {
     // Primary: ezcount sales tax invoice to Wolt Enterprises (File B)
+    // Filename pattern: "<hebName>_<ENG_NAME>_<hebCity>_<date>_<time>_<hash>.pdf"
+    // The English uppercase token in position 2 is the key differentiator from
+    // Wolt's commission invoice (File A), which only has Hebrew tokens.
     const ezcountInvoice = attachments.find((a) => {
       const name = a.filename.toLowerCase();
       if (a.contentType !== "application/pdf") return false;
       if (/sales_report|netting|commission/.test(name)) return false;
-      // Must start with a Hebrew token followed by a single underscore
-      return /^[\u0590-\u05FF]+_/.test(a.filename);
+      return /^[\u0590-\u05FF]+_[A-Z]+_/.test(a.filename);
     });
     if (ezcountInvoice) {
       console.log(
