@@ -128,32 +128,38 @@ export async function parseMishlohaFile(
     // ---------------------------------------------------------------
     // Franchisee name
     // ---------------------------------------------------------------
-    // The "לכבוד:" line contains the franchisee name.
-    // In pdf-parse RTL output it may appear as:
-    //   "פאט ויני ביג רגבה(ויני רגבה בע"מ)" or similar
-    // We look for "לכבוד" or the reversed visual form "דובכל"
+    // CRITICAL: The franchisee is the ISSUER of the invoice (at the top),
+    // NOT the recipient (who is "משלוחה" — the client being invoiced).
+    //
+    // Invoice structure:
+    //   קסטרא טומאי בע"מ        ← ISSUER (franchisee, first line)
+    //   ח.פ. 514177212           ← issuer tax ID
+    //   ...
+    //   לכבוד: משלוחה (דיב אנד רד)  ← RECIPIENT (the client, NOT the franchisee)
+    //
+    // Strategy: extract the first Hebrew business name BEFORE "לכבוד" appears.
     let franchiseeName = "";
-    for (const line of lines) {
-      // LTR-rendered "לכבוד:" pattern
-      const lekavod = line.match(/לכבוד[:\s]+(.+)/);
-      if (lekavod) {
-        franchiseeName = lekavod[1]
-          .replace(/[,،]/g, "")
-          .replace(/ח\.פ\..*$/, "")
-          .replace(/ת\.ז\..*$/, "")
-          .trim();
+    // Find where "לכבוד" appears and search BEFORE it for the issuer
+    const lekavodIdx = lines.findIndex(
+      (l) => l.match(/לכבוד/) || l.match(/דובכל/)
+    );
+    const searchLines =
+      lekavodIdx > 0 ? lines.slice(0, lekavodIdx) : lines.slice(0, 10);
+
+    for (const line of searchLines) {
+      // Hebrew business name pattern — ends with בע"מ / בעמ / בע״מ
+      const bizMatch = line.match(
+        /^([\u0590-\u05FF][\u0590-\u05FF\s"'״]+?(?:בע"מ|בעמ|בע״מ))/
+      );
+      if (bizMatch) {
+        franchiseeName = bizMatch[1].trim();
         break;
       }
-      // Visual-order reversed: "דובכל" at end of line
-      const reversed = line.match(/(.+?)\s*:?\s*דובכל/);
-      if (reversed) {
-        franchiseeName = reversed[1]
-          .replace(/[,،]/g, "")
-          .replace(/\.פ\.ח.*$/, "")
-          .replace(/\.ז\.ת.*$/, "")
-          .trim();
-        break;
-      }
+    }
+
+    // Fallback: if we couldn't find issuer, log a warning (don't use recipient!)
+    if (!franchiseeName) {
+      warnings.push("לא זוהה שם הזכיין המנפיק של החשבונית");
     }
 
     // ---------------------------------------------------------------
@@ -226,17 +232,31 @@ export async function parseMishlohaFile(
     // ---------------------------------------------------------------
     // Totals extraction
     // ---------------------------------------------------------------
+    // IMPORTANT: mPDF-generated invoices (ezcount) output RTL text where
+    // the amount appears on the line BEFORE the label:
+    //     ₪9,886.64
+    //     סה"כ חייב במע"מ:
+    // Check mPDF patterns FIRST, fall back to LTR patterns.
     let preVatTotal = 0;
     let vatAmount = 0;
     let grandTotal = 0;
 
-    // Pre-VAT total: 'סה"כ חייב במע"מ: ₪756.06'
-    // Normal order
-    const preVatMatch = text.match(
-      /סה"כ\s+חייב\s+במע"מ[:\s]*(₪?)\s*([\d,]+\.?\d*)/
+    // Pre-VAT total
+    // mPDF RTL: "₪9,886.64\nסה"כ חייב במע"מ:" (amount BEFORE label)
+    const preVatMpdfMatch = text.match(
+      /₪?([\d,]+\.\d{2})\s*\n\s*סה"כ\s+חייב\s+במע"מ/
     );
-    if (preVatMatch) {
-      preVatTotal = parseFloat(preVatMatch[2].replace(/,/g, ""));
+    if (preVatMpdfMatch) {
+      preVatTotal = parseFloat(preVatMpdfMatch[1].replace(/,/g, ""));
+    }
+    // LTR: "סה"כ חייב במע"מ: ₪756.06"
+    if (preVatTotal === 0) {
+      const preVatMatch = text.match(
+        /סה"כ\s+חייב\s+במע"מ[:\s]*(?:[^\d\n]*\s)?₪?\s*([\d,]+\.\d{2})/
+      );
+      if (preVatMatch) {
+        preVatTotal = parseFloat(preVatMatch[1].replace(/,/g, ""));
+      }
     }
     // Visual reversed: '756.06₪ :מ"עמב בייח כ"הס'
     if (preVatTotal === 0) {
@@ -247,25 +267,26 @@ export async function parseMishlohaFile(
         preVatTotal = parseFloat(preVatRevMatch[1].replace(/,/g, ""));
       }
     }
-    // Alternative: look for "חייב במע" near a number
-    if (preVatTotal === 0) {
-      const altPreVat = text.match(
-        /חייב\s+במע.*?([\d,]+\.\d{2})/
+
+    // VAT amount
+    // mPDF RTL: "₪1,779.59:18.00%מע"מ" (amount first, then :18%מע"מ)
+    const vatMpdfMatch = text.match(
+      /₪?([\d,]+\.\d{2}):[\d.]+%\s*מע"מ/
+    );
+    if (vatMpdfMatch) {
+      vatAmount = parseFloat(vatMpdfMatch[1].replace(/,/g, ""));
+    }
+    // LTR: "מע"מ 18.00%: ₪136.09"
+    if (vatAmount === 0) {
+      const vatMatch = text.match(
+        /מע"מ\s+[\d.]+%[:\s]*(?:[^\d\n]*\s)?₪?\s*([\d,]+\.\d{2})/
       );
-      if (altPreVat) {
-        preVatTotal = parseFloat(altPreVat[1].replace(/,/g, ""));
+      if (vatMatch) {
+        vatAmount = parseFloat(vatMatch[1].replace(/,/g, ""));
       }
     }
-
-    // VAT amount: 'מע"מ 18.00%: ₪136.09'
-    const vatMatch = text.match(
-      /מע"מ\s+[\d.]+%[:\s]*(₪?)\s*([\d,]+\.?\d*)/
-    );
-    if (vatMatch) {
-      vatAmount = parseFloat(vatMatch[2].replace(/,/g, ""));
-    }
+    // Reversed: '136.09₪ :%00.81 מ"עמ'
     if (vatAmount === 0) {
-      // Reversed: '136.09₪ :%00.81 מ"עמ'
       const vatRevMatch = text.match(
         /([\d,]+\.?\d*)\s*₪?\s*:?\s*%[\d.]+\s+מ"עמ/
       );
@@ -274,17 +295,26 @@ export async function parseMishlohaFile(
       }
     }
 
-    // Grand total: 'סה"כ: ₪892.15' (the final total line)
-    // Strategy: find all numbers near 'סה"כ' patterns.
-    // The grand total is the last 'סה"כ' match that differs from the pre-VAT total.
-    const grandTotalMatches = [
-      ...text.matchAll(/סה"כ[:\s]*(₪?)\s*([\d,]+\.?\d*)/g),
-    ];
-    for (let i = grandTotalMatches.length - 1; i >= 0; i--) {
-      const val = parseFloat(grandTotalMatches[i][2].replace(/,/g, ""));
-      if (val > 0 && val !== preVatTotal) {
-        grandTotal = val;
-        break;
+    // Grand total
+    // mPDF RTL: "₪11,666.23\nסה"כ:" (amount BEFORE bare "סה"כ:")
+    // Use negative lookahead to exclude "סה"כ חייב במע"מ"
+    const grandMpdfMatch = text.match(
+      /₪?([\d,]+\.\d{2})\s*\n\s*סה"כ:(?!\s*חייב)/
+    );
+    if (grandMpdfMatch) {
+      grandTotal = parseFloat(grandMpdfMatch[1].replace(/,/g, ""));
+    }
+    // LTR: "סה"כ: ₪892.15"
+    if (grandTotal === 0) {
+      const grandTotalMatches = [
+        ...text.matchAll(/סה"כ:[:\s]*(?:[^\d\n]*\s)?₪?\s*([\d,]+\.\d{2})/g),
+      ];
+      for (let i = grandTotalMatches.length - 1; i >= 0; i--) {
+        const val = parseFloat(grandTotalMatches[i][1].replace(/,/g, ""));
+        if (val > 0 && val !== preVatTotal) {
+          grandTotal = val;
+          break;
+        }
       }
     }
 
@@ -369,14 +399,28 @@ export async function parseMishlohaFile(
       warnings.push("לא זוהתה תקופת החשבונית");
     }
 
+    // Calculate derived amounts if needed
+    if (grandTotal > 0 && preVatTotal === 0 && vatAmount > 0) {
+      preVatTotal = grandTotal - vatAmount;
+    }
+    if (preVatTotal > 0 && grandTotal === 0 && vatAmount > 0) {
+      grandTotal = preVatTotal + vatAmount;
+    }
+
     return {
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
-        totalAmount: preVatTotal,
-        commissionAmount: preVatTotal, // The entire invoice IS the commission charge
-        commissionRate: 0, // Not percentage-based; flat service charges
-        netAmount: grandTotal || preVatTotal, // Total incl. VAT
+        // totalAmount = grand total incl VAT (what the franchisee is owed in total)
+        totalAmount: grandTotal || preVatTotal,
+        // commissionAmount = VAT portion (NOT a commission to Mishloha —
+        // Mishloha's commission is already baked into pre-VAT via line deductions)
+        commissionAmount: vatAmount,
+        commissionRate: vatAmount > 0 && preVatTotal > 0
+          ? Math.round((vatAmount / preVatTotal) * 10000) / 100
+          : 0,
+        // netAmount = pre-VAT subtotal (after credit commission + customer comp deductions)
+        netAmount: preVatTotal || grandTotal,
         periodMonth,
         periodYear,
         lineItems:
