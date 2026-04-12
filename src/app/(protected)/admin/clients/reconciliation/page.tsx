@@ -67,6 +67,9 @@ import {
   useUpdateComparisonStatus,
   useUpdateComparisonNotes,
   useReconciliationByFranchisee,
+  useApproveRow,
+  useUnapproveRow,
+  useBatchApproveFranchisee,
   type ByFranchiseeRow,
 } from "@/queries/client-reconciliation";
 import { toast } from "sonner";
@@ -232,6 +235,9 @@ export default function ClientReconciliationPage() {
   const deleteMutation = useDeleteClientReconciliation();
   const approveMutation = useApproveSession();
   const updateComparisonMutation = useUpdateComparisonStatus();
+  const approveRowMutation = useApproveRow();
+  const unapproveRowMutation = useUnapproveRow();
+  const batchApproveFranchiseeMutation = useBatchApproveFranchisee();
 
   const activeClients = (clients ?? []).filter(
     (c: { isActive: boolean }) => c.isActive
@@ -323,6 +329,91 @@ export default function ClientReconciliationPage() {
         onError: (error: Error) => toast.error(error.message),
       }
     );
+  };
+
+  const handleByFranchiseeRowApprove = (clientId: string) => {
+    if (!selectedFranchiseeId) return;
+    approveRowMutation.mutate(
+      {
+        clientId,
+        franchiseeId: selectedFranchiseeId,
+        periodMonth,
+        periodYear,
+      },
+      {
+        onSuccess: () => toast.success("שורה אושרה"),
+        onError: (error: Error) => toast.error(error.message),
+      }
+    );
+  };
+
+  const handleByFranchiseeRowUnapprove = (clientId: string) => {
+    if (!selectedFranchiseeId) return;
+    unapproveRowMutation.mutate(
+      {
+        clientId,
+        franchiseeId: selectedFranchiseeId,
+        periodMonth,
+        periodYear,
+      },
+      {
+        onSuccess: () => toast.success("האישור בוטל"),
+        onError: (error: Error) => toast.error(error.message),
+      }
+    );
+  };
+
+  const handleByFranchiseeApproveAll = () => {
+    if (!selectedFranchiseeId) return;
+    batchApproveFranchiseeMutation.mutate(
+      { franchiseeId: selectedFranchiseeId, periodMonth, periodYear },
+      {
+        onSuccess: (res) =>
+          toast.success(
+            res.approvedCount > 0
+              ? `${res.approvedCount} שורות אושרו`
+              : "אין שורות חדשות לאישור"
+          ),
+        onError: (error: Error) => toast.error(error.message),
+      }
+    );
+  };
+
+  const handleByFranchiseeExport = async (
+    exportType: "invoice" | "journal"
+  ) => {
+    if (!selectedFranchiseeId) return;
+    try {
+      const params = new URLSearchParams({
+        franchiseeId: selectedFranchiseeId,
+        periodMonth: String(periodMonth),
+        periodYear: String(periodYear),
+        exportType,
+      });
+      const res = await fetch(
+        `/api/reports/hashavshevet/franchisee-export?${params}`
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "שגיאה בייצוא");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const filename =
+        res.headers
+          .get("Content-Disposition")
+          ?.match(/filename\*=UTF-8''([^;]+)/)?.[1];
+      a.download = filename ? decodeURIComponent(filename) : "hashavshevet.xlsx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("הקובץ יוצא");
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
   };
 
   const handleExportHashavshevet = async (sessionId: string, exportType: "invoice" | "journal" = "invoice") => {
@@ -740,25 +831,79 @@ export default function ClientReconciliationPage() {
               </div>
             ) : (
               <>
-                {/* Summary */}
-                <div className="grid grid-cols-3 gap-4 p-4 border-b">
-                  <div className="text-center">
-                    <p className="text-lg font-bold tabular-nums text-emerald-600">
-                      {byFranchiseeData.summary.ok}
-                    </p>
-                    <p className="text-xs text-muted-foreground">תקינים</p>
+                {/* Toolbar + Summary */}
+                <div className="flex items-center justify-between gap-2 p-4 border-b">
+                  <div className="grid grid-cols-4 gap-6 flex-1">
+                    <div className="text-center">
+                      <p className="text-lg font-bold tabular-nums text-emerald-600">
+                        {byFranchiseeData.summary.ok}
+                      </p>
+                      <p className="text-xs text-muted-foreground">תקינים</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold tabular-nums text-amber-600">
+                        {byFranchiseeData.summary.mismatch}
+                      </p>
+                      <p className="text-xs text-muted-foreground">פערים</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold tabular-nums text-blue-600">
+                        {byFranchiseeData.summary.approved}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        אושרו ידנית
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg font-bold tabular-nums text-muted-foreground">
+                        {byFranchiseeData.summary.missing}
+                      </p>
+                      <p className="text-xs text-muted-foreground">חסרים</p>
+                    </div>
                   </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold tabular-nums text-amber-600">
-                      {byFranchiseeData.summary.mismatch}
-                    </p>
-                    <p className="text-xs text-muted-foreground">פערים</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold tabular-nums text-muted-foreground">
-                      {byFranchiseeData.summary.missing}
-                    </p>
-                    <p className="text-xs text-muted-foreground">חסרים</p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleByFranchiseeApproveAll}
+                      disabled={
+                        batchApproveFranchiseeMutation.isPending ||
+                        byFranchiseeData.summary.mismatch +
+                          byFranchiseeData.summary.missing <=
+                          byFranchiseeData.summary.approved
+                      }
+                    >
+                      <Check className="h-4 w-4 me-1" />
+                      אשר הכל
+                    </Button>
+                    <DropdownMenu dir="rtl">
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={byFranchiseeData.summary.approved === 0}
+                          title={
+                            byFranchiseeData.summary.approved === 0
+                              ? "אין שורות מאושרות לייצוא"
+                              : "ייצוא לחשבשבת"
+                          }
+                        >
+                          ייצוא
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => handleByFranchiseeExport("invoice")}
+                        >
+                          חשבונית
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleByFranchiseeExport("journal")}
+                        >
+                          פקודת יומן
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
@@ -771,6 +916,7 @@ export default function ClientReconciliationPage() {
                       <TableHead className="text-right">סכום טאביט</TableHead>
                       <TableHead className="text-right">הפרש</TableHead>
                       <TableHead className="text-center">סטטוס</TableHead>
+                      <TableHead className="text-center">פעולות</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -778,6 +924,12 @@ export default function ClientReconciliationPage() {
                       const isLargeDiff =
                         row.absoluteDifference !== null &&
                         row.absoluteDifference > 30;
+                      const isApproved = row.approvedAt !== null;
+                      const canApprove =
+                        !isApproved &&
+                        (row.status === "mismatch" ||
+                          row.status === "missing_client" ||
+                          row.status === "missing_tabit");
 
                       return (
                         <TableRow key={row.clientId}>
@@ -844,13 +996,55 @@ export default function ClientReconciliationPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-center">
-                            {row.status === "ok" ? (
+                            {isApproved ? (
+                              <div
+                                className="flex items-center justify-center gap-1"
+                                title={
+                                  row.approvedByName
+                                    ? `אושר ע״י ${row.approvedByName}`
+                                    : "אושר ידנית"
+                                }
+                              >
+                                <CheckCircle2 className="h-4 w-4 text-blue-500" />
+                                <span className="text-[10px] text-blue-600">
+                                  אושר ידנית
+                                </span>
+                              </div>
+                            ) : row.status === "ok" ? (
                               <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
                             ) : row.status === "mismatch" ? (
                               <AlertCircle className="h-4 w-4 text-amber-500 mx-auto" />
                             ) : (
                               <Minus className="h-4 w-4 text-muted-foreground mx-auto" />
                             )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {canApprove ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs"
+                                onClick={() =>
+                                  handleByFranchiseeRowApprove(row.clientId)
+                                }
+                                disabled={approveRowMutation.isPending}
+                              >
+                                <Check className="h-3 w-3 me-1" />
+                                אשר
+                              </Button>
+                            ) : isApproved ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() =>
+                                  handleByFranchiseeRowUnapprove(row.clientId)
+                                }
+                                disabled={unapproveRowMutation.isPending}
+                              >
+                                בטל אישור
+                              </Button>
+                            ) : null}
                           </TableCell>
                         </TableRow>
                       );

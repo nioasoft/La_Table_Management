@@ -3169,6 +3169,47 @@ export const clientReconciliationComparison = pgTable(
   ]
 );
 
+// Client Reconciliation Approval table
+// Persists per-(client, franchisee, period) approvals for the by-franchisee
+// reconciliation view. Unlike clientReconciliationComparison, which is tied to
+// a session, these approvals reference the computed by-franchisee grid directly.
+export const clientReconciliationApproval = pgTable(
+  "client_reconciliation_approval",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => client.id, { onDelete: "cascade" }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    periodMonth: integer("period_month").notNull(),
+    periodYear: integer("period_year").notNull(),
+    approvedBy: text("approved_by")
+      .notNull()
+      .references(() => user.id),
+    approvedAt: timestamp("approved_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    notes: text("notes"),
+  },
+  (table) => [
+    uniqueIndex("client_reconciliation_approval_unq").on(
+      table.clientId,
+      table.franchiseeId,
+      table.periodMonth,
+      table.periodYear
+    ),
+    index("idx_client_reconciliation_approval_franchisee_period").on(
+      table.franchiseeId,
+      table.periodMonth,
+      table.periodYear
+    ),
+  ]
+);
+
 // Gmail Sync Log table
 export const gmailSyncLog = pgTable(
   "gmail_sync_log",

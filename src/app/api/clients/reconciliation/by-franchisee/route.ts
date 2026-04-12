@@ -10,6 +10,7 @@ import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import { database } from "@/db";
 import { clientDocument, client, franchisee } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
+import { getApprovalsByFranchisee } from "@/data-access/client-reconciliation-approval";
 
 const THRESHOLD = 30; // NIS
 
@@ -22,6 +23,10 @@ interface ByFranchiseeRow {
   difference: number | null;
   absoluteDifference: number | null;
   status: "ok" | "mismatch" | "missing_client" | "missing_tabit" | "missing_both";
+  approvedAt: string | null;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvalNotes: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -156,18 +161,40 @@ export async function GET(request: NextRequest) {
         difference,
         absoluteDifference,
         status,
+        approvedAt: null,
+        approvedBy: null,
+        approvedByName: null,
+        approvalNotes: null,
       });
+    }
+
+    // Hydrate approval state
+    const approvals = await getApprovalsByFranchisee(
+      franchiseeId,
+      periodMonth,
+      periodYear
+    );
+    for (const r of rows) {
+      const a = approvals.get(r.clientId);
+      if (a) {
+        r.approvedAt = a.approvedAt.toISOString();
+        r.approvedBy = a.approvedBy;
+        r.approvedByName = a.approvedByName;
+        r.approvalNotes = a.notes;
+      }
     }
 
     // Sort: mismatches first, then ok, then missing
     const statusOrder = { mismatch: 0, missing_client: 1, missing_tabit: 1, missing_both: 2, ok: 3 };
     rows.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
 
+    const approvedCount = rows.filter((r) => r.approvedAt !== null).length;
     const summary = {
       total: rows.length,
       ok: rows.filter((r) => r.status === "ok").length,
       mismatch: rows.filter((r) => r.status === "mismatch").length,
       missing: rows.filter((r) => r.status.startsWith("missing")).length,
+      approved: approvedCount,
     };
 
     return NextResponse.json({

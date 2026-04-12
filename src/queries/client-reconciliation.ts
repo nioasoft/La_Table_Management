@@ -150,12 +150,22 @@ export interface ByFranchiseeRow {
   difference: number | null;
   absoluteDifference: number | null;
   status: "ok" | "mismatch" | "missing_client" | "missing_tabit" | "missing_both";
+  approvedAt: string | null;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvalNotes: string | null;
 }
 
 export interface ByFranchiseeResponse {
   franchiseeName: string;
   rows: ByFranchiseeRow[];
-  summary: { total: number; ok: number; mismatch: number; missing: number };
+  summary: {
+    total: number;
+    ok: number;
+    mismatch: number;
+    missing: number;
+    approved: number;
+  };
 }
 
 export function useReconciliationByFranchisee(
@@ -234,6 +244,103 @@ export function useUpdateComparisonNotes() {
     onSuccess: () => {
       queryClient.invalidateQueries({
         queryKey: clientReconciliationKeys.all,
+      });
+    },
+  });
+}
+
+// ─── By-franchisee approval mutations ─────────────────────────────────────────
+
+interface ApprovalIdentifier {
+  clientId: string;
+  franchiseeId: string;
+  periodMonth: number;
+  periodYear: number;
+}
+
+export function useApproveRow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ApprovalIdentifier & { notes?: string }) => {
+      const res = await fetch("/api/clients/reconciliation/approvals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "שגיאה באישור");
+      }
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.byFranchisee(
+          vars.franchiseeId,
+          vars.periodMonth,
+          vars.periodYear
+        ),
+      });
+    },
+  });
+}
+
+export function useUnapproveRow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: ApprovalIdentifier) => {
+      const res = await fetch("/api/clients/reconciliation/approvals", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "שגיאה בביטול אישור");
+      }
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.byFranchisee(
+          vars.franchiseeId,
+          vars.periodMonth,
+          vars.periodYear
+        ),
+      });
+    },
+  });
+}
+
+export function useBatchApproveFranchisee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      franchiseeId: string;
+      periodMonth: number;
+      periodYear: number;
+    }) => {
+      const res = await fetch(
+        "/api/clients/reconciliation/approvals/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "שגיאה באישור מרובה");
+      }
+      return res.json() as Promise<{ approvedCount: number }>;
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.byFranchisee(
+          vars.franchiseeId,
+          vars.periodMonth,
+          vars.periodYear
+        ),
       });
     },
   });
