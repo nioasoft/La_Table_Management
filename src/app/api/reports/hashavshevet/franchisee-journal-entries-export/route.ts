@@ -23,6 +23,11 @@
  * Note: column-3 header in Reut's sample has a Hebrew spelling typo
  * ("אסמתכא" instead of "אסמכתא"); matched verbatim so Hashavshevet import
  * lines up column-by-column.
+ *
+ * HEVER exception: emits TWO rows instead of one (replaces the standard row):
+ *   Row 1 — standard "הכנ" row with debit=HEVER, amount = −18% of gross.
+ *   Row 2 — contra entry: transaction type empty, debit="אמריקן",
+ *           credit=HEVER, amount = original gross.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -34,6 +39,13 @@ import { getApprovedForExport } from "@/data-access/client-reconciliation-approv
 import * as XLSX from "xlsx";
 
 const TRANSACTION_TYPE = "הכנ";
+
+// HEVER — special two-row journal-entry format.
+// Row 1: standard "הכנ" row for HEVER, amount = −18% of original (commission).
+// Row 2: contra entry booking gross from "אמריקן" (debit) to HEVER (credit).
+const HEVER_CLIENT_CODE = "HEVER";
+const HEVER_COMMISSION_RATE = 0.18;
+const HEVER_CONTRA_ACCOUNT = "אמריקן";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAdminOrSuperUser(request);
@@ -95,7 +107,7 @@ export async function GET(request: NextRequest) {
         return { row: a, amount };
       })
       .filter((x) => x.amount !== 0)
-      .map(({ row, amount }) => {
+      .flatMap(({ row, amount }): (string | number | Date)[][] => {
         const last4 = row.invoiceNumber
           ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
           : "";
@@ -111,16 +123,48 @@ export async function GET(request: NextRequest) {
           row.hashavshevetName ||
           row.hashavshevetCode ||
           row.clientName;
+
+        // HEVER special: emit two rows that REPLACE the standard single row.
+        if (row.clientCode === HEVER_CLIENT_CODE) {
+          const commissionAmount = -Math.round(amount * HEVER_COMMISSION_RATE);
+          return [
+            [
+              TRANSACTION_TYPE, // סוג תנועה = "הכנ"
+              "", // אסמכתא 1
+              last4, // אסמתכא 2
+              lastDay, // תאריך אסמכתא
+              lastDay, // תאריך ערך
+              debitAccount, // חן חובה = HEVER (resolved)
+              "", // חן זכות
+              commissionAmount, // סכום חובה  (−18%)
+              commissionAmount, // סכום זכות
+            ],
+            [
+              "", // סוג תנועה (empty for contra entry)
+              "", // אסמכתא 1
+              last4, // אסמתכא 2
+              lastDay, // תאריך אסמכתא
+              lastDay, // תאריך ערך
+              HEVER_CONTRA_ACCOUNT, // חן חובה = "אמריקן"
+              debitAccount, // חן זכות = HEVER
+              amount, // סכום חובה  (gross original)
+              amount, // סכום זכות
+            ],
+          ];
+        }
+
         return [
-          TRANSACTION_TYPE, // סוג תנועה
-          "", // אסמכתא 1
-          last4, // אסמתכא 2 (last 4 digits of invoice number)
-          lastDay, // תאריך אסמכתא
-          lastDay, // תאריך ערך
-          debitAccount, // חן חובה
-          "", // חן זכות
-          amount, // סכום חובה
-          amount, // סכום זכות
+          [
+            TRANSACTION_TYPE, // סוג תנועה
+            "", // אסמכתא 1
+            last4, // אסמתכא 2 (last 4 digits of invoice number)
+            lastDay, // תאריך אסמכתא
+            lastDay, // תאריך ערך
+            debitAccount, // חן חובה
+            "", // חן זכות
+            amount, // סכום חובה
+            amount, // סכום זכות
+          ],
         ];
       });
 
