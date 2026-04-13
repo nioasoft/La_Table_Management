@@ -565,7 +565,6 @@ export default function ClientDocumentsPage() {
               >
                 <colgroup>
                   <col className="w-[140px]" />
-                  <col className="w-[120px]" />
                   {visibleClients.map((c: { id: string }) => (
                     <col key={c.id} className="w-[140px]" />
                   ))}
@@ -574,9 +573,6 @@ export default function ClientDocumentsPage() {
                   <tr className="bg-muted/50">
                     <th className="text-right pe-2 py-2 text-sm font-bold text-muted-foreground border border-border sticky start-0 bg-muted/50 z-10">
                       זכיין
-                    </th>
-                    <th className="text-center px-1 py-2 text-sm font-bold text-muted-foreground border border-border">
-                      טאביט
                     </th>
                     {visibleClients.map(
                       (c: { id: string; name: string }) => {
@@ -615,18 +611,6 @@ export default function ClientDocumentsPage() {
                           {row.franchiseeName}
                         </div>
                       </td>
-                      <td
-                        className={`text-center py-1.5 px-1 border border-border ${getStatusColor(row.tabitStatus)}`}
-                      >
-                        <div className="flex items-center justify-center gap-1">
-                          {getStatusIcon(row.tabitStatus)}
-                          {row.tabitAmount && (
-                            <span className="text-xs tabular-nums text-muted-foreground">
-                              {formatAmount(row.tabitAmount)}
-                            </span>
-                          )}
-                        </div>
-                      </td>
                       {visibleClients.map(
                         (c: { id: string }) => {
                           const cell = row.clients[c.id];
@@ -656,11 +640,6 @@ export default function ClientDocumentsPage() {
                     <tr className="bg-muted/70 font-bold border-t-2 border-border">
                       <td className="pe-2 py-2 border border-border sticky start-0 bg-muted/70 z-10 text-sm">
                         סה&quot;כ
-                      </td>
-                      <td className="text-center py-2 px-1 border border-border">
-                        <span className="text-xs tabular-nums font-bold">
-                          {formatAmount(columnTotals.tabitTotal > 0 ? String(columnTotals.tabitTotal) : null)}
-                        </span>
                       </td>
                       {visibleClients.map((c: { id: string }) => (
                         <td key={c.id} className="text-center py-2 px-1 border border-border">
