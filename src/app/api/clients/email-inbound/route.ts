@@ -380,6 +380,10 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        console.log(
+          `[email-inbound] ${identifiedClient.clientCode}: processing "${attachment.filename}" as ${attachment.documentType ?? documentType}`
+        );
+
         const result = await processClientDocument({
           buffer,
           fileName: attachment.filename,
@@ -389,7 +393,7 @@ export async function POST(request: NextRequest) {
           franchiseeId: franchiseeMatch.franchiseeId,
           periodMonth: period.month,
           periodYear: period.year,
-          documentType: "client_report",
+          documentType: attachment.documentType ?? documentType,
           source: "gmail_fetch",
           gmailMessageId: email_id,
         });
@@ -657,20 +661,39 @@ function matchFranchiseeFromSubject(
   return null;
 }
 
-type Attachment = { filename: string; contentType: string; downloadUrl: string };
+type Attachment = {
+  filename: string;
+  contentType: string;
+  downloadUrl: string;
+  /**
+   * Set when filterAttachments has classified this attachment per-file (Wolt).
+   * Overrides the subject-based `documentType` derived from the email subject.
+   */
+  documentType?: "client_report" | "commission_invoice";
+};
 
 /**
- * Filter attachments to pick the most relevant document per client.
+ * Filter attachments to pick the most relevant documents per client.
  *
  * Wolt emails contain ~4-5 attachments per branch:
- *   - `image001.png` (email signature, inline image — ignore)
- *   - Two ezcount PDFs (File A = Wolt's commission invoice to restaurant,
- *     File B = restaurant's sales invoice to Wolt). Filenames are IDENTICAL
- *     except for the trailing hash, so we must peek content to tell them apart.
- *   - `__sales_report__` (transaction breakdown, fallback data source)
+ *   - `image001.png` (email signature, inline image — ignored earlier)
+ *   - Two ezcount PDFs with near-identical filenames (only trailing hash
+ *     differs). Content distinguishes them:
+ *       - **File A** = Wolt's commission invoice to the restaurant
+ *         (`commission_invoice` — what we verify on the commission-invoices
+ *         page). Identified as the ezcount PDF that is **not** File B.
+ *       - **File B** = restaurant's sales invoice to Wolt Enterprises
+ *         (`client_report` — gross sales, matched via `isWoltEzcountFileB`).
+ *   - `__sales_report__` (transaction breakdown; legacy fallback for File B)
  *   - `__netting_report__` (settlement doc, ignored)
  *
- * For non-Wolt clients, returns all attachments unchanged.
+ * We return both File A and File B, each tagged with its intended
+ * `documentType`. The caller uses `attachment.documentType` (set here) to
+ * override the subject-based classification, since a single Wolt email
+ * carries both document types.
+ *
+ * For non-Wolt clients, returns all attachments unchanged (no per-file
+ * documentType; the caller falls back to the subject-based classifier).
  */
 async function filterAttachments(
   attachments: Attachment[],
@@ -689,37 +712,55 @@ async function filterAttachments(
     return /^[\u0590-\u05FF][\u0590-\u05FF ]*_(?!_)/.test(a.filename);
   });
 
-  // Peek content of each candidate; pick the one that's File B
+  // Peek content of each candidate to split into File A / File B
+  let fileA: Attachment | null = null;
+  let fileB: Attachment | null = null;
+
   for (const candidate of ezcountCandidates) {
     const buf = await download(candidate.downloadUrl);
     if (!buf) continue;
     const isFileB = await isWoltEzcountFileB(buf);
-    if (isFileB) {
+    if (isFileB && !fileB) {
+      fileB = candidate;
       console.log(
-        `[email-inbound] Wolt: selected File B (sales invoice to Wolt Enterprises): ${candidate.filename}`
+        `[email-inbound] Wolt: matched File B (sales invoice to Wolt Enterprises): ${candidate.filename}`
       );
-      return [candidate];
+    } else if (!isFileB && !fileA) {
+      fileA = candidate;
+      console.log(
+        `[email-inbound] Wolt: matched File A (commission invoice from Wolt): ${candidate.filename}`
+      );
     }
-    console.log(
-      `[email-inbound] Wolt: skipping ezcount PDF (not File B): ${candidate.filename}`
-    );
+    if (fileA && fileB) break;
   }
 
-  // Defensive fallback: sales_report (no netAmount will be extracted)
-  const salesReport = attachments.find((a) =>
-    a.filename.toLowerCase().includes("sales_report")
-  );
-  if (salesReport) {
+  const results: Attachment[] = [];
+  if (fileA) {
+    results.push({ ...fileA, documentType: "commission_invoice" });
+  }
+  if (fileB) {
+    results.push({ ...fileB, documentType: "client_report" });
+  } else {
+    // Defensive fallback for the client_report side only:
+    // sales_report (no netAmount will be extracted)
+    const salesReport = attachments.find((a) =>
+      a.filename.toLowerCase().includes("sales_report")
+    );
+    if (salesReport) {
+      console.warn(
+        `[email-inbound] Wolt: no File B found among ${ezcountCandidates.length} ezcount PDFs — falling back to sales_report: ${salesReport.filename}`
+      );
+      results.push({ ...salesReport, documentType: "client_report" });
+    }
+  }
+
+  if (results.length === 0) {
     console.warn(
-      `[email-inbound] Wolt: no File B found among ${ezcountCandidates.length} ezcount PDFs — falling back to sales_report: ${salesReport.filename}`
+      `[email-inbound] Wolt: neither File A nor File B nor sales_report found in ${attachments.length} attachments`
     );
-    return [salesReport];
   }
 
-  console.warn(
-    `[email-inbound] Wolt: neither File B nor sales_report found in ${attachments.length} attachments`
-  );
-  return [];
+  return results;
 }
 
 /**

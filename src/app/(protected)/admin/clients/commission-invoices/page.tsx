@@ -38,14 +38,16 @@ import {
   Clock,
   ChevronRight,
   ChevronLeft,
+  X,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
 import {
   useInvoiceVerificationSummary,
   useInvoiceVerification,
-  useUploadCommissionInvoice,
+  commissionInvoiceKeys,
 } from "@/queries/commission-invoices";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -495,8 +497,30 @@ function VerificationStatusBadge({ status }: { status: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Upload Dialog
+// Upload Dialog — multi-file, auto-match franchisee from PDF
 // ─────────────────────────────────────────────────────────────────────────────
+
+type FileStatus =
+  | "pending"
+  | "uploading"
+  | "success"
+  | "error"
+  | "needs_franchisee";
+
+interface FileRow {
+  id: string;
+  file: File;
+  status: FileStatus;
+  message?: string;
+  invoiceNumber?: string | null;
+  totalAmount?: number | null;
+  periodMonth?: number | null;
+  periodYear?: number | null;
+  franchiseeName?: string | null;
+  extractedName?: string | null;
+  candidates?: Array<{ id: string; name: string; confidence: number }>;
+  pickedFranchiseeId?: string;
+}
 
 interface UploadInvoiceDialogProps {
   open: boolean;
@@ -514,116 +538,422 @@ function UploadInvoiceDialog({
   periodYear,
 }: UploadInvoiceDialogProps) {
   const [clientId, setClientId] = useState("");
-  const [franchiseeId, setFranchiseeId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [rows, setRows] = useState<FileRow[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const { data: allFranchisees } = useFranchisees();
-  const uploadMutation = useUploadCommissionInvoice();
+  const queryClient = useQueryClient();
 
-  const handleUpload = async () => {
-    if (!file || !clientId || !franchiseeId) return;
+  const reset = useCallback(() => {
+    setClientId("");
+    setRows([]);
+    setIsUploading(false);
+  }, []);
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("documentType", "commission_invoice");
-    formData.append("clientId", clientId);
-    formData.append("franchiseeId", franchiseeId);
-    formData.append("periodMonth", String(periodMonth));
-    formData.append("periodYear", String(periodYear));
-
-    try {
-      await uploadMutation.mutateAsync(formData);
-      toast.success("החשבונית הועלתה בהצלחה");
-      onOpenChange(false);
-      setFile(null);
-      setClientId("");
-      setFranchiseeId("");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "שגיאה בהעלאת חשבונית"
-      );
-    }
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) reset();
+    onOpenChange(nextOpen);
   };
 
+  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) return;
+    const newRows: FileRow[] = picked.map((f) => ({
+      id: `${f.name}-${f.size}-${f.lastModified}`,
+      file: f,
+      status: "pending",
+    }));
+    setRows((prev) => [...prev, ...newRows]);
+    // allow re-selecting the same file after removing it
+    e.target.value = "";
+  };
+
+  const updateRow = useCallback(
+    (id: string, patch: Partial<FileRow>) => {
+      setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    },
+    []
+  );
+
+  const removeRow = (id: string) => {
+    setRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  type UploadOutcome = "success" | "needs_franchisee" | "error" | "skipped";
+
+  const uploadOne = useCallback(
+    async (row: FileRow, explicitFranchiseeId?: string): Promise<UploadOutcome> => {
+      const formData = new FormData();
+      formData.append("file", row.file);
+      formData.append("documentType", "commission_invoice");
+      formData.append("clientId", clientId);
+      formData.append("periodMonth", String(periodMonth));
+      formData.append("periodYear", String(periodYear));
+      if (explicitFranchiseeId) {
+        formData.append("franchiseeId", explicitFranchiseeId);
+      }
+
+      updateRow(row.id, { status: "uploading", message: undefined });
+
+      try {
+        const res = await fetch("/api/clients/documents", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.status === 422 && data?.needsFranchiseeSelection) {
+          updateRow(row.id, {
+            status: "needs_franchisee",
+            message: data.error,
+            extractedName: data.extractedName ?? null,
+            candidates: data.candidates ?? [],
+          });
+          return "needs_franchisee";
+        }
+
+        if (!res.ok) {
+          updateRow(row.id, {
+            status: "error",
+            message: data?.error ?? "שגיאה בהעלאת חשבונית",
+          });
+          return "error";
+        }
+
+        // Success — pull parsed data for display
+        const doc = data?.document ?? {};
+        const pr = data?.processingResult?.data ?? {};
+        const matchedFranchiseeName =
+          (allFranchisees ?? []).find(
+            (f: { id: string; name: string }) => f.id === doc.franchiseeId
+          )?.name ?? null;
+
+        updateRow(row.id, {
+          status: "success",
+          message: data?.skippedDuplicate ? "כבר הועלה (דילוג)" : undefined,
+          invoiceNumber: pr.invoiceNumber ?? doc.invoiceNumber ?? null,
+          totalAmount:
+            pr.totalAmount ??
+            (doc.totalAmount ? parseFloat(doc.totalAmount) : null),
+          periodMonth: pr.periodMonth ?? doc.periodMonth ?? null,
+          periodYear: pr.periodYear ?? doc.periodYear ?? null,
+          franchiseeName: matchedFranchiseeName,
+        });
+        return "success";
+      } catch (err) {
+        updateRow(row.id, {
+          status: "error",
+          message: err instanceof Error ? err.message : "שגיאה בהעלאה",
+        });
+        return "error";
+      }
+    },
+    [clientId, periodMonth, periodYear, allFranchisees, updateRow]
+  );
+
+  const handleUploadAll = async () => {
+    if (!clientId || rows.length === 0) return;
+    setIsUploading(true);
+
+    let ok = 0;
+    let needsFr = 0;
+    let errs = 0;
+    // Sequential — each call runs a PDF parse on the server; avoids burst.
+    for (const row of rows) {
+      if (row.status === "success" || row.status === "uploading") {
+        continue;
+      }
+      const outcome = await uploadOne(row);
+      if (outcome === "success") ok++;
+      else if (outcome === "needs_franchisee") needsFr++;
+      else if (outcome === "error") errs++;
+    }
+
+    setIsUploading(false);
+
+    const parts: string[] = [];
+    if (ok > 0) parts.push(`${ok} הועלו`);
+    if (needsFr > 0) parts.push(`${needsFr} דורשים בחירת זכיין`);
+    if (errs > 0) parts.push(`${errs} שגיאות`);
+    if (parts.length > 0) {
+      toast.success(parts.join(" | "), { duration: 6000 });
+    }
+
+    queryClient.invalidateQueries({ queryKey: commissionInvoiceKeys.all });
+  };
+
+  const retryWithFranchisee = (row: FileRow) => {
+    if (!row.pickedFranchiseeId) return;
+    void uploadOne(row, row.pickedFranchiseeId);
+  };
+
+  const hasPendingOrNeedsFranchisee = rows.some(
+    (r) => r.status === "pending" || r.status === "needs_franchisee"
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" dir="rtl">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="sm:max-w-[900px] max-h-[85vh] overflow-y-auto"
+        dir="rtl"
+      >
         <DialogHeader>
-          <DialogTitle>העלאת חשבונית עמלה</DialogTitle>
+          <DialogTitle>העלאת חשבוניות עמלה</DialogTitle>
           <DialogDescription>
-            העלו חשבונית עמלה מלקוח לאימות מול הדוח
+            אפשר לבחור מספר PDF-ים באותו מייל. הזכיין יזוהה אוטומטית
+            מתוך תוכן החשבונית.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-4">
-          <div className="grid gap-2">
-            <Label>לקוח</Label>
-            <Select value={clientId} onValueChange={setClientId} dir="rtl">
-              <SelectTrigger>
-                <SelectValue placeholder="בחר לקוח" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                {clients.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                    {c.code && ` (${c.code})`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+        <div className="grid gap-4 py-2">
+          {/* Client + period */}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>לקוח</Label>
+              <Select
+                value={clientId}
+                onValueChange={setClientId}
+                dir="rtl"
+                disabled={isUploading}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="בחר לקוח" />
+                </SelectTrigger>
+                <SelectContent dir="rtl">
+                  {clients.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                      {c.code && ` (${c.code})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="grid gap-2">
-            <Label>זכיין</Label>
-            <Select
-              value={franchiseeId}
-              onValueChange={setFranchiseeId}
-              dir="rtl"
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="בחר זכיין" />
-              </SelectTrigger>
-              <SelectContent dir="rtl">
-                {(allFranchisees ?? []).map((f: { id: string; name: string }) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>תקופה</Label>
-            <div className="text-sm text-muted-foreground">
-              {MONTHS[periodMonth - 1]} {periodYear}
+            <div className="grid gap-2">
+              <Label>תקופה</Label>
+              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                {MONTHS[periodMonth - 1]} {periodYear}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                תקופה תעודכן אוטומטית מהחשבונית אם תזוהה
+              </p>
             </div>
           </div>
 
+          {/* File input */}
           <div className="grid gap-2">
-            <Label>קובץ חשבונית (PDF)</Label>
+            <Label>קבצי חשבונית (PDF — ניתן לבחור מספר קבצים)</Label>
             <Input
               type="file"
-              accept=".pdf"
+              accept=".pdf,application/pdf"
+              multiple
               dir="ltr"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              disabled={isUploading || !clientId}
+              onChange={handleFilesPicked}
             />
+            {!clientId && (
+              <p className="text-xs text-amber-600">
+                יש לבחור לקוח לפני העלאת קבצים
+              </p>
+            )}
           </div>
+
+          {/* Files table */}
+          {rows.length > 0 && (
+            <div className="rounded-md border overflow-hidden">
+              <Table dir="rtl">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>קובץ</TableHead>
+                    <TableHead className="text-center">סטטוס</TableHead>
+                    <TableHead>מס׳ חשבונית</TableHead>
+                    <TableHead>סכום</TableHead>
+                    <TableHead>זכיין / הערה</TableHead>
+                    <TableHead></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell
+                        className="max-w-[200px] truncate text-xs"
+                        title={row.file.name}
+                      >
+                        {row.file.name}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <FileStatusBadge status={row.status} />
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {row.invoiceNumber ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {formatAmountDetailed(row.totalAmount ?? null)}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {row.status === "needs_franchisee" ? (
+                          <FranchiseePicker
+                            row={row}
+                            allFranchisees={allFranchisees ?? []}
+                            onPick={(franchiseeId) =>
+                              updateRow(row.id, {
+                                pickedFranchiseeId: franchiseeId,
+                              })
+                            }
+                          />
+                        ) : row.status === "success" ? (
+                          <span className="text-emerald-700">
+                            {row.franchiseeName ?? "—"}
+                          </span>
+                        ) : row.message ? (
+                          <span className="text-red-600">{row.message}</span>
+                        ) : (
+                          "—"
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.status === "needs_franchisee" &&
+                        row.pickedFranchiseeId ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => retryWithFranchisee(row)}
+                            disabled={isUploading}
+                          >
+                            נסה שוב
+                          </Button>
+                        ) : row.status === "pending" ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeRow(row.id)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button
-            onClick={handleUpload}
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={isUploading}
+          >
+            {rows.some((r) => r.status === "success") ? "סגור" : "ביטול"}
+          </Button>
+          <Button
+            onClick={handleUploadAll}
             disabled={
-              !file || !clientId || !franchiseeId || uploadMutation.isPending
+              !clientId ||
+              rows.length === 0 ||
+              isUploading ||
+              !hasPendingOrNeedsFranchisee
             }
           >
-            {uploadMutation.isPending && (
-              <Loader2 className="h-4 w-4 me-2 animate-spin" />
-            )}
-            העלאה ואימות
+            {isUploading && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
+            {isUploading
+              ? "מעלה..."
+              : `העלה ${rows.filter((r) => r.status === "pending").length || ""} קבצים`}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function FileStatusBadge({ status }: { status: FileStatus }) {
+  switch (status) {
+    case "pending":
+      return <Badge variant="outline">ממתין</Badge>;
+    case "uploading":
+      return (
+        <Badge variant="outline" className="gap-1">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          מעלה
+        </Badge>
+      );
+    case "success":
+      return (
+        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+          <CheckCircle2 className="h-3 w-3 me-1" />
+          הועלה
+        </Badge>
+      );
+    case "needs_franchisee":
+      return (
+        <Badge variant="secondary" className="gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          זכיין?
+        </Badge>
+      );
+    case "error":
+      return (
+        <Badge variant="destructive" className="gap-1">
+          <AlertTriangle className="h-3 w-3" />
+          שגיאה
+        </Badge>
+      );
+  }
+}
+
+function FranchiseePicker({
+  row,
+  allFranchisees,
+  onPick,
+}: {
+  row: FileRow;
+  allFranchisees: Array<{ id: string; name: string }>;
+  onPick: (franchiseeId: string) => void;
+}) {
+  const candidateIds = new Set((row.candidates ?? []).map((c) => c.id));
+  const remaining = allFranchisees.filter((f) => !candidateIds.has(f.id));
+
+  return (
+    <div className="space-y-1">
+      {row.extractedName && (
+        <div className="text-xs text-muted-foreground">
+          זוהה: &quot;{row.extractedName}&quot;
+        </div>
+      )}
+      <Select
+        value={row.pickedFranchiseeId ?? ""}
+        onValueChange={onPick}
+        dir="rtl"
+      >
+        <SelectTrigger className="h-8 text-xs">
+          <SelectValue placeholder="בחר זכיין..." />
+        </SelectTrigger>
+        <SelectContent dir="rtl">
+          {(row.candidates ?? []).length > 0 && (
+            <>
+              {(row.candidates ?? []).map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name} ({Math.round(c.confidence * 100)}%)
+                </SelectItem>
+              ))}
+              <SelectItem
+                key="__divider__"
+                value="__divider__"
+                disabled
+              >
+                ──────────
+              </SelectItem>
+            </>
+          )}
+          {remaining.map((f) => (
+            <SelectItem key={f.id} value={f.id}>
+              {f.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

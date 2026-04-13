@@ -17,8 +17,10 @@ import {
   processTabitUpload,
   processHeverUpload,
 } from "@/lib/client-document-processor";
+import { getInvoiceParser } from "@/lib/client-parsers";
+import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import { database } from "@/db";
-import { client } from "@/db/schema";
+import { client, franchisee, type Franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -173,9 +175,6 @@ export async function POST(request: NextRequest) {
     }
 
     // ---- CLIENT REPORT / COMMISSION INVOICE UPLOAD ----
-    if (!franchiseeId) {
-      return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
-    }
     if (!periodMonth || !periodYear) {
       return NextResponse.json(
         { error: "נדרשים חודש ושנה" },
@@ -202,6 +201,85 @@ export async function POST(request: NextRequest) {
 
     const parserCode = clientRecord.parserCode ?? clientRecord.code ?? "";
 
+    // For commission_invoice without an explicit franchiseeId, extract the
+    // franchisee name from the PDF via the invoice parser and fuzzy-match it.
+    // On failed match, return 422 with candidates so the UI can prompt the
+    // admin to pick manually (cheaper than showing a dropdown up-front for
+    // every upload, since the parser gets it right in the common case).
+    let resolvedFranchiseeId = franchiseeId;
+    if (documentType === "commission_invoice" && !resolvedFranchiseeId) {
+      const mimeType = file.type || "application/pdf";
+      const invoiceParser = getInvoiceParser(parserCode);
+      if (!invoiceParser) {
+        return NextResponse.json(
+          {
+            error:
+              "לא נמצא פרסר לחשבונית עבור לקוח זה — יש לבחור זכיין ידנית",
+            needsFranchiseeSelection: true,
+          },
+          { status: 422 }
+        );
+      }
+
+      let extractedName: string | null = null;
+      try {
+        const preParse = await invoiceParser(buffer, mimeType);
+        if (preParse.success && preParse.data?.franchiseeName) {
+          extractedName = preParse.data.franchiseeName;
+        }
+      } catch (err) {
+        console.warn(
+          "[documents-upload] invoice pre-parse for franchisee extraction failed:",
+          err
+        );
+      }
+
+      if (!extractedName) {
+        return NextResponse.json(
+          {
+            error:
+              "לא ניתן לזהות זכיין מהקובץ — יש לבחור זכיין ידנית",
+            needsFranchiseeSelection: true,
+          },
+          { status: 422 }
+        );
+      }
+
+      const activeFranchisees = (await database
+        .select()
+        .from(franchisee)
+        .where(eq(franchisee.isActive, true))) as Franchisee[];
+
+      const matchResult = matchFranchiseeName(extractedName, activeFranchisees, {
+        minConfidence: 0.6,
+      });
+
+      if (!matchResult.matchedFranchisee) {
+        return NextResponse.json(
+          {
+            error: `לא זוהה זכיין תואם עבור "${extractedName}" — יש לבחור זכיין ידנית`,
+            needsFranchiseeSelection: true,
+            extractedName,
+            candidates: matchResult.alternatives.slice(0, 5).map((a) => ({
+              id: a.franchisee.id,
+              name: a.franchisee.name,
+              confidence: a.confidence,
+            })),
+          },
+          { status: 422 }
+        );
+      }
+
+      resolvedFranchiseeId = matchResult.matchedFranchisee.id;
+      console.log(
+        `[documents-upload] auto-matched franchisee for commission_invoice: "${extractedName}" → "${matchResult.matchedFranchisee.name}" (confidence ${matchResult.confidence.toFixed(2)})`
+      );
+    }
+
+    if (!resolvedFranchiseeId) {
+      return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
+    }
+
     // Process through unified pipeline
     const result = await processClientDocument({
       buffer,
@@ -209,7 +287,7 @@ export async function POST(request: NextRequest) {
       mimeType: file.type || "application/octet-stream",
       clientId,
       parserCode,
-      franchiseeId,
+      franchiseeId: resolvedFranchiseeId,
       periodMonth: parseInt(periodMonth),
       periodYear: parseInt(periodYear),
       documentType: documentType as "client_report" | "commission_invoice",
