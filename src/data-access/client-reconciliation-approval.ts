@@ -279,10 +279,19 @@ export async function getApprovalsByFranchisee(
 
 /**
  * Aggregate approved reconciliation rows for export.
- * Returns per-client totals (client_report sum, tabit_report sum, net) for the
- * approved rows in this franchisee+period.
+ * Returns per-client totals (client_report sum, tabit_report sum, net) for
+ * rows in this franchisee+period that should be exported to Hashavshevet.
  *
- * Used by the per-franchisee Hashavshevet export.
+ * A row qualifies for export when EITHER:
+ *   1. It is manually approved (`client_reconciliation_approval.approvedBy` set), OR
+ *   2. It is auto-approved (status="ok"): |client_amount - tabit_amount| <= ₪30, OR
+ *   3. It is GIFTCARD with tabit-only data (Tabit is sole source of truth).
+ *
+ * Mirrors the status logic in `/api/clients/reconciliation/by-franchisee`,
+ * so anything the UI shows with a green ✓ is included in the export.
+ *
+ * Used by the per-franchisee Hashavshevet exports
+ * (client-invoices + journal-entries).
  */
 export interface ExportRow {
   clientId: string;
@@ -300,6 +309,8 @@ export interface ExportRow {
   approvedAt: Date;
 }
 
+const RECONCILIATION_THRESHOLD = 30; // NIS — same as by-franchisee endpoint
+
 export async function getApprovedForExport(input: {
   franchiseeId: string;
   periodMonth: number;
@@ -307,6 +318,7 @@ export async function getApprovedForExport(input: {
 }): Promise<ExportRow[]> {
   const { franchiseeId, periodMonth, periodYear } = input;
 
+  // 1. Manually-approved rows (with approvedBy set, note-only rows excluded).
   const approvals = await database
     .select({
       clientId: clientReconciliationApproval.clientId,
@@ -318,34 +330,16 @@ export async function getApprovedForExport(input: {
         eq(clientReconciliationApproval.franchiseeId, franchiseeId),
         eq(clientReconciliationApproval.periodMonth, periodMonth),
         eq(clientReconciliationApproval.periodYear, periodYear),
-        // Only true approvals (rows with approvedBy set) are exported.
-        // Note-only rows (approvedBy = null) are excluded.
         isNotNull(clientReconciliationApproval.approvedBy)
       )
     );
 
-  if (approvals.length === 0) return [];
-
-  const approvedClientIds = approvals.map((a) => a.clientId);
   const approvedAtByClient = new Map(
     approvals.map((a) => [a.clientId, a.approvedAt])
   );
 
-  // Fetch client metadata
-  const clients = await database
-    .select({
-      id: client.id,
-      code: client.code,
-      name: client.name,
-      hashavshevetCode: client.hashavshevetCode,
-      hashavshevetName: client.hashavshevetName,
-      invoiceGeneration: client.invoiceGeneration,
-      journalEntryGeneration: client.journalEntryGeneration,
-    })
-    .from(client)
-    .where(inArray(client.id, approvedClientIds));
-
-  // Aggregate document totals (client_report + tabit_report + netAmount) per client
+  // 2. Aggregate ALL documents for this franchisee+period (we need every
+  //    client to determine status, not just manually-approved ones).
   const docs = await database
     .select({
       clientId: clientDocument.clientId,
@@ -359,8 +353,7 @@ export async function getApprovedForExport(input: {
       and(
         eq(clientDocument.franchiseeId, franchiseeId),
         eq(clientDocument.periodMonth, periodMonth),
-        eq(clientDocument.periodYear, periodYear),
-        inArray(clientDocument.clientId, approvedClientIds)
+        eq(clientDocument.periodYear, periodYear)
       )
     );
 
@@ -387,18 +380,71 @@ export async function getApprovedForExport(input: {
     }
   }
 
-  return clients.map((c) => ({
-    clientId: c.id,
-    clientCode: c.code,
-    clientName: c.name,
-    hashavshevetCode: c.hashavshevetCode,
-    hashavshevetName: c.hashavshevetName,
-    invoiceGeneration: c.invoiceGeneration,
-    journalEntryGeneration: c.journalEntryGeneration,
-    clientAmount: clientAmounts.get(c.id) ?? 0,
-    tabitAmount: tabitAmounts.get(c.id) ?? 0,
-    netAmount: netAmounts.get(c.id) ?? null,
-    invoiceNumber: invoiceNumbers.get(c.id) ?? null,
-    approvedAt: approvedAtByClient.get(c.id) ?? new Date(),
-  }));
+  const clientIdsWithDocs = new Set<string>([
+    ...clientAmounts.keys(),
+    ...tabitAmounts.keys(),
+  ]);
+
+  // Union: any client with documents OR with a manual approval.
+  const candidateIds = new Set<string>([
+    ...clientIdsWithDocs,
+    ...approvedAtByClient.keys(),
+  ]);
+
+  if (candidateIds.size === 0) return [];
+
+  // 3. Fetch metadata for all candidate clients.
+  const clients = await database
+    .select({
+      id: client.id,
+      code: client.code,
+      name: client.name,
+      hashavshevetCode: client.hashavshevetCode,
+      hashavshevetName: client.hashavshevetName,
+      invoiceGeneration: client.invoiceGeneration,
+      journalEntryGeneration: client.journalEntryGeneration,
+    })
+    .from(client)
+    .where(inArray(client.id, Array.from(candidateIds)));
+
+  // 4. Filter: keep only rows that qualify (manually approved OR status=ok).
+  const result: ExportRow[] = [];
+
+  for (const c of clients) {
+    const clientAmt = clientAmounts.has(c.id) ? clientAmounts.get(c.id)! : null;
+    const tabitAmt = tabitAmounts.has(c.id) ? tabitAmounts.get(c.id)! : null;
+    const isManuallyApproved = approvedAtByClient.has(c.id);
+
+    let isAutoOk = false;
+    if (clientAmt !== null && tabitAmt !== null) {
+      isAutoOk = Math.abs(clientAmt - tabitAmt) <= RECONCILIATION_THRESHOLD;
+    } else if (c.code === "GIFTCARD" && tabitAmt !== null) {
+      // Gift Card: Tabit is the sole source of truth.
+      isAutoOk = true;
+    }
+
+    if (!isManuallyApproved && !isAutoOk) continue;
+
+    // For GIFTCARD with tabit-only, surface the tabit amount as the
+    // client amount (mirrors by-franchisee endpoint behavior).
+    const exportClientAmount =
+      clientAmt ?? (c.code === "GIFTCARD" ? (tabitAmt ?? 0) : 0);
+
+    result.push({
+      clientId: c.id,
+      clientCode: c.code,
+      clientName: c.name,
+      hashavshevetCode: c.hashavshevetCode,
+      hashavshevetName: c.hashavshevetName,
+      invoiceGeneration: c.invoiceGeneration,
+      journalEntryGeneration: c.journalEntryGeneration,
+      clientAmount: exportClientAmount,
+      tabitAmount: tabitAmt ?? 0,
+      netAmount: netAmounts.get(c.id) ?? null,
+      invoiceNumber: invoiceNumbers.get(c.id) ?? null,
+      approvedAt: approvedAtByClient.get(c.id) ?? new Date(),
+    });
+  }
+
+  return result;
 }
