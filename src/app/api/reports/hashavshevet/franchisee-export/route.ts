@@ -73,7 +73,8 @@ export async function GET(request: NextRequest) {
       .map((a) => {
         const isWolt = a.clientCode === "WOLT";
         const isLaTableInvoice =
-          a.clientCode === "LATABLE" && isInvoiceExport;
+          (a.clientCode === "LATABLE" || a.clientCode === "LATABLEMARK") &&
+          isInvoiceExport;
         let price: number;
         if (isWolt) {
           // Use exact net when we have it; else exact client amount.

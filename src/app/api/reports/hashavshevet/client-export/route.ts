@@ -88,7 +88,9 @@ export async function GET(request: NextRequest) {
     // is for 50% of it). Journal-entry exports keep the full amount.
     const isInvoiceExport = exportType !== "journal";
     const isLaTableInvoice =
-      clientRow.code === "LATABLE" && isInvoiceExport;
+      (clientRow.code === "LATABLE" ||
+        clientRow.code === "LATABLEMARK") &&
+      isInvoiceExport;
     const rows = comparisons
       .filter((comp) => {
         const net = comp.netAmount ? parseFloat(comp.netAmount) : 0;

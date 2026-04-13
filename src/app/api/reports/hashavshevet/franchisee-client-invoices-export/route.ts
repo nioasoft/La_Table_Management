@@ -95,15 +95,24 @@ export async function GET(request: NextRequest) {
         let price: number;
         if (a.clientCode === "WOLT") {
           price = a.netAmount !== null ? a.netAmount : a.clientAmount;
-        } else if (a.clientCode === "LATABLE") {
-          // La Table: the UI shows the original Tabit amount but the invoice
-          // we issue to the client is for half of it (accounting arrangement).
+        } else if (
+          a.clientCode === "LATABLE" ||
+          a.clientCode === "LATABLEMARK"
+        ) {
+          // La Table (incl. the LATABLEMARK marketing variant): the UI shows
+          // the original Tabit amount but the invoice we issue to the client
+          // is for half of it (accounting arrangement).
           price = Math.round(a.clientAmount / 2);
         } else {
           price = Math.round(a.clientAmount);
         }
+        // LATABLEMARK gets a custom item key ("ארוחותש"); everyone else uses
+        // the default ITEM_KEY ("ארוחות").
+        const itemKey =
+          a.clientCode === "LATABLEMARK" ? "ארוחותש" : ITEM_KEY;
         return {
           accountKey: a.accountKey,
+          itemKey,
           price,
         };
       })
@@ -113,15 +122,16 @@ export async function GET(request: NextRequest) {
     const occasionalEntries = occasionalRows
       .map((o) => ({
         accountKey: o.hashavshevetName || o.tabitColumnName,
+        itemKey: ITEM_KEY,
         price: Math.round(o.totalAmount),
       }))
       .filter((x) => x.price !== 0);
 
     const rows = [...regularEntries, ...occasionalEntries].map(
-      ({ accountKey, price }, index) => [
+      ({ accountKey, itemKey, price }, index) => [
         accountKey, // מפתח חשבון
         "", // שם
-        ITEM_KEY, // מפתח פריט
+        itemKey, // מפתח פריט
         "", // שם פריט
         1, // כמות
         price, // מחיר
