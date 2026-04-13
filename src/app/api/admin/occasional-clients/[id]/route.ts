@@ -5,7 +5,6 @@ import { z } from "zod";
 
 const patchSchema = z
   .object({
-    hashavshevetCode: z.string().trim().nullable().optional(),
     hashavshevetName: z.string().trim().nullable().optional(),
     ignored: z.boolean().optional(),
     notes: z.string().nullable().optional(),
@@ -39,8 +38,6 @@ export async function PATCH(
   // Normalize empty strings to null so hashavshevetName="" clears the mapping
   const normalized = {
     ...patch,
-    hashavshevetCode:
-      patch.hashavshevetCode === "" ? null : patch.hashavshevetCode,
     hashavshevetName:
       patch.hashavshevetName === "" ? null : patch.hashavshevetName,
     notes: patch.notes === "" ? null : patch.notes,

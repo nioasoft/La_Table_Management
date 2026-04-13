@@ -109,8 +109,7 @@ export async function GET(request: NextRequest) {
     // Occasional-client rows — same whole-shekel rounding rule as non-WOLT.
     const occasionalEntries = occasionalRows
       .map((o) => ({
-        accountKey:
-          o.hashavshevetCode || o.hashavshevetName || o.tabitColumnName,
+        accountKey: o.hashavshevetName || o.tabitColumnName,
         price: Math.round(o.totalAmount),
       }))
       .filter((x) => x.price !== 0);

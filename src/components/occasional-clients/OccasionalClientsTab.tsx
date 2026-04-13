@@ -47,38 +47,24 @@ interface EditableRowProps {
   row: OccasionalClient;
   onSave: (
     id: string,
-    patch: { hashavshevetCode?: string | null; hashavshevetName?: string | null }
+    patch: { hashavshevetName?: string | null }
   ) => Promise<void>;
   onToggleIgnore: (row: OccasionalClient) => Promise<void>;
   isToggling: boolean;
 }
 
 function EditableRow({ row, onSave, onToggleIgnore, isToggling }: EditableRowProps) {
-  const [code, setCode] = useState(row.hashavshevetCode ?? "");
   const [name, setName] = useState(row.hashavshevetName ?? "");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setCode(row.hashavshevetCode ?? "");
     setName(row.hashavshevetName ?? "");
-  }, [row.hashavshevetCode, row.hashavshevetName]);
+  }, [row.hashavshevetName]);
 
-  const codeDirty = code.trim() !== (row.hashavshevetCode ?? "").trim();
-  const nameDirty = name.trim() !== (row.hashavshevetName ?? "").trim();
-  const dirty = codeDirty || nameDirty;
-
-  const handleBlurCode = async () => {
-    if (!codeDirty) return;
-    setSaving(true);
-    try {
-      await onSave(row.id, { hashavshevetCode: code.trim() || null });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const dirty = name.trim() !== (row.hashavshevetName ?? "").trim();
 
   const handleBlurName = async () => {
-    if (!nameDirty) return;
+    if (!dirty) return;
     setSaving(true);
     try {
       await onSave(row.id, { hashavshevetName: name.trim() || null });
@@ -94,21 +80,11 @@ function EditableRow({ row, onSave, onToggleIgnore, isToggling }: EditableRowPro
       </TableCell>
       <TableCell>
         <Input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          onBlur={handleBlurCode}
-          placeholder="—"
-          className="h-8 text-sm max-w-[160px]"
-          disabled={row.ignored}
-        />
-      </TableCell>
-      <TableCell>
-        <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={handleBlurName}
           placeholder="—"
-          className="h-8 text-sm max-w-[220px]"
+          className="h-8 text-sm max-w-[260px]"
           disabled={row.ignored}
         />
       </TableCell>
@@ -159,15 +135,13 @@ export function OccasionalClientsTab() {
     return data.filter(
       (r) =>
         r.tabitColumnName.toLowerCase().includes(q) ||
-        (r.hashavshevetName ?? "").toLowerCase().includes(q) ||
-        (r.hashavshevetCode ?? "").toLowerCase().includes(q)
+        (r.hashavshevetName ?? "").toLowerCase().includes(q)
     );
   }, [data, filter]);
 
   const handleSave = async (
     id: string,
     patch: {
-      hashavshevetCode?: string | null;
       hashavshevetName?: string | null;
     }
   ) => {
@@ -268,7 +242,6 @@ export function OccasionalClientsTab() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-right">שם בטאביט</TableHead>
-                    <TableHead className="text-right">קוד בחשבשבת</TableHead>
                     <TableHead className="text-right">שם בחשבשבת</TableHead>
                     <TableHead className="text-right">
                       הופיע לראשונה

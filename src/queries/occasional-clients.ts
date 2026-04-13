@@ -35,7 +35,6 @@ export function useOccasionalClients(opts?: ListOptions) {
 export interface UpdateOccasionalClientInput {
   id: string;
   patch: {
-    hashavshevetCode?: string | null;
     hashavshevetName?: string | null;
     ignored?: boolean;
     notes?: string | null;

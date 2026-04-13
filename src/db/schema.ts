@@ -3622,7 +3622,8 @@ export const occasionalClient = pgTable(
     tabitColumnName: text("tabit_column_name").notNull(),
     // Matching key (trim + toLowerCase) — unique across the registry
     tabitColumnKey: text("tabit_column_key").notNull(),
-    hashavshevetCode: text("hashavshevet_code"),
+    // Free-text account key used in the Hashavshevet export's "מפתח חשבון"
+    // column. Falls back to tabitColumnName when empty.
     hashavshevetName: text("hashavshevet_name"),
     ignored: boolean("ignored")
       .notNull()

@@ -144,7 +144,6 @@ export async function upsertOccasionalClientDocument(input: {
 export interface OccasionalClientExportRow {
   occasionalClientId: string;
   tabitColumnName: string;
-  hashavshevetCode: string | null;
   hashavshevetName: string | null;
   totalAmount: number;
 }
@@ -162,7 +161,6 @@ export async function getOccasionalClientsForExport(input: {
     .select({
       occasionalClientId: occasionalClient.id,
       tabitColumnName: occasionalClient.tabitColumnName,
-      hashavshevetCode: occasionalClient.hashavshevetCode,
       hashavshevetName: occasionalClient.hashavshevetName,
       totalAmount: occasionalClientDocument.totalAmount,
     })
@@ -185,7 +183,6 @@ export async function getOccasionalClientsForExport(input: {
   return rows.map((r) => ({
     occasionalClientId: r.occasionalClientId,
     tabitColumnName: r.tabitColumnName,
-    hashavshevetCode: r.hashavshevetCode,
     hashavshevetName: r.hashavshevetName,
     totalAmount: parseFloat(r.totalAmount),
   }));
