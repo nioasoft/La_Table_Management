@@ -218,6 +218,13 @@
       "when": 1744502000000,
       "tag": "0054_journal_entry_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1744588400000,
+      "tag": "0055_reconciliation_notes_nullable",
+      "breakpoints": true
     }
   ]
 }

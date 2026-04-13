@@ -312,6 +312,35 @@ export function useUnapproveRow() {
   });
 }
 
+export function useUpsertReconciliationNote() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      input: ApprovalIdentifier & { note: string | null }
+    ) => {
+      const res = await fetch("/api/clients/reconciliation/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "שגיאה בשמירת ההערה");
+      }
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({
+        queryKey: clientReconciliationKeys.byFranchisee(
+          vars.franchiseeId,
+          vars.periodMonth,
+          vars.periodYear
+        ),
+      });
+    },
+  });
+}
+
 export function useBatchApproveFranchisee() {
   const queryClient = useQueryClient();
   return useMutation({

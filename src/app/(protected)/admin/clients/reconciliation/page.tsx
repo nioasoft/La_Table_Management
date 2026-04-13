@@ -71,6 +71,7 @@ import {
   useApproveRow,
   useUnapproveRow,
   useBatchApproveFranchisee,
+  useUpsertReconciliationNote,
   type ByFranchiseeRow,
 } from "@/queries/client-reconciliation";
 import { toast } from "sonner";
@@ -210,6 +211,121 @@ function NotesCell({
   );
 }
 
+// ─── By-Franchisee Note Cell (per-row note, independent of approval) ────────
+
+function ByFranchiseeNoteCell({
+  note,
+  onSave,
+  onClear,
+  isSaving,
+}: {
+  note: string | null;
+  onSave: (next: string) => void;
+  onClear: () => void;
+  isSaving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(note ?? "");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(note ?? "");
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [open, note]);
+
+  const handleSave = () => {
+    if (draft.trim() === (note ?? "").trim()) {
+      setOpen(false);
+      return;
+    }
+    onSave(draft);
+    setOpen(false);
+  };
+
+  const handleClear = () => {
+    onClear();
+    setOpen(false);
+  };
+
+  const hasNote = !!note && note.trim().length > 0;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`h-7 w-7 p-0 mx-auto ${
+            hasNote ? "text-blue-600 hover:text-blue-700" : "text-muted-foreground"
+          }`}
+          title={hasNote ? note! : "הוסף הערה"}
+        >
+          <MessageSquare
+            className={`h-4 w-4 ${hasNote ? "fill-blue-100" : ""}`}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" dir="rtl" align="center">
+        <div className="space-y-2">
+          <Textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="הערה לשורה זו..."
+            className="text-sm min-h-[72px] resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                handleSave();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between gap-1">
+            {hasNote ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                onClick={handleClear}
+                disabled={isSaving}
+              >
+                <X className="h-3 w-3 me-1" />
+                מחק
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setOpen(false)}
+              >
+                ביטול
+              </Button>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={handleSave}
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <Loader2 className="h-3 w-3 animate-spin me-1" />
+                ) : (
+                  <Check className="h-3 w-3 me-1" />
+                )}
+                שמור
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ClientReconciliationPage() {
@@ -239,6 +355,7 @@ export default function ClientReconciliationPage() {
   const approveRowMutation = useApproveRow();
   const unapproveRowMutation = useUnapproveRow();
   const batchApproveFranchiseeMutation = useBatchApproveFranchisee();
+  const upsertNoteMutation = useUpsertReconciliationNote();
 
   const activeClients = (clients ?? []).filter(
     (c: { isActive: boolean }) => c.isActive
@@ -940,6 +1057,7 @@ export default function ClientReconciliationPage() {
                       <TableHead className="text-right">סכום טאביט</TableHead>
                       <TableHead className="text-right">הפרש</TableHead>
                       <TableHead className="text-center">סטטוס</TableHead>
+                      <TableHead className="text-center">הערה</TableHead>
                       <TableHead className="text-center">פעולות</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1043,6 +1161,50 @@ export default function ClientReconciliationPage() {
                             )}
                           </TableCell>
                           <TableCell className="text-center">
+                            <ByFranchiseeNoteCell
+                              note={row.approvalNotes}
+                              isSaving={
+                                upsertNoteMutation.isPending &&
+                                upsertNoteMutation.variables?.clientId ===
+                                  row.clientId
+                              }
+                              onSave={(next) => {
+                                upsertNoteMutation.mutate(
+                                  {
+                                    clientId: row.clientId,
+                                    franchiseeId: selectedFranchiseeId,
+                                    periodMonth,
+                                    periodYear,
+                                    note: next,
+                                  },
+                                  {
+                                    onSuccess: () =>
+                                      toast.success("ההערה נשמרה"),
+                                    onError: (err: Error) =>
+                                      toast.error(err.message),
+                                  }
+                                );
+                              }}
+                              onClear={() => {
+                                upsertNoteMutation.mutate(
+                                  {
+                                    clientId: row.clientId,
+                                    franchiseeId: selectedFranchiseeId,
+                                    periodMonth,
+                                    periodYear,
+                                    note: null,
+                                  },
+                                  {
+                                    onSuccess: () =>
+                                      toast.success("ההערה נמחקה"),
+                                    onError: (err: Error) =>
+                                      toast.error(err.message),
+                                  }
+                                );
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell className="text-center">
                             {canApprove ? (
                               <Button
                                 variant="ghost"
@@ -1108,6 +1270,7 @@ export default function ClientReconciliationPage() {
                           >
                             {formatAmount(String(totalDiff))}
                           </TableCell>
+                          <TableCell />
                           <TableCell />
                           <TableCell />
                         </TableRow>

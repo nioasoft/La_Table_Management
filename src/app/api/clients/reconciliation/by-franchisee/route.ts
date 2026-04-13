@@ -176,12 +176,14 @@ export async function GET(request: NextRequest) {
     );
     for (const r of rows) {
       const a = approvals.get(r.clientId);
-      if (a) {
+      if (!a) continue;
+      // Note-only rows have approvedBy = null; only mark as approved when set.
+      if (a.approvedBy !== null) {
         r.approvedAt = a.approvedAt.toISOString();
         r.approvedBy = a.approvedBy;
         r.approvedByName = a.approvedByName;
-        r.approvalNotes = a.notes;
       }
+      r.approvalNotes = a.notes;
     }
 
     // Sort: mismatches first, then ok, then missing

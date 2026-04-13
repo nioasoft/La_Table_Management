@@ -14,7 +14,7 @@ import {
   client,
   clientDocument,
 } from "@/db/schema";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 export interface ApprovalIdentifier {
   clientId: string;
@@ -33,7 +33,8 @@ export interface ApprovalRow {
   franchiseeId: string;
   periodMonth: number;
   periodYear: number;
-  approvedBy: string;
+  /** null for note-only rows (no approval yet). */
+  approvedBy: string | null;
   approvedByName: string | null;
   approvedAt: Date;
   notes: string | null;
@@ -71,10 +72,45 @@ export async function approveReconciliation(
     });
 }
 
-/** Remove an approval (unmark). No-op if it doesn't exist. */
+/**
+ * Remove an approval (unmark). Preserves the `notes` field if set — only
+ * clears the approval-specific columns. If no note exists, the row is deleted
+ * entirely. No-op if the row doesn't exist.
+ */
 export async function unapproveReconciliation(
   id: ApprovalIdentifier
 ): Promise<void> {
+  const [existing] = await database
+    .select({ notes: clientReconciliationApproval.notes })
+    .from(clientReconciliationApproval)
+    .where(
+      and(
+        eq(clientReconciliationApproval.clientId, id.clientId),
+        eq(clientReconciliationApproval.franchiseeId, id.franchiseeId),
+        eq(clientReconciliationApproval.periodMonth, id.periodMonth),
+        eq(clientReconciliationApproval.periodYear, id.periodYear)
+      )
+    )
+    .limit(1);
+
+  if (!existing) return;
+
+  if (existing.notes && existing.notes.trim().length > 0) {
+    // Keep the row for the note; just clear approval state.
+    await database
+      .update(clientReconciliationApproval)
+      .set({ approvedBy: null })
+      .where(
+        and(
+          eq(clientReconciliationApproval.clientId, id.clientId),
+          eq(clientReconciliationApproval.franchiseeId, id.franchiseeId),
+          eq(clientReconciliationApproval.periodMonth, id.periodMonth),
+          eq(clientReconciliationApproval.periodYear, id.periodYear)
+        )
+      );
+    return;
+  }
+
   await database
     .delete(clientReconciliationApproval)
     .where(
@@ -85,6 +121,88 @@ export async function unapproveReconciliation(
         eq(clientReconciliationApproval.periodYear, id.periodYear)
       )
     );
+}
+
+/**
+ * Upsert a per-row note independent of approval state.
+ * - If a row exists (approved or not): updates the `notes` column only.
+ * - If no row exists: inserts a note-only row (approvedBy null).
+ * Passing an empty/null note clears the note. If the row has no approval
+ * either, the row is deleted.
+ */
+export async function upsertReconciliationNote(input: {
+  clientId: string;
+  franchiseeId: string;
+  periodMonth: number;
+  periodYear: number;
+  note: string | null;
+}): Promise<void> {
+  const trimmed = input.note?.trim() ?? "";
+  const noteValue = trimmed.length > 0 ? trimmed : null;
+
+  if (noteValue === null) {
+    // Clearing the note — read existing approval state to decide.
+    const [existing] = await database
+      .select({ approvedBy: clientReconciliationApproval.approvedBy })
+      .from(clientReconciliationApproval)
+      .where(
+        and(
+          eq(clientReconciliationApproval.clientId, input.clientId),
+          eq(clientReconciliationApproval.franchiseeId, input.franchiseeId),
+          eq(clientReconciliationApproval.periodMonth, input.periodMonth),
+          eq(clientReconciliationApproval.periodYear, input.periodYear)
+        )
+      )
+      .limit(1);
+
+    if (!existing) return;
+
+    if (existing.approvedBy === null) {
+      await database
+        .delete(clientReconciliationApproval)
+        .where(
+          and(
+            eq(clientReconciliationApproval.clientId, input.clientId),
+            eq(clientReconciliationApproval.franchiseeId, input.franchiseeId),
+            eq(clientReconciliationApproval.periodMonth, input.periodMonth),
+            eq(clientReconciliationApproval.periodYear, input.periodYear)
+          )
+        );
+    } else {
+      await database
+        .update(clientReconciliationApproval)
+        .set({ notes: null })
+        .where(
+          and(
+            eq(clientReconciliationApproval.clientId, input.clientId),
+            eq(clientReconciliationApproval.franchiseeId, input.franchiseeId),
+            eq(clientReconciliationApproval.periodMonth, input.periodMonth),
+            eq(clientReconciliationApproval.periodYear, input.periodYear)
+          )
+        );
+    }
+    return;
+  }
+
+  await database
+    .insert(clientReconciliationApproval)
+    .values({
+      clientId: input.clientId,
+      franchiseeId: input.franchiseeId,
+      periodMonth: input.periodMonth,
+      periodYear: input.periodYear,
+      approvedBy: null,
+      notes: noteValue,
+    })
+    .onConflictDoUpdate({
+      target: [
+        clientReconciliationApproval.clientId,
+        clientReconciliationApproval.franchiseeId,
+        clientReconciliationApproval.periodMonth,
+        clientReconciliationApproval.periodYear,
+      ],
+      set: { notes: noteValue },
+    });
 }
 
 /** Bulk-approve many client IDs for the same franchisee+period. */
@@ -199,7 +317,10 @@ export async function getApprovedForExport(input: {
       and(
         eq(clientReconciliationApproval.franchiseeId, franchiseeId),
         eq(clientReconciliationApproval.periodMonth, periodMonth),
-        eq(clientReconciliationApproval.periodYear, periodYear)
+        eq(clientReconciliationApproval.periodYear, periodYear),
+        // Only true approvals (rows with approvedBy set) are exported.
+        // Note-only rows (approvedBy = null) are excluded.
+        isNotNull(clientReconciliationApproval.approvedBy)
       )
     );
 

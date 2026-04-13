@@ -3192,9 +3192,8 @@ export const clientReconciliationApproval = pgTable(
       .references(() => franchisee.id, { onDelete: "cascade" }),
     periodMonth: integer("period_month").notNull(),
     periodYear: integer("period_year").notNull(),
-    approvedBy: text("approved_by")
-      .notNull()
-      .references(() => user.id),
+    // Nullable: a row may exist for a note-only entry (no approval yet).
+    approvedBy: text("approved_by").references(() => user.id),
     approvedAt: timestamp("approved_at")
       .notNull()
       .$defaultFn(() => new Date()),
