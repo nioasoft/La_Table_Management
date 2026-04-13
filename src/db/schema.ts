@@ -2885,6 +2885,12 @@ export const client = pgTable(
     code: text("code"), // Unique client code e.g. "CIBUS", "TENBIS" (for parser registry)
     parserCode: text("parser_code"), // Nullable override, defaults to code
     hashavshevetCode: text("hashavshevet_code"), // Account key for Hashavshevet export
+    // Per-brand override for the Hashavshevet account name. Key = brand.id (UUID),
+    // value = name to use when exporting a row that belongs to a franchisee of that brand.
+    // Falls back to hashavshevetCode / hashavshevetName / name when a brand has no entry.
+    hashavshevetByBrand: jsonb("hashavshevet_by_brand").$type<
+      Record<string, string>
+    >(),
     fileFormat: text("file_format"), // Expected file format: "pdf", "excel", "csv"
     gmailSearchQuery: text("gmail_search_query"), // Gmail API search query for auto-fetch
     gmailSenderEmail: text("gmail_sender_email"), // Sender email for verification

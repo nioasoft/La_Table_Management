@@ -16,6 +16,7 @@ import {
   getApprovedComparisonsForExport,
   getSessionWithComparisons,
 } from "@/data-access/client-reconciliation";
+import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
 import * as XLSX from "xlsx";
 
 export async function GET(request: NextRequest) {
@@ -48,11 +49,16 @@ export async function GET(request: NextRequest) {
 
     const { session } = sessionData;
 
-    // Get client's hashavshevet code
+    // Get client's Hashavshevet account data (global + per-brand overrides)
+    // and code (needed for the LA TABLE half-price invoice rule).
+    // This export spans multiple franchisees, so the account key is resolved
+    // per row below using each franchisee's brand.
     const [clientRow] = await database
       .select({
+        code: client.code,
         hashavshevetCode: client.hashavshevetCode,
         hashavshevetName: client.hashavshevetName,
+        hashavshevetByBrand: client.hashavshevetByBrand,
         name: client.name,
       })
       .from(client)
@@ -66,8 +72,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const accountKey = clientRow.hashavshevetCode || clientRow.hashavshevetName || clientRow.name;
-
     // Get approved comparisons
     const comparisons = await getApprovedComparisonsForExport(sessionId);
 
@@ -78,22 +82,34 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Build Hashavshevet rows - exact same format as supplier export
+    // Build Hashavshevet rows - exact same format as supplier export.
+    // LA TABLE special rule: on invoice exports only, the amount is halved
+    // (the bookkeeping value is what Tabit shows, but the invoice we issue
+    // is for 50% of it). Journal-entry exports keep the full amount.
+    const isInvoiceExport = exportType !== "journal";
+    const isLaTableInvoice =
+      clientRow.code === "LATABLE" && isInvoiceExport;
     const rows = comparisons
       .filter((comp) => {
         const net = comp.netAmount ? parseFloat(comp.netAmount) : 0;
         return net !== 0;
       })
-      .map((comp) => [
-        accountKey, // מפתח חשבון
-        "", // שם
-        `עמלות ${comp.franchiseeName}`, // מפתח פריט
-        "", // שם פריט
-        1, // כמות
-        comp.netAmount ? Math.round(parseFloat(comp.netAmount)) : 0, // מחיר
-        documentTypeNumber, // סוג המסמך (11=חשבונית, 1=פקודת יומן)
-        "", // מספר מסמך
-      ]);
+      .map((comp) => {
+        const rawAmount = comp.netAmount ? parseFloat(comp.netAmount) : 0;
+        const price = isLaTableInvoice
+          ? Math.round(rawAmount / 2)
+          : Math.round(rawAmount);
+        return [
+          resolveClientHashavshevetAccount(clientRow, comp.franchiseeBrandId), // מפתח חשבון
+          "", // שם
+          `עמלות ${comp.franchiseeName}`, // מפתח פריט
+          "", // שם פריט
+          1, // כמות
+          price, // מחיר
+          documentTypeNumber, // סוג המסמך (11=חשבונית, 1=פקודת יומן)
+          "", // מספר מסמך
+        ];
+      });
 
     if (rows.length === 0) {
       return NextResponse.json(

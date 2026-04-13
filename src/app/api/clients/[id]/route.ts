@@ -10,6 +10,26 @@ import {
 } from "@/data-access/clients";
 
 /**
+ * Coerce the incoming `hashavshevetByBrand` payload to a
+ * `Record<brandId, trimmed-non-empty-name>`. Returns null when there are no
+ * entries so the DB stores NULL (and falls back to the global name).
+ */
+function sanitizeHashavshevetByBrand(
+  input: unknown
+): Record<string, string> | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const out: Record<string, string> = {};
+  for (const [brandId, value] of Object.entries(
+    input as Record<string, unknown>
+  )) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) out[brandId] = trimmed;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * PATCH /api/clients/[id] - Update a client
  */
 export async function PATCH(
@@ -30,6 +50,7 @@ export async function PATCH(
       contactName,
       hashavshevetName,
       hashavshevetCode,
+      hashavshevetByBrand,
       fileFormat,
       gmailSearchQuery,
       gmailSenderEmail,
@@ -57,6 +78,9 @@ export async function PATCH(
       updateData.hashavshevetName = hashavshevetName || null;
     if (hashavshevetCode !== undefined)
       updateData.hashavshevetCode = hashavshevetCode || null;
+    if (hashavshevetByBrand !== undefined)
+      updateData.hashavshevetByBrand =
+        sanitizeHashavshevetByBrand(hashavshevetByBrand);
     if (fileFormat !== undefined) updateData.fileFormat = fileFormat || null;
     if (gmailSearchQuery !== undefined)
       updateData.gmailSearchQuery = gmailSearchQuery || null;

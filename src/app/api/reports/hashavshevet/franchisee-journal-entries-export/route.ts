@@ -99,8 +99,18 @@ export async function GET(request: NextRequest) {
         const last4 = row.invoiceNumber
           ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
           : "";
+        // Journal-entries export uses a name-first fallback (unique to this
+        // sheet — the other exports use code-first). Still honours the
+        // per-brand override when present.
+        const perBrandOverride =
+          row.franchiseeBrandId && row.hashavshevetByBrand
+            ? row.hashavshevetByBrand[row.franchiseeBrandId]?.trim()
+            : "";
         const debitAccount =
-          row.hashavshevetName || row.hashavshevetCode || row.clientName;
+          perBrandOverride ||
+          row.hashavshevetName ||
+          row.hashavshevetCode ||
+          row.clientName;
         return [
           TRANSACTION_TYPE, // סוג תנועה
           "", // אסמכתא 1

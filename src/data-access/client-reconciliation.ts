@@ -512,6 +512,7 @@ export async function getApprovedComparisonsForExport(
   Array<{
     franchiseeName: string;
     franchiseeCode: string;
+    franchiseeBrandId: string | null;
     clientAmount: string | null;
     commissionAmount: string | null;
     netAmount: string | null;
@@ -522,6 +523,7 @@ export async function getApprovedComparisonsForExport(
     .select({
       franchiseeName: franchisee.name,
       franchiseeCode: franchisee.code,
+      franchiseeBrandId: franchisee.brandId,
       clientAmount: clientReconciliationComparison.clientAmount,
       commissionAmount: clientReconciliationComparison.commissionAmount,
       netAmount: clientReconciliationComparison.netAmount,

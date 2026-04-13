@@ -13,8 +13,13 @@ import {
   user,
   client,
   clientDocument,
+  franchisee,
 } from "@/db/schema";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import {
+  resolveClientHashavshevetAccount,
+  type ResolvableClientAccount,
+} from "@/lib/hashavshevet-account";
 
 export interface ApprovalIdentifier {
   clientId: string;
@@ -299,6 +304,26 @@ export interface ExportRow {
   clientName: string;
   hashavshevetCode: string | null;
   hashavshevetName: string | null;
+  /**
+   * Per-brand overrides for the Hashavshevet account name. Consumers should
+   * usually prefer `accountKey` below, which already factors in the
+   * franchisee's brand. Kept here for callers that need their own fallback
+   * ordering (e.g. journal-entries export prefers name over code).
+   */
+  hashavshevetByBrand: Record<string, string> | null;
+  /**
+   * Brand of the franchisee this export was built for. Same for every row in
+   * the array. Exposed so callers can resolve `hashavshevetByBrand` with a
+   * different fallback order than `accountKey` uses.
+   */
+  franchiseeBrandId: string | null;
+  /**
+   * Pre-resolved Hashavshevet account key for the franchisee+brand this row
+   * belongs to. Uses `hashavshevetByBrand[brandId]` when present, else falls
+   * back to `hashavshevetCode || hashavshevetName || clientName`.
+   * Export routes that want the standard code-first fallback should use this.
+   */
+  accountKey: string;
   invoiceGeneration: boolean;
   journalEntryGeneration: boolean;
   clientAmount: number;
@@ -317,6 +342,15 @@ export async function getApprovedForExport(input: {
   periodYear: number;
 }): Promise<ExportRow[]> {
   const { franchiseeId, periodMonth, periodYear } = input;
+
+  // 0. Load the franchisee's brand so we can resolve per-brand Hashavshevet
+  //    overrides on the client records below.
+  const [franchiseeRow] = await database
+    .select({ brandId: franchisee.brandId })
+    .from(franchisee)
+    .where(eq(franchisee.id, franchiseeId))
+    .limit(1);
+  const franchiseeBrandId = franchiseeRow?.brandId ?? null;
 
   // 1. Manually-approved rows (with approvedBy set, note-only rows excluded).
   const approvals = await database
@@ -401,6 +435,7 @@ export async function getApprovedForExport(input: {
       name: client.name,
       hashavshevetCode: client.hashavshevetCode,
       hashavshevetName: client.hashavshevetName,
+      hashavshevetByBrand: client.hashavshevetByBrand,
       invoiceGeneration: client.invoiceGeneration,
       journalEntryGeneration: client.journalEntryGeneration,
     })
@@ -430,12 +465,25 @@ export async function getApprovedForExport(input: {
     const exportClientAmount =
       clientAmt ?? (c.code === "GIFTCARD" ? (tabitAmt ?? 0) : 0);
 
+    const resolvable: ResolvableClientAccount = {
+      hashavshevetByBrand: c.hashavshevetByBrand,
+      hashavshevetCode: c.hashavshevetCode,
+      hashavshevetName: c.hashavshevetName,
+      name: c.name,
+    };
+
     result.push({
       clientId: c.id,
       clientCode: c.code,
       clientName: c.name,
       hashavshevetCode: c.hashavshevetCode,
       hashavshevetName: c.hashavshevetName,
+      hashavshevetByBrand: c.hashavshevetByBrand ?? null,
+      franchiseeBrandId,
+      accountKey: resolveClientHashavshevetAccount(
+        resolvable,
+        franchiseeBrandId
+      ),
       invoiceGeneration: c.invoiceGeneration,
       journalEntryGeneration: c.journalEntryGeneration,
       clientAmount: exportClientAmount,

@@ -92,15 +92,18 @@ export async function GET(request: NextRequest) {
         // Defensive: WOLT shouldn't normally be invoiceGeneration=true, but if
         // it is, keep the exact-decimal rule. All other clients get rounded
         // (matches Reut's sample where סיבוס/תן ביס are whole-shekel).
-        const price =
-          a.clientCode === "WOLT"
-            ? a.netAmount !== null
-              ? a.netAmount
-              : a.clientAmount
-            : Math.round(a.clientAmount);
+        let price: number;
+        if (a.clientCode === "WOLT") {
+          price = a.netAmount !== null ? a.netAmount : a.clientAmount;
+        } else if (a.clientCode === "LATABLE") {
+          // La Table: the UI shows the original Tabit amount but the invoice
+          // we issue to the client is for half of it (accounting arrangement).
+          price = Math.round(a.clientAmount / 2);
+        } else {
+          price = Math.round(a.clientAmount);
+        }
         return {
-          accountKey:
-            a.hashavshevetCode || a.hashavshevetName || a.clientName,
+          accountKey: a.accountKey,
           price,
         };
       })

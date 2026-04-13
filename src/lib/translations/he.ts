@@ -3407,6 +3407,9 @@ export const he = {
       hashavshevetNamePlaceholder: "שם בתוכנת החשבשבת",
       hashavshevetCode: "מפתח חשבון חשבשבת",
       hashavshevetCodePlaceholder: "מפתח חשבון ליצוא",
+      hashavshevetByBrandTitle: "שם לחשבשבת לפי מותג",
+      hashavshevetByBrandHelp:
+        "דריסה אופציונלית לפי מותג. אם משאירים ריק — משתמש בשם/מפתח הגלובלי.",
       fileFormat: "פורמט קבצים",
       fileFormatPlaceholder: "בחר פורמט",
       fileFormatOptions: {

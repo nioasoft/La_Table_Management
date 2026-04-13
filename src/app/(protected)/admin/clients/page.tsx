@@ -69,6 +69,7 @@ import {
   useDeleteClient,
 } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
+import { useBrands } from "@/queries/brands";
 import type { ClientWithFranchisees } from "@/data-access/clients";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +86,8 @@ interface ClientFormData {
   contactName: string;
   hashavshevetName: string;
   hashavshevetCode: string;
+  /** Per-brand override of the Hashavshevet account name. Keyed by brand.id. */
+  hashavshevetByBrand: Record<string, string>;
   fileFormat: string;
   gmailSearchQuery: string;
   gmailSenderEmail: string;
@@ -110,6 +113,7 @@ const initialFormData: ClientFormData = {
   contactName: "",
   hashavshevetName: "",
   hashavshevetCode: "",
+  hashavshevetByBrand: {},
   fileFormat: "",
   gmailSearchQuery: "",
   gmailSenderEmail: "",
@@ -217,6 +221,7 @@ export default function ClientsPage() {
 
   const { data: clients, isLoading } = useClients(queryFilters);
   const { data: allFranchisees } = useFranchisees();
+  const { data: allBrands } = useBrands();
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
   const deleteMutation = useDeleteClient();
@@ -255,6 +260,10 @@ export default function ClientsPage() {
       contactName: c.contactName ?? "",
       hashavshevetName: c.hashavshevetName ?? "",
       hashavshevetCode: c.hashavshevetCode ?? "",
+      hashavshevetByBrand:
+        c.hashavshevetByBrand && typeof c.hashavshevetByBrand === "object"
+          ? { ...(c.hashavshevetByBrand as Record<string, string>) }
+          : {},
       fileFormat: c.fileFormat ?? "",
       gmailSearchQuery: c.gmailSearchQuery ?? "",
       gmailSenderEmail: c.gmailSenderEmail ?? "",
@@ -313,6 +322,14 @@ export default function ClientsPage() {
       return;
     }
 
+    // Drop empty / whitespace-only per-brand entries so the server can store
+    // NULL and fall back to the global name for brands without an override.
+    const cleanedHashavshevetByBrand = Object.fromEntries(
+      Object.entries(formData.hashavshevetByBrand)
+        .map(([brandId, value]) => [brandId, value.trim()] as const)
+        .filter(([, value]) => value !== "")
+    );
+
     const payload = {
       name: formData.name.trim(),
       code: formData.code.trim().toUpperCase() || null,
@@ -321,6 +338,10 @@ export default function ClientsPage() {
       contactName: formData.contactName.trim() || null,
       hashavshevetName: formData.hashavshevetName.trim() || null,
       hashavshevetCode: formData.hashavshevetCode.trim() || null,
+      hashavshevetByBrand:
+        Object.keys(cleanedHashavshevetByBrand).length > 0
+          ? cleanedHashavshevetByBrand
+          : null,
       fileFormat: formData.fileFormat || null,
       gmailSearchQuery: formData.gmailSearchQuery.trim() || null,
       gmailSenderEmail: formData.gmailSenderEmail.trim() || null,
@@ -806,6 +827,64 @@ export default function ClientsPage() {
                 />
               </div>
             </div>
+
+            {/* Row 3b – Per-brand Hashavshevet overrides */}
+            {allBrands && allBrands.length > 0 && (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">
+                    {he.clients.form.hashavshevetByBrandTitle}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {he.clients.form.hashavshevetByBrandHelp}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {(
+                    allBrands as Array<{
+                      id: string;
+                      nameHe: string;
+                      isSystemBrand?: boolean;
+                      isActive?: boolean;
+                    }>
+                  )
+                    .filter(
+                      (b) =>
+                        b.isActive !== false && b.isSystemBrand !== true
+                    )
+                    .map((b) => {
+                      const fieldId = `client-hashavshevet-brand-${b.id}`;
+                      return (
+                        <div key={b.id} className="space-y-1">
+                          <Label
+                            htmlFor={fieldId}
+                            className="text-xs font-normal text-muted-foreground"
+                          >
+                            {b.nameHe}
+                          </Label>
+                          <Input
+                            id={fieldId}
+                            value={formData.hashavshevetByBrand[b.id] ?? ""}
+                            onChange={(e) =>
+                              updateField("hashavshevetByBrand", {
+                                ...formData.hashavshevetByBrand,
+                                [b.id]: e.target.value,
+                              })
+                            }
+                            placeholder={
+                              formData.hashavshevetCode.trim() ||
+                              formData.hashavshevetName.trim() ||
+                              formData.name.trim() ||
+                              he.clients.form.hashavshevetNamePlaceholder
+                            }
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
 
             {/* Commission rates section header */}
             <div className="relative flex items-center gap-3 py-1">

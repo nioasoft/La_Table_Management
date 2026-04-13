@@ -11,6 +11,26 @@ import {
 import { randomUUID } from "crypto";
 
 /**
+ * Coerce the incoming `hashavshevetByBrand` payload to a
+ * `Record<brandId, trimmed-non-empty-name>`. Returns null when there are no
+ * entries so the DB stores NULL (and falls back to the global name).
+ */
+function sanitizeHashavshevetByBrand(
+  input: unknown
+): Record<string, string> | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const out: Record<string, string> = {};
+  for (const [brandId, value] of Object.entries(
+    input as Record<string, unknown>
+  )) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) out[brandId] = trimmed;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/**
  * GET /api/clients - List clients with optional filters
  *
  * Query params:
@@ -56,6 +76,7 @@ export async function POST(request: NextRequest) {
       email,
       contactName,
       hashavshevetName,
+      hashavshevetByBrand,
       tabitColumnNames,
       posTerminalCommission,
       dineInCommission,
@@ -84,6 +105,7 @@ export async function POST(request: NextRequest) {
       email: email || null,
       contactName: contactName || null,
       hashavshevetName: hashavshevetName || null,
+      hashavshevetByBrand: sanitizeHashavshevetByBrand(hashavshevetByBrand),
       tabitColumnNames: Array.isArray(tabitColumnNames) ? tabitColumnNames : null,
       posTerminalCommission: posTerminalCommission || null,
       dineInCommission: dineInCommission || null,

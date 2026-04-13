@@ -65,14 +65,21 @@ export async function GET(request: NextRequest) {
     // Build Hashavshevet rows.
     // Price rule:
     //  - WOLT: exact netAmount (or clientAmount fallback) — no rounding.
+    //  - LA TABLE (invoice exports only): half of the Tabit amount.
+    //    (Journal entries keep the full amount — that's the bookkeeping value.)
     //  - other clients: Math.round of clientAmount (legacy behaviour).
+    const isInvoiceExport = exportType !== "journal";
     const rows = approved
       .map((a) => {
         const isWolt = a.clientCode === "WOLT";
+        const isLaTableInvoice =
+          a.clientCode === "LATABLE" && isInvoiceExport;
         let price: number;
         if (isWolt) {
           // Use exact net when we have it; else exact client amount.
           price = a.netAmount !== null ? a.netAmount : a.clientAmount;
+        } else if (isLaTableInvoice) {
+          price = Math.round(a.clientAmount / 2);
         } else {
           price = Math.round(a.clientAmount);
         }
@@ -80,7 +87,7 @@ export async function GET(request: NextRequest) {
       })
       .filter((x) => x.price !== 0)
       .map(({ row, price }) => [
-        row.hashavshevetCode || row.hashavshevetName || row.clientName, // מפתח חשבון
+        row.accountKey, // מפתח חשבון
         "", // שם
         `עמלות ${fr.name}`, // מפתח פריט
         "", // שם פריט
