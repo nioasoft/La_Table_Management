@@ -33,7 +33,11 @@ import { getOccasionalClientsForExport } from "@/data-access/occasional-clients"
 import * as XLSX from "xlsx";
 
 const ITEM_KEY = "ארוחות";
-const DISCOUNT_PCT_NUMBER = 0.1525;
+// Default "אחוז הנחה לפריט" — represents VAT share, applied to every row
+// unless the client has its own override below.
+const DISCOUNT_PCT_DEFAULT = 0.1525;
+// GIFT CARD uses a higher discount percentage per the accounting setup.
+const DISCOUNT_PCT_GIFTCARD = 0.1925;
 const DOCUMENT_TYPE = 11;
 
 export async function GET(request: NextRequest) {
@@ -110,9 +114,15 @@ export async function GET(request: NextRequest) {
         // the default ITEM_KEY ("ארוחות").
         const itemKey =
           a.clientCode === "LATABLEMARK" ? "ארוחותש" : ITEM_KEY;
+        // GIFTCARD uses a 19.25% discount column instead of the default 15.25%.
+        const discountPct =
+          a.clientCode === "GIFTCARD"
+            ? DISCOUNT_PCT_GIFTCARD
+            : DISCOUNT_PCT_DEFAULT;
         return {
           accountKey: a.accountKey,
           itemKey,
+          discountPct,
           price,
         };
       })
@@ -123,19 +133,20 @@ export async function GET(request: NextRequest) {
       .map((o) => ({
         accountKey: o.hashavshevetName || o.tabitColumnName,
         itemKey: ITEM_KEY,
+        discountPct: DISCOUNT_PCT_DEFAULT,
         price: Math.round(o.totalAmount),
       }))
       .filter((x) => x.price !== 0);
 
     const rows = [...regularEntries, ...occasionalEntries].map(
-      ({ accountKey, itemKey, price }, index) => [
+      ({ accountKey, itemKey, discountPct, price }, index) => [
         accountKey, // מפתח חשבון
         "", // שם
         itemKey, // מפתח פריט
         "", // שם פריט
         1, // כמות
         price, // מחיר
-        DISCOUNT_PCT_NUMBER, // אחוז הנחה לפריט — stored as 0.1525, formatted as "15.25%"
+        discountPct, // אחוז הנחה לפריט — per-client (default 15.25%, GIFTCARD 19.25%)
         DOCUMENT_TYPE, // סוג המסמך
         index + 1, // מספר מסמך
       ]
