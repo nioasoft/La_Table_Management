@@ -690,11 +690,9 @@ export default function ClientsPage() {
         <DialogContent
           className="sm:max-w-4xl"
           style={{
-            display: "flex",
-            flexDirection: "column",
+            display: "block",
             maxHeight: "90vh",
             overflowY: "auto",
-            height: "auto",
           }}
         >
           <div className="space-y-4">
@@ -1061,8 +1059,8 @@ export default function ClientsPage() {
                   )}
                 </div>
 
-                {/* Scrollable checkbox list — taller because it's now beside content */}
-                <div className="h-[420px] overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
+                {/* Scrollable checkbox list */}
+                <div className="max-h-[280px] overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
                   {filteredFranchisees.length === 0 && (
                     <p className="py-4 text-center text-sm text-muted-foreground">
                       לא נמצאו זכיינים
