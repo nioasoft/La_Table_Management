@@ -140,7 +140,7 @@ function countNonNullCommissions(client: ClientWithFranchisees): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Commission Input with % suffix
+// Commission Input (default % suffix, overridable for fixed-currency fields)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CommissionInputProps {
@@ -149,6 +149,8 @@ interface CommissionInputProps {
   value: string;
   onChange: (value: string) => void;
   disabled: boolean;
+  suffix?: string;
+  max?: number;
 }
 
 function CommissionInput({
@@ -157,7 +159,10 @@ function CommissionInput({
   value,
   onChange,
   disabled,
+  suffix = "%",
+  max,
 }: CommissionInputProps) {
+  const effectiveMax = max ?? (suffix === "%" ? 100 : undefined);
   return (
     <div className="space-y-2">
       <Label htmlFor={id}>{label}</Label>
@@ -167,7 +172,7 @@ function CommissionInput({
           type="number"
           step="0.01"
           min="0"
-          max="100"
+          max={effectiveMax}
           dir="ltr"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -176,7 +181,7 @@ function CommissionInput({
           placeholder="0.00"
         />
         <span className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-          %
+          {suffix}
         </span>
       </div>
     </div>
@@ -757,8 +762,8 @@ export default function ClientsPage() {
               </div>
             </div>
 
-            {/* Row 3 – Email + Hashavshevet Name + Code */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* Row 3 – Email + Hashavshevet Name */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="client-email">{he.clients.form.email}</Label>
                 <Input
@@ -785,20 +790,6 @@ export default function ClientsPage() {
                   disabled={isSubmitting}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="client-hashavshevetCode">
-                  {he.clients.form.hashavshevetCode}
-                </Label>
-                <Input
-                  id="client-hashavshevetCode"
-                  dir="ltr"
-                  value={formData.hashavshevetCode}
-                  onChange={(e) => updateField("hashavshevetCode", e.target.value)}
-                  placeholder={he.clients.form.hashavshevetCodePlaceholder}
-                  disabled={isSubmitting}
-                  className="font-mono"
-                />
-              </div>
             </div>
 
             {/* Commission rates section header */}
@@ -818,6 +809,7 @@ export default function ClientsPage() {
                 value={formData.posTerminalCommission}
                 onChange={(v) => updateField("posTerminalCommission", v)}
                 disabled={isSubmitting}
+                suffix="₪"
               />
               <CommissionInput
                 id="client-dineInCommission"

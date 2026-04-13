@@ -68,20 +68,20 @@ export interface InvoiceVerificationSummaryRow {
 // ============================================================================
 
 /**
- * Get the primary commission rate for a client.
- * Returns the first non-null rate from: delivery, dineIn, posTerminal, takeaway, events.
+ * Get the primary commission rate (%) for a client.
+ * Returns the first non-null rate from: delivery, dineIn, takeaway, events.
+ * Note: posTerminalCommission is a fixed NIS amount, not a % rate, so it is
+ * intentionally excluded from this rate-picker.
  */
 function getClientCommissionRate(clientRecord: {
   deliveryCommission: string | null;
   dineInCommission: string | null;
-  posTerminalCommission: string | null;
   takeawayCommission: string | null;
   eventsCommission: string | null;
 }): number | null {
   const rates = [
     clientRecord.deliveryCommission,
     clientRecord.dineInCommission,
-    clientRecord.posTerminalCommission,
     clientRecord.takeawayCommission,
     clientRecord.eventsCommission,
   ];
@@ -114,7 +114,6 @@ export async function getInvoiceVerification(
       id: client.id,
       deliveryCommission: client.deliveryCommission,
       dineInCommission: client.dineInCommission,
-      posTerminalCommission: client.posTerminalCommission,
       takeawayCommission: client.takeawayCommission,
       eventsCommission: client.eventsCommission,
     })

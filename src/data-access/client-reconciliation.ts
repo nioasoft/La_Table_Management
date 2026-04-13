@@ -122,10 +122,11 @@ export async function createClientReconciliationSession(
     }
   }
 
-  // Get expected commission rates from client config
+  // Get expected commission rates from client config.
+  // Note: posTerminalCommission is a fixed NIS amount (not a %), so it's
+  // intentionally excluded from the rate selection here.
   const [clientConfig] = await database
     .select({
-      posTerminalCommission: client.posTerminalCommission,
       dineInCommission: client.dineInCommission,
       deliveryCommission: client.deliveryCommission,
     })
@@ -135,7 +136,6 @@ export async function createClientReconciliationSession(
 
   // Use the first non-null commission as default expected rate
   const expectedRate = parseFloat(
-    clientConfig?.posTerminalCommission ??
     clientConfig?.dineInCommission ??
     clientConfig?.deliveryCommission ??
     "0"
