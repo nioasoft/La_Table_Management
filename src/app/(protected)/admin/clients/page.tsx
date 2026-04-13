@@ -1059,8 +1059,11 @@ export default function ClientsPage() {
                   )}
                 </div>
 
-                {/* Scrollable checkbox list */}
-                <div className="max-h-[280px] overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
+                {/* Scrollable checkbox list — must be `relative` so the
+                    Radix Checkbox absolutely-positioned hidden inputs are
+                    clipped by overflow:auto instead of escaping and pushing
+                    the parent dialog's scrollHeight by hundreds of pixels. */}
+                <div className="relative max-h-[280px] overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
                   {filteredFranchisees.length === 0 && (
                     <p className="py-4 text-center text-sm text-muted-foreground">
                       לא נמצאו זכיינים
