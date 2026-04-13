@@ -51,7 +51,6 @@ import {
   Check,
   X,
   FileSpreadsheet,
-  Download,
   MessageSquare,
   Pencil,
   Zap,
@@ -498,11 +497,7 @@ export default function ClientReconciliationPage() {
   };
 
   const handleByFranchiseeExport = async (
-    exportType:
-      | "invoice"
-      | "journal"
-      | "client_invoices"
-      | "journal_entries"
+    exportType: "client_invoices" | "journal_entries"
   ) => {
     if (!selectedFranchiseeId) return;
     try {
@@ -511,14 +506,10 @@ export default function ClientReconciliationPage() {
         periodMonth: String(periodMonth),
         periodYear: String(periodYear),
       };
-      let endpointUrl: string;
-      if (exportType === "client_invoices") {
-        endpointUrl = `/api/reports/hashavshevet/franchisee-client-invoices-export?${new URLSearchParams(baseParams)}`;
-      } else if (exportType === "journal_entries") {
-        endpointUrl = `/api/reports/hashavshevet/franchisee-journal-entries-export?${new URLSearchParams(baseParams)}`;
-      } else {
-        endpointUrl = `/api/reports/hashavshevet/franchisee-export?${new URLSearchParams({ ...baseParams, exportType })}`;
-      }
+      const endpointUrl =
+        exportType === "client_invoices"
+          ? `/api/reports/hashavshevet/franchisee-client-invoices-export?${new URLSearchParams(baseParams)}`
+          : `/api/reports/hashavshevet/franchisee-journal-entries-export?${new URLSearchParams(baseParams)}`;
       const res = await fetch(endpointUrl);
       if (!res.ok) {
         const data = await res.json();
@@ -609,27 +600,6 @@ export default function ClientReconciliationPage() {
                 <Check className="h-4 w-4 me-1" />
                 אשר הכל
               </Button>
-            )}
-            {(session.status === "file_approved" ||
-              session.status === "in_progress") && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Download className="h-4 w-4 me-1" />
-                    ייצוא לחשבשבת
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleExportHashavshevet(session.id, "invoice")}>
-                    <FileSpreadsheet className="h-4 w-4 me-2" />
-                    חשבונית
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportHashavshevet(session.id, "journal")}>
-                    <FileSpreadsheet className="h-4 w-4 me-2" />
-                    פקודת יומן
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             )}
           </div>
         </div>
@@ -1019,16 +989,6 @@ export default function ClientReconciliationPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleByFranchiseeExport("invoice")}
-                        >
-                          חשבונית
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleByFranchiseeExport("journal")}
-                        >
-                          פקודת יומן
-                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() =>
                             handleByFranchiseeExport("client_invoices")

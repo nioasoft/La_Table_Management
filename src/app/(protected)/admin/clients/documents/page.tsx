@@ -754,8 +754,8 @@ export default function ClientDocumentsPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm tabular-nums">
-                          {formatAmount(doc.totalAmount)}
+                        <span className="text-sm tabular-nums text-muted-foreground">
+                          {isTabit ? "—" : formatAmount(doc.totalAmount)}
                         </span>
                       </TableCell>
                       <TableCell>
