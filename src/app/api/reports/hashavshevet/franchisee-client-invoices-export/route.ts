@@ -29,6 +29,7 @@ import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getApprovedForExport } from "@/data-access/client-reconciliation-approval";
+import { getOccasionalClientsForExport } from "@/data-access/occasional-clients";
 import * as XLSX from "xlsx";
 
 const ITEM_KEY = "ארוחות";
@@ -70,14 +71,23 @@ export async function GET(request: NextRequest) {
 
     const invoiceRows = approved.filter((a) => a.invoiceGeneration === true);
 
-    if (invoiceRows.length === 0) {
+    // Fetch occasional-client rows for this franchisee+period. Already filters
+    // out ignored rows and zero amounts in the data-access layer.
+    const occasionalRows = await getOccasionalClientsForExport({
+      franchiseeId,
+      periodMonth,
+      periodYear,
+    });
+
+    if (invoiceRows.length === 0 && occasionalRows.length === 0) {
       return NextResponse.json(
         { error: "אין לקוחות עם הפקת חשבונית מסומנת בתקופה זו" },
         { status: 400 }
       );
     }
 
-    const rows = invoiceRows
+    // Regular (approved) invoice rows — existing rounding rules.
+    const regularEntries = invoiceRows
       .map((a) => {
         // Defensive: WOLT shouldn't normally be invoiceGeneration=true, but if
         // it is, keep the exact-decimal rule. All other clients get rounded
@@ -88,11 +98,26 @@ export async function GET(request: NextRequest) {
               ? a.netAmount
               : a.clientAmount
             : Math.round(a.clientAmount);
-        return { row: a, price };
+        return {
+          accountKey:
+            a.hashavshevetCode || a.hashavshevetName || a.clientName,
+          price,
+        };
       })
-      .filter((x) => x.price !== 0)
-      .map(({ row, price }, index) => [
-        row.hashavshevetCode || row.hashavshevetName || row.clientName, // מפתח חשבון
+      .filter((x) => x.price !== 0);
+
+    // Occasional-client rows — same whole-shekel rounding rule as non-WOLT.
+    const occasionalEntries = occasionalRows
+      .map((o) => ({
+        accountKey:
+          o.hashavshevetCode || o.hashavshevetName || o.tabitColumnName,
+        price: Math.round(o.totalAmount),
+      }))
+      .filter((x) => x.price !== 0);
+
+    const rows = [...regularEntries, ...occasionalEntries].map(
+      ({ accountKey, price }, index) => [
+        accountKey, // מפתח חשבון
         "", // שם
         ITEM_KEY, // מפתח פריט
         "", // שם פריט
@@ -101,7 +126,8 @@ export async function GET(request: NextRequest) {
         DISCOUNT_PCT_NUMBER, // אחוז הנחה לפריט — stored as 0.1525, formatted as "15.25%"
         DOCUMENT_TYPE, // סוג המסמך
         index + 1, // מספר מסמך
-      ]);
+      ]
+    );
 
     if (rows.length === 0) {
       return NextResponse.json(

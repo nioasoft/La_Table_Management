@@ -101,4 +101,8 @@ export interface TabitUploadSummary {
   period: { month: number; year: number } | null;
   /** URL of the uploaded original file */
   fileUrl: string;
+  /** Unique occasional-client registry rows touched by this upload */
+  occasionalClientsCreated?: number;
+  /** (occasional client × franchisee × period) tuples persisted */
+  occasionalDocumentsCreated?: number;
 }

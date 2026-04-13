@@ -3603,3 +3603,119 @@ export type ReconciliationComparisonStatus = (typeof reconciliationComparisonSta
 export type ReconciliationReviewQueue = typeof reconciliationReviewQueue.$inferSelect;
 export type CreateReconciliationReviewQueueData = typeof reconciliationReviewQueue.$inferInsert;
 export type ReconciliationReviewQueueStatus = (typeof reconciliationReviewQueueStatusEnum.enumValues)[number];
+
+// ============================================================================
+// OCCASIONAL CLIENTS
+// Tabit columns that don't map to a registered client. Registered globally by
+// (trimmed, lowercased) column name. When the user fills in hashavshevetCode /
+// hashavshevetName, they'll be included in the client-invoices Hashavshevet
+// export for the franchisee that generated them.
+// ============================================================================
+
+export const occasionalClient = pgTable(
+  "occasional_client",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    // Display name (trimmed, case-preserved) — what the user sees
+    tabitColumnName: text("tabit_column_name").notNull(),
+    // Matching key (trim + toLowerCase) — unique across the registry
+    tabitColumnKey: text("tabit_column_key").notNull(),
+    hashavshevetCode: text("hashavshevet_code"),
+    hashavshevetName: text("hashavshevet_name"),
+    ignored: boolean("ignored")
+      .notNull()
+      .$default(() => false),
+    firstSeenPeriodMonth: integer("first_seen_period_month"),
+    firstSeenPeriodYear: integer("first_seen_period_year"),
+    firstSeenAt: timestamp("first_seen_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("idx_occasional_client_key").on(table.tabitColumnKey),
+    index("idx_occasional_client_ignored").on(table.ignored),
+  ]
+);
+
+export const occasionalClientDocument = pgTable(
+  "occasional_client_document",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    occasionalClientId: text("occasional_client_id")
+      .notNull()
+      .references(() => occasionalClient.id, { onDelete: "cascade" }),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "cascade" }),
+    periodMonth: integer("period_month").notNull(),
+    periodYear: integer("period_year").notNull(),
+    totalAmount: decimal("total_amount", { precision: 14, scale: 2 }).notNull(),
+    sourceTabitFileUrl: text("source_tabit_file_url"),
+    sourceTabitFileName: text("source_tabit_file_name"),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("idx_occ_client_doc_uniq").on(
+      table.occasionalClientId,
+      table.franchiseeId,
+      table.periodMonth,
+      table.periodYear
+    ),
+    index("idx_occ_client_doc_franchisee_period").on(
+      table.franchiseeId,
+      table.periodYear,
+      table.periodMonth
+    ),
+  ]
+);
+
+export const occasionalClientRelations = relations(
+  occasionalClient,
+  ({ many }) => ({
+    documents: many(occasionalClientDocument),
+  })
+);
+
+export const occasionalClientDocumentRelations = relations(
+  occasionalClientDocument,
+  ({ one }) => ({
+    occasionalClient: one(occasionalClient, {
+      fields: [occasionalClientDocument.occasionalClientId],
+      references: [occasionalClient.id],
+    }),
+    franchisee: one(franchisee, {
+      fields: [occasionalClientDocument.franchiseeId],
+      references: [franchisee.id],
+    }),
+  })
+);
+
+export type OccasionalClient = typeof occasionalClient.$inferSelect;
+export type CreateOccasionalClientData = typeof occasionalClient.$inferInsert;
+export type UpdateOccasionalClientData = Partial<
+  Omit<CreateOccasionalClientData, "id" | "tabitColumnKey" | "createdAt">
+>;
+
+export type OccasionalClientDocument =
+  typeof occasionalClientDocument.$inferSelect;
+export type CreateOccasionalClientDocumentData =
+  typeof occasionalClientDocument.$inferInsert;

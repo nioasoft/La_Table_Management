@@ -19,6 +19,10 @@ import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
 import { parseHeverFile } from "@/lib/client-parsers/hever-parser";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
+import {
+  upsertOccasionalClientFromTabit,
+  upsertOccasionalClientDocument,
+} from "@/data-access/occasional-clients";
 import type { ClientDocumentProcessingResult, TabitUploadSummary } from "@/lib/client-parsers/types";
 import type { ClientDocument, Franchisee } from "@/db/schema";
 
@@ -345,6 +349,13 @@ export async function processTabitUpload(
     let skippedZeroAmounts = 0;
     const unmatchedBranches: string[] = [];
     const unmappedColumnsSet = new Set<string>();
+    // Occasional-client amounts, grouped by (columnName → franchiseeId → summed amount).
+    // We register each occasional client name once (outside the branch loop) and
+    // persist per-(franchisee, period) amounts afterwards.
+    const occasionalAmounts = new Map<
+      string, // tabit column name (display)
+      Map<string, number> // franchiseeId → amount
+    >();
 
     for (const branch of branches) {
       // Match branch name to franchisee
@@ -369,9 +380,18 @@ export async function processTabitUpload(
       for (const [colName, amount] of Object.entries(branch.amounts)) {
         const mapping = columnToClient.get(colName.toLowerCase());
         if (!mapping) {
-          // Column not mapped to any client
+          // Column not mapped to any known client → treat as occasional client
           if (amount !== 0) {
             unmappedColumnsSet.add(colName);
+            let perFranchisee = occasionalAmounts.get(colName);
+            if (!perFranchisee) {
+              perFranchisee = new Map<string, number>();
+              occasionalAmounts.set(colName, perFranchisee);
+            }
+            perFranchisee.set(
+              franchiseeId,
+              (perFranchisee.get(franchiseeId) ?? 0) + amount
+            );
           }
           continue;
         }
@@ -450,6 +470,41 @@ export async function processTabitUpload(
       }
     }
 
+    // Persist occasional clients and their per-franchisee amounts. Each unique
+    // column name becomes a registry row; each (column, franchisee, period)
+    // tuple becomes a transaction row. Failures here don't abort the upload —
+    // we just log them, since the main client_document writes already succeeded.
+    let occasionalClientsCreated = 0;
+    let occasionalDocumentsCreated = 0;
+    for (const [columnName, perFranchisee] of occasionalAmounts.entries()) {
+      try {
+        const occClient = await upsertOccasionalClientFromTabit({
+          tabitColumnName: columnName,
+          firstSeenPeriodMonth: periodMonth,
+          firstSeenPeriodYear: periodYear,
+          createdBy: userId ?? null,
+        });
+        occasionalClientsCreated++;
+        for (const [franchiseeId, amount] of perFranchisee.entries()) {
+          await upsertOccasionalClientDocument({
+            occasionalClientId: occClient.id,
+            franchiseeId,
+            periodMonth,
+            periodYear,
+            totalAmount: amount,
+            sourceTabitFileUrl: uploadResult.url,
+            sourceTabitFileName: fileName,
+          });
+          occasionalDocumentsCreated++;
+        }
+      } catch (err) {
+        console.error(
+          `Failed to persist occasional client "${columnName}":`,
+          err instanceof Error ? err.message : err
+        );
+      }
+    }
+
     const summary: TabitUploadSummary = {
       documentsCreated,
       documentsUpdated,
@@ -458,6 +513,8 @@ export async function processTabitUpload(
       skippedZeroAmounts,
       period: { month: periodMonth, year: periodYear },
       fileUrl: uploadResult.url,
+      occasionalClientsCreated,
+      occasionalDocumentsCreated,
     };
 
     return { success: true, summary };

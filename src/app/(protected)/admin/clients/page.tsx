@@ -46,6 +46,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { OccasionalClientsTab } from "@/components/occasional-clients/OccasionalClientsTab";
 import {
   Pencil,
   Loader2,
@@ -385,7 +387,12 @@ export default function ClientsPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="p-6 space-y-6">
+    <Tabs dir="rtl" defaultValue="clients" className="p-6">
+      <TabsList className="mb-4">
+        <TabsTrigger value="clients">לקוחות</TabsTrigger>
+        <TabsTrigger value="occasional">לקוחות מזדמנים</TabsTrigger>
+      </TabsList>
+      <TabsContent value="clients" className="space-y-6">
       {/* ── Header ── */}
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -1139,6 +1146,10 @@ export default function ClientsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+      </TabsContent>
+      <TabsContent value="occasional">
+        <OccasionalClientsTab />
+      </TabsContent>
+    </Tabs>
   );
 }
