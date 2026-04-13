@@ -687,7 +687,17 @@ export default function ClientsPage() {
 
       {/* ── Add / Edit Dialog ── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="sm:max-w-4xl"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            maxHeight: "90vh",
+            overflowY: "auto",
+            height: "auto",
+          }}
+        >
+          <div className="space-y-4">
           <DialogHeader>
             <DialogTitle>
               {editingClient
@@ -933,167 +943,168 @@ export default function ClientsPage() {
               <div className="flex-1 border-t" />
             </div>
 
-            {/* File format + Gmail sender email */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="client-fileFormat">
-                  {he.clients.form.fileFormat}
-                </Label>
-                <Select
-                  value={formData.fileFormat}
-                  onValueChange={(v) => updateField("fileFormat", v)}
-                  disabled={isSubmitting}
-                >
-                  <SelectTrigger id="client-fileFormat">
-                    <SelectValue placeholder={he.clients.form.fileFormatPlaceholder} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pdf">{he.clients.form.fileFormatOptions.pdf}</SelectItem>
-                    <SelectItem value="excel">{he.clients.form.fileFormatOptions.excel}</SelectItem>
-                    <SelectItem value="csv">{he.clients.form.fileFormatOptions.csv}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-2 space-y-2">
-                <Label htmlFor="client-gmailSenderEmail">
-                  {he.clients.form.gmailSenderEmail}
-                </Label>
-                <Input
-                  id="client-gmailSenderEmail"
-                  type="email"
-                  dir="ltr"
-                  value={formData.gmailSenderEmail}
-                  onChange={(e) => updateField("gmailSenderEmail", e.target.value)}
-                  placeholder={he.clients.form.gmailSenderEmailPlaceholder}
-                  disabled={isSubmitting}
-                />
-              </div>
-            </div>
-
-            {/* Gmail search query */}
-            <div className="space-y-2">
-              <Label htmlFor="client-gmailSearchQuery">
-                {he.clients.form.gmailSearchQuery}
-              </Label>
-              <Input
-                id="client-gmailSearchQuery"
-                dir="ltr"
-                value={formData.gmailSearchQuery}
-                onChange={(e) => updateField("gmailSearchQuery", e.target.value)}
-                placeholder={he.clients.form.gmailSearchQueryPlaceholder}
-                disabled={isSubmitting}
-                className="font-mono text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                {he.clients.form.gmailSearchQueryHelp}
-              </p>
-            </div>
-
-            {/* Tabit column names */}
-            <div className="space-y-2">
-              <Label htmlFor="client-tabitColumnNames">
-                שמות עמודות בטאביט
-              </Label>
-              <Input
-                id="client-tabitColumnNames"
-                value={formData.tabitColumnNames}
-                onChange={(e) => updateField("tabitColumnNames", e.target.value)}
-                placeholder='למשל: סיבוס, סיבוס Online, סיבוס אונליין'
-                disabled={isSubmitting}
-              />
-              <p className="text-xs text-muted-foreground">
-                שמות אמצעי התשלום בקובץ טאביט, מופרדים בפסיק. משמש לפיוס אוטומטי.
-              </p>
-            </div>
-
-            {/* Notes section */}
-            <div className="space-y-2">
-              <Label htmlFor="client-notes">{he.clients.form.notes}</Label>
-              <Textarea
-                id="client-notes"
-                value={formData.notes}
-                onChange={(e) => updateField("notes", e.target.value)}
-                placeholder={he.clients.form.notesPlaceholder}
-                disabled={isSubmitting}
-                rows={2}
-              />
-            </div>
-
-            {/* Franchisee multi-select section */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label>{he.clients.form.franchisees}</Label>
-                {formData.franchiseeIds.length > 0 && (
-                  <Badge variant="secondary" className="tabular-nums text-xs">
-                    {formData.franchiseeIds.length} נבחרו
-                  </Badge>
-                )}
-              </div>
-
-              {/* Search input */}
-              <div className="relative">
-                <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                <Input
-                  value={franchiseeSearch}
-                  onChange={(e) => setFranchiseeSearch(e.target.value)}
-                  placeholder={he.clients.form.searchFranchisees}
-                  className="ps-9"
-                  disabled={isSubmitting}
-                />
-                {franchiseeSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setFranchiseeSearch("")}
-                    className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            {/* Two-column layout: settings on left, franchisees on right */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Left column: format / gmail / tabit / notes */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="client-fileFormat">
+                    {he.clients.form.fileFormat}
+                  </Label>
+                  <Select
+                    value={formData.fileFormat}
+                    onValueChange={(v) => updateField("fileFormat", v)}
+                    disabled={isSubmitting}
                   >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                    <SelectTrigger id="client-fileFormat">
+                      <SelectValue placeholder={he.clients.form.fileFormatPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pdf">{he.clients.form.fileFormatOptions.pdf}</SelectItem>
+                      <SelectItem value="excel">{he.clients.form.fileFormatOptions.excel}</SelectItem>
+                      <SelectItem value="csv">{he.clients.form.fileFormatOptions.csv}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client-gmailSenderEmail">
+                    {he.clients.form.gmailSenderEmail}
+                  </Label>
+                  <Input
+                    id="client-gmailSenderEmail"
+                    type="email"
+                    dir="ltr"
+                    value={formData.gmailSenderEmail}
+                    onChange={(e) => updateField("gmailSenderEmail", e.target.value)}
+                    placeholder={he.clients.form.gmailSenderEmailPlaceholder}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client-gmailSearchQuery">
+                    {he.clients.form.gmailSearchQuery}
+                  </Label>
+                  <Input
+                    id="client-gmailSearchQuery"
+                    dir="ltr"
+                    value={formData.gmailSearchQuery}
+                    onChange={(e) => updateField("gmailSearchQuery", e.target.value)}
+                    placeholder={he.clients.form.gmailSearchQueryPlaceholder}
+                    disabled={isSubmitting}
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {he.clients.form.gmailSearchQueryHelp}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client-tabitColumnNames">
+                    שמות עמודות בטאביט
+                  </Label>
+                  <Input
+                    id="client-tabitColumnNames"
+                    value={formData.tabitColumnNames}
+                    onChange={(e) => updateField("tabitColumnNames", e.target.value)}
+                    placeholder='למשל: סיבוס, סיבוס Online, סיבוס אונליין'
+                    disabled={isSubmitting}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    שמות אמצעי התשלום בקובץ טאביט, מופרדים בפסיק. משמש לפיוס אוטומטי.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client-notes">{he.clients.form.notes}</Label>
+                  <Textarea
+                    id="client-notes"
+                    value={formData.notes}
+                    onChange={(e) => updateField("notes", e.target.value)}
+                    placeholder={he.clients.form.notesPlaceholder}
+                    disabled={isSubmitting}
+                    rows={2}
+                  />
+                </div>
               </div>
 
-              {/* Scrollable checkbox list */}
-              <div className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
-                {filteredFranchisees.length === 0 && (
-                  <p className="py-4 text-center text-sm text-muted-foreground">
-                    לא נמצאו זכיינים
-                  </p>
-                )}
-                {filteredFranchisees.map(
-                  (f: { id: string; name: string; code: string }) => {
-                    const isChecked = formData.franchiseeIds.includes(f.id);
-                    return (
-                      <div
-                        key={f.id}
-                        className={`flex items-center gap-3 rounded px-2 py-1.5 cursor-pointer transition-colors ${
-                          isChecked
-                            ? "bg-primary/10"
-                            : "hover:bg-muted"
-                        }`}
-                        onClick={() => !isSubmitting && toggleFranchisee(f.id)}
-                      >
-                        <Checkbox
-                          id={`franchisee-${f.id}`}
-                          checked={isChecked}
-                          onCheckedChange={() =>
-                            !isSubmitting && toggleFranchisee(f.id)
-                          }
-                          disabled={isSubmitting}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <Label
-                          htmlFor={`franchisee-${f.id}`}
-                          className="flex-1 cursor-pointer font-normal flex items-center justify-between"
-                          onClick={(e) => e.stopPropagation()}
+              {/* Right column: franchisees multi-select */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>{he.clients.form.franchisees}</Label>
+                  {formData.franchiseeIds.length > 0 && (
+                    <Badge variant="secondary" className="tabular-nums text-xs">
+                      {formData.franchiseeIds.length} נבחרו
+                    </Badge>
+                  )}
+                </div>
+
+                {/* Search input */}
+                <div className="relative">
+                  <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={franchiseeSearch}
+                    onChange={(e) => setFranchiseeSearch(e.target.value)}
+                    placeholder={he.clients.form.searchFranchisees}
+                    className="ps-9"
+                    disabled={isSubmitting}
+                  />
+                  {franchiseeSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setFranchiseeSearch("")}
+                      className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Scrollable checkbox list — taller because it's now beside content */}
+                <div className="h-[420px] overflow-y-auto rounded-md border bg-muted/30 p-2 space-y-1">
+                  {filteredFranchisees.length === 0 && (
+                    <p className="py-4 text-center text-sm text-muted-foreground">
+                      לא נמצאו זכיינים
+                    </p>
+                  )}
+                  {filteredFranchisees.map(
+                    (f: { id: string; name: string; code: string }) => {
+                      const isChecked = formData.franchiseeIds.includes(f.id);
+                      return (
+                        <div
+                          key={f.id}
+                          className={`flex items-center gap-3 rounded px-2 py-1.5 cursor-pointer transition-colors ${
+                            isChecked
+                              ? "bg-primary/10"
+                              : "hover:bg-muted"
+                          }`}
+                          onClick={() => !isSubmitting && toggleFranchisee(f.id)}
                         >
-                          <span>{f.name}</span>
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            {f.code}
-                          </span>
-                        </Label>
-                      </div>
-                    );
-                  }
-                )}
+                          <Checkbox
+                            id={`franchisee-${f.id}`}
+                            checked={isChecked}
+                            onCheckedChange={() =>
+                              !isSubmitting && toggleFranchisee(f.id)
+                            }
+                            disabled={isSubmitting}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <Label
+                            htmlFor={`franchisee-${f.id}`}
+                            className="flex-1 cursor-pointer font-normal flex items-center justify-between"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <span>{f.name}</span>
+                            <span className="text-xs text-muted-foreground tabular-nums">
+                              {f.code}
+                            </span>
+                          </Label>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1120,6 +1131,7 @@ export default function ClientsPage() {
               </Button>
             </DialogFooter>
           </form>
+          </div>
         </DialogContent>
       </Dialog>
 
