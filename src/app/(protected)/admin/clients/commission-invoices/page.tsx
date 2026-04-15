@@ -308,6 +308,8 @@ export default function CommissionInvoicesPage() {
         clients={clients ?? []}
         periodMonth={periodMonth}
         periodYear={periodYear}
+        setPeriodMonth={setPeriodMonth}
+        setPeriodYear={setPeriodYear}
       />
     </div>
   );
@@ -528,6 +530,8 @@ interface UploadInvoiceDialogProps {
   clients: Array<{ id: string; name: string; code: string | null }>;
   periodMonth: number;
   periodYear: number;
+  setPeriodMonth: (month: number) => void;
+  setPeriodYear: (year: number) => void;
 }
 
 function UploadInvoiceDialog({
@@ -536,6 +540,8 @@ function UploadInvoiceDialog({
   clients,
   periodMonth,
   periodYear,
+  setPeriodMonth,
+  setPeriodYear,
 }: UploadInvoiceDialogProps) {
   const [clientId, setClientId] = useState("");
   const [rows, setRows] = useState<FileRow[]>([]);
@@ -731,8 +737,37 @@ function UploadInvoiceDialog({
 
             <div className="grid gap-2">
               <Label>תקופה</Label>
-              <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
-                {MONTHS[periodMonth - 1]} {periodYear}
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={String(periodMonth)}
+                  onValueChange={(v) => setPeriodMonth(parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent dir="rtl">
+                    {MONTHS.map((name, idx) => (
+                      <SelectItem key={idx + 1} value={String(idx + 1)}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={String(periodYear)}
+                  onValueChange={(v) => setPeriodYear(parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent dir="rtl">
+                    {[2024, 2025, 2026, 2027].map((y) => (
+                      <SelectItem key={y} value={String(y)}>
+                        {y}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <p className="text-xs text-muted-foreground">
                 תקופה תעודכן אוטומטית מהחשבונית אם תזוהה
