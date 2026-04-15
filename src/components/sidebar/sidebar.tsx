@@ -359,11 +359,12 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
       const content = (
         <Link
           href={item.href}
+          aria-current={isActive(item.href) ? "page" : undefined}
           className={cn(
-            "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200",
+            "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 transition-all duration-200 border",
             isActive(item.href)
-              ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-              : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-sidebar-primary/60 shadow-xs"
+              : "border-transparent text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
           )}
         >
           {/* Active indicator */}
@@ -436,9 +437,12 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
                   <DropdownMenuItem key={childIndex} asChild>
                     <Link
                       href={child.href}
+                      aria-current={isActive(child.href) ? "page" : undefined}
                       className={cn(
-                        "flex items-center gap-2 cursor-pointer",
-                        isActive(child.href) && "bg-accent"
+                        "flex items-center gap-2 cursor-pointer border",
+                        isActive(child.href)
+                          ? "bg-accent border-sidebar-primary/60 font-semibold"
+                          : "border-transparent"
                       )}
                     >
                       {child.icon}
@@ -506,11 +510,12 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
                 <li key={childIndex}>
                   <Link
                     href={child.href}
+                    aria-current={isActive(child.href) ? "page" : undefined}
                     className={cn(
-                      "group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200",
+                      "group relative flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-all duration-200 border",
                       isActive(child.href)
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground font-semibold border-sidebar-primary/60 shadow-xs"
+                        : "border-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground"
                     )}
                   >
                     {/* Active indicator */}
