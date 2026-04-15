@@ -61,6 +61,7 @@ import {
   FileText,
   Settings2,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { he } from "@/lib/translations/he";
 import {
   useClients,
@@ -1154,12 +1155,10 @@ export default function ClientsPage() {
                       return (
                         <div
                           key={f.id}
-                          className={`flex items-center gap-3 rounded px-2 py-1.5 cursor-pointer transition-colors ${
-                            isChecked
-                              ? "bg-primary/10"
-                              : "hover:bg-muted"
-                          }`}
-                          onClick={() => !isSubmitting && toggleFranchisee(f.id)}
+                          className={cn(
+                            "flex items-center gap-3 rounded px-2 py-1.5 transition-colors",
+                            isChecked ? "bg-primary/10" : "hover:bg-muted"
+                          )}
                         >
                           <Checkbox
                             id={`franchisee-${f.id}`}
@@ -1168,12 +1167,10 @@ export default function ClientsPage() {
                               !isSubmitting && toggleFranchisee(f.id)
                             }
                             disabled={isSubmitting}
-                            onClick={(e) => e.stopPropagation()}
                           />
                           <Label
                             htmlFor={`franchisee-${f.id}`}
                             className="flex-1 cursor-pointer font-normal flex items-center justify-between"
-                            onClick={(e) => e.stopPropagation()}
                           >
                             <span>{f.name}</span>
                             <span className="text-xs text-muted-foreground tabular-nums">
@@ -1218,7 +1215,9 @@ export default function ClientsPage() {
       {/* ── Delete Confirmation ── */}
       <AlertDialog
         open={!!clientToDelete}
-        onOpenChange={() => setClientToDelete(null)}
+        onOpenChange={(open) => {
+          if (!open) setClientToDelete(null);
+        }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
