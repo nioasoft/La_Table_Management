@@ -132,17 +132,6 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
     );
   };
 
-  const isActive = (href: string) => {
-    if (href === "/dashboard") {
-      return pathname === "/dashboard";
-    }
-    return pathname.startsWith(href);
-  };
-
-  const isChildActive = (children: { href: string }[]) => {
-    return children.some((child) => pathname.startsWith(child.href));
-  };
-
   const navItems: NavItem[] = [
     {
       label: he.sidebar.navigation.dashboard,
@@ -349,6 +338,32 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
         ]
       : []),
   ];
+
+  // Flatten all hrefs so active-state resolution picks the most specific match.
+  const allNavHrefs: string[] = [];
+  for (const item of navItems) {
+    if (item.href) allNavHrefs.push(item.href);
+    if (item.children) {
+      for (const c of item.children) allNavHrefs.push(c.href);
+    }
+  }
+
+  const isActive = (href: string) => {
+    if (href === "/dashboard") return pathname === "/dashboard";
+    if (pathname === href) return true;
+    if (!pathname.startsWith(href + "/")) return false;
+    // If a sibling/child href is a longer match, defer to it.
+    return !allNavHrefs.some(
+      (h) =>
+        h !== href &&
+        h.length > href.length &&
+        h.startsWith(href) &&
+        (pathname === h || pathname.startsWith(h + "/"))
+    );
+  };
+
+  const isChildActive = (children: { href: string }[]) =>
+    children.some((child) => isActive(child.href));
 
   // Render a nav item with tooltip when collapsed
   const renderNavItem = (item: NavItem, index: number) => {
