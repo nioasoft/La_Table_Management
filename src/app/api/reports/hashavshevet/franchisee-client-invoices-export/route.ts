@@ -217,22 +217,9 @@ export async function GET(request: NextRequest) {
 
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
-    const MONTHS = [
-      "ינואר",
-      "פברואר",
-      "מרץ",
-      "אפריל",
-      "מאי",
-      "יוני",
-      "יולי",
-      "אוגוסט",
-      "ספטמבר",
-      "אוקטובר",
-      "נובמבר",
-      "דצמבר",
-    ];
-    const monthName = MONTHS[periodMonth - 1] || String(periodMonth);
-    const filename = `חשבוניות לקוחות ${fr.name} ${monthName} ${periodYear}.xlsx`;
+    // Hashavshevet requires a fixed filename — Reut overwrites locally on each
+    // export by design. Do NOT add franchisee/period to the name.
+    const filename = `לקוחות חשבוניות.xlsx`;
 
     return new NextResponse(buffer, {
       headers: {
