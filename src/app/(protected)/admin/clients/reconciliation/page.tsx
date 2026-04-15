@@ -51,6 +51,7 @@ import {
   Check,
   X,
   FileSpreadsheet,
+  FileText,
   MessageSquare,
   Pencil,
   Zap,
@@ -1057,36 +1058,64 @@ export default function ClientReconciliationPage() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <span className="tabular-nums text-sm">
-                              {row.clientAmount !== null
-                                ? formatAmount(String(row.clientAmount))
-                                : "-"}
-                            </span>
-                            {row.status === "missing_client" ||
-                            row.status === "missing_both" ? (
-                              <Badge
-                                variant="outline"
-                                className="ms-2 text-[10px] text-amber-600 border-amber-300"
-                              >
-                                חסר
-                              </Badge>
-                            ) : null}
+                            <div className="flex items-center gap-1.5">
+                              <span className="tabular-nums text-sm">
+                                {row.clientAmount !== null
+                                  ? formatAmount(String(row.clientAmount))
+                                  : "-"}
+                              </span>
+                              {row.clientFileDocId ? (
+                                <a
+                                  href={`/api/clients/documents/${row.clientFileDocId}/download`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={row.clientFileName ?? "פתח קובץ לקוח"}
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                </a>
+                              ) : null}
+                              {row.status === "missing_client" ||
+                              row.status === "missing_both" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] text-amber-600 border-amber-300"
+                                >
+                                  חסר
+                                </Badge>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell>
-                            <span className="tabular-nums text-sm">
-                              {row.tabitAmount !== null
-                                ? formatAmount(String(row.tabitAmount))
-                                : "-"}
-                            </span>
-                            {row.status === "missing_tabit" ||
-                            row.status === "missing_both" ? (
-                              <Badge
-                                variant="outline"
-                                className="ms-2 text-[10px] text-amber-600 border-amber-300"
-                              >
-                                חסר
-                              </Badge>
-                            ) : null}
+                            <div className="flex items-center gap-1.5">
+                              <span className="tabular-nums text-sm">
+                                {row.tabitAmount !== null
+                                  ? formatAmount(String(row.tabitAmount))
+                                  : "-"}
+                              </span>
+                              {row.tabitFileDocId ? (
+                                <a
+                                  href={`/api/clients/documents/${row.tabitFileDocId}/download`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title={row.tabitFileName ?? "פתח קובץ טאביט"}
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                                </a>
+                              ) : null}
+                              {row.status === "missing_tabit" ||
+                              row.status === "missing_both" ? (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] text-amber-600 border-amber-300"
+                                >
+                                  חסר
+                                </Badge>
+                              ) : null}
+                            </div>
                           </TableCell>
                           <TableCell>
                             <span

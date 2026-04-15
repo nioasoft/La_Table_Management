@@ -27,6 +27,12 @@ interface ByFranchiseeRow {
   approvedBy: string | null;
   approvedByName: string | null;
   approvalNotes: string | null;
+  // Latest document id per side (null if none). UI links via
+  // /api/clients/documents/[id]/download which 302s to storage.
+  clientFileDocId: string | null;
+  clientFileName: string | null;
+  tabitFileDocId: string | null;
+  tabitFileName: string | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -64,6 +70,9 @@ export async function GET(request: NextRequest) {
         clientId: clientDocument.clientId,
         documentType: clientDocument.documentType,
         totalAmount: clientDocument.totalAmount,
+        fileUrl: clientDocument.fileUrl,
+        originalFileName: clientDocument.originalFileName,
+        createdAt: clientDocument.createdAt,
       })
       .from(clientDocument)
       .where(
@@ -78,6 +87,18 @@ export async function GET(request: NextRequest) {
     const clientReports = new Map<string, number>();
     const tabitReports = new Map<string, number>();
 
+    // Latest file per (clientId, type) — chosen by createdAt desc.
+    // Tracks the doc id so the UI can link via the auth-protected
+    // download endpoint (which itself follows fileUrl).
+    interface LatestFile {
+      docId: string;
+      hasUrl: boolean;
+      name: string;
+      createdAt: Date;
+    }
+    const latestClientFile = new Map<string, LatestFile>();
+    const latestTabitFile = new Map<string, LatestFile>();
+
     for (const doc of docs) {
       if (!doc.clientId) continue;
       const amount = doc.totalAmount ? parseFloat(doc.totalAmount) : 0;
@@ -87,11 +108,29 @@ export async function GET(request: NextRequest) {
           doc.clientId,
           (clientReports.get(doc.clientId) ?? 0) + amount
         );
+        const prev = latestClientFile.get(doc.clientId);
+        if (!prev || doc.createdAt > prev.createdAt) {
+          latestClientFile.set(doc.clientId, {
+            docId: doc.id,
+            hasUrl: !!doc.fileUrl,
+            name: doc.originalFileName,
+            createdAt: doc.createdAt,
+          });
+        }
       } else if (doc.documentType === "tabit_report") {
         tabitReports.set(
           doc.clientId,
           (tabitReports.get(doc.clientId) ?? 0) + amount
         );
+        const prev = latestTabitFile.get(doc.clientId);
+        if (!prev || doc.createdAt > prev.createdAt) {
+          latestTabitFile.set(doc.clientId, {
+            docId: doc.id,
+            hasUrl: !!doc.fileUrl,
+            name: doc.originalFileName,
+            createdAt: doc.createdAt,
+          });
+        }
       }
     }
 
@@ -151,6 +190,9 @@ export async function GET(request: NextRequest) {
         status = "missing_both";
       }
 
+      const cf = latestClientFile.get(clientId);
+      const tf = latestTabitFile.get(clientId);
+
       rows.push({
         clientId,
         clientName: c.name,
@@ -158,6 +200,10 @@ export async function GET(request: NextRequest) {
         // Gift Card: use Tabit amount as client amount
         clientAmount: clientAmt ?? (c.code === "GIFTCARD" ? tabitAmt : null),
         tabitAmount: tabitAmt,
+        clientFileDocId: cf?.hasUrl ? cf.docId : null,
+        clientFileName: cf?.name ?? null,
+        tabitFileDocId: tf?.hasUrl ? tf.docId : null,
+        tabitFileName: tf?.name ?? null,
         difference,
         absoluteDifference,
         status,

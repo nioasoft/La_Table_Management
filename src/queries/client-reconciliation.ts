@@ -154,6 +154,10 @@ export interface ByFranchiseeRow {
   approvedBy: string | null;
   approvedByName: string | null;
   approvalNotes: string | null;
+  clientFileDocId: string | null;
+  clientFileName: string | null;
+  tabitFileDocId: string | null;
+  tabitFileName: string | null;
 }
 
 export interface ByFranchiseeResponse {
