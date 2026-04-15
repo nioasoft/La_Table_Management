@@ -978,9 +978,15 @@ export default function ClientReconciliationPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          disabled={byFranchiseeData.summary.approved === 0}
+                          disabled={
+                            byFranchiseeData.summary.ok +
+                              byFranchiseeData.summary.approved ===
+                            0
+                          }
                           title={
-                            byFranchiseeData.summary.approved === 0
+                            byFranchiseeData.summary.ok +
+                              byFranchiseeData.summary.approved ===
+                            0
                               ? "אין שורות מאושרות לייצוא"
                               : "ייצוא לחשבשבת"
                           }

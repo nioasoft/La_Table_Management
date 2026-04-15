@@ -10,33 +10,37 @@ La Table Management is a commission management system for a restaurant franchise
 
 - **Framework**: Next.js 15 with App Router and React 19
 - **Language**: TypeScript with strict mode
-- **Database**: PostgreSQL with Drizzle ORM for type-safe queries
-- **Authentication**: Better Auth with email/password authentication
+- **Database**: PostgreSQL (Neon) with Drizzle ORM
+- **Authentication**: Better Auth with email/password
 - **Styling**: Tailwind CSS with shadcn/ui components
 - **File Storage**: AWS S3/R2 with presigned URL uploads
 - **Email**: Resend + React Email for automated communications
-- **Internationalization**: RTL support for Hebrew language (default)
+- **State**: TanStack Query for server state, React Server Components by default
+- **Language/RTL**: Hebrew (default), RTL layout throughout
 
 ### Project Structure
 
-- `src/app/` - Next.js App Router pages and layouts
-- `src/components/` - Reusable React components with `ui/` subfolder for base components
-- `src/db/` - Database configuration and schema definitions
-- `src/data-access/` - Data access layer functions
-- `src/fn/` - Business logic functions and middleware
-- `src/hooks/` - Custom React hooks for data fetching and state management
-- `src/queries/` - TanStack Query definitions for server state
-- `src/utils/` - Utility functions and helpers
-- `src/config/` - Environment and application configuration
-- `src/lib/` - Shared libraries and utilities
-- `src/styles/` - Global CSS and Tailwind configuration
+```
+src/
+├── app/            # Next.js App Router pages, layouts, API routes
+├── components/     # React components (ui/ for base shadcn components)
+├── data-access/    # Data access layer (DB queries, business logic)
+├── db/             # Database config and Drizzle schema
+├── emails/         # React Email templates
+├── hooks/          # Custom React hooks
+├── lib/            # Shared utilities, parsers, services
+├── queries/        # TanStack Query definitions
+├── scripts/        # One-off scripts (imports, migrations)
+├── styles/         # Global CSS
+└── utils/          # Small utility functions
+```
 
 ### Business Domain
 
 **Core Workflow:**
 1. Request reports from suppliers/franchisees via automated emails
 2. Collect Excel files via secure upload links
-3. Cross-reference supplier vs franchisee amounts (≤₪10 = matched)
+3. Cross-reference supplier vs franchisee amounts (≤₪30 threshold = matched)
 4. Handle discrepancies with adjustments
 5. Calculate commissions per supplier, group by brand
 6. Generate invoice reports per management company
@@ -56,146 +60,53 @@ La Table Management is a commission management system for a restaurant franchise
 
 27+ tables organized by domain:
 
-**Core Entities:**
-- `brands` - Pat Vini, Mina Tomai, King Kong
-- `suppliers` - Vendors with commission rates and file mapping configs
-- `franchisees` - Restaurant locations with aliases for name matching
-- `management_companies` - Invoice-issuing entities (Panikon, Pedvili, Ventami)
+**Core Entities:** `brands` (Pat Vini, Mina Tomai, King Kong), `suppliers`, `franchisees`, `management_companies` (Panikon, Pedvili, Ventami)
 
-**Financial:**
-- `commissions` - Commission records per supplier/franchisee/period
-- `settlements` - Settlement periods with status workflow
-- `adjustments` - Manual corrections (credit, deposit, timing, errors)
-- `cross_references` - Supplier vs franchisee amount comparisons
+**Financial:** `commissions`, `settlements`, `adjustments`, `cross_references`
 
-**Communication:**
-- `email_templates`, `email_logs`, `file_requests`, `upload_links`, `uploaded_files`
+**Communication:** `email_templates`, `email_logs`, `file_requests`, `upload_links`, `uploaded_files`
 
-**Audit:**
-- `audit_log`, `supplier_commission_history`, `franchisee_status_history`
+**Audit:** `audit_log`, `supplier_commission_history`, `franchisee_status_history`
 
-### Key Patterns
+## Key Patterns & Conventions
 
-- **Data Fetching**: React Server Components with TanStack Query for client-side state
-- **Authentication**: Better Auth with session management
-- **File Uploads**: Presigned URLs for direct S3/R2 uploads
-- **Type Safety**: Full TypeScript with Drizzle ORM schema inference
-- **RTL Support**: Default Hebrew language with right-to-left text direction
-- **Fuzzy Matching**: Franchisee name matching using aliases for supplier file parsing
-- **Settlement Workflow**: Status state machine (open → processing → pending_approval → approved → invoiced)
-- **Granular Permissions**: Module-level (view/edit/create/delete/approve) × 10 modules
-- **Audit Trail**: Comprehensive logging of all entity changes with before/after values
+### Settlement Workflow State Machine
+```
+open → processing → pending_approval → approved → invoiced
+```
+`transitionSettlementStatus()` in `src/data-access/settlements.ts` is the central orchestrator. The API routes layer (`src/app/api/`) acts as the orchestration hub connecting settlements → reconciliation → commissions → cross-references → invoice PDFs.
+
+### Reconciliation
+Always use **reconciliation-v2** (`src/data-access/reconciliation-v2.ts`), NOT v1. Threshold: ₪30 (`RECONCILIATION_THRESHOLD`). BKMV parsing: `src/lib/bkmvdata-parser.ts`.
 
 ### API Route Authentication
 
-**IMPORTANT**: Always use `@/lib/api-middleware` for API route authentication, NOT direct auth imports.
+**IMPORTANT**: Always use `@/lib/api-middleware`, NOT direct auth imports.
 
 ```typescript
-// ✅ Correct pattern for API routes
+// Correct
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAdminOrSuperUser(request);
   if (isAuthError(authResult)) return authResult;
-  // ... rest of handler
+  // ...
 }
-
-// ❌ Wrong - do NOT use these in API routes
-import { auth } from "@/lib/auth";      // Path doesn't exist
-import { auth } from "@/utils/auth";    // Use api-middleware instead
 ```
 
-Available middleware functions:
-- `requireAuth` - Any authenticated user
-- `requireAdminOrSuperUser` - Admin or Super User only
-- `requireSuperUser` - Super User only
+Available: `requireAuth`, `requireAdminOrSuperUser`, `requireSuperUser`
 
-## Database Environment
+### RTL/Hebrew
 
-**IMPORTANT: Always work with the PRODUCTION database only.**
+- `dir="rtl"` and `lang="he"` on root layout
+- Rubik font with Hebrew subset
+- RTL-aware Tailwind utilities
+- **Radix/shadcn gotcha**: always pass `dir="rtl"` to Tabs, Dialog, etc. — they default to `ltr`
 
-- **Production URL**: `www.latable.co.il`
-- **Production Database**: Neon PostgreSQL (connection string in `.env` as `DATABASE_URL`)
-- **Do NOT use** the local Docker database for data operations
-- All data queries, migrations, and changes should target production
+### Date Formatting (Important!)
 
-To run queries directly on production:
-```bash
-PGPASSWORD=<password> psql "postgresql://neondb_owner@ep-withered-sunset-ag7zdsgi-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require"
-```
+**Never use `toISOString()` for user-facing dates!** It converts to UTC, shifting dates by timezone offset (Israel is UTC+2/3). October 1st becomes September 30th.
 
-## Common Development Commands
-
-```bash
-# Development
-npm run dev                 # Start development server on port 3000 (with Turbopack)
-npm run build              # Build for production
-npm run start              # Start production server
-npm run lint               # Run ESLint
-
-# Database (runs against DATABASE_URL from .env - PRODUCTION)
-npm run db:migrate         # Run database migrations on production
-npm run db:generate        # Generate new migration files
-npm run db:studio          # Open Drizzle Studio for database management
-
-# Testing
-npm run test:e2e           # Run Playwright end-to-end tests
-```
-
-## Environment Setup
-
-1. Copy `.env.example` to `.env` and configure:
-   - Database connection (PostgreSQL) - uses production Neon database
-   - Better Auth secrets
-   - AWS S3/R2 credentials (for file storage)
-   - Resend API key (for emails)
-   - Public variables with NEXT_PUBLIC_ prefix
-
-2. Run migrations on production:
-   ```bash
-   npm run db:migrate
-   ```
-
-## Development Notes
-
-- Uses Next.js App Router with React Server Components
-- Database schema uses UUIDs for primary keys
-- File uploads go directly to cloud storage via presigned URLs
-- Build process includes TypeScript type checking
-- Default language is Hebrew with RTL support
-- All public client-side environment variables use NEXT_PUBLIC_ prefix
-
-## RTL/Hebrew Language Support
-
-The application is configured for Hebrew language by default:
-- HTML `dir="rtl"` and `lang="he"` attributes set in root layout
-- Rubik font with Hebrew subset for proper typography
-- RTL-aware Tailwind CSS utilities
-- Toaster notifications positioned for RTL layout
-
-## Additional Information
-
-- **PRD** - see `docs/PRD.md` for complete product requirements and database schema
-- **Meeting Notes** - see `docs/reut_meeting.md` for original requirements discussion
-- **authentication** - see `docs/authentication.md` for authentication setup
-- **architecture** - see `docs/architecture.md` for layered architecture details
-- **ux** - see `docs/ux.md` for user experience guidelines
-- **file-uploads** - see `docs/file-uploads.md` for file upload implementation
-- **suppliers** - see `docs/suppliers-reference.md` for supplier configuration, file mapping rules, commission rates, and franchisee aliases
-
-## Test User Notes
-
-- We keep a dedicated test user for QA. During active testing, this user can be temporarily promoted to `admin`.
-- After testing, the user must be demoted back to a regular, non-privileged state (role unset and status not active).
-
-## Date Formatting (Important!)
-
-**Never use `toISOString()` for date formatting in user-facing code!**
-
-`toISOString()` converts to UTC which shifts dates by timezone offset (Israel is UTC+2/3).
-This causes bugs where October 1st becomes September 30th.
-
-**Correct way to format dates as YYYY-MM-DD:**
 ```typescript
 const formatLocalDate = (date: Date) => {
   const year = date.getFullYear();
@@ -204,3 +115,72 @@ const formatLocalDate = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 ```
+
+### Other Patterns
+- **Type Safety**: Full TypeScript with Drizzle ORM schema inference, UUIDs for PKs
+- **File Uploads**: Presigned URLs for direct S3/R2 uploads
+- **Fuzzy Matching**: Franchisee name matching using aliases for supplier file parsing
+- **Granular Permissions**: Module-level (view/edit/create/delete/approve) × 10 modules
+- **Audit Trail**: Comprehensive logging of all entity changes with before/after values
+
+## Database Environment
+
+**IMPORTANT: Always work with the PRODUCTION database only.**
+
+- **Production URL**: `www.latable.co.il`
+- **Production Database**: Neon PostgreSQL (connection string in `.env` as `DATABASE_URL`)
+- **Do NOT use** the local Docker database for data operations
+
+```bash
+# Direct production access
+PGPASSWORD=<password> psql "postgresql://neondb_owner@ep-withered-sunset-ag7zdsgi-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+```
+
+## Development
+
+### Commands
+
+```bash
+npm run dev                 # Dev server on port 3000 (Turbopack)
+npm run build              # Production build (includes type checking)
+npm run lint               # ESLint
+
+npm run db:migrate         # Run migrations on production
+npm run db:generate        # Generate new migration files
+npm run db:studio          # Drizzle Studio
+
+npm run test:e2e           # Playwright E2E tests
+```
+
+### Environment Setup
+
+1. Copy `.env.example` to `.env` and configure: Database (Neon), Better Auth secrets, AWS S3/R2, Resend API key, `NEXT_PUBLIC_` variables
+2. Run `npm run db:migrate`
+
+## Knowledge Graph (graphify)
+
+A pre-built knowledge graph of `src/` lives in `graphify-out/graph.json` (1,788 nodes, 2,974 edges, 43 communities).
+
+**Before reading multiple source files to answer architecture/flow questions**, query the graph first:
+```
+/graphify query "<question>"
+```
+
+**27x cheaper** on average (~22K tokens vs ~600K). Use for: tracing flows, understanding dependencies, finding connections. Still read source for: writing code, debugging, reviewing implementations.
+
+**After significant code changes**: `/graphify src --update`
+
+## Additional Information
+
+- **PRD** - `docs/PRD.md`
+- **Meeting Notes** - `docs/reut_meeting.md`
+- **Authentication** - `docs/authentication.md`
+- **Architecture** - `docs/architecture.md`
+- **UX** - `docs/ux.md`
+- **File Uploads** - `docs/file-uploads.md`
+- **Suppliers Reference** - `docs/suppliers-reference.md`
+
+## Test User Notes
+
+- Dedicated test user for QA. Can be temporarily promoted to `admin` during testing.
+- After testing, must be demoted back (role unset, status not active).
