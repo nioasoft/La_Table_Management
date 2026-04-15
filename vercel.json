@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/bkmv-requests?autoCreate=true",
       "schedule": "0 6 15 1,4,7,10 *"
+    },
+    {
+      "path": "/api/cron/monthly-upload-reminder",
+      "schedule": "0 9 1-5 * *"
     }
   ]
 }

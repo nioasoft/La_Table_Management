@@ -13,4 +13,5 @@ export { AdminEscalationEmail } from "./admin-escalation";
 export { BkmvRequestEmail } from "./bkmv-request";
 export { BkmvOwnerEscalationEmail } from "./bkmv-owner-escalation";
 export { AgreementExpiryEmail } from "./agreement-expiry";
+export { MonthlyUploadReminderEmail } from "./monthly-upload-reminder";
 export { EmailLayout } from "./components/email-layout";
