@@ -9,7 +9,26 @@ export const occasionalClientKeys = {
   all: ["occasional-clients"] as const,
   list: (opts?: ListOptions) =>
     [...occasionalClientKeys.all, "list", opts?.includeIgnored ?? false] as const,
+  needingNames: (franchiseeId: string, periodMonth: number, periodYear: number) =>
+    [
+      ...occasionalClientKeys.all,
+      "needing-names",
+      franchiseeId,
+      periodMonth,
+      periodYear,
+    ] as const,
 };
+
+export interface OccasionalClientNeedingName {
+  id: string;
+  tabitColumnName: string;
+  totalAmount: number;
+}
+
+export interface OccasionalNeedingNamesResponse {
+  count: number;
+  items: OccasionalClientNeedingName[];
+}
 
 async function fetchOccasionalClients(
   opts?: ListOptions
@@ -29,6 +48,30 @@ export function useOccasionalClients(opts?: ListOptions) {
   return useQuery({
     queryKey: occasionalClientKeys.list(opts),
     queryFn: () => fetchOccasionalClients(opts),
+  });
+}
+
+export function useOccasionalClientsNeedingNames(
+  franchiseeId: string,
+  periodMonth: number,
+  periodYear: number
+) {
+  return useQuery({
+    queryKey: occasionalClientKeys.needingNames(franchiseeId, periodMonth, periodYear),
+    queryFn: async (): Promise<OccasionalNeedingNamesResponse> => {
+      const params = new URLSearchParams({
+        franchiseeId,
+        periodMonth: String(periodMonth),
+        periodYear: String(periodYear),
+      });
+      const res = await fetch(
+        `/api/admin/occasional-clients/needing-names?${params}`
+      );
+      if (!res.ok) throw new Error("שגיאה בטעינת לקוחות מזדמנים");
+      const body = await res.json();
+      return body.data as OccasionalNeedingNamesResponse;
+    },
+    enabled: !!franchiseeId && periodMonth > 0 && periodYear > 0,
   });
 }
 

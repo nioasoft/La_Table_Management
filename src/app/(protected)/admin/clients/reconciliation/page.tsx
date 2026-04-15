@@ -40,6 +40,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import Link from "next/link";
 import {
   Scale,
   Loader2,
@@ -55,6 +57,7 @@ import {
   MessageSquare,
   Pencil,
   Zap,
+  UserPlus,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -74,6 +77,7 @@ import {
   useUpsertReconciliationNote,
   type ByFranchiseeRow,
 } from "@/queries/client-reconciliation";
+import { useOccasionalClientsNeedingNames } from "@/queries/occasional-clients";
 import { toast } from "sonner";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +346,11 @@ export default function ClientReconciliationPage() {
   const { data: allFranchisees } = useFranchisees();
   const { data: byFranchiseeData, isLoading: byFranchiseeLoading } =
     useReconciliationByFranchisee(selectedFranchiseeId, periodMonth, periodYear);
+  const { data: occasionalNeedingNames } = useOccasionalClientsNeedingNames(
+    selectedFranchiseeId,
+    periodMonth,
+    periodYear
+  );
   const { data: sessions, isLoading: sessionsLoading } =
     useClientReconciliationSessions();
   const { data: sessionDetail, isLoading: detailLoading } =
@@ -929,6 +938,26 @@ export default function ClientReconciliationPage() {
               </div>
             ) : (
               <>
+                {occasionalNeedingNames && occasionalNeedingNames.count > 0 ? (
+                  <div className="p-4 border-b">
+                    <Alert variant="warning" className="pe-4">
+                      <UserPlus className="h-4 w-4" />
+                      <AlertDescription className="flex items-center justify-between gap-3">
+                        <span>
+                          בקובץ הטאביט זוהו{" "}
+                          <strong>{occasionalNeedingNames.count}</strong>{" "}
+                          לקוחות מזדמנים שטרם הוזן להם שם בחשבשבת. יש להזין את
+                          השמות כדי שניתן יהיה לייצא לחשבשבת.
+                        </span>
+                        <Button asChild size="sm" variant="outline">
+                          <Link href="/admin/occasional-clients">
+                            פתיחת מסך מזדמנים
+                          </Link>
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                ) : null}
                 {/* Toolbar + Summary */}
                 <div className="flex items-center justify-between gap-2 p-4 border-b">
                   <div className="grid grid-cols-4 gap-6 flex-1">

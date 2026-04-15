@@ -7,7 +7,7 @@ import {
   type OccasionalClient,
   type UpdateOccasionalClientData,
 } from "@/db/schema";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 /**
  * Canonical matching key for an occasional client — used to dedupe column
@@ -186,6 +186,52 @@ export async function getOccasionalClientsForExport(input: {
     occasionalClientId: r.occasionalClientId,
     tabitColumnName: r.tabitColumnName,
     hashavshevetName: r.hashavshevetName,
+    totalAmount: parseFloat(r.totalAmount),
+  }));
+}
+
+export interface OccasionalClientNeedingName {
+  id: string;
+  tabitColumnName: string;
+  totalAmount: number;
+}
+
+/**
+ * List occasional clients that appear in the Tabit data for a given
+ * (franchisee, period) and still need a Hashavshevet name to be entered.
+ * Excludes ignored rows and zero-amount documents.
+ */
+export async function listOccasionalClientsNeedingNames(input: {
+  franchiseeId: string;
+  periodMonth: number;
+  periodYear: number;
+}): Promise<OccasionalClientNeedingName[]> {
+  const rows = await database
+    .select({
+      id: occasionalClient.id,
+      tabitColumnName: occasionalClient.tabitColumnName,
+      totalAmount: occasionalClientDocument.totalAmount,
+    })
+    .from(occasionalClientDocument)
+    .innerJoin(
+      occasionalClient,
+      eq(occasionalClientDocument.occasionalClientId, occasionalClient.id)
+    )
+    .where(
+      and(
+        eq(occasionalClientDocument.franchiseeId, input.franchiseeId),
+        eq(occasionalClientDocument.periodMonth, input.periodMonth),
+        eq(occasionalClientDocument.periodYear, input.periodYear),
+        eq(occasionalClient.ignored, false),
+        isNull(occasionalClient.hashavshevetName),
+        sql`${occasionalClientDocument.totalAmount} <> 0`
+      )
+    )
+    .orderBy(asc(occasionalClient.tabitColumnName));
+
+  return rows.map((r) => ({
+    id: r.id,
+    tabitColumnName: r.tabitColumnName,
     totalAmount: parseFloat(r.totalAmount),
   }));
 }
