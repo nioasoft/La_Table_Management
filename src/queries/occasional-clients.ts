@@ -62,3 +62,43 @@ export function useUpdateOccasionalClient() {
     },
   });
 }
+
+export interface LinkOccasionalClientInput {
+  id: string;
+  clientId: string;
+  addAlias?: boolean;
+}
+
+export interface LinkOccasionalClientResult {
+  occasionalClientId: string;
+  clientId: string;
+  documentsCreated: number;
+  documentsUpdated: number;
+}
+
+export function useLinkOccasionalClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      clientId,
+      addAlias = true,
+    }: LinkOccasionalClientInput) => {
+      const res = await fetch(`/api/admin/occasional-clients/${id}/link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, addAlias }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to link occasional client");
+      }
+      const body = await res.json();
+      return body.data as LinkOccasionalClientResult;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: occasionalClientKeys.all });
+      qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
+}

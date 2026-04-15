@@ -1,11 +1,13 @@
 import { database } from "@/db";
 import {
+  client,
+  clientDocument,
   occasionalClient,
   occasionalClientDocument,
   type OccasionalClient,
   type UpdateOccasionalClientData,
 } from "@/db/schema";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 /**
  * Canonical matching key for an occasional client — used to dedupe column
@@ -186,4 +188,144 @@ export async function getOccasionalClientsForExport(input: {
     hashavshevetName: r.hashavshevetName,
     totalAmount: parseFloat(r.totalAmount),
   }));
+}
+
+export interface MergeResult {
+  occasionalClientId: string;
+  clientId: string;
+  documentsCreated: number;
+  documentsUpdated: number;
+}
+
+/**
+ * Merge an occasional client into an existing client.
+ *
+ * For every (franchisee, period) row in `occasional_client_document`, fold the
+ * amount into the matching `client_document` of type `tabit_report`:
+ *   - existing row → add `totalAmount` (sum with previously-mapped columns)
+ *   - missing row  → create a new tabit_report row attributed to this client
+ *
+ * After the documents are folded in, the occasional_client itself is deleted
+ * (cascading its occasional_client_document children).
+ *
+ * Idempotent if called twice — the second call no-ops because the occasional
+ * is gone. Caller should not assume the row still exists after this returns.
+ */
+export async function mergeOccasionalIntoClient(
+  occasionalId: string,
+  clientId: string
+): Promise<MergeResult> {
+  const [occRow] = await database
+    .select()
+    .from(occasionalClient)
+    .where(eq(occasionalClient.id, occasionalId))
+    .limit(1);
+
+  if (!occRow) {
+    throw new Error(`Occasional client ${occasionalId} not found`);
+  }
+
+  const [clientRow] = await database
+    .select({ id: client.id })
+    .from(client)
+    .where(eq(client.id, clientId))
+    .limit(1);
+
+  if (!clientRow) {
+    throw new Error(`Client ${clientId} not found`);
+  }
+
+  const occDocs = await database
+    .select()
+    .from(occasionalClientDocument)
+    .where(eq(occasionalClientDocument.occasionalClientId, occasionalId));
+
+  let documentsCreated = 0;
+  let documentsUpdated = 0;
+
+  for (const od of occDocs) {
+    const amount = parseFloat(od.totalAmount);
+
+    const [existing] = await database
+      .select({
+        id: clientDocument.id,
+        totalAmount: clientDocument.totalAmount,
+      })
+      .from(clientDocument)
+      .where(
+        and(
+          eq(clientDocument.clientId, clientId),
+          eq(clientDocument.franchiseeId, od.franchiseeId),
+          eq(clientDocument.periodMonth, od.periodMonth),
+          eq(clientDocument.periodYear, od.periodYear),
+          eq(clientDocument.documentType, "tabit_report")
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      const current = existing.totalAmount
+        ? parseFloat(existing.totalAmount)
+        : 0;
+      await database
+        .update(clientDocument)
+        .set({
+          totalAmount: (current + amount).toString(),
+          updatedAt: new Date(),
+        })
+        .where(eq(clientDocument.id, existing.id));
+      documentsUpdated++;
+    } else {
+      await database.insert(clientDocument).values({
+        clientId,
+        franchiseeId: od.franchiseeId,
+        documentType: "tabit_report",
+        source: "manual_upload",
+        originalFileName:
+          od.sourceTabitFileName ?? `Tabit (merged from "${occRow.tabitColumnName}")`,
+        fileUrl: od.sourceTabitFileUrl,
+        periodMonth: od.periodMonth,
+        periodYear: od.periodYear,
+        processingStatus: "auto_approved",
+        totalAmount: amount.toString(),
+        updatedAt: new Date(),
+      });
+      documentsCreated++;
+    }
+  }
+
+  // Cascade deletes occasional_client_document rows.
+  await database
+    .delete(occasionalClient)
+    .where(eq(occasionalClient.id, occasionalId));
+
+  return {
+    occasionalClientId: occasionalId,
+    clientId,
+    documentsCreated,
+    documentsUpdated,
+  };
+}
+
+/**
+ * Find occasional clients (non-ignored) whose tabit_column_key matches any
+ * of the given alias names. Used to drive auto-merge after a client edit
+ * adds new aliases to its tabitColumnNames.
+ */
+export async function findOccasionalsByAliasNames(
+  aliasNames: string[]
+): Promise<OccasionalClient[]> {
+  const keys = aliasNames
+    .map((a) => makeOccasionalClientKey(a))
+    .filter((k) => k.length > 0);
+  if (keys.length === 0) return [];
+  return database
+    .select()
+    .from(occasionalClient)
+    .where(
+      and(
+        eq(occasionalClient.ignored, false),
+        inArray(occasionalClient.tabitColumnKey, keys)
+      )
+    );
 }

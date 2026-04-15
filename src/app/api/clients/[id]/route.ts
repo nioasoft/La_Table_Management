@@ -8,6 +8,10 @@ import {
   deleteClient,
   setClientFranchisees,
 } from "@/data-access/clients";
+import {
+  findOccasionalsByAliasNames,
+  mergeOccasionalIntoClient,
+} from "@/data-access/occasional-clients";
 
 /**
  * Coerce the incoming `hashavshevetByBrand` payload to a
@@ -123,7 +127,36 @@ export async function PATCH(
       await setClientFranchisees(id, franchiseeIds || []);
     }
 
-    return NextResponse.json({ client: updated });
+    // Auto-merge: if tabitColumnNames was updated, fold any matching
+    // occasional clients into this client. Idempotent — already-merged
+    // names just don't find a match.
+    const mergedOccasionals: Array<{
+      tabitColumnName: string;
+      documentsCreated: number;
+      documentsUpdated: number;
+    }> = [];
+    if (
+      tabitColumnNames !== undefined &&
+      Array.isArray(tabitColumnNames) &&
+      tabitColumnNames.length > 0
+    ) {
+      try {
+        const matches = await findOccasionalsByAliasNames(tabitColumnNames);
+        for (const occ of matches) {
+          const result = await mergeOccasionalIntoClient(occ.id, id);
+          mergedOccasionals.push({
+            tabitColumnName: occ.tabitColumnName,
+            documentsCreated: result.documentsCreated,
+            documentsUpdated: result.documentsUpdated,
+          });
+        }
+      } catch (mergeError) {
+        // Don't fail the whole update if merge throws — log and continue.
+        console.error("Auto-merge of occasional clients failed:", mergeError);
+      }
+    }
+
+    return NextResponse.json({ client: updated, mergedOccasionals });
   } catch (error) {
     console.error("Error updating client:", error);
     return NextResponse.json(
