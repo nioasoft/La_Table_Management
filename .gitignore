@@ -69,5 +69,15 @@ next-env.d.ts
 # Raw data (large files, not tracked in git)
 raw_data/
 
+# Graphify output (knowledge graph cache, regenerated locally)
+graphify-out/
+src/graphify-out/
+
+# Tesseract OCR training data (large binaries)
+*.traineddata
+
+# Claude scheduled tasks lock file
+.claude/scheduled_tasks.lock
+
 # Misc
 .cache
