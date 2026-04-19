@@ -195,7 +195,8 @@ function calculateDueDate(frequency: SettlementFrequency): string {
   return formatDateAsLocal(dueDate);
 }
 
-// Get period description in Hebrew based on frequency
+// Get period description in Hebrew based on frequency (fallback for
+// bi_weekly/weekly which don't map to SettlementPeriodType).
 function getPeriodDescription(frequency: SettlementFrequency, date: Date): string {
   const hebrewMonths = [
     "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -206,25 +207,23 @@ function getPeriodDescription(frequency: SettlementFrequency, date: Date): strin
   const month = date.getMonth(); // 0-indexed
 
   switch (frequency) {
-    case "monthly":
-      return `חודש ${hebrewMonths[month]} ${year}`;
-    case "quarterly": {
-      const quarter = Math.floor(month / 3) + 1;
-      return `רבעון ${quarter}/${year}`;
-    }
-    case "semi_annual": {
-      const half = month < 6 ? 1 : 2;
-      return `מחצית ${half}/${year}`;
-    }
-    case "annual":
-      return `שנת ${year}`;
     case "bi_weekly":
       return `תקופה דו-שבועית - ${hebrewMonths[month]} ${year}`;
     case "weekly":
       return `שבוע ${date.toLocaleDateString("he-IL")}`;
     default:
+      // For monthly/quarterly/semi_annual/annual we resolve the period via
+      // getPeriodsForFrequency in processFrequency — this branch is unused.
       return `${hebrewMonths[month]} ${year}`;
   }
+}
+
+// Format a Date as DD/MM/YYYY for human-readable email display.
+function formatDateForDisplay(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 // Resolve default email template for supplier settlement requests
@@ -260,28 +259,47 @@ async function processFrequency(
   };
 
   const now = referenceDate || new Date();
-  const periodDescription = getPeriodDescription(frequency, now);
 
-  // Create settlement period for this frequency if applicable
+  // Resolve the period that is CLOSING today (includeCurrent=true, count=1).
+  // The cron fires on the last day of each settlement period, so "today's
+  // closing period" is the one we want to reference in the email and create
+  // a settlement period for.
   const periodType = frequencyToPeriodType(frequency);
-  if (periodType && !dryRun) {
-    try {
-      const periods = getPeriodsForFrequency(periodType, now, 1);
-      if (periods.length > 0) {
-        const currentPeriod = periods[0];
-        const result = await getOrCreateSettlementPeriodByPeriodKey(currentPeriod.key);
-        if (result) {
-          results.settlementPeriodCreated = {
-            periodKey: currentPeriod.key,
-            created: result.created,
-          };
+  let periodDescription: string;
+  let periodEndDateStr: string | null = null;
+  let periodDueDateStr: string | null = null;
+
+  if (periodType) {
+    const periods = getPeriodsForFrequency(periodType, now, 1, 1, true);
+    if (periods.length > 0) {
+      const currentPeriod = periods[0];
+      periodDescription = currentPeriod.nameHe;
+      periodEndDateStr = formatDateForDisplay(currentPeriod.endDate);
+      periodDueDateStr = formatDateAsLocal(currentPeriod.dueDate);
+
+      if (!dryRun) {
+        try {
+          const result = await getOrCreateSettlementPeriodByPeriodKey(
+            currentPeriod.key
+          );
+          if (result) {
+            results.settlementPeriodCreated = {
+              periodKey: currentPeriod.key,
+              created: result.created,
+            };
+          }
+        } catch (error) {
+          results.errors.push(
+            `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
+          );
         }
       }
-    } catch (error) {
-      results.errors.push(
-        `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    } else {
+      periodDescription = getPeriodDescription(frequency, now);
     }
+  } else {
+    // bi_weekly / weekly — keep the old ad-hoc description.
+    periodDescription = getPeriodDescription(frequency, now);
   }
 
   const suppliers = await getSuppliersByFrequency(frequency);
@@ -310,7 +328,9 @@ async function processFrequency(
       // Get brand names for this supplier
       const brandNames = await getSupplierBrandNames(supplierData.id);
 
-      const dueDate = calculateDueDate(frequency);
+      // Prefer the computed due date from the resolved period (period end
+      // + 15 days). Fall back to the ad-hoc calculator for bi_weekly/weekly.
+      const dueDate = periodDueDateStr ?? calculateDueDate(frequency);
 
       if (dryRun) {
         results.processed++;
@@ -334,6 +354,7 @@ async function processFrequency(
         metadata: {
           settlementFrequency: frequency,
           periodDescription,
+          periodEndDate: periodEndDateStr,
           brandNames,
           requestedAt: new Date().toISOString(),
           cronTriggered: true,

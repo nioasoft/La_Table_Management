@@ -386,6 +386,9 @@ export async function sendFileRequestEmail(
     metaVariables.brand_name = String(meta.brandNames);
   }
   if (meta?.periodDescription) metaVariables.period = String(meta.periodDescription);
+  // Prefer the actual period end date recorded on the request. Fall back to
+  // due date only when a period end wasn't captured (e.g. legacy requests).
+  if (meta?.periodEndDate) metaVariables.period_end_date = String(meta.periodEndDate);
 
   const templateVariables: Record<string, string> = {
     recipient_name: request.recipientName || request.recipientEmail,
