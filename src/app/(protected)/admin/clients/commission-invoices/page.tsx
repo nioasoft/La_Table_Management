@@ -706,9 +706,10 @@ function UploadInvoiceDialog({
     queryClient.invalidateQueries({ queryKey: commissionInvoiceKeys.all });
   };
 
-  const retryWithFranchisee = (row: FileRow) => {
-    if (!row.pickedFranchiseeId) return;
-    void uploadOne(row, row.pickedFranchiseeId);
+  const retryWithFranchisee = (row: FileRow, franchiseeId?: string) => {
+    const targetId = franchiseeId ?? row.pickedFranchiseeId;
+    if (!targetId) return;
+    void uploadOne(row, targetId);
   };
 
   const hasPendingOrNeedsFranchisee = rows.some(
@@ -850,11 +851,12 @@ function UploadInvoiceDialog({
                             row={row}
                             allFranchisees={allFranchisees ?? []}
                             isLoading={franchiseesLoading}
-                            onPick={(franchiseeId) =>
+                            onPick={(franchiseeId) => {
                               updateRow(row.id, {
                                 pickedFranchiseeId: franchiseeId,
-                              })
-                            }
+                              });
+                              retryWithFranchisee(row, franchiseeId);
+                            }}
                           />
                         ) : row.status === "success" ? (
                           <span className="text-emerald-700">
