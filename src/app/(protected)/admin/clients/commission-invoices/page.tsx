@@ -30,6 +30,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
+import {
   Receipt,
   Loader2,
   Upload,
@@ -38,6 +52,8 @@ import {
   Clock,
   ChevronRight,
   ChevronLeft,
+  ChevronsUpDown,
+  Check,
   X,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
@@ -953,10 +969,23 @@ function FranchiseePicker({
   isLoading?: boolean;
   onPick: (franchiseeId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const candidates = (row.candidates ?? []).filter((c) => c.id);
   const candidateIds = new Set(candidates.map((c) => c.id));
-  const remaining = allFranchisees.filter((f) => f.id && !candidateIds.has(f.id));
-  const hasOptions = candidates.length > 0 || remaining.length > 0;
+  const remaining = allFranchisees.filter(
+    (f) => f.id && !candidateIds.has(f.id)
+  );
+
+  const selectedName = row.pickedFranchiseeId
+    ? (candidates.find((c) => c.id === row.pickedFranchiseeId)?.name ??
+        allFranchisees.find((f) => f.id === row.pickedFranchiseeId)?.name ??
+        null)
+    : null;
+
+  const handleSelect = (franchiseeId: string) => {
+    onPick(franchiseeId);
+    setOpen(false);
+  };
 
   return (
     <div className="space-y-1">
@@ -965,52 +994,81 @@ function FranchiseePicker({
           זוהה: &quot;{row.extractedName}&quot;
         </div>
       )}
-      <Select
-        value={row.pickedFranchiseeId || undefined}
-        onValueChange={onPick}
-        dir="rtl"
-        disabled={isLoading || !hasOptions}
-      >
-        <SelectTrigger className="h-8 text-xs">
-          <SelectValue
-            placeholder={isLoading ? "טוען זכיינים..." : "בחר זכיין..."}
-          />
-        </SelectTrigger>
-        <SelectContent dir="rtl">
-          {candidates.length > 0 && (
-            <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
-              התאמות מוצעות
-            </div>
-          )}
-          {candidates.map((c) => (
-            <SelectItem key={c.id} value={c.id}>
-              {c.name} ({Math.round(c.confidence * 100)}%)
-            </SelectItem>
-          ))}
-          {candidates.length > 0 && remaining.length > 0 && (
-            <div
-              role="separator"
-              aria-hidden="true"
-              className="my-1 h-px bg-border"
-            />
-          )}
-          {remaining.length > 0 && (
-            <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
-              כל הזכיינים
-            </div>
-          )}
-          {remaining.map((f) => (
-            <SelectItem key={f.id} value={f.id}>
-              {f.name}
-            </SelectItem>
-          ))}
-          {!hasOptions && !isLoading && (
-            <div className="px-2 py-1 text-xs text-muted-foreground">
-              לא נמצאו זכיינים
-            </div>
-          )}
-        </SelectContent>
-      </Select>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className="h-8 w-full justify-between text-xs font-normal"
+            dir="rtl"
+          >
+            <span className={cn(!selectedName && "text-muted-foreground")}>
+              {isLoading && !selectedName
+                ? "טוען זכיינים..."
+                : (selectedName ?? "בחר זכיין...")}
+            </span>
+            <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-[280px] p-0"
+          align="start"
+          dir="rtl"
+        >
+          <Command>
+            <CommandInput placeholder="חפש זכיין..." className="h-9" />
+            <CommandList>
+              <CommandEmpty>לא נמצאו זכיינים</CommandEmpty>
+              {candidates.length > 0 && (
+                <CommandGroup heading="התאמות מוצעות">
+                  {candidates.map((c) => (
+                    <CommandItem
+                      key={c.id}
+                      value={`${c.name} ${c.id}`}
+                      onSelect={() => handleSelect(c.id)}
+                    >
+                      <Check
+                        className={cn(
+                          "me-2 h-4 w-4",
+                          row.pickedFranchiseeId === c.id
+                            ? "opacity-100"
+                            : "opacity-0"
+                        )}
+                      />
+                      {c.name} ({Math.round(c.confidence * 100)}%)
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {remaining.length > 0 && (
+                <CommandGroup
+                  heading={candidates.length > 0 ? "כל הזכיינים" : undefined}
+                >
+                  {remaining.map((f) => (
+                    <CommandItem
+                      key={f.id}
+                      value={`${f.name} ${f.id}`}
+                      onSelect={() => handleSelect(f.id)}
+                    >
+                      <Check
+                        className={cn(
+                          "me-2 h-4 w-4",
+                          row.pickedFranchiseeId === f.id
+                            ? "opacity-100"
+                            : "opacity-0"
+                        )}
+                      />
+                      {f.name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
