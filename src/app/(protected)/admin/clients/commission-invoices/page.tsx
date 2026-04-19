@@ -546,7 +546,10 @@ function UploadInvoiceDialog({
   const [clientId, setClientId] = useState("");
   const [rows, setRows] = useState<FileRow[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const { data: allFranchisees } = useFranchisees();
+  // category=all so the picker can fall back to ANY franchisee (incl. "other")
+  // when the server can't auto-match from the PDF.
+  const { data: allFranchisees, isLoading: franchiseesLoading } =
+    useFranchisees({ category: "all" });
   const queryClient = useQueryClient();
 
   const reset = useCallback(() => {
@@ -830,6 +833,7 @@ function UploadInvoiceDialog({
                           <FranchiseePicker
                             row={row}
                             allFranchisees={allFranchisees ?? []}
+                            isLoading={franchiseesLoading}
                             onPick={(franchiseeId) =>
                               updateRow(row.id, {
                                 pickedFranchiseeId: franchiseeId,
@@ -941,14 +945,18 @@ function FileStatusBadge({ status }: { status: FileStatus }) {
 function FranchiseePicker({
   row,
   allFranchisees,
+  isLoading,
   onPick,
 }: {
   row: FileRow;
   allFranchisees: Array<{ id: string; name: string }>;
+  isLoading?: boolean;
   onPick: (franchiseeId: string) => void;
 }) {
-  const candidateIds = new Set((row.candidates ?? []).map((c) => c.id));
-  const remaining = allFranchisees.filter((f) => !candidateIds.has(f.id));
+  const candidates = (row.candidates ?? []).filter((c) => c.id);
+  const candidateIds = new Set(candidates.map((c) => c.id));
+  const remaining = allFranchisees.filter((f) => f.id && !candidateIds.has(f.id));
+  const hasOptions = candidates.length > 0 || remaining.length > 0;
 
   return (
     <div className="space-y-1">
@@ -958,35 +966,49 @@ function FranchiseePicker({
         </div>
       )}
       <Select
-        value={row.pickedFranchiseeId ?? ""}
+        value={row.pickedFranchiseeId || undefined}
         onValueChange={onPick}
         dir="rtl"
+        disabled={isLoading || !hasOptions}
       >
         <SelectTrigger className="h-8 text-xs">
-          <SelectValue placeholder="בחר זכיין..." />
+          <SelectValue
+            placeholder={isLoading ? "טוען זכיינים..." : "בחר זכיין..."}
+          />
         </SelectTrigger>
         <SelectContent dir="rtl">
-          {(row.candidates ?? []).length > 0 && (
-            <>
-              {(row.candidates ?? []).map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name} ({Math.round(c.confidence * 100)}%)
-                </SelectItem>
-              ))}
-              <SelectItem
-                key="__divider__"
-                value="__divider__"
-                disabled
-              >
-                ──────────
-              </SelectItem>
-            </>
+          {candidates.length > 0 && (
+            <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              התאמות מוצעות
+            </div>
+          )}
+          {candidates.map((c) => (
+            <SelectItem key={c.id} value={c.id}>
+              {c.name} ({Math.round(c.confidence * 100)}%)
+            </SelectItem>
+          ))}
+          {candidates.length > 0 && remaining.length > 0 && (
+            <div
+              role="separator"
+              aria-hidden="true"
+              className="my-1 h-px bg-border"
+            />
+          )}
+          {remaining.length > 0 && (
+            <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              כל הזכיינים
+            </div>
           )}
           {remaining.map((f) => (
             <SelectItem key={f.id} value={f.id}>
               {f.name}
             </SelectItem>
           ))}
+          {!hasOptions && !isLoading && (
+            <div className="px-2 py-1 text-xs text-muted-foreground">
+              לא נמצאו זכיינים
+            </div>
+          )}
         </SelectContent>
       </Select>
     </div>

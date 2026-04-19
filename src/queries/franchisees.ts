@@ -9,8 +9,19 @@ export const franchiseeKeys = {
   detail: (id: string) => [...franchiseeKeys.details(), id] as const,
 };
 
-async function fetchFranchisees() {
-  const res = await fetchWithTimeout("/api/franchisees");
+type FranchiseeCategoryFilter = "regular" | "other" | "all";
+
+interface UseFranchiseesFilters {
+  category?: FranchiseeCategoryFilter;
+}
+
+async function fetchFranchisees(filters: UseFranchiseesFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.category && filters.category !== "regular") {
+    params.set("category", filters.category);
+  }
+  const qs = params.toString();
+  const res = await fetchWithTimeout(`/api/franchisees${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("Failed to fetch franchisees");
   const data = await res.json();
   return data.franchisees;
@@ -23,10 +34,13 @@ async function fetchFranchisee(id: string) {
   return data.franchisee;
 }
 
-export function useFranchisees() {
+export function useFranchisees(filters: UseFranchiseesFilters = {}) {
+  const normalized: UseFranchiseesFilters = {
+    category: filters.category ?? "regular",
+  };
   return useQuery({
-    queryKey: franchiseeKeys.lists(),
-    queryFn: fetchFranchisees,
+    queryKey: franchiseeKeys.list(normalized as Record<string, unknown>),
+    queryFn: () => fetchFranchisees(normalized),
   });
 }
 
