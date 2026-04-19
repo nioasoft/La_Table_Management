@@ -21,6 +21,7 @@ export async function GET(request: NextRequest) {
   const periodMonth = parseInt(searchParams.get("periodMonth") ?? "");
   const periodYear = parseInt(searchParams.get("periodYear") ?? "");
   const clientId = searchParams.get("clientId");
+  const franchiseeId = searchParams.get("franchiseeId");
 
   if (isNaN(periodMonth) || isNaN(periodYear)) {
     return NextResponse.json(
@@ -40,10 +41,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ rows });
     }
 
-    // Summary across all clients
+    // Summary across all clients (optionally filtered to a single franchisee)
     const summary = await getInvoiceVerificationSummary(
       periodMonth,
-      periodYear
+      periodYear,
+      franchiseeId
     );
     return NextResponse.json({ summary });
   } catch (error) {

@@ -278,10 +278,13 @@ export async function getInvoiceVerification(
 
 /**
  * Get summary of invoice verification across all clients for a period.
+ * When `franchiseeId` is provided, the summary reflects only that franchisee's
+ * invoices/reports across all clients.
  */
 export async function getInvoiceVerificationSummary(
   periodMonth: number,
-  periodYear: number
+  periodYear: number,
+  franchiseeId?: string | null
 ): Promise<InvoiceVerificationSummaryRow[]> {
   // Get all active clients
   const clients = await database
@@ -296,7 +299,11 @@ export async function getInvoiceVerificationSummary(
   const summaries: InvoiceVerificationSummaryRow[] = [];
 
   for (const c of clients) {
-    const rows = await getInvoiceVerification(c.id, periodMonth, periodYear);
+    let rows = await getInvoiceVerification(c.id, periodMonth, periodYear);
+
+    if (franchiseeId) {
+      rows = rows.filter((r) => r.franchiseeId === franchiseeId);
+    }
 
     // Skip clients with no linked franchisees
     if (rows.length === 0) continue;

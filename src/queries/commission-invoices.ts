@@ -8,8 +8,18 @@ import type {
 
 export const commissionInvoiceKeys = {
   all: ["commission-invoices"] as const,
-  summary: (periodMonth: number, periodYear: number) =>
-    [...commissionInvoiceKeys.all, "summary", periodMonth, periodYear] as const,
+  summary: (
+    periodMonth: number,
+    periodYear: number,
+    franchiseeId: string | null
+  ) =>
+    [
+      ...commissionInvoiceKeys.all,
+      "summary",
+      periodMonth,
+      periodYear,
+      franchiseeId ?? "all",
+    ] as const,
   verification: (
     clientId: string,
     periodMonth: number,
@@ -28,12 +38,14 @@ export const commissionInvoiceKeys = {
 
 async function fetchVerificationSummary(
   periodMonth: number,
-  periodYear: number
+  periodYear: number,
+  franchiseeId: string | null
 ): Promise<InvoiceVerificationSummaryRow[]> {
   const params = new URLSearchParams({
     periodMonth: String(periodMonth),
     periodYear: String(periodYear),
   });
+  if (franchiseeId) params.set("franchiseeId", franchiseeId);
   const res = await fetch(`/api/clients/commission-invoices?${params}`);
   if (!res.ok) throw new Error("שגיאה בטעינת סיכום אימות חשבוניות");
   const data = await res.json();
@@ -60,11 +72,17 @@ async function fetchVerification(
 
 export function useInvoiceVerificationSummary(
   periodMonth: number,
-  periodYear: number
+  periodYear: number,
+  franchiseeId: string | null = null
 ) {
   return useQuery({
-    queryKey: commissionInvoiceKeys.summary(periodMonth, periodYear),
-    queryFn: () => fetchVerificationSummary(periodMonth, periodYear),
+    queryKey: commissionInvoiceKeys.summary(
+      periodMonth,
+      periodYear,
+      franchiseeId
+    ),
+    queryFn: () =>
+      fetchVerificationSummary(periodMonth, periodYear, franchiseeId),
   });
 }
 
