@@ -280,57 +280,151 @@ export async function getInvoiceVerification(
  * Get summary of invoice verification across all clients for a period.
  * When `franchiseeId` is provided, the summary reflects only that franchisee's
  * invoices/reports across all clients.
+ *
+ * Performance: runs 5 queries total (parallel), regardless of client count.
+ * Previously this called getInvoiceVerification() per-client, which produced
+ * ~5×N queries serially for ~N clients.
  */
 export async function getInvoiceVerificationSummary(
   periodMonth: number,
   periodYear: number,
   franchiseeId?: string | null
 ): Promise<InvoiceVerificationSummaryRow[]> {
-  // Get all active clients
-  const clients = await database
-    .select({
-      id: client.id,
-      name: client.name,
-      code: client.code,
-    })
-    .from(client)
-    .where(eq(client.isActive, true));
+  // Fire all 5 queries in parallel. Each is a simple indexed SELECT.
+  const [clients, links, franchisees, invoiceDocs, reportDocs] =
+    await Promise.all([
+      database
+        .select({
+          id: client.id,
+          name: client.name,
+          code: client.code,
+          deliveryCommission: client.deliveryCommission,
+          dineInCommission: client.dineInCommission,
+          takeawayCommission: client.takeawayCommission,
+          eventsCommission: client.eventsCommission,
+        })
+        .from(client)
+        .where(eq(client.isActive, true)),
+      database
+        .select({
+          clientId: clientFranchisee.clientId,
+          franchiseeId: clientFranchisee.franchiseeId,
+        })
+        .from(clientFranchisee),
+      database
+        .select({
+          id: franchisee.id,
+          name: franchisee.name,
+        })
+        .from(franchisee),
+      database
+        .select({
+          clientId: clientDocument.clientId,
+          franchiseeId: clientDocument.franchiseeId,
+          totalAmount: clientDocument.totalAmount,
+        })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.periodMonth, periodMonth),
+            eq(clientDocument.periodYear, periodYear),
+            eq(clientDocument.documentType, "commission_invoice")
+          )
+        ),
+      database
+        .select({
+          clientId: clientDocument.clientId,
+          franchiseeId: clientDocument.franchiseeId,
+          totalAmount: clientDocument.totalAmount,
+        })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.periodMonth, periodMonth),
+            eq(clientDocument.periodYear, periodYear),
+            eq(clientDocument.documentType, "client_report")
+          )
+        ),
+    ]);
+
+  const franchiseeNameById = new Map(franchisees.map((f) => [f.id, f.name]));
+
+  // Group links by client
+  const linksByClient = new Map<string, string[]>();
+  for (const link of links) {
+    const list = linksByClient.get(link.clientId) ?? [];
+    list.push(link.franchiseeId);
+    linksByClient.set(link.clientId, list);
+  }
+
+  // Index invoice/report docs by (clientId, franchiseeId)
+  const keyOf = (cId: string, fId: string) => `${cId}::${fId}`;
+  const invoiceByKey = new Map<string, number>();
+  for (const d of invoiceDocs) {
+    if (!d.clientId || !d.franchiseeId) continue;
+    invoiceByKey.set(
+      keyOf(d.clientId, d.franchiseeId),
+      d.totalAmount ? parseFloat(d.totalAmount) : 0
+    );
+  }
+  const reportByKey = new Map<string, number>();
+  for (const d of reportDocs) {
+    if (!d.clientId || !d.franchiseeId) continue;
+    reportByKey.set(
+      keyOf(d.clientId, d.franchiseeId),
+      d.totalAmount ? parseFloat(d.totalAmount) : 0
+    );
+  }
 
   const summaries: InvoiceVerificationSummaryRow[] = [];
 
   for (const c of clients) {
-    let rows = await getInvoiceVerification(c.id, periodMonth, periodYear);
-
+    const systemRate = getClientCommissionRate(c);
+    let franchiseeIds = linksByClient.get(c.id) ?? [];
     if (franchiseeId) {
-      rows = rows.filter((r) => r.franchiseeId === franchiseeId);
+      franchiseeIds = franchiseeIds.filter((id) => id === franchiseeId);
     }
+    if (franchiseeIds.length === 0) continue;
 
-    // Skip clients with no linked franchisees
-    if (rows.length === 0) continue;
+    let invoiceCount = 0;
+    let matchedCount = 0;
+    let mismatchCount = 0;
+    let missingInvoiceCount = 0;
+    let missingReportCount = 0;
+    let totalInvoiced = 0;
+    let totalExpected = 0;
 
-    const invoiceCount = rows.filter(
-      (r) => r.invoiceDocumentId !== null
-    ).length;
-    const matchedCount = rows.filter(
-      (r) => r.verificationStatus === "matched"
-    ).length;
-    const mismatchCount = rows.filter(
-      (r) => r.verificationStatus === "mismatch"
-    ).length;
-    const missingInvoiceCount = rows.filter(
-      (r) => r.verificationStatus === "missing_invoice"
-    ).length;
-    const missingReportCount = rows.filter(
-      (r) => r.verificationStatus === "missing_report"
-    ).length;
-    const totalInvoiced = rows.reduce(
-      (sum, r) => sum + (r.invoiceAmount ?? 0),
-      0
-    );
-    const totalExpected = rows.reduce(
-      (sum, r) => sum + (r.expectedCommission ?? 0),
-      0
-    );
+    for (const fId of franchiseeIds) {
+      // Skip unknown franchisees (consistent with per-client function)
+      if (!franchiseeNameById.has(fId)) continue;
+
+      const key = keyOf(c.id, fId);
+      const hasInvoice = invoiceByKey.has(key);
+      const hasReport = reportByKey.has(key);
+      const invoiceAmount = invoiceByKey.get(key) ?? null;
+      const reportTotal = reportByKey.get(key) ?? null;
+
+      const expected =
+        reportTotal !== null && systemRate !== null
+          ? Math.round(reportTotal * (systemRate / 100) * 100) / 100
+          : null;
+
+      if (hasInvoice) invoiceCount++;
+      if (invoiceAmount !== null) totalInvoiced += invoiceAmount;
+      if (expected !== null) totalExpected += expected;
+
+      if (!hasInvoice) {
+        missingInvoiceCount++;
+      } else if (!hasReport) {
+        missingReportCount++;
+      } else if (expected !== null && invoiceAmount !== null) {
+        const diff = Math.abs(invoiceAmount - expected);
+        if (diff <= COMMISSION_INVOICE_THRESHOLD) matchedCount++;
+        else mismatchCount++;
+      } else {
+        missingReportCount++;
+      }
+    }
 
     summaries.push({
       clientId: c.id,
