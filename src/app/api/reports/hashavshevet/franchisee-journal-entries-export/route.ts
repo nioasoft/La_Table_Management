@@ -3,31 +3,32 @@
  *
  * GET /api/reports/hashavshevet/franchisee-journal-entries-export?franchiseeId=&periodMonth=&periodYear=
  *
- * Produces a 9-column Hashavshevet "תנועות יומן" sheet for the journal
+ * Produces a 10-column Hashavshevet "תנועות" sheet for the journal
  * entries booking the invoices we RECEIVE FROM clients — Mishlocha, Wolt,
  * HAAT today (anyone flagged `client.journalEntryGeneration = true`).
  *
- * Layout (per Reut's sample "פקודות יומן.xlsx"):
- *   1. סוג תנועה        — "הכנ" (constant)
- *   2. אסמכתא 1          — empty
- *   3. אסמתכא 2          — last 4 digits of client_document.invoice_number
- *   4. תאריך אסמכתא      — last day of period (DD/MM/YYYY)
- *   5. תאריך ערך         — last day of period
- *   6. חן חובה           — client.hashavshevetName (or hashavshevetCode / name fallback)
- *   7. חן זכות           — empty
- *   8. סכום חובה         — total incl. VAT (Wolt: exact netAmount; others: rounded clientAmount)
- *   9. סכום זכות         — same as column 8
+ * Layout (per Reut's revised sample):
+ *   A. אסמתכא 2          — last 4 digits of client_document.invoice_number
+ *   B. תאריך אסמכתא      — last day of period (DD/MM/YYYY)
+ *   C. תאריך ערך         — last day of period
+ *   D. חן חובה           — debit account (per-brand override → hashavshevetName → code → name)
+ *   E. חן זכות 1         — "הכנסות" on standard/HEVER-commission rows; HEVER on the contra row
+ *   F. חן זכות 2         — "מעמעס" (VAT account) on VAT-split rows; empty on HEVER contra
+ *   G. סכום חובה         — gross amount (Wolt: exact netAmount; others: rounded clientAmount)
+ *   H. סכום זכות 1       — pre-VAT amount. Formula `=G-I` on VAT-split rows; static gross on HEVER contra
+ *   I. סכום זכות 2       — VAT portion. Formula `=G/1.18*0.18` on VAT-split rows; empty on HEVER contra
+ *   J. פרטים             — empty (manual fill-in by the accountant)
  *
- * Named range: "תנועות יומן" → 'ייבוא חשבשבת'!$A$1:$I${lastRow}
+ * Named range: "תנועות" → 'ייבוא חשבשבת'!$A$1:$J${lastRow}
  *
- * Note: column-3 header in Reut's sample has a Hebrew spelling typo
+ * Note: column-A header uses the Hebrew spelling typo from Reut's sample
  * ("אסמתכא" instead of "אסמכתא"); matched verbatim so Hashavshevet import
  * lines up column-by-column.
  *
  * HEVER exception: emits TWO rows instead of one (replaces the standard row):
- *   Row 1 — standard "הכנ" row with debit=HEVER, amount = −18% of gross.
- *   Row 2 — contra entry: transaction type empty, debit="אמריקן",
- *           credit=HEVER, amount = original gross.
+ *   Row 1 — VAT-split row with debit=HEVER, amount = −18% of gross (commission).
+ *   Row 2 — contra entry: debit="אמריקן", credit 1=HEVER, gross in סכום זכות 1;
+ *           no VAT split (F and I empty), אסמתכא 2 empty.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -38,14 +39,24 @@ import { eq } from "drizzle-orm";
 import { getApprovedForExport } from "@/data-access/client-reconciliation-approval";
 import * as XLSX from "xlsx";
 
-const TRANSACTION_TYPE = "הכנ";
+// Israeli מע"מ (VAT) rate — 18% since January 2025.
+const VAT_RATE = 0.18;
+const REVENUE_ACCOUNT = "הכנסות";
+const VAT_ACCOUNT = "מעמעס";
 
 // HEVER — special two-row journal-entry format.
-// Row 1: standard "הכנ" row for HEVER, amount = −18% of original (commission).
-// Row 2: contra entry booking gross from "אמריקן" (debit) to HEVER (credit).
+// Row 1: VAT-split row for HEVER, amount = −18% of original (commission).
+// Row 2: contra entry booking gross from "אמריקן" (debit) to HEVER (credit 1), no VAT split.
 const HEVER_CLIENT_CODE = "HEVER";
 const HEVER_COMMISSION_RATE = 0.18;
 const HEVER_CONTRA_ACCOUNT = "אמריקן";
+
+type RowCell = string | number | Date;
+
+interface JournalRow {
+  cells: RowCell[];
+  vatSplit: boolean;
+}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAdminOrSuperUser(request);
@@ -94,7 +105,7 @@ export async function GET(request: NextRequest) {
     // Last day of the period month. JS trick: day 0 of next month == last day of this month.
     const lastDay = new Date(periodYear, periodMonth, 0);
 
-    const rows = journalRows
+    const rows: JournalRow[] = journalRows
       .map((a) => {
         // Wolt: exact net (matches what we pay Wolt on their invoice).
         // Others: rounded client amount (matches sample).
@@ -107,7 +118,7 @@ export async function GET(request: NextRequest) {
         return { row: a, amount };
       })
       .filter((x) => x.amount !== 0)
-      .flatMap(({ row, amount }): (string | number | Date)[][] => {
+      .flatMap(({ row, amount }): JournalRow[] => {
         const last4 = row.invoiceNumber
           ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
           : "";
@@ -128,43 +139,55 @@ export async function GET(request: NextRequest) {
         if (row.clientCode === HEVER_CLIENT_CODE) {
           const commissionAmount = -Math.round(amount * HEVER_COMMISSION_RATE);
           return [
-            [
-              TRANSACTION_TYPE, // סוג תנועה = "הכנ"
-              "", // אסמכתא 1
-              last4, // אסמתכא 2
-              lastDay, // תאריך אסמכתא
-              lastDay, // תאריך ערך
-              debitAccount, // חן חובה = HEVER (resolved)
-              "", // חן זכות
-              commissionAmount, // סכום חובה  (−18%)
-              commissionAmount, // סכום זכות
-            ],
-            [
-              "", // סוג תנועה (empty for contra entry)
-              "", // אסמכתא 1
-              last4, // אסמתכא 2
-              lastDay, // תאריך אסמכתא
-              lastDay, // תאריך ערך
-              HEVER_CONTRA_ACCOUNT, // חן חובה = "אמריקן"
-              debitAccount, // חן זכות = HEVER
-              amount, // סכום חובה  (gross original)
-              amount, // סכום זכות
-            ],
+            {
+              cells: [
+                last4,            // A  אסמתכא 2
+                lastDay,          // B  תאריך אסמכתא
+                lastDay,          // C  תאריך ערך
+                debitAccount,     // D  חן חובה  (HEVER resolved)
+                REVENUE_ACCOUNT,  // E  חן זכות 1
+                VAT_ACCOUNT,      // F  חן זכות 2
+                commissionAmount, // G  סכום חובה  (−18% of gross)
+                0,                // H  סכום זכות 1  (replaced with formula below)
+                0,                // I  סכום זכות 2  (replaced with formula below)
+                "",               // J  פרטים
+              ],
+              vatSplit: true,
+            },
+            {
+              cells: [
+                "",                   // A  אסמתכא 2 (empty for contra)
+                lastDay,              // B  תאריך אסמכתא
+                lastDay,              // C  תאריך ערך
+                HEVER_CONTRA_ACCOUNT, // D  חן חובה = "אמריקן"
+                debitAccount,         // E  חן זכות 1 = HEVER
+                "",                   // F  חן זכות 2 (no VAT)
+                amount,                // G  סכום חובה (gross original)
+                amount,                // H  סכום זכות 1 (static gross, no split)
+                "",                   // I  סכום זכות 2 (no VAT)
+                "",                   // J  פרטים
+              ],
+              vatSplit: false,
+            },
           ];
         }
 
         return [
-          [
-            TRANSACTION_TYPE, // סוג תנועה
-            "", // אסמכתא 1
-            last4, // אסמתכא 2 (last 4 digits of invoice number)
-            lastDay, // תאריך אסמכתא
-            lastDay, // תאריך ערך
-            debitAccount, // חן חובה
-            "", // חן זכות
-            amount, // סכום חובה
-            amount, // סכום זכות
-          ],
+          {
+            cells: [
+              last4,            // A  אסמתכא 2
+              lastDay,          // B  תאריך אסמכתא
+              lastDay,          // C  תאריך ערך
+              debitAccount,     // D  חן חובה
+              REVENUE_ACCOUNT,  // E  חן זכות 1
+              VAT_ACCOUNT,      // F  חן זכות 2
+              amount,           // G  סכום חובה
+              0,                // H  סכום זכות 1 (replaced with formula below)
+              0,                // I  סכום זכות 2 (replaced with formula below)
+              "",               // J  פרטים
+            ],
+            vatSplit: true,
+          },
         ];
       });
 
@@ -177,24 +200,29 @@ export async function GET(request: NextRequest) {
 
     const wb = XLSX.utils.book_new();
     const headers = [
-      "סוג תנועה",
-      "אסמכתא 1",
-      "אסמתכא 2", // matches Reut's sample spelling (typo preserved)
+      "אסמתכא 2", // Reut's sample typo preserved
       "תאריך אסמכתא",
       "תאריך ערך",
       "חן חובה",
-      "חן זכות",
+      "חן זכות 1",
+      "חן זכות 2",
       "סכום חובה",
-      "סכום זכות",
+      "סכום זכות 1",
+      "סכום זכות 2",
+      "פרטים",
     ];
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows], { cellDates: true });
+    const ws = XLSX.utils.aoa_to_sheet(
+      [headers, ...rows.map((r) => r.cells)],
+      { cellDates: true }
+    );
 
-    // Cell formatting. Column indices (0-based):
-    //  3 = תאריך אסמכתא (date), 4 = תאריך ערך (date),
-    //  7 = סכום חובה, 8 = סכום זכות (currency).
+    // Cell formatting and formulas. Column indices (0-based):
+    //  1 = תאריך אסמכתא, 2 = תאריך ערך (date),
+    //  6 = סכום חובה, 7 = סכום זכות 1, 8 = סכום זכות 2 (currency).
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
     for (let r = 1; r <= range.e.r; r++) {
-      for (const c of [3, 4]) {
+      // Date columns (B, C)
+      for (const c of [1, 2]) {
         const addr = XLSX.utils.encode_cell({ r, c });
         const cell = ws[addr];
         if (cell) {
@@ -202,26 +230,61 @@ export async function GET(request: NextRequest) {
           cell.z = "dd/mm/yyyy";
         }
       }
-      for (const c of [7, 8]) {
-        const addr = XLSX.utils.encode_cell({ r, c });
-        const cell = ws[addr];
-        if (cell && cell.v !== undefined && cell.v !== "") {
-          cell.t = "n";
-          cell.z = "#,##0.00";
+
+      // Currency column G (gross)
+      const gAddr = XLSX.utils.encode_cell({ r, c: 6 });
+      const gCell = ws[gAddr];
+      if (gCell && gCell.v !== undefined && gCell.v !== "") {
+        gCell.t = "n";
+        gCell.z = "#,##0.00";
+      }
+
+      const excelRow = r + 1; // Excel rows are 1-indexed
+      const meta = rows[r - 1];
+
+      if (meta.vatSplit) {
+        // Cached values so the sheet renders correctly before Excel recalcs.
+        const gross = meta.cells[6] as number;
+        const vat = (gross * VAT_RATE) / (1 + VAT_RATE);
+        const preVat = gross - vat;
+
+        // H: סכום זכות 1 = pre-VAT (formula =G-I)
+        ws[XLSX.utils.encode_cell({ r, c: 7 })] = {
+          t: "n",
+          v: preVat,
+          f: `G${excelRow}-I${excelRow}`,
+          z: "#,##0.00",
+        };
+        // I: סכום זכות 2 = VAT portion (formula =G/1.18*0.18)
+        ws[XLSX.utils.encode_cell({ r, c: 8 })] = {
+          t: "n",
+          v: vat,
+          f: `G${excelRow}/${1 + VAT_RATE}*${VAT_RATE}`,
+          z: "#,##0.00",
+        };
+      } else {
+        // HEVER contra row: H is a static gross value, I is left empty.
+        const hAddr = XLSX.utils.encode_cell({ r, c: 7 });
+        const hCell = ws[hAddr];
+        if (hCell && hCell.v !== undefined && hCell.v !== "") {
+          hCell.t = "n";
+          hCell.z = "#,##0.00";
         }
+        delete ws[XLSX.utils.encode_cell({ r, c: 8 })];
       }
     }
 
     ws["!cols"] = [
-      { wch: 10 }, // סוג תנועה
-      { wch: 10 }, // אסמכתא 1
-      { wch: 12 }, // אסמתכא 2
-      { wch: 14 }, // תאריך אסמכתא
-      { wch: 14 }, // תאריך ערך
-      { wch: 20 }, // חן חובה
-      { wch: 12 }, // חן זכות
-      { wch: 14 }, // סכום חובה
-      { wch: 14 }, // סכום זכות
+      { wch: 12 }, // A אסמתכא 2
+      { wch: 14 }, // B תאריך אסמכתא
+      { wch: 14 }, // C תאריך ערך
+      { wch: 20 }, // D חן חובה
+      { wch: 14 }, // E חן זכות 1
+      { wch: 14 }, // F חן זכות 2
+      { wch: 14 }, // G סכום חובה
+      { wch: 14 }, // H סכום זכות 1
+      { wch: 14 }, // I סכום זכות 2
+      { wch: 20 }, // J פרטים
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
@@ -230,8 +293,8 @@ export async function GET(request: NextRequest) {
     if (!wb.Workbook.Names) wb.Workbook.Names = [];
     const lastRow = rows.length + 1;
     wb.Workbook.Names.push({
-      Name: "תנועות יומן",
-      Ref: `'ייבוא חשבשבת'!$A$1:$I$${lastRow}`,
+      Name: "תנועות",
+      Ref: `'ייבוא חשבשבת'!$A$1:$J$${lastRow}`,
     });
 
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
