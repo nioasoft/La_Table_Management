@@ -119,6 +119,31 @@ export interface LinkOccasionalClientResult {
   documentsUpdated: number;
 }
 
+export interface DeleteOccasionalClientResult {
+  tabitColumnName: string;
+  documentsDeleted: number;
+}
+
+export function useDeleteOccasionalClient() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string): Promise<DeleteOccasionalClientResult> => {
+      const res = await fetch(`/api/admin/occasional-clients/${id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "שגיאה במחיקת לקוח מזדמן");
+      }
+      const body = await res.json();
+      return body.data as DeleteOccasionalClientResult;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: occasionalClientKeys.all });
+    },
+  });
+}
+
 export function useLinkOccasionalClient() {
   const qc = useQueryClient();
   return useMutation({

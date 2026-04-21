@@ -17,7 +17,9 @@
  *   G. סכום חובה         — gross amount (Wolt: exact netAmount; others: rounded clientAmount)
  *   H. סכום זכות 1       — pre-VAT amount. Formula `=G-I` on VAT-split rows; static gross on HEVER contra
  *   I. סכום זכות 2       — VAT portion. Formula `=G/1.18*0.18` on VAT-split rows; empty on HEVER contra
- *   J. פרטים             — empty (manual fill-in by the accountant)
+ *   J. פרטים             — "ארוחות" for regular/HEVER-commission rows;
+ *                            "עמלה" for the HEVER row itself; "מיון" for the
+ *                            HEVER-to-אמריקן contra row.
  *
  * Named range: "תנועות" → 'ייבוא חשבשבת'!$A$1:$J${lastRow}
  *
@@ -43,6 +45,11 @@ import * as XLSX from "xlsx";
 const VAT_RATE = 0.18;
 const REVENUE_ACCOUNT = "הכנסות";
 const VAT_ACCOUNT = "מעמעס";
+
+// פרטים (row-description) labels shown in column J.
+const DETAILS_MEALS = "ארוחות";
+const DETAILS_HEVER_COMMISSION = "עמלה";
+const DETAILS_HEVER_CONTRA = "מיון";
 
 // HEVER — special two-row journal-entry format.
 // Row 1: VAT-split row for HEVER, amount = −18% of original (commission).
@@ -107,14 +114,13 @@ export async function GET(request: NextRequest) {
 
     const rows: JournalRow[] = journalRows
       .map((a) => {
-        // Wolt: exact net (matches what we pay Wolt on their invoice).
-        // Others: rounded client amount (matches sample).
+        // Wolt prefers its net amount (what we actually pay on Wolt's invoice);
+        // everyone else uses the client-reported amount. No rounding — Reut
+        // needs exact values including אגורות for the accountant's VAT reconcile.
         const amount =
-          a.clientCode === "WOLT"
-            ? a.netAmount !== null
-              ? a.netAmount
-              : a.clientAmount
-            : Math.round(a.clientAmount);
+          a.clientCode === "WOLT" && a.netAmount !== null
+            ? a.netAmount
+            : a.clientAmount;
         return { row: a, amount };
       })
       .filter((x) => x.amount !== 0)
@@ -137,7 +143,7 @@ export async function GET(request: NextRequest) {
 
         // HEVER special: emit two rows that REPLACE the standard single row.
         if (row.clientCode === HEVER_CLIENT_CODE) {
-          const commissionAmount = -Math.round(amount * HEVER_COMMISSION_RATE);
+          const commissionAmount = -(amount * HEVER_COMMISSION_RATE);
           return [
             {
               cells: [
@@ -147,25 +153,25 @@ export async function GET(request: NextRequest) {
                 debitAccount,     // D  חן חובה  (HEVER resolved)
                 REVENUE_ACCOUNT,  // E  חן זכות 1
                 VAT_ACCOUNT,      // F  חן זכות 2
-                commissionAmount, // G  סכום חובה  (−18% of gross)
-                0,                // H  סכום זכות 1  (replaced with formula below)
-                0,                // I  סכום זכות 2  (replaced with formula below)
-                "",               // J  פרטים
+                commissionAmount,         // G  סכום חובה  (−18% of gross)
+                0,                        // H  סכום זכות 1  (replaced with formula below)
+                0,                        // I  סכום זכות 2  (replaced with formula below)
+                DETAILS_HEVER_COMMISSION, // J  פרטים = "עמלה"
               ],
               vatSplit: true,
             },
             {
               cells: [
-                "",                   // A  אסמתכא 2 (empty for contra)
-                lastDay,              // B  תאריך אסמכתא
-                lastDay,              // C  תאריך ערך
-                HEVER_CONTRA_ACCOUNT, // D  חן חובה = "אמריקן"
-                debitAccount,         // E  חן זכות 1 = HEVER
-                "",                   // F  חן זכות 2 (no VAT)
-                amount,                // G  סכום חובה (gross original)
-                amount,                // H  סכום זכות 1 (static gross, no split)
-                "",                   // I  סכום זכות 2 (no VAT)
-                "",                   // J  פרטים
+                "",                     // A  אסמתכא 2 (empty for contra)
+                lastDay,                // B  תאריך אסמכתא
+                lastDay,                // C  תאריך ערך
+                HEVER_CONTRA_ACCOUNT,   // D  חן חובה = "אמריקן"
+                debitAccount,           // E  חן זכות 1 = HEVER
+                "",                     // F  חן זכות 2 (no VAT)
+                amount,                 // G  סכום חובה (gross original)
+                amount,                 // H  סכום זכות 1 (static gross, no split)
+                "",                     // I  סכום זכות 2 (no VAT)
+                DETAILS_HEVER_CONTRA,   // J  פרטים = "מיון"
               ],
               vatSplit: false,
             },
@@ -175,16 +181,16 @@ export async function GET(request: NextRequest) {
         return [
           {
             cells: [
-              last4,            // A  אסמתכא 2
-              lastDay,          // B  תאריך אסמכתא
-              lastDay,          // C  תאריך ערך
-              debitAccount,     // D  חן חובה
-              REVENUE_ACCOUNT,  // E  חן זכות 1
-              VAT_ACCOUNT,      // F  חן זכות 2
-              amount,           // G  סכום חובה
-              0,                // H  סכום זכות 1 (replaced with formula below)
-              0,                // I  סכום זכות 2 (replaced with formula below)
-              "",               // J  פרטים
+              last4,           // A  אסמתכא 2
+              lastDay,         // B  תאריך אסמכתא
+              lastDay,         // C  תאריך ערך
+              debitAccount,    // D  חן חובה
+              REVENUE_ACCOUNT, // E  חן זכות 1
+              VAT_ACCOUNT,     // F  חן זכות 2
+              amount,          // G  סכום חובה
+              0,               // H  סכום זכות 1 (replaced with formula below)
+              0,               // I  סכום זכות 2 (replaced with formula below)
+              DETAILS_MEALS,   // J  פרטים = "ארוחות"
             ],
             vatSplit: true,
           },

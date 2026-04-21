@@ -25,18 +25,37 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { EyeOff, Eye, Link2, Loader2, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  EyeOff,
+  Eye,
+  Link2,
+  Loader2,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   useOccasionalClients,
   useUpdateOccasionalClient,
   useLinkOccasionalClient,
+  useDeleteOccasionalClient,
 } from "@/queries/occasional-clients";
 import { useClients } from "@/queries/clients";
 import type { OccasionalClient } from "@/db/schema";
@@ -75,10 +94,18 @@ interface EditableRowProps {
   ) => Promise<void>;
   onToggleIgnore: (row: OccasionalClient) => Promise<void>;
   onLink: (row: OccasionalClient) => void;
+  onDelete: (row: OccasionalClient) => void;
   isToggling: boolean;
 }
 
-function EditableRow({ row, onSave, onToggleIgnore, onLink, isToggling }: EditableRowProps) {
+function EditableRow({
+  row,
+  onSave,
+  onToggleIgnore,
+  onLink,
+  onDelete,
+  isToggling,
+}: EditableRowProps) {
   const [name, setName] = useState(row.hashavshevetName ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -154,9 +181,105 @@ function EditableRow({ row, onSave, onToggleIgnore, onLink, isToggling }: Editab
               </>
             )}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(row)}
+            className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+            title="מחק לצמיתות"
+            aria-label="מחק לצמיתות"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </TableCell>
     </TableRow>
+  );
+}
+
+interface DeleteConfirmDialogProps {
+  occasional: OccasionalClient;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  isPending: boolean;
+}
+
+function DeleteConfirmDialog({
+  occasional,
+  onClose,
+  onConfirm,
+  isPending,
+}: DeleteConfirmDialogProps) {
+  const [typed, setTyped] = useState("");
+
+  const expected = occasional.tabitColumnName.trim();
+  const matches = typed.trim() === expected && expected.length > 0;
+
+  const handleAction = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    if (!matches || isPending) return;
+    await onConfirm();
+  };
+
+  return (
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !isPending) onClose();
+      }}
+    >
+      <AlertDialogContent dir="rtl" className="max-w-md">
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2 text-right">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            מחיקת לקוח מזדמן
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-4 text-right">
+              <p>
+                אתה עומד למחוק לצמיתות את{" "}
+                <span className="font-semibold" dir="auto">
+                  &quot;{occasional.tabitColumnName}&quot;
+                </span>
+                . כל הסכומים המשויכים אליו (פר זכיין ותקופה) יימחקו גם הם.
+              </p>
+              <p className="text-destructive text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                <span>הפעולה בלתי הפיכה. לא ניתן לשחזר לאחר מכן.</span>
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor="delete-confirm-typed" className="text-sm">
+                  כדי לאשר, הקלד את השם:{" "}
+                  <span className="font-semibold" dir="auto">
+                    {expected}
+                  </span>
+                </Label>
+                <Input
+                  id="delete-confirm-typed"
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  placeholder={expected}
+                  dir="auto"
+                  autoComplete="off"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="flex-row-reverse gap-2 sm:gap-2">
+          <AlertDialogAction
+            onClick={handleAction}
+            disabled={!matches || isPending}
+            className="bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/40"
+          >
+            {isPending && <Loader2 className="me-1 h-4 w-4 animate-spin" />}
+            מחק לצמיתות
+          </AlertDialogAction>
+          <AlertDialogCancel disabled={isPending}>ביטול</AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -289,8 +412,12 @@ export function OccasionalClientsTab() {
   const { data, isLoading } = useOccasionalClients({ includeIgnored });
   const updateMutation = useUpdateOccasionalClient();
   const linkMutation = useLinkOccasionalClient();
+  const deleteMutation = useDeleteOccasionalClient();
   const { data: clientsData } = useClients();
   const [linkTarget, setLinkTarget] = useState<OccasionalClient | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OccasionalClient | null>(
+    null
+  );
 
   const clientsLite: ClientLite[] = useMemo(() => {
     if (!Array.isArray(clientsData)) return [];
@@ -334,6 +461,22 @@ export function OccasionalClientsTab() {
       toast.success(row.ignored ? "הוחזר לרשימה" : "הותעלם");
     } catch (err) {
       toast.error((err as Error).message || "שגיאה");
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    const { id, tabitColumnName } = deleteTarget;
+    try {
+      const result = await deleteMutation.mutateAsync(id);
+      toast.success(
+        result.documentsDeleted > 0
+          ? `"${tabitColumnName}" נמחק (${result.documentsDeleted} סכומים)`
+          : `"${tabitColumnName}" נמחק`
+      );
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error((err as Error).message || "שגיאה במחיקה");
     }
   };
 
@@ -450,6 +593,7 @@ export function OccasionalClientsTab() {
                       onSave={handleSave}
                       onToggleIgnore={handleToggleIgnore}
                       onLink={(r) => setLinkTarget(r)}
+                      onDelete={(r) => setDeleteTarget(r)}
                       isToggling={updateMutation.isPending}
                     />
                   ))}
@@ -470,6 +614,16 @@ export function OccasionalClientsTab() {
         onConfirm={handleLinkConfirm}
         isPending={linkMutation.isPending}
       />
+
+      {deleteTarget && (
+        <DeleteConfirmDialog
+          key={deleteTarget.id}
+          occasional={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDeleteConfirm}
+          isPending={deleteMutation.isPending}
+        />
+      )}
     </div>
   );
 }

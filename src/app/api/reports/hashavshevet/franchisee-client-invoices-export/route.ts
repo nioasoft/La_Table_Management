@@ -16,7 +16,8 @@
  *   4. שם פריט                — empty
  *   5. כמות                   — 1
  *   6. מחיר                   — approved amount (incl. VAT), rounded
- *   7. אחוז הנחה לפריט        — "15.25%" (constant, represents VAT share)
+ *   7. אחוז הנחה לפריט        — 15.2543 (represents VAT share as a 4-decimal
+ *                                 number — Reut asked for number-not-percent)
  *   8. סוג המסמך              — 11
  *   9. מספר מסמך              — running 1..N
  *
@@ -33,11 +34,11 @@ import { getOccasionalClientsForExport } from "@/data-access/occasional-clients"
 import * as XLSX from "xlsx";
 
 const ITEM_KEY = "ארוחות";
-// Default "אחוז הנחה לפריט" — represents VAT share, applied to every row
-// unless the client has its own override below.
-const DISCOUNT_PCT_DEFAULT = 0.1525;
-// GIFT CARD uses a higher discount percentage per the accounting setup.
-const DISCOUNT_PCT_GIFTCARD = 0.1925;
+// "אחוז הנחה לפריט" — stored as a 4-decimal number (not a fraction).
+// 15.2543 is Reut's precise value for the VAT share (18 / 118 ≈ 15.2542%);
+// GIFTCARD uses its own value per the accounting setup.
+const DISCOUNT_PCT_DEFAULT = 15.2543;
+const DISCOUNT_PCT_GIFTCARD = 19.25;
 const DOCUMENT_TYPE = 11;
 
 export async function GET(request: NextRequest) {
@@ -129,9 +130,11 @@ export async function GET(request: NextRequest) {
       .filter((x) => x.price !== 0);
 
     // Occasional-client rows — same whole-shekel rounding rule as non-WOLT.
+    // `getOccasionalClientsForExport` already filters out rows lacking a
+    // Hashavshevet name, so `o.hashavshevetName` is guaranteed non-empty.
     const occasionalEntries = occasionalRows
       .map((o) => ({
-        accountKey: o.hashavshevetName || o.tabitColumnName,
+        accountKey: o.hashavshevetName,
         itemKey: ITEM_KEY,
         discountPct: DISCOUNT_PCT_DEFAULT,
         price: Math.round(o.totalAmount),
@@ -146,7 +149,7 @@ export async function GET(request: NextRequest) {
         "", // שם פריט
         1, // כמות
         price, // מחיר
-        discountPct, // אחוז הנחה לפריט — per-client (default 15.25%, GIFTCARD 19.25%)
+        discountPct, // אחוז הנחה לפריט — 4-decimal number (default 15.2543, GIFTCARD 19.25)
         DOCUMENT_TYPE, // סוג המסמך
         index + 1, // מספר מסמך
       ]
@@ -177,7 +180,7 @@ export async function GET(request: NextRequest) {
     const numericColumns: Array<[number, string]> = [
       [4, "0"],
       [5, "#,##0"],
-      [6, "0.00%"],
+      [6, "0.0000"],
       [7, "0"],
       [8, "0"],
     ];

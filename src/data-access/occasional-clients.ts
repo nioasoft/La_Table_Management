@@ -146,13 +146,17 @@ export async function upsertOccasionalClientDocument(input: {
 export interface OccasionalClientExportRow {
   occasionalClientId: string;
   tabitColumnName: string;
-  hashavshevetName: string | null;
+  hashavshevetName: string; // guaranteed non-empty by getOccasionalClientsForExport
   totalAmount: number;
 }
 
 /**
  * Rows to merge into the client-invoices Hashavshevet export for a given
- * (franchisee, period). Excludes ignored rows and zero-amount rows.
+ * (franchisee, period). Excludes ignored rows, zero-amount rows, and any
+ * occasional client that still lacks a Hashavshevet name — those would
+ * otherwise leak into the export with a raw Tabit column name as the
+ * account key (Reut: "אפילו שלא הגדרתי שמות במזדמנים, זה נכנס לקובץ").
+ * Use `listOccasionalClientsNeedingNames()` to surface them separately.
  */
 export async function getOccasionalClientsForExport(input: {
   franchiseeId: string;
@@ -177,6 +181,8 @@ export async function getOccasionalClientsForExport(input: {
         eq(occasionalClientDocument.periodMonth, input.periodMonth),
         eq(occasionalClientDocument.periodYear, input.periodYear),
         eq(occasionalClient.ignored, false),
+        sql`${occasionalClient.hashavshevetName} IS NOT NULL`,
+        sql`TRIM(${occasionalClient.hashavshevetName}) <> ''`,
         sql`${occasionalClientDocument.totalAmount} <> 0`
       )
     )
@@ -185,7 +191,8 @@ export async function getOccasionalClientsForExport(input: {
   return rows.map((r) => ({
     occasionalClientId: r.occasionalClientId,
     tabitColumnName: r.tabitColumnName,
-    hashavshevetName: r.hashavshevetName,
+    // Guaranteed non-null by the WHERE clause above; cast for the type contract.
+    hashavshevetName: r.hashavshevetName as string,
     totalAmount: parseFloat(r.totalAmount),
   }));
 }
@@ -350,6 +357,45 @@ export async function mergeOccasionalIntoClient(
     clientId,
     documentsCreated,
     documentsUpdated,
+  };
+}
+
+export interface DeleteOccasionalClientResult {
+  tabitColumnName: string;
+  documentsDeleted: number;
+}
+
+/**
+ * Hard-delete an occasional client and all its documents (cascade).
+ * Returns the tabit column name and the number of document rows that were
+ * removed, for reporting back to the caller. Returns null if not found.
+ *
+ * Irreversible — the UI must gate this behind an explicit confirmation.
+ */
+export async function deleteOccasionalClient(
+  id: string
+): Promise<DeleteOccasionalClientResult | null> {
+  const [row] = await database
+    .select({
+      id: occasionalClient.id,
+      tabitColumnName: occasionalClient.tabitColumnName,
+    })
+    .from(occasionalClient)
+    .where(eq(occasionalClient.id, id))
+    .limit(1);
+
+  if (!row) return null;
+
+  const docs = await database
+    .select({ id: occasionalClientDocument.id })
+    .from(occasionalClientDocument)
+    .where(eq(occasionalClientDocument.occasionalClientId, id));
+
+  await database.delete(occasionalClient).where(eq(occasionalClient.id, id));
+
+  return {
+    tabitColumnName: row.tabitColumnName,
+    documentsDeleted: docs.length,
   };
 }
 

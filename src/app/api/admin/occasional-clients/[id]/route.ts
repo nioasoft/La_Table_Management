@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { updateOccasionalClient } from "@/data-access/occasional-clients";
+import {
+  deleteOccasionalClient,
+  updateOccasionalClient,
+} from "@/data-access/occasional-clients";
 import { z } from "zod";
 
 const patchSchema = z
@@ -56,6 +59,33 @@ export async function PATCH(
     console.error("Failed to update occasional client:", error);
     return NextResponse.json(
       { error: "שגיאה בעדכון לקוח מזדמן" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const authResult = await requireAdminOrSuperUser(request);
+  if (isAuthError(authResult)) return authResult;
+
+  const { id } = await params;
+
+  try {
+    const result = await deleteOccasionalClient(id);
+    if (!result) {
+      return NextResponse.json(
+        { error: "לקוח מזדמן לא נמצא" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ data: result });
+  } catch (error) {
+    console.error("Failed to delete occasional client:", error);
+    return NextResponse.json(
+      { error: "שגיאה במחיקת לקוח מזדמן" },
       { status: 500 }
     );
   }
