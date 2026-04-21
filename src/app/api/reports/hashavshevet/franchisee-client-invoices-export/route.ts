@@ -38,7 +38,7 @@ const ITEM_KEY = "ארוחות";
 // 15.2543 is Reut's precise value for the VAT share (18 / 118 ≈ 15.2542%);
 // GIFTCARD uses its own value per the accounting setup.
 const DISCOUNT_PCT_DEFAULT = 15.2543;
-const DISCOUNT_PCT_GIFTCARD = 19.25;
+const DISCOUNT_PCT_GIFTCARD = 19.2543;
 const DOCUMENT_TYPE = 11;
 
 export async function GET(request: NextRequest) {
@@ -149,7 +149,7 @@ export async function GET(request: NextRequest) {
         "", // שם פריט
         1, // כמות
         price, // מחיר
-        discountPct, // אחוז הנחה לפריט — 4-decimal number (default 15.2543, GIFTCARD 19.25)
+        discountPct, // אחוז הנחה לפריט — 4-decimal number (default 15.2543, GIFTCARD 19.2543)
         DOCUMENT_TYPE, // סוג המסמך
         index + 1, // מספר מסמך
       ]

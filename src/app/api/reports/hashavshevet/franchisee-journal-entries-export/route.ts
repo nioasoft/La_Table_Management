@@ -8,18 +8,21 @@
  * HAAT today (anyone flagged `client.journalEntryGeneration = true`).
  *
  * Layout (per Reut's revised sample):
- *   A. אסמתכא 2          — last 4 digits of client_document.invoice_number
+ *   A. אסמתכא 2          — MISHLOCHA/HAAT/WOLT: last 4 digits of invoice#;
+ *                            HEVER: "9999" placeholder (both rows);
+ *                            CIBUS/TENBIS/everyone else: empty.
  *   B. תאריך אסמכתא      — last day of period (DD/MM/YYYY)
  *   C. תאריך ערך         — last day of period
  *   D. חן חובה           — debit account (per-brand override → hashavshevetName → code → name)
- *   E. חן זכות 1         — "הכנסות" on standard/HEVER-commission rows; HEVER on the contra row
+ *   E. חן זכות 1         — regular: `הכנסות` (or `הכנסותנ` for Natanzon);
+ *                            HEVER commission row: `הכנ עמלות חבר`;
+ *                            HEVER contra row: HEVER's resolved account.
  *   F. חן זכות 2         — "מעמעס" (VAT account) on VAT-split rows; empty on HEVER contra
- *   G. סכום חובה         — gross amount (Wolt: exact netAmount; others: rounded clientAmount)
+ *   G. סכום חובה         — exact amount (Wolt: netAmount; others: clientAmount), no rounding
  *   H. סכום זכות 1       — pre-VAT amount. Formula `=G-I` on VAT-split rows; static gross on HEVER contra
  *   I. סכום זכות 2       — VAT portion. Formula `=G/1.18*0.18` on VAT-split rows; empty on HEVER contra
- *   J. פרטים             — "ארוחות" for regular/HEVER-commission rows;
- *                            "עמלה" for the HEVER row itself; "מיון" for the
- *                            HEVER-to-אמריקן contra row.
+ *   J. פרטים             — "ארוחות" for regular rows; "עמלה" for HEVER commission;
+ *                            "מיון" for HEVER-to-אמריקן contra.
  *
  * Named range: "תנועות" → 'ייבוא חשבשבת'!$A$1:$J${lastRow}
  *
@@ -57,6 +60,22 @@ const DETAILS_HEVER_CONTRA = "מיון";
 const HEVER_CLIENT_CODE = "HEVER";
 const HEVER_COMMISSION_RATE = 0.18;
 const HEVER_CONTRA_ACCOUNT = "אמריקן";
+// HEVER-specific credit account for the commission row — routed to a
+// dedicated commission account instead of the generic revenue one.
+const HEVER_COMMISSION_CREDIT_ACCOUNT = "הכנ עמלות חבר";
+// HEVER's bank-transfer file has no per-franchisee invoice number — Reut
+// asked to fill a fixed placeholder in אסמכתא 2 for both HEVER rows.
+const HEVER_ASMACHTA_PLACEHOLDER = "9999";
+
+// Clients whose uploads actually carry an invoice number we can extract.
+// Anything outside this set (CIBUS, TENBIS, …) leaves אסמכתא 2 empty per Reut.
+const INVOICE_BEARING_CLIENT_CODES = new Set(["MISHLOCHA", "HAAT", "WOLT"]);
+
+// Franchisee-specific revenue-account overrides. Matched by Hebrew substring
+// on franchisee.name. Add new entries here when the accountant requests them.
+const FRANCHISEE_REVENUE_OVERRIDES: ReadonlyArray<readonly [string, string]> = [
+  ["נתנזון", "הכנסותנ"],
+];
 
 type RowCell = string | number | Date;
 
@@ -112,6 +131,12 @@ export async function GET(request: NextRequest) {
     // Last day of the period month. JS trick: day 0 of next month == last day of this month.
     const lastDay = new Date(periodYear, periodMonth, 0);
 
+    // Resolve the per-franchisee revenue account once — same for every row.
+    const revenueAccount =
+      FRANCHISEE_REVENUE_OVERRIDES.find(([marker]) =>
+        fr.name.includes(marker)
+      )?.[1] ?? REVENUE_ACCOUNT;
+
     const rows: JournalRow[] = journalRows
       .map((a) => {
         // Wolt prefers its net amount (what we actually pay on Wolt's invoice);
@@ -125,9 +150,17 @@ export async function GET(request: NextRequest) {
       })
       .filter((x) => x.amount !== 0)
       .flatMap(({ row, amount }): JournalRow[] => {
-        const last4 = row.invoiceNumber
-          ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
-          : "";
+        // אסמכתא 2 per-client rule (Reut): real invoice# (last 4 digits) only
+        // for MISHLOCHA/HAAT/WOLT; HEVER gets the "9999" placeholder on both
+        // of its rows; CIBUS/TENBIS and anything else stay empty.
+        const asmachta2 =
+          row.clientCode === HEVER_CLIENT_CODE
+            ? HEVER_ASMACHTA_PLACEHOLDER
+            : row.clientCode &&
+                INVOICE_BEARING_CLIENT_CODES.has(row.clientCode) &&
+                row.invoiceNumber
+              ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
+              : "";
         // Journal-entries export uses a name-first fallback (unique to this
         // sheet — the other exports use code-first). Still honours the
         // per-brand override when present.
@@ -147,22 +180,22 @@ export async function GET(request: NextRequest) {
           return [
             {
               cells: [
-                last4,            // A  אסמתכא 2
-                lastDay,          // B  תאריך אסמכתא
-                lastDay,          // C  תאריך ערך
-                debitAccount,     // D  חן חובה  (HEVER resolved)
-                REVENUE_ACCOUNT,  // E  חן זכות 1
-                VAT_ACCOUNT,      // F  חן זכות 2
-                commissionAmount,         // G  סכום חובה  (−18% of gross)
-                0,                        // H  סכום זכות 1  (replaced with formula below)
-                0,                        // I  סכום זכות 2  (replaced with formula below)
-                DETAILS_HEVER_COMMISSION, // J  פרטים = "עמלה"
+                asmachta2,                       // A  אסמתכא 2 = "9999"
+                lastDay,                         // B  תאריך אסמכתא
+                lastDay,                         // C  תאריך ערך
+                debitAccount,                    // D  חן חובה  (HEVER resolved)
+                HEVER_COMMISSION_CREDIT_ACCOUNT, // E  חן זכות 1 = "הכנ עמלות חבר"
+                VAT_ACCOUNT,                     // F  חן זכות 2
+                commissionAmount,                // G  סכום חובה  (−18% of gross)
+                0,                               // H  סכום זכות 1  (replaced with formula below)
+                0,                               // I  סכום זכות 2  (replaced with formula below)
+                DETAILS_HEVER_COMMISSION,        // J  פרטים = "עמלה"
               ],
               vatSplit: true,
             },
             {
               cells: [
-                "",                     // A  אסמתכא 2 (empty for contra)
+                asmachta2,              // A  אסמתכא 2 = "9999"
                 lastDay,                // B  תאריך אסמכתא
                 lastDay,                // C  תאריך ערך
                 HEVER_CONTRA_ACCOUNT,   // D  חן חובה = "אמריקן"
@@ -181,16 +214,16 @@ export async function GET(request: NextRequest) {
         return [
           {
             cells: [
-              last4,           // A  אסמתכא 2
-              lastDay,         // B  תאריך אסמכתא
-              lastDay,         // C  תאריך ערך
-              debitAccount,    // D  חן חובה
-              REVENUE_ACCOUNT, // E  חן זכות 1
-              VAT_ACCOUNT,     // F  חן זכות 2
-              amount,          // G  סכום חובה
-              0,               // H  סכום זכות 1 (replaced with formula below)
-              0,               // I  סכום זכות 2 (replaced with formula below)
-              DETAILS_MEALS,   // J  פרטים = "ארוחות"
+              asmachta2,      // A  אסמתכא 2
+              lastDay,        // B  תאריך אסמכתא
+              lastDay,        // C  תאריך ערך
+              debitAccount,   // D  חן חובה
+              revenueAccount, // E  חן זכות 1 (honours Natanzon override)
+              VAT_ACCOUNT,    // F  חן זכות 2
+              amount,         // G  סכום חובה
+              0,              // H  סכום זכות 1 (replaced with formula below)
+              0,              // I  סכום זכות 2 (replaced with formula below)
+              DETAILS_MEALS,  // J  פרטים = "ארוחות"
             ],
             vatSplit: true,
           },
