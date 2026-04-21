@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -200,6 +201,22 @@ function CommissionInput({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
+  const searchParams = useSearchParams();
+  const initialTab: "clients" | "occasional" =
+    searchParams.get("tab") === "occasional" ? "occasional" : "clients";
+  const [activeTab, setActiveTab] = useState<"clients" | "occasional">(
+    initialTab
+  );
+
+  const handleTabChange = (value: string) => {
+    const next: "clients" | "occasional" =
+      value === "occasional" ? "occasional" : "clients";
+    setActiveTab(next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", next);
+    window.history.replaceState({}, "", url.toString());
+  };
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClient, setEditingClient] =
     useState<ClientWithFranchisees | null>(null);
@@ -409,7 +426,12 @@ export default function ClientsPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <Tabs dir="rtl" defaultValue="clients" className="p-6">
+    <Tabs
+      dir="rtl"
+      value={activeTab}
+      onValueChange={handleTabChange}
+      className="p-6"
+    >
       <TabsList className="mb-4">
         <TabsTrigger value="clients">לקוחות</TabsTrigger>
         <TabsTrigger value="occasional">לקוחות מזדמנים</TabsTrigger>

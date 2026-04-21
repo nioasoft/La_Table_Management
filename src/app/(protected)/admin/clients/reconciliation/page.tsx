@@ -950,7 +950,7 @@ export default function ClientReconciliationPage() {
                           השמות כדי שניתן יהיה לייצא לחשבשבת.
                         </span>
                         <Button asChild size="sm" variant="outline">
-                          <Link href="/admin/occasional-clients">
+                          <Link href="/admin/clients?tab=occasional">
                             פתיחת מסך מזדמנים
                           </Link>
                         </Button>
