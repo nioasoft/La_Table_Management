@@ -23,8 +23,49 @@ import {
   upsertOccasionalClientFromTabit,
   upsertOccasionalClientDocument,
 } from "@/data-access/occasional-clients";
-import type { ClientDocumentProcessingResult, TabitUploadSummary } from "@/lib/client-parsers/types";
+import type {
+  ClientDocumentProcessingResult,
+  ClientParsedLineItem,
+  TabitUploadSummary,
+} from "@/lib/client-parsers/types";
 import type { ClientDocument, Franchisee } from "@/db/schema";
+
+/**
+ * Resolve the invoice number for a client document. Priority chain:
+ *   1. Value the parser bubbled up on `data.invoiceNumber`.
+ *   2. Regex on the original file name — matches ezcount filenames like
+ *      `Tax_Invoice_10058.pdf` (MISHLOCHA / HAAT manual uploads).
+ *   3. Regex on any line-item description — catches cases where the parser
+ *      built the description using the extracted number but didn't set the
+ *      top-level field (observed on WOLT PDFs and Mishlocha/HAAT gmail-fetch
+ *      ezcount PDFs).
+ *
+ * Returns null when no source matches. CIBUS / TENBIS / HEVER uploads never
+ * carry an invoice number — they'll fall through to null, which is fine; the
+ * Hashavshevet journal-entries export ignores invoice# for those codes.
+ */
+function resolveInvoiceNumber(
+  parserValue: string | null | undefined,
+  fileName: string,
+  lineItems: ReadonlyArray<ClientParsedLineItem> | undefined
+): string | null {
+  if (parserValue) return parserValue;
+
+  const fromFilename = fileName.match(/Tax[_-]?Invoice[_-]?(\d+)/i)?.[1];
+  if (fromFilename) return fromFilename;
+
+  if (lineItems) {
+    for (const item of lineItems) {
+      if (!item.description) continue;
+      const match = item.description.match(
+        /חשבונית\s+(?:משלוחה|וולט)\s+(?:מס['׳]?\s*)?(\d{3,})/
+      );
+      if (match) return match[1];
+    }
+  }
+
+  return null;
+}
 
 /** Input for processing a client document */
 export interface ProcessClientDocumentInput {
@@ -191,7 +232,11 @@ export async function processClientDocument(
       commissionAmount: processingResult.data?.commissionAmount?.toString() ?? null,
       commissionRate: processingResult.data?.commissionRate?.toString() ?? null,
       netAmount: processingResult.data?.netAmount?.toString() ?? null,
-      invoiceNumber: processingResult.data?.invoiceNumber ?? null,
+      invoiceNumber: resolveInvoiceNumber(
+        processingResult.data?.invoiceNumber,
+        fileName,
+        processingResult.data?.lineItems
+      ),
       gmailMessageId: gmailMessageId ?? null,
       createdBy: userId ?? null,
       updatedAt: new Date(),
