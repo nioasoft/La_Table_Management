@@ -44,7 +44,8 @@ export interface InvoiceVerificationRow {
   reportTotalAmount: number | null; // total sales from client_report
   reportCommissionAmount: number | null;
   // System config
-  systemCommissionRate: number | null; // from client table (first non-null rate)
+  systemCommissionRate: number | null; // from client table (single rate; null if multiple/none)
+  systemCommissionRates: number[]; // all positive rates (for display when multiple)
   expectedCommission: number | null; // reportTotalAmount × systemCommissionRate / 100
   // Computed
   difference: number | null; // invoiceAmount - expectedCommission
@@ -69,32 +70,48 @@ export interface InvoiceVerificationSummaryRow {
 // ============================================================================
 
 /**
- * Get the primary commission rate (%) for a client.
- * Returns the first non-null rate from: delivery, dineIn, takeaway, events.
- * Note: posTerminalCommission is a fixed NIS amount, not a % rate, so it is
- * intentionally excluded from this rate-picker.
+ * Resolve the commission rate(s) (%) for a client.
+ *
+ * Returns:
+ *   - rate: a single % to use for `expected = sales * rate / 100` when the
+ *     client has exactly one positive rate. `null` if no rates or multiple.
+ *   - allRates: every positive rate found, for display ("20% / 10%") and so
+ *     callers can detect the mixed-rate case.
+ *
+ * Why not pick the first when there are multiple?
+ *   Wolt (delivery 20%, takeaway 10%) used to fall back to delivery=20% which
+ *   over-estimated the expected commission and produced false "mismatch"
+ *   alerts. With multiple rates we cannot compute a meaningful expected
+ *   without per-service-type sales splits, which the client_report doesn't
+ *   provide. Skipping the calculation is more honest than guessing.
+ *
+ * Note: posTerminalCommission is a fixed NIS amount (not a %) and is
+ * intentionally excluded.
  */
 function getClientCommissionRate(clientRecord: {
   deliveryCommission: string | null;
   dineInCommission: string | null;
   takeawayCommission: string | null;
   eventsCommission: string | null;
-}): number | null {
-  const rates = [
+}): { rate: number | null; allRates: number[] } {
+  const rawRates = [
     clientRecord.deliveryCommission,
     clientRecord.dineInCommission,
     clientRecord.takeawayCommission,
     clientRecord.eventsCommission,
   ];
 
-  for (const rate of rates) {
-    if (rate !== null && rate !== undefined) {
-      const parsed = parseFloat(rate);
-      if (!isNaN(parsed) && parsed > 0) return parsed;
-    }
+  const positive: number[] = [];
+  for (const raw of rawRates) {
+    if (raw === null || raw === undefined) continue;
+    const parsed = parseFloat(raw);
+    if (!isNaN(parsed) && parsed > 0) positive.push(parsed);
   }
 
-  return null;
+  if (positive.length === 0) return { rate: null, allRates: [] };
+  if (positive.length === 1) return { rate: positive[0], allRates: positive };
+  // Multiple rates — cannot derive a single expected without sales breakdown
+  return { rate: null, allRates: positive };
 }
 
 // ============================================================================
@@ -124,7 +141,8 @@ export async function getInvoiceVerification(
 
   if (!clientRecord) return [];
 
-  const systemRate = getClientCommissionRate(clientRecord);
+  const { rate: systemRate, allRates: systemRates } =
+    getClientCommissionRate(clientRecord);
 
   // 2. Get linked franchisees
   const links = await database
@@ -258,6 +276,7 @@ export async function getInvoiceVerification(
       reportTotalAmount,
       reportCommissionAmount,
       systemCommissionRate: systemRate,
+      systemCommissionRates: systemRates,
       expectedCommission,
       difference,
       verificationStatus,
@@ -383,7 +402,7 @@ export async function getInvoiceVerificationSummary(
   const summaries: InvoiceVerificationSummaryRow[] = [];
 
   for (const c of clients) {
-    const systemRate = getClientCommissionRate(c);
+    const { rate: systemRate } = getClientCommissionRate(c);
     let franchiseeIds = linksByClient.get(c.id) ?? [];
     if (franchiseeId) {
       franchiseeIds = franchiseeIds.filter((id) => id === franchiseeId);

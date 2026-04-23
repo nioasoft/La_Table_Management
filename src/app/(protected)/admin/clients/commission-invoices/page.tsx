@@ -437,6 +437,7 @@ interface ClientVerificationDetailProps {
     reportDocumentId: string | null;
     reportTotalAmount: number | null;
     systemCommissionRate: number | null;
+    systemCommissionRates: number[];
     expectedCommission: number | null;
     difference: number | null;
     verificationStatus: string;
@@ -521,11 +522,21 @@ function ClientVerificationDetail({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div>{formatAmountDetailed(row.expectedCommission)}</div>
-                    {row.systemCommissionRate !== null && (
+                    {row.expectedCommission !== null ? (
+                      <>
+                        <div>{formatAmountDetailed(row.expectedCommission)}</div>
+                        {row.systemCommissionRate !== null && (
+                          <div className="text-xs text-muted-foreground">
+                            ({row.systemCommissionRate}%)
+                          </div>
+                        )}
+                      </>
+                    ) : row.systemCommissionRates.length > 1 ? (
                       <div className="text-xs text-muted-foreground">
-                        ({row.systemCommissionRate}%)
+                        מעורב ({row.systemCommissionRates.map((r) => `${r}%`).join(" / ")})
                       </div>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
                   <TableCell>

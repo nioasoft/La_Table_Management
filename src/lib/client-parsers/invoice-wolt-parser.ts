@@ -25,10 +25,10 @@
  * All regex patterns are written to match reversed Hebrew text.
  */
 
+import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const pdfParse = createRequire(import.meta.url)("pdf-parse");
 
 /**
  * Parse a number string from the PDF text.
@@ -174,45 +174,65 @@ function extractAllocationNumber(text: string): string {
 function extractGrandTotal(
   text: string
 ): { preVat: number; vat: number; withVat: number } | null {
-  // Strategy 1: Look for "סכום חשבונית" or "חשבונית סכום" (visual RTL)
-  // The three numbers should be nearby on the same or adjacent lines
+  // Strategy 1A — most precise: "חשבונית סכום" followed by the explicit
+  // "preVat <vat%>% vat withVat" sequence as it appears in modern Wolt
+  // invoices (e.g. "חשבונית סכום 196,127.17 18.00% 35,302.92 231,430.09").
+  // Skipping the % portion is critical, otherwise the percentage value gets
+  // captured as one of the amounts and corrupts the result.
+  const explicitPattern =
+    /חשבונית\s+סכום[\s\S]{0,30}?([\d,]+\.\d{2})\s*\d+(?:\.\d{1,2})?%\s*([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/;
+  const explicitMatch = text.match(explicitPattern);
+  if (explicitMatch) {
+    const preVat = parseNumber(explicitMatch[1]);
+    const vat = parseNumber(explicitMatch[2]);
+    const withVat = parseNumber(explicitMatch[3]);
+    if (preVat > 0 && vat >= 0 && withVat > 0 && Math.abs(preVat + vat - withVat) < 1) {
+      return { preVat, vat, withVat };
+    }
+  }
+
+  // Strategy 1B — same explicit format but with the label AFTER the numbers
+  // (some pdf-parse outputs reverse the order).
+  const explicitReversedPattern =
+    /([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*\d+(?:\.\d{1,2})?%\s*([\d,]+\.\d{2})[\s\S]{0,30}?חשבונית\s+סכום/;
+  const reversedMatch = text.match(explicitReversedPattern);
+  if (reversedMatch) {
+    // Order in text (RTL-flipped output): withVat, vat, preVat
+    const withVat = parseNumber(reversedMatch[1]);
+    const vat = parseNumber(reversedMatch[2]);
+    const preVat = parseNumber(reversedMatch[3]);
+    if (preVat > 0 && vat >= 0 && withVat > 0 && Math.abs(preVat + vat - withVat) < 1) {
+      return { preVat, vat, withVat };
+    }
+  }
+
+  // Strategy 1C (legacy fallback): three plain numbers near the label,
+  // without expecting the % marker. Used only when the explicit form fails.
+  // Tightened to require the smallest+middle≈largest sum so VAT-percent
+  // values (which never sum to anything meaningful) are rejected.
   const invoiceTotalPatterns = [
-    // "חשבונית סכום" followed by numbers (visual RTL)
     /חשבונית\s+סכום\s*\n?\s*([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/,
-    // Numbers followed by "חשבונית סכום"
     /([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*\n?\s*חשבונית\s+סכום/,
-    // Alternate with line breaks
     /חשבונית\s+סכום[\s\S]{0,30}?([\d,]+\.\d{2})[\s\S]{0,20}?([\d,]+\.\d{2})[\s\S]{0,20}?([\d,]+\.\d{2})/,
-    // Numbers before label on same/prev line
     /([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})[\s\S]{0,30}?חשבונית\s+סכום/,
   ];
 
   for (const pattern of invoiceTotalPatterns) {
     const match = text.match(pattern);
     if (match) {
-      const nums = [
-        parseNumber(match[1]),
-        parseNumber(match[2]),
-        parseNumber(match[3]),
-      ].sort((a, b) => a - b);
-      // Smallest = VAT, middle = pre-VAT, largest = with-VAT
-      // Verify: preVat + vat ~= withVat
-      const [smallest, middle, largest] = nums;
-      if (Math.abs(middle + smallest - largest) < 1) {
-        return { preVat: middle, vat: smallest, withVat: largest };
-      }
-      // If the sum check fails, try: first = preVat, second = vat, third = withVat
       const n1 = parseNumber(match[1]);
       const n2 = parseNumber(match[2]);
       const n3 = parseNumber(match[3]);
-      if (Math.abs(n1 + n2 - n3) < 1) {
+      const sorted = [n1, n2, n3].sort((a, b) => a - b);
+      const [smallest, middle, largest] = sorted;
+      // Only accept if the three values truly form a preVat+vat=withVat triple
+      if (Math.abs(middle + smallest - largest) < 1 && middle > smallest) {
+        return { preVat: middle, vat: smallest, withVat: largest };
+      }
+      if (Math.abs(n1 + n2 - n3) < 1 && n1 > 0 && n2 >= 0 && n3 > 0) {
         return { preVat: n1, vat: n2, withVat: n3 };
       }
-      if (Math.abs(n1 - n2 - n3) < 1) {
-        return { preVat: n1, vat: n3, withVat: n1 + n3 };
-      }
-      // Best guess: largest is withVat
-      return { preVat: middle, vat: smallest, withVat: largest };
+      // Otherwise reject this match and let later strategies try.
     }
   }
 
