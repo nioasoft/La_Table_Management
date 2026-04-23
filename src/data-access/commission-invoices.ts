@@ -689,3 +689,106 @@ export async function getInvoiceVerificationAll(
 
   return rows;
 }
+
+// ============================================================================
+// HASHAVSHEVET EXPORT
+// ============================================================================
+
+export interface CommissionInvoiceExportRow {
+  invoiceDocumentId: string;
+  invoiceNumber: string | null;
+  totalAmountWithVat: number;
+  periodMonth: number;
+  periodYear: number;
+  clientId: string;
+  clientName: string;
+  clientHashavshevet: {
+    name: string;
+    hashavshevetCode: string | null;
+    hashavshevetName: string | null;
+    hashavshevetByBrand: Record<string, string> | null;
+  };
+  franchiseeId: string;
+  franchiseeName: string;
+  brandId: string | null;
+}
+
+/**
+ * Fetch the rows needed to build the Hashavshevet "לקוחות עמלות" export file.
+ *
+ * One row per uploaded commission_invoice document in the period; rows without
+ * a totalAmount are skipped (nothing to book). Joins in franchisee.brandId and
+ * the client's hashavshevet fields so the route handler can resolve the
+ * per-brand account name via resolveClientHashavshevetAccount().
+ */
+export async function getCommissionInvoicesForExport(
+  periodMonth: number,
+  periodYear: number,
+  franchiseeId: string | null
+): Promise<CommissionInvoiceExportRow[]> {
+  const conditions = [
+    eq(clientDocument.periodMonth, periodMonth),
+    eq(clientDocument.periodYear, periodYear),
+    eq(clientDocument.documentType, "commission_invoice"),
+  ];
+  if (franchiseeId) {
+    conditions.push(eq(clientDocument.franchiseeId, franchiseeId));
+  }
+
+  const results = await database
+    .select({
+      invoiceDocumentId: clientDocument.id,
+      invoiceNumber: clientDocument.invoiceNumber,
+      totalAmount: clientDocument.totalAmount,
+      periodMonth: clientDocument.periodMonth,
+      periodYear: clientDocument.periodYear,
+      clientId: client.id,
+      clientName: client.name,
+      clientHashavshevetCode: client.hashavshevetCode,
+      clientHashavshevetName: client.hashavshevetName,
+      clientHashavshevetByBrand: client.hashavshevetByBrand,
+      franchiseeId: franchisee.id,
+      franchiseeName: franchisee.name,
+      brandId: franchisee.brandId,
+    })
+    .from(clientDocument)
+    .innerJoin(franchisee, eq(franchisee.id, clientDocument.franchiseeId))
+    .innerJoin(client, eq(client.id, clientDocument.clientId))
+    .where(and(...conditions));
+
+  const rows: CommissionInvoiceExportRow[] = [];
+  for (const r of results) {
+    if (!r.totalAmount) continue;
+    const total = parseFloat(r.totalAmount);
+    if (!Number.isFinite(total) || total <= 0) continue;
+    if (!r.clientId || !r.clientName) continue;
+
+    rows.push({
+      invoiceDocumentId: r.invoiceDocumentId,
+      invoiceNumber: r.invoiceNumber,
+      totalAmountWithVat: total,
+      periodMonth: r.periodMonth,
+      periodYear: r.periodYear,
+      clientId: r.clientId,
+      clientName: r.clientName,
+      clientHashavshevet: {
+        name: r.clientName,
+        hashavshevetCode: r.clientHashavshevetCode,
+        hashavshevetName: r.clientHashavshevetName,
+        hashavshevetByBrand: r.clientHashavshevetByBrand ?? null,
+      },
+      franchiseeId: r.franchiseeId,
+      franchiseeName: r.franchiseeName,
+      brandId: r.brandId ?? null,
+    });
+  }
+
+  // Stable order: by client name, then franchisee name.
+  rows.sort((a, b) => {
+    const c = a.clientName.localeCompare(b.clientName, "he");
+    if (c !== 0) return c;
+    return a.franchiseeName.localeCompare(b.franchiseeName, "he");
+  });
+
+  return rows;
+}

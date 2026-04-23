@@ -48,6 +48,7 @@ import {
   Receipt,
   Loader2,
   Upload,
+  Download,
   CheckCircle2,
   AlertTriangle,
   Clock,
@@ -357,10 +358,29 @@ export default function CommissionInvoicesPage() {
           <Receipt className="h-6 w-6 text-primary" />
           <h1 className="text-2xl font-bold">אימות חשבוניות עמלה</h1>
         </div>
-        <Button onClick={() => setUploadDialogOpen(true)}>
-          <Upload className="h-4 w-4 me-2" />
-          העלאת חשבונית
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            disabled={totals.invoices === 0}
+            onClick={() => {
+              const params = new URLSearchParams({
+                periodMonth: String(periodMonth),
+                periodYear: String(periodYear),
+              });
+              if (selectedFranchiseeId) {
+                params.set("franchiseeId", selectedFranchiseeId);
+              }
+              window.location.href = `/api/clients/commission-invoices/export?${params.toString()}`;
+            }}
+          >
+            <Download className="h-4 w-4 me-2" />
+            ייצא לחשבשבת
+          </Button>
+          <Button onClick={() => setUploadDialogOpen(true)}>
+            <Upload className="h-4 w-4 me-2" />
+            העלאת חשבונית
+          </Button>
+        </div>
       </div>
 
       {/* Period Selector + Franchisee Filter */}
