@@ -463,6 +463,10 @@ export async function parseWoltInvoice(
         netAmount: grandTotal.preVat, // kept for reference (pre-VAT breakdown)
         periodMonth: period?.month,
         periodYear: period?.year,
+        // Invoice ("מס' חשבונית") — surfaced so client-document-processor
+        // doesn't have to fall back to regex-ing the description line and
+        // so Hashavshevet export has a real reference number.
+        invoiceNumber: invoiceNumber || undefined,
         lineItems,
         rawText: text,
       },

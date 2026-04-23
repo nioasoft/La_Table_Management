@@ -8,8 +8,14 @@ import { getVatRateForDate } from "@/data-access/vatRates";
 import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
 import * as XLSX from "xlsx";
 
-const SHEET_NAME = "ייבוא חשבשבת";
-const NAMED_RANGE = "עמלות לקוחות";
+// Worksheet name — sheet names allow spaces, so we can use the full
+// Hebrew label the accountant expects to see at the bottom of the tab.
+const SHEET_NAME = "עמלות לקוחות";
+// Named range name — Excel's workbook-level name tokens cannot contain
+// spaces (Excel silently strips such names on save, surfacing the
+// "רשימות שהוסרו: טווח בעל שם" warning). Using an underscore keeps the
+// name valid while remaining readable to Hashavshevet's importer.
+const NAMED_RANGE = "עמלות_לקוחות";
 
 // Header row — verbatim from the user's template file (typos preserved on purpose,
 // Hashavshevet's importer expects this exact layout).
