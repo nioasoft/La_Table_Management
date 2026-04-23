@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -58,6 +59,7 @@ import {
   FileText,
   Mail,
   UserCog,
+  MessageSquare,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -112,6 +114,138 @@ function InvoiceSourceBadge({
     >
       ידני
     </Badge>
+  );
+}
+
+function InvoiceNoteCell({
+  documentId,
+  initialNote,
+}: {
+  documentId: string | null;
+  initialNote: string | null;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [note, setNote] = useState(initialNote ?? "");
+  const [draft, setDraft] = useState(initialNote ?? "");
+  const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Keep local state in sync when the row data refreshes (e.g. after invalidation)
+  useEffect(() => {
+    setNote(initialNote ?? "");
+  }, [initialNote]);
+
+  useEffect(() => {
+    if (open) {
+      setDraft(note);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [open, note]);
+
+  if (!documentId) {
+    // No invoice doc → no note slot. Render an empty placeholder so columns align.
+    return <span className="text-muted-foreground">—</span>;
+  }
+
+  const hasNote = note.trim().length > 0;
+
+  const persist = async (next: string) => {
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/clients/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewNotes: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "שגיאה בשמירת ההערה");
+        return;
+      }
+      setNote(next);
+      toast.success(next ? "ההערה נשמרה" : "ההערה נמחקה");
+      queryClient.invalidateQueries({ queryKey: commissionInvoiceKeys.all });
+      setOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "שגיאה בשמירת ההערה");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSave = () => {
+    if (draft.trim() === note.trim()) {
+      setOpen(false);
+      return;
+    }
+    void persist(draft.trim());
+  };
+
+  const handleClear = () => void persist("");
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "h-7 w-7 p-0 mx-auto",
+            hasNote ? "text-blue-600 hover:text-blue-700" : "text-muted-foreground"
+          )}
+          title={hasNote ? note : "הוסף הערה"}
+        >
+          <MessageSquare
+            className={cn("h-4 w-4", hasNote && "fill-blue-100")}
+          />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" dir="rtl" align="center">
+        <div className="space-y-2">
+          <Textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="הערה על החשבונית..."
+            className="text-sm min-h-[72px] resize-none"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                handleSave();
+              }
+            }}
+          />
+          <div className="flex items-center justify-between gap-1">
+            {hasNote ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                onClick={handleClear}
+                disabled={isSaving}
+              >
+                <X className="h-3 w-3 me-1" />
+                מחק
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleSave}
+              disabled={isSaving}
+            >
+              {isSaving && <Loader2 className="h-3 w-3 me-1 animate-spin" />}
+              שמור
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground text-end">
+            Ctrl+Enter לשמירה
+          </p>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -318,7 +452,6 @@ export default function CommissionInvoicesPage() {
                   <TableHead className="text-center">חסר</TableHead>
                   <TableHead className="text-start">סכום מחשבונית</TableHead>
                   <TableHead className="text-start">סכום צפוי</TableHead>
-                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -360,20 +493,6 @@ export default function CommissionInvoicesPage() {
                     </TableCell>
                     <TableCell>{formatAmountDetailed(row.totalInvoiced)}</TableCell>
                     <TableCell>{formatAmountDetailed(row.totalExpected)}</TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedClientId(row.clientId);
-                        }}
-                      >
-                        פירוט
-                        <ChevronLeft className="h-4 w-4 ms-1" />
-                      </Button>
-                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -446,6 +565,7 @@ interface ClientVerificationDetailProps {
     invoiceAmount: number | null;
     invoiceFileName: string | null;
     invoiceSource: "manual_upload" | "gmail_fetch" | null;
+    invoiceNotes: string | null;
     reportDocumentId: string | null;
     reportTotalAmount: number | null;
     systemCommissionRate: number | null;
@@ -515,6 +635,7 @@ function ClientVerificationDetail({
                 <TableHead className="text-start">סכום חשבונית</TableHead>
                 <TableHead className="text-start">הפרש</TableHead>
                 <TableHead className="text-center">סטטוס</TableHead>
+                <TableHead className="text-center">הערה</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -589,6 +710,12 @@ function ClientVerificationDetail({
                   <TableCell className="text-center">
                     <VerificationStatusBadge
                       status={row.verificationStatus}
+                    />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <InvoiceNoteCell
+                      documentId={row.invoiceDocumentId}
+                      initialNote={row.invoiceNotes}
                     />
                   </TableCell>
                   <TableCell>
