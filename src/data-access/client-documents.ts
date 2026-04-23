@@ -246,7 +246,15 @@ export async function getDocumentTrackingMatrix(
 
   const franchiseeIds = linkedFranchisees.map((f) => f.franchiseeId);
 
-  // Get all documents for this period
+  // Get all documents for this period.
+  //
+  // IMPORTANT: we deliberately EXCLUDE commission_invoice here. The tracking
+  // matrix's cell key is `${clientId}:${franchiseeId}` (no documentType), so
+  // invoices and reports for the same (client, franchisee) would clobber each
+  // other in the Map below. Commission invoices have their own UI
+  // (/admin/clients/commission-invoices) and must not appear here —
+  // historically the matrix always showed `client_report` only, see the
+  // comment further down ("Only show client reports ...").
   const docs = await database
     .select({
       id: clientDocument.id,
@@ -261,7 +269,11 @@ export async function getDocumentTrackingMatrix(
       and(
         eq(clientDocument.periodMonth, periodMonth),
         eq(clientDocument.periodYear, periodYear),
-        inArray(clientDocument.franchiseeId, franchiseeIds)
+        inArray(clientDocument.franchiseeId, franchiseeIds),
+        inArray(clientDocument.documentType, [
+          "client_report",
+          "tabit_report",
+        ])
       )
     );
 
