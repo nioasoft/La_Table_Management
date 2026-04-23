@@ -445,7 +445,7 @@ export default function CommissionInvoicesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>לקוח</TableHead>
-                  <TableHead>זכיין</TableHead>
+                  {!selectedFranchiseeId && <TableHead>זכיין</TableHead>}
                   <TableHead className="text-start">סכום דוח לקוח</TableHead>
                   <TableHead className="text-start">עמלה צפויה</TableHead>
                   <TableHead className="text-start">סכום חשבונית</TableHead>
@@ -469,7 +469,9 @@ export default function CommissionInvoicesPage() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>{row.franchiseeName}</TableCell>
+                    {!selectedFranchiseeId && (
+                      <TableCell>{row.franchiseeName}</TableCell>
+                    )}
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span className="tabular-nums">
