@@ -20,10 +20,10 @@
  * - Grand total (incl. VAT) = netAmount
  */
 
+import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const pdfParse = createRequire(import.meta.url)("pdf-parse");
 
 /**
  * Dynamic imports for OCR dependencies (pdfjs-dist + tesseract.js).
@@ -146,20 +146,66 @@ export async function parseMishlohaFile(
     const searchLines =
       lekavodIdx > 0 ? lines.slice(0, lekavodIdx) : lines.slice(0, 10);
 
-    for (const line of searchLines) {
-      // Hebrew business name pattern — ends with בע"מ / בעמ / בע״מ
-      const bizMatch = line.match(
-        /^([\u0590-\u05FF][\u0590-\u05FF\s"'״]+?(?:בע"מ|בעמ|בע״מ))/
+    if (lekavodIdx >= 0) {
+      // Commission invoice: franchisee is on the "לכבוד:" line itself
+      // (NOT before it — that's the issuer = Mishloha).
+      const lekavodLine = lines[lekavodIdx];
+      // Normalize escaped double quotes: בע""מ -> בע"מ
+      const normalized = lekavodLine.replace(/""/g, '"');
+      // Strip the leading "לכבוד:" label and surrounding quotes
+      const afterLabel = normalized
+        .replace(/^.*?לכבוד[:\s]*/, "")
+        .replace(/^"+|"+$/g, "")
+        .trim();
+
+      // 1. Prefer a legal-entity name ending in בע"מ
+      const bizMatch = afterLabel.match(
+        /([\u0590-\u05FF][\u0590-\u05FF\s"'״]+?(?:בע"מ|בעמ|בע״מ))/
       );
       if (bizMatch) {
         franchiseeName = bizMatch[1].trim();
-        break;
+      }
+
+      // 2. Fall back to the branch/DBA name (Hebrew segment without parens)
+      if (!franchiseeName) {
+        const segments = afterLabel
+          .split(/[()]/g)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const branchCandidate = segments.find((s) =>
+          /^([\u0590-\u05FF][\u0590-\u05FF\s"'״]+$)/.test(s)
+        );
+        if (branchCandidate) {
+          franchiseeName = branchCandidate;
+        }
+      }
+
+      // 3. Last resort: stripped of parens/quotes
+      if (!franchiseeName) {
+        const cleaned = afterLabel.replace(/["()]/g, "").trim();
+        if (cleaned.length >= 3) franchiseeName = cleaned;
       }
     }
 
-    // Fallback: if we couldn't find issuer, log a warning (don't use recipient!)
+    // Legacy fallback for older sales-invoice layouts where the franchisee
+    // is the ISSUER (top of doc, before "לכבוד"). Used only if the new
+    // recipient-based extraction returned nothing.
     if (!franchiseeName) {
-      warnings.push("לא זוהה שם הזכיין המנפיק של החשבונית");
+      const searchLines =
+        lekavodIdx > 0 ? lines.slice(0, lekavodIdx) : lines.slice(0, 10);
+      for (const line of searchLines) {
+        const bizMatch = line.match(
+          /^([\u0590-\u05FF][\u0590-\u05FF\s"'״]+?(?:בע"מ|בעמ|בע״מ))/
+        );
+        if (bizMatch) {
+          franchiseeName = bizMatch[1].trim();
+          break;
+        }
+      }
+    }
+
+    if (!franchiseeName) {
+      warnings.push("לא זוהה שם הזכיין מחשבונית העמלה");
     }
 
     // ---------------------------------------------------------------
