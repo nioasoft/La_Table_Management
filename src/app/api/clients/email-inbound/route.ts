@@ -45,6 +45,13 @@ const INVOICE_SUBJECT_KEYWORDS = [
   "חשבונית מס/קבלה",
   "tax invoice",
   "commission invoice",
+  // HAAT and other ezcount-issued invoices use generic English subjects:
+  //   "FW: EasyCount Invoice for HAAT"
+  //   "EasyCount Invoice for ..."
+  // The vendor name varies but the "EasyCount Invoice" / "ezcount Invoice"
+  // signature is reliable.
+  "easycount invoice",
+  "ezcount invoice",
 ];
 
 /**
