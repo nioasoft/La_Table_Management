@@ -23,7 +23,7 @@ import {
   type ResendInboundWebhookPayload,
 } from "@/lib/email/inbound";
 import { processClientDocument } from "@/lib/client-document-processor";
-import { getClientParser } from "@/lib/client-parsers";
+import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import {
   createSyncLogEntry,
   updateSyncLogEntry,
@@ -237,7 +237,9 @@ export async function POST(request: NextRequest) {
           mimeType,
           identifiedClient.parserCode,
           subject,
-          allFranchisees as Franchisee[]
+          allFranchisees as Franchisee[],
+          undefined,
+          documentType
         );
 
         if (!franchiseeMatch) {
@@ -310,7 +312,8 @@ export async function POST(request: NextRequest) {
             identifiedClient.parserCode,
             subject,
             allFranchisees as Franchisee[],
-            file.fileName
+            file.fileName,
+            documentType
           );
 
           if (!franchiseeMatch) {
@@ -363,14 +366,21 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Resolve franchisee: parse document first, fall back to filename/subject
+        // Resolve franchisee: parse document first, fall back to filename/subject.
+        // Use the per-attachment documentType when filterAttachments tagged it
+        // (Wolt File A vs File B); otherwise fall back to the subject-derived
+        // documentType. Critical: commission_invoice docs need the invoice
+        // parser (recipient = franchisee), client_report docs need the report
+        // parser (issuer = franchisee).
+        const attachmentDocumentType = attachment.documentType ?? documentType;
         const franchiseeMatch = await resolveFranchisee(
           buffer,
           attachment.contentType,
           identifiedClient.parserCode,
           subject,
           allFranchisees as Franchisee[],
-          attachment.filename
+          attachment.filename,
+          attachmentDocumentType
         );
 
         if (!franchiseeMatch) {
@@ -487,10 +497,17 @@ async function resolveFranchisee(
   parserCode: string,
   subject: string,
   franchisees: Franchisee[],
-  attachmentFilename?: string
+  attachmentFilename?: string,
+  documentType: "client_report" | "commission_invoice" = "client_report"
 ): Promise<{ franchiseeId: string; franchiseeName: string } | null> {
-  // Strategy 1: Parse document and use extracted franchisee name
-  const parser = getClientParser(parserCode);
+  // Strategy 1: Parse document and use extracted franchisee name.
+  // Critical: commission invoices (Mishloha, Wolt, etc.) have a SEPARATE
+  // parser registered under getInvoiceParser — the sales/report parser has
+  // different franchisee-extraction logic (issuer vs recipient).
+  const parser =
+    documentType === "commission_invoice"
+      ? getInvoiceParser(parserCode)
+      : getClientParser(parserCode);
   if (parser) {
     try {
       const parseResult = await parser(buffer, mimeType);
