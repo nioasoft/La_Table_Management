@@ -43,6 +43,10 @@ const INVOICE_SUBJECT_KEYWORDS = [
   "חשבונית מס",
   "חשבונית עמלה",
   "חשבונית מס/קבלה",
+  // HAAT Hebrew subject — "FW: חשבונית מרכזת" (centralized invoice). HAAT
+  // sends one consolidated invoice per franchisee per period and labels it
+  // "מרכזת". This subject is reliable enough to classify as commission_invoice.
+  "חשבונית מרכזת",
   "tax invoice",
   "commission invoice",
   // HAAT and other ezcount-issued invoices use generic English subjects:
