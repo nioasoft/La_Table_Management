@@ -71,11 +71,34 @@ export async function parseTenbisFile(
       /סיכום(\d+)(\d+)(\d+)-(\d+)-(\d+)-([\d.]+)/
     );
 
-    // Extract total transactions: ח"ש XXXXX עסקאות כ"סה
+    // Extract total transactions.
+    //
+    // Tenbis invoices list TWO totals in the summary block:
+    //   1. "סה\"כ עסקאות XXXXX ש\"ח"               ← raw transactions (incl. HH-on-house)
+    //   2. "סה\"כ עסקאות לחישוב עמלה XXXXX ש\"ח"  ← the commissionable total
+    //      which deducts "עסקאות HappyHour על חשבון המסעדה" from #1
+    //
+    // pdf-parse reverses the RTL lines, so on disk they look like:
+    //   " ח\"ש 18872.6 עסקאות כ\"סה"                           ← raw
+    //   " ח\"ש 18857.2 עמלה לחישוב עסקאות כ\"סה"              ← commissionable
+    //
+    // Prefer the commissionable total (#2) — that's the number accountants
+    // reconcile against, and it's what the commission/net-payable math in
+    // the rest of the invoice sums back to. The raw total is a false
+    // positive because it double-counts HH orders the restaurant gave away.
     let totalAmount = 0;
-    const totalMatch = text.match(/ח"ש\s+([\d,.]+)\s+עסקאות\s+כ"סה/);
-    if (totalMatch) {
-      totalAmount = parseFloat(totalMatch[1].replace(/,/g, ""));
+    const commissionableMatch = text.match(
+      /ח"ש\s+([\d,.]+)\s+עמלה\s+לחישוב\s+עסקאות\s+כ"סה/
+    );
+    if (commissionableMatch) {
+      totalAmount = parseFloat(commissionableMatch[1].replace(/,/g, ""));
+    } else {
+      // Fallback: older invoice layouts without the HH-on-house line just
+      // list "סה\"כ עסקאות" once, which is already the commissionable total.
+      const totalMatch = text.match(/ח"ש\s+([\d,.]+)\s+עסקאות\s+כ"סה/);
+      if (totalMatch) {
+        totalAmount = parseFloat(totalMatch[1].replace(/,/g, ""));
+      }
     }
 
     // Extract commission: ח"ש XXXX.XX ביס תן עמלת

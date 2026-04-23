@@ -90,10 +90,14 @@ const MONTHS = [
 function formatAmount(amount: string | null): string {
   if (!amount) return "-";
   const num = parseFloat(amount);
+  // Preserve up to 2 decimals — the parsers extract amounts to the cent
+  // (e.g. Tenbis "18857.2"); rounding here hid sub-shekel discrepancies
+  // that accountants use to track HH-on-house deductions.
   return new Intl.NumberFormat("he-IL", {
     style: "currency",
     currency: "ILS",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(num);
 }
 
@@ -1051,7 +1055,8 @@ export default function ClientReconciliationPage() {
                       <TableHead className="text-right pe-4">לקוח</TableHead>
                       <TableHead className="text-right">סכום לקוח</TableHead>
                       <TableHead className="text-right">סכום טאביט</TableHead>
-                      <TableHead className="text-right">הפרש</TableHead>
+                      <TableHead className="text-right">הפרש כולל מע&quot;מ</TableHead>
+                      <TableHead className="text-right">הפרש לפני מע&quot;מ</TableHead>
                       <TableHead className="text-center">סטטוס</TableHead>
                       <TableHead className="text-center">הערה</TableHead>
                       <TableHead className="text-center">פעולות</TableHead>
@@ -1158,6 +1163,23 @@ export default function ClientReconciliationPage() {
                             >
                               {row.difference !== null
                                 ? formatAmount(String(row.difference))
+                                : "-"}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <span
+                              className={`tabular-nums text-sm ${
+                                isLargeDiff
+                                  ? "text-amber-600 font-medium"
+                                  : row.status === "ok"
+                                    ? "text-emerald-600"
+                                    : ""
+                              }`}
+                            >
+                              {row.difference !== null
+                                ? formatAmount(
+                                    String(row.difference / 1.18)
+                                  )
                                 : "-"}
                             </span>
                           </TableCell>
@@ -1293,6 +1315,15 @@ export default function ClientReconciliationPage() {
                             }`}
                           >
                             {formatAmount(String(totalDiff))}
+                          </TableCell>
+                          <TableCell
+                            className={`tabular-nums text-sm font-medium ${
+                              Math.abs(totalDiff) > 30
+                                ? "text-amber-600"
+                                : "text-emerald-600"
+                            }`}
+                          >
+                            {formatAmount(String(totalDiff / 1.18))}
                           </TableCell>
                           <TableCell />
                           <TableCell />
