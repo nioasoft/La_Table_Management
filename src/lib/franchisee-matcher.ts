@@ -368,6 +368,7 @@ function calculateMatchScore(
   // distinctive "NATANZON" / "ויני רגבה" case where the matcher would
   // otherwise prefer a franchisee that shares the legal entity.
   const searchTokens = normalizedSearch.split(/\s+/).filter((t) => t.length > 0);
+  const searchTokenSet = new Set(searchTokens);
   for (const alias of aliases) {
     const normalizedAlias = normalizeName(alias);
     if (normalizedAlias.length < 4) continue; // Too short to be distinctive
@@ -392,6 +393,39 @@ function calculateMatchScore(
           bestMatchType = "exact_alias";
         }
         break;
+      }
+    }
+  }
+
+  // Bag-of-tokens alias match: Wolt invoice extraction can produce the
+  // alias tokens in NON-CONTIGUOUS order — e.g. "בע\"מ עזריאלי ויני פט
+  // חיפה ויני" has "ויני" and "חיפה" separated by "פט", so the contiguous
+  // token-seq check above misses the "ויני חיפה" alias. A permutation-
+  // tolerant bag match is the disambiguator: if ALL of the alias's
+  // distinctive tokens appear anywhere in the input, the alias fits even
+  // if the token order is scrambled by RTL flipping / OCR artifacts.
+  //
+  // Requires aliasTokens.length >= 2 so a single common token (e.g.
+  // "ויני" alone) can't claim a match — two tokens in the right set give
+  // us the disambiguating signal (e.g. "ויני" + "חיפה" only matches the
+  // Haifa branch, never Hadera/Regba/Karmiel).
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeName(alias);
+    if (normalizedAlias.length < 4) continue;
+    const aliasTokens = normalizedAlias
+      .split(/\s+/)
+      .filter((t) => t.length >= 2);
+    if (aliasTokens.length < 2) continue;
+
+    const allTokensFound = aliasTokens.every((t) => searchTokenSet.has(t));
+    if (allTokensFound) {
+      // Capped below the contiguous token-seq score so a true sub-sequence
+      // match still wins; above fuzzy-similarity scores (typically 0.6-0.8).
+      const score = Math.min(0.95, 0.85 + aliasTokens.length * 0.02);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatchedOn = `bag-alias:${alias}`;
+        bestMatchType = "exact_alias";
       }
     }
   }
