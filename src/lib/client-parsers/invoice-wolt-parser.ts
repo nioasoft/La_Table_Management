@@ -407,10 +407,14 @@ export async function parseWoltInvoice(
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
-        totalAmount: grandTotal.preVat,
-        commissionAmount: grandTotal.preVat,
+        // Store with-VAT amounts so they're comparable to the client report
+        // totals (sales reports are with-VAT throughout this system). Using
+        // preVat here caused the commission-invoices page to flag false
+        // mismatches since expected = reportTotal × rate / 100 is with-VAT.
+        totalAmount: grandTotal.withVat,
+        commissionAmount: grandTotal.withVat,
         commissionRate: 0, // Multiple rates in invoice, can't pick one
-        netAmount: grandTotal.withVat,
+        netAmount: grandTotal.preVat, // kept for reference (pre-VAT breakdown)
         periodMonth: period?.month,
         periodYear: period?.year,
         lineItems,

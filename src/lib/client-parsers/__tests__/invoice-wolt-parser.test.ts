@@ -12,7 +12,7 @@ import { resolve } from "path";
 import { parseWoltInvoice } from "../invoice-wolt-parser";
 
 describe("parseWoltInvoice — Castra Tomai 2026-03", () => {
-  it("extracts pre-VAT total as commission, not the VAT amount", async () => {
+  it("stores with-VAT totals so they're comparable to report amounts", async () => {
     const buf = readFileSync(
       resolve(
         __dirname,
@@ -24,9 +24,11 @@ describe("parseWoltInvoice — Castra Tomai 2026-03", () => {
     expect(result.success).toBe(true);
     expect(result.data).not.toBeNull();
     // PDF "סכום חשבונית" row: pre-VAT 196,127.17 / VAT 35,302.92 / total 231,430.09
-    expect(result.data?.totalAmount).toBeCloseTo(196127.17, 2);
-    expect(result.data?.commissionAmount).toBeCloseTo(196127.17, 2);
-    // netAmount tracks the with-VAT total (what the franchisee actually pays)
-    expect(result.data?.netAmount).toBeCloseTo(231430.09, 2);
+    // Reports in this system are with-VAT, so the invoice side is normalized
+    // to with-VAT as well to keep the comparison apples-to-apples.
+    expect(result.data?.totalAmount).toBeCloseTo(231430.09, 2);
+    expect(result.data?.commissionAmount).toBeCloseTo(231430.09, 2);
+    // netAmount keeps the pre-VAT breakdown for reference
+    expect(result.data?.netAmount).toBeCloseTo(196127.17, 2);
   });
 });
