@@ -28,7 +28,9 @@
 import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-const pdfParse = createRequire(import.meta.url)("pdf-parse");
+// Import from /lib/pdf-parse.js directly — the package's index.js runs a
+// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
+const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
 
 /**
  * Parse a number string from the PDF text.
@@ -52,32 +54,76 @@ function extractNumbers(text: string): number[] {
 /**
  * Try to extract the franchisee name from the "לכבוד" section.
  *
- * In visual order, the PDF text around the franchisee section looks like:
- *   "רגבה | ויני / פ"עב רגבה ויני"
- * or similar patterns with the franchisee name.
+ * Wolt PDFs reverse RTL text, so the legal entity line after "לכבוד"
+ * reads like "בע״מ עזריאלי ויני פט" (= "פט ויני עזריאלי בע\"מ"). A second
+ * line right below typically carries the BRANCH / TRADE name, often as
+ * "<city> | <TRADE_EN> | <trade_he>", e.g.:
  *
- * We try multiple patterns to maximize extraction success.
+ *   לכבוד
+ *   בע״מ עזריאלי ויני פט        ← legal entity (reversed)
+ *   חיפה | NATANZON | נתנזון    ← branch: city | trade EN | trade HE
+ *
+ * Combining BOTH lines into the returned search string is critical when
+ * two franchisees share a legal entity (e.g. "פט ויני עזריאלי חיפה" and
+ * "נתנזון עזריאלי חיפה"): only the branch line carries the disambiguating
+ * "NATANZON" / "נתנזון" token, which the fuzzy matcher needs to score an
+ * exact-alias hit on the correct franchisee.
  */
 function extractFranchiseeName(text: string): string {
-  // Pattern 1: "NAME | BRAND" or "BRAND | NAME" (pipe separator)
+  const lines = text.split("\n");
+  const anchorIdx = lines.findIndex(
+    (l) => /לכבוד/.test(l) || /דובכל/.test(l)
+  );
+
+  if (anchorIdx >= 0) {
+    const collected: string[] = [];
+    let seenPipeLine = false;
+    for (let j = anchorIdx + 1; j < Math.min(lines.length, anchorIdx + 7); j++) {
+      const raw = lines[j].trim();
+      if (!raw) continue;
+      // Stop at ID / VAT rows: "<digits> : מורשה עוסק מספר" etc.
+      if (
+        /^\d{5,}$/.test(raw) ||
+        /\d{5,}\s*:\s*(?:מורשה|עוסק|ח\.פ|פ"ח|מ"עב|פ"עב)/.test(raw) ||
+        /(?:מורשה|עוסק|ח\.פ|פ"ח|מ"עב|פ"עב)\s*[:\s].*\d{5,}/.test(raw)
+      ) {
+        break;
+      }
+      // Stop at billing-period / amounts rows.
+      if (/תקופת|בויחה|מכירות|עמלות|לתשלום/.test(raw)) {
+        break;
+      }
+      collected.push(raw);
+      if (raw.includes("|")) seenPipeLine = true;
+      // Stop shortly after the pipe line — remaining rows are address noise.
+      if (seenPipeLine && collected.length >= 2) break;
+    }
+
+    if (collected.length > 0) {
+      // Flatten: treat pipes as separators so English + Hebrew tokens on
+      // the branch line become part of one search string. Normalize the
+      // Hebrew gershayim "״" to ASCII '"' so alias matching doesn't miss.
+      return collected
+        .join(" ")
+        .replace(/\|/g, " ")
+        .replace(/״/g, '"')
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, 120);
+    }
+  }
+
+  // Legacy fallback: pipe match anywhere in the text.
   const pipeMatch = text.match(
     /([\u0590-\u05FF\s]+)\s*\|\s*([\u0590-\u05FF\s]+)/
   );
   if (pipeMatch) {
     const part1 = pipeMatch[1].trim();
     const part2 = pipeMatch[2].trim();
-    // In visual RTL, the order is reversed; typically "BRAND NAME"
-    // Return both parts joined
     return `${part2} ${part1}`.trim();
   }
 
-  // Pattern 2: After "לכבוד" or "דובכל" (reversed)
-  const lkMatch = text.match(/(?:לכבוד|דובכל)\s*\n\s*([\u0590-\u05FF\s"]+)/);
-  if (lkMatch) {
-    return lkMatch[1].trim().replace(/"/g, "").substring(0, 50);
-  }
-
-  // Pattern 3: Before company ID pattern (ח.פ / ע.מ / מספר)
+  // Legacy fallback: before a company ID marker.
   const idMatch = text.match(
     /([\u0590-\u05FF\s]+)\s*(?:פ"עב|מ"עב|פ\.ח|מ\.ע)\s/
   );

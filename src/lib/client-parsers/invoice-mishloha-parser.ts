@@ -23,15 +23,18 @@
 import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-const pdfParse = createRequire(import.meta.url)("pdf-parse");
+// Import from /lib/pdf-parse.js directly — the package's index.js runs a
+// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
+const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
 
 /**
- * Dynamic imports for OCR dependencies (pdfjs-dist + tesseract.js).
- * These use variables to prevent Turbopack from trying to resolve
- * WASM/ESM packages at build time.
+ * Dynamic imports for OCR dependencies (pdfjs-dist + tesseract.js + sharp).
+ * String-variable imports prevent Turbopack from trying to resolve
+ * WASM / native / ESM packages at build time.
  */
 const PDFJS_MODULE = "pdfjs-dist/legacy/build/pdf.mjs";
 const TESSERACT_MODULE = "tesseract.js";
+const SHARP_MODULE = "sharp";
 
 async function loadPdfjs() {
   return import(/* webpackIgnore: true */ PDFJS_MODULE);
@@ -41,9 +44,20 @@ async function loadTesseract() {
   return import(/* webpackIgnore: true */ TESSERACT_MODULE);
 }
 
+async function loadSharp() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import(/* webpackIgnore: true */ SHARP_MODULE);
+  return (mod.default ?? mod) as typeof import("sharp");
+}
+
 /**
- * Extract the first embedded image from a PDF using pdfjs-dist.
- * jsPDF-generated invoices embed the entire page as a single image.
+ * Extract the first embedded image from a PDF using pdfjs-dist and encode
+ * it as PNG so tesseract can read it. jsPDF-generated invoices embed the
+ * whole page as a single image, and pdfjs returns decoded RGBA pixel data
+ * which tesseract cannot consume directly — it needs an encoded format
+ * (PNG/JPEG). We re-encode via sharp here.
+ *
+ * Returns a PNG Buffer, or null if no image was found on page 1.
  */
 async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
   const pdfjsLib = await loadPdfjs();
@@ -61,16 +75,69 @@ async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
         data: Uint8Array;
         width: number;
         height: number;
+        kind?: number;
       } | null>((resolve) => page.objs.get(imgName, resolve));
 
       if (imgData?.data && imgData.width && imgData.height) {
-        // Raw RGBA bitmap → PNG via sharp (optional) or return raw for tesseract
-        // Tesseract.js accepts raw bitmap with dimensions
-        return Buffer.from(imgData.data);
+        const { data, width, height } = imgData;
+        // pdfjs may hand back RGB (3 channels) or RGBA (4 channels). Derive
+        // it from the buffer length so sharp can consume the raw bitmap.
+        const pixels = width * height;
+        const rawChannels = data.length / pixels;
+        if (rawChannels !== 3 && rawChannels !== 4) {
+          // Non-standard (e.g. grayscale, CMYK) — skip, let caller try
+          // whole-page rendering instead.
+          continue;
+        }
+        const sharp = await loadSharp();
+        return await sharp(Buffer.from(data), {
+          raw: {
+            width,
+            height,
+            channels: rawChannels as 3 | 4,
+          },
+        })
+          .png()
+          .toBuffer();
       }
     }
   }
   return null;
+}
+
+/**
+ * Render page 1 of a PDF to a PNG image using pdfjs-dist's SVG back end.
+ * Fallback for PDFs where no XObject image is present (e.g. text-rendered
+ * as vector drawings) so we still have something to OCR. Returns null if
+ * rendering is unavailable in the current environment.
+ */
+async function renderPdfPageToPng(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    const pdfjsLib = await loadPdfjs();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+      .promise;
+    const page = await doc.getPage(1);
+    // 2x scale for better OCR accuracy on small fonts
+    const viewport = page.getViewport({ scale: 2 });
+    const width = Math.ceil(viewport.width);
+    const height = Math.ceil(viewport.height);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const canvasMod: any = await import(
+      /* webpackIgnore: true */ "@napi-rs/canvas"
+    ).catch(() => null);
+    if (!canvasMod) return null;
+
+    const canvas = canvasMod.createCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await page.render({ canvasContext: ctx as any, viewport }).promise;
+    return canvas.toBuffer("image/png");
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -95,13 +162,19 @@ export async function parseMishlohaFile(
   const warnings: string[] = [];
 
   try {
-    const data = await pdfParse(buffer);
-    const text = data.text as string;
+    const pdfData = await pdfParse(buffer);
+    let text = pdfData.text as string;
 
+    // jsPDF-generated invoices embed content as a page-sized image and have
+    // no text layer. Fall back to OCR and feed the OCR text through the
+    // same parsing pipeline (labels in OCR output are in normal LTR order,
+    // so the LTR patterns below handle them).
     if (!text || text.length < 50) {
-      // jsPDF-generated invoices embed content as images — try OCR
       try {
-        const imageBuffer = await extractImageFromPDF(buffer);
+        let imageBuffer = await extractImageFromPDF(buffer);
+        if (!imageBuffer) {
+          imageBuffer = await renderPdfPageToPng(buffer);
+        }
         if (!imageBuffer) {
           errors.push("לא ניתן לחלץ טקסט או תמונה מקובץ ה-PDF של משלוחה");
           return { success: false, data: null, errors, warnings };
@@ -112,9 +185,7 @@ export async function parseMishlohaFile(
           return { success: false, data: null, errors, warnings };
         }
         warnings.push("טקסט חולץ באמצעות OCR (חשבונית jsPDF)");
-        // Replace text variables for parsing below
-        const ocrLines = ocrText.split("\n").map((l) => l.trim()).filter(Boolean);
-        return parseOcrInvoice(ocrLines, ocrText, warnings, errors);
+        text = ocrText;
       } catch (ocrError) {
         errors.push(
           `חילוץ טקסט נכשל ו-OCR לא זמין: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`
@@ -342,10 +413,14 @@ export async function parseMishlohaFile(
     }
 
     // Grand total
-    // mPDF RTL: "₪11,666.23\nסה"כ:" (amount BEFORE bare "סה"כ:")
-    // Use negative lookahead to exclude "סה"כ חייב במע"מ"
+    // mPDF RTL: "₪11,666.23\nסה"כ:" (amount BEFORE a BARE "סה"כ:" label
+    // that has nothing after it on its line).
+    // Require end-of-line after the colon so we don't accidentally match
+    // an OCR line like "סה"כ: ₪1,616.81" — where the label has the amount
+    // on the SAME line, and the line BEFORE is the VAT amount. Without
+    // this guard, grandTotal is silently set to the VAT figure.
     const grandMpdfMatch = text.match(
-      /₪?([\d,]+\.\d{2})\s*\n\s*סה"כ:(?!\s*חייב)/
+      /₪?([\d,]+\.\d{2})\s*\n\s*סה"כ:\s*(?=\n|$)/
     );
     if (grandMpdfMatch) {
       grandTotal = parseFloat(grandMpdfMatch[1].replace(/,/g, ""));
@@ -491,116 +566,4 @@ export async function parseMishlohaFile(
     );
     return { success: false, data: null, errors, warnings };
   }
-}
-
-/**
- * Parse OCR-extracted text from a jsPDF Mishloha invoice.
- * OCR text preserves visual layout, so we look for key Hebrew patterns:
- * - "סה"כ חייב במע"מ:" or "סה"כ חייב" for pre-VAT total
- * - "מע"מ" line for VAT amount
- * - "סה"כ:" for grand total
- * - "לכבוד:" for franchisee name
- * - "חשבונית מס מספר" for invoice number
- */
-function parseOcrInvoice(
-  lines: string[],
-  rawText: string,
-  warnings: string[],
-  errors: string[]
-): ClientDocumentProcessingResult {
-  let franchiseeName = "";
-  let preVatTotal = 0;
-  let grandTotal = 0;
-  let invoiceNumber = "";
-  let periodMonth: number | undefined = undefined;
-  let periodYear: number | undefined = undefined;
-
-  for (const line of lines) {
-    // Franchisee name
-    const lekavodMatch = line.match(/לכבוד[:\s]+(.+)/);
-    if (lekavodMatch && !franchiseeName) {
-      franchiseeName = lekavodMatch[1]
-        .replace(/[,،]/g, "")
-        .replace(/ח\.?פ\.?.*$/, "")
-        .replace(/ת\.?ז\.?.*$/, "")
-        .trim();
-    }
-
-    // Invoice number
-    const invMatch = line.match(/חשבונית\s*מס\s*מספר\s*(\d+)/);
-    if (invMatch) {
-      invoiceNumber = invMatch[1];
-    }
-
-    // Pre-VAT total: "סה"כ חייב במע"מ:" or just amounts after "סה"כ חייב"
-    const preVatMatch = line.match(/סה[""״]כ\s*חייב[^:]*:\s*([\d,]+\.?\d*)/);
-    if (preVatMatch) {
-      preVatTotal = parseFloat(preVatMatch[1].replace(/,/g, ""));
-    }
-
-    // Grand total: "סה"כ:" at the end (the final total including VAT)
-    const grandMatch = line.match(/^סה[""״]כ:\s*([\d,]+\.?\d*)/);
-    if (grandMatch) {
-      grandTotal = parseFloat(grandMatch[1].replace(/,/g, ""));
-    }
-
-    // Period from date range: "01/03/2026-31/03/2026" or "מתאריך ... עד"
-    const dateRange = line.match(/(\d{2})\/(\d{2})\/(\d{4})\s*[-–]\s*(\d{2})\/(\d{2})\/(\d{4})/);
-    if (dateRange && !periodMonth) {
-      periodMonth = parseInt(dateRange[2]);
-      periodYear = parseInt(dateRange[3]);
-    }
-  }
-
-  // Fallback: try to find amounts with ₪ symbol
-  if (!preVatTotal) {
-    const amounts: number[] = [];
-    for (const line of lines) {
-      const matches = line.match(/₪?([\d,]+\.?\d+)₪?/g);
-      if (matches) {
-        for (const m of matches) {
-          const val = parseFloat(m.replace(/[₪,]/g, ""));
-          if (val > 100) amounts.push(val);
-        }
-      }
-    }
-    // The largest amount is likely the grand total, second largest is pre-VAT
-    amounts.sort((a, b) => b - a);
-    if (amounts.length >= 2) {
-      grandTotal = amounts[0];
-      preVatTotal = amounts[1];
-    } else if (amounts.length === 1) {
-      grandTotal = amounts[0];
-      preVatTotal = Math.round(amounts[0] / 1.18 * 100) / 100;
-    }
-  }
-
-  if (!preVatTotal && !grandTotal) {
-    errors.push("לא ניתן לזהות סכומים מהחשבונית (OCR)");
-    return { success: false, data: null, errors, warnings };
-  }
-
-  return {
-    success: true,
-    data: {
-      franchiseeName: franchiseeName || "לא זוהה",
-      totalAmount: preVatTotal,
-      commissionAmount: preVatTotal,
-      commissionRate: 0,
-      netAmount: grandTotal || preVatTotal,
-      periodMonth,
-      periodYear,
-      lineItems: [
-        {
-          date: null,
-          description: `חשבונית מס ${invoiceNumber || "משלוחה"} (OCR)`,
-          amount: preVatTotal,
-          commission: preVatTotal,
-        },
-      ],
-      rawText,
-    },
-    errors,
-    warnings,
-  };
 }

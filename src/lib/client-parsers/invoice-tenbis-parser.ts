@@ -20,8 +20,10 @@
 
 import type { ClientDocumentProcessingResult } from "./types";
 
+// Import from /lib/pdf-parse.js directly — the package's index.js runs a
+// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 /** Hebrew month names mapped to month numbers (1-12) */
 const HEBREW_MONTHS: Record<string, number> = {

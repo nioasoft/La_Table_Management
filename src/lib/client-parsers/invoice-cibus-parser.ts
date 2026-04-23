@@ -22,8 +22,10 @@
 
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
+// Import from /lib/pdf-parse.js directly — the package's index.js runs a
+// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 /** Hebrew number pattern: digits with optional commas and decimal */
 const NUM_PATTERN = "[\\d,]+\\.?\\d*";

@@ -360,6 +360,42 @@ function calculateMatchScore(
     }
   }
 
+  // Token-sequence alias match: for long multi-token search strings
+  // (e.g. Wolt invoice extraction "<legal> <trade_en> <trade_he>"), an
+  // alias may appear as a contiguous sub-sequence of tokens rather than
+  // equal the whole search string. Whole-string fuzzy similarity gets
+  // diluted by the extra tokens, so this pass catches the uniquely
+  // distinctive "NATANZON" / "ויני רגבה" case where the matcher would
+  // otherwise prefer a franchisee that shares the legal entity.
+  const searchTokens = normalizedSearch.split(/\s+/).filter((t) => t.length > 0);
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeName(alias);
+    if (normalizedAlias.length < 4) continue; // Too short to be distinctive
+    const aliasTokens = normalizedAlias.split(/\s+/).filter((t) => t.length > 0);
+    if (aliasTokens.length === 0) continue;
+
+    for (let i = 0; i + aliasTokens.length <= searchTokens.length; i++) {
+      let matched = true;
+      for (let j = 0; j < aliasTokens.length; j++) {
+        if (searchTokens[i + j] !== aliasTokens[j]) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) {
+        // Slightly below 1 so a true whole-string exact alias still wins,
+        // but above typical fuzzy scores (0.7-0.9).
+        const score = Math.min(0.99, 0.9 + aliasTokens.length * 0.02);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatchedOn = `token-seq-alias:${alias}`;
+          bestMatchType = "exact_alias";
+        }
+        break;
+      }
+    }
+  }
+
   return { score: bestScore, matchedOn: bestMatchedOn, matchType: bestMatchType };
 }
 

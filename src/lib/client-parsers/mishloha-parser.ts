@@ -96,9 +96,12 @@ export async function parseMishlohaFile(
   const warnings: string[] = [];
 
   try {
-    // Step 1: Try pdf-parse for text-based PDFs
+    // Step 1: Try pdf-parse for text-based PDFs.
+    // Import from /lib/pdf-parse.js directly — the package's index.js runs a
+    // debug file-read at module load when `module.parent` is null (which
+    // happens with bundlers like Turbopack), breaking the build.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse");
+    const pdfParse = require("pdf-parse/lib/pdf-parse.js");
     const pdfData = await pdfParse(buffer);
     let text = (pdfData.text as string).trim();
 

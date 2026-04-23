@@ -21,10 +21,110 @@
  * - Grand total (incl. VAT) = netAmount
  */
 
+import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse");
+// Import from /lib/pdf-parse.js directly — the package's index.js runs a
+// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
+const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+
+/**
+ * Dynamic imports for OCR dependencies. String-variable imports prevent
+ * Turbopack/webpack from trying to bundle WASM/native packages at build time.
+ */
+const PDFJS_MODULE = "pdfjs-dist/legacy/build/pdf.mjs";
+const TESSERACT_MODULE = "tesseract.js";
+const SHARP_MODULE = "sharp";
+
+async function loadPdfjs() {
+  return import(/* webpackIgnore: true */ PDFJS_MODULE);
+}
+async function loadTesseract() {
+  return import(/* webpackIgnore: true */ TESSERACT_MODULE);
+}
+async function loadSharp() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import(/* webpackIgnore: true */ SHARP_MODULE);
+  return (mod.default ?? mod) as typeof import("sharp");
+}
+
+/**
+ * Extract the first embedded image from a PDF via pdfjs-dist and re-encode
+ * the raw pixel buffer as PNG so tesseract can consume it. Returns null
+ * if no image XObject is present on page 1.
+ */
+async function extractImageFromPDF(buffer: Buffer): Promise<Buffer | null> {
+  const pdfjsLib = await loadPdfjs();
+  const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+    .promise;
+  const page = await doc.getPage(1);
+  const ops = await page.getOperatorList();
+  const OPS = pdfjsLib.OPS;
+
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    if (ops.fnArray[i] === OPS.paintImageXObject) {
+      const imgName = ops.argsArray[i][0] as string;
+      const imgData = await new Promise<{
+        data: Uint8Array;
+        width: number;
+        height: number;
+      } | null>((resolve) => page.objs.get(imgName, resolve));
+
+      if (imgData?.data && imgData.width && imgData.height) {
+        const { data, width, height } = imgData;
+        const pixels = width * height;
+        const channels = data.length / pixels;
+        if (channels !== 3 && channels !== 4) continue;
+        const sharp = await loadSharp();
+        return await sharp(Buffer.from(data), {
+          raw: { width, height, channels: channels as 3 | 4 },
+        })
+          .png()
+          .toBuffer();
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Render page 1 of a PDF to a PNG at 2× scale for OCR. Used when no image
+ * XObject is present (e.g. iLovePDF invoices embed the page differently).
+ */
+async function renderPdfPageToPng(buffer: Buffer): Promise<Buffer | null> {
+  try {
+    const pdfjsLib = await loadPdfjs();
+    const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) })
+      .promise;
+    const page = await doc.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const width = Math.ceil(viewport.width);
+    const height = Math.ceil(viewport.height);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const canvasMod: any = await import(
+      /* webpackIgnore: true */ "@napi-rs/canvas"
+    ).catch(() => null);
+    if (!canvasMod) return null;
+
+    const canvas = canvasMod.createCanvas(width, height);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await page.render({ canvasContext: ctx as any, viewport }).promise;
+    return canvas.toBuffer("image/png");
+  } catch {
+    return null;
+  }
+}
+
+async function ocrImage(imageBuffer: Buffer): Promise<string> {
+  const tess = await loadTesseract();
+  const recognize = tess.default?.recognize ?? tess.recognize;
+  const { data } = await recognize(imageBuffer, "heb+eng");
+  return data.text;
+}
 
 /**
  * Parse a Haat Delivery PDF invoice.
@@ -38,12 +138,35 @@ export async function parseHaatFile(
   const warnings: string[] = [];
 
   try {
-    const data = await pdfParse(buffer);
-    const text = data.text as string;
+    const pdfData = await pdfParse(buffer);
+    let text = pdfData.text as string;
 
+    // Image-only PDFs (e.g. invoices routed through iLovePDF) lose the text
+    // layer. Fall back to OCR; the OCR output is in normal LTR order and
+    // the patterns below handle it uniformly with the text-layer path.
     if (!text || text.length < 50) {
-      errors.push("לא ניתן לחלץ טקסט מקובץ ה-PDF של האט");
-      return { success: false, data: null, errors, warnings };
+      try {
+        let imageBuffer = await extractImageFromPDF(buffer);
+        if (!imageBuffer) {
+          imageBuffer = await renderPdfPageToPng(buffer);
+        }
+        if (!imageBuffer) {
+          errors.push("לא ניתן לחלץ טקסט או תמונה מקובץ ה-PDF של האט");
+          return { success: false, data: null, errors, warnings };
+        }
+        const ocrText = await ocrImage(imageBuffer);
+        if (!ocrText || ocrText.length < 50) {
+          errors.push("OCR לא הצליח לחלץ טקסט מחשבונית האט");
+          return { success: false, data: null, errors, warnings };
+        }
+        warnings.push("טקסט חולץ באמצעות OCR (חשבונית מתמונה)");
+        text = ocrText;
+      } catch (ocrError) {
+        errors.push(
+          `חילוץ טקסט נכשל ו-OCR לא זמין: ${ocrError instanceof Error ? ocrError.message : String(ocrError)}`
+        );
+        return { success: false, data: null, errors, warnings };
+      }
     }
 
     const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -51,40 +174,67 @@ export async function parseHaatFile(
     // ---------------------------------------------------------------
     // Franchisee name
     // ---------------------------------------------------------------
-    // Two layouts seen in HAAT invoices:
+    // Layouts seen in HAAT invoices:
     //   A) Same line:   "לכבוד: פט ויני עזריאלי בע"מ"
-    //   B) Next line:   "לכבוד:" then "פט ויני עזריאלי בע"מ" on the line below
-    // Also visual-reversed RTL output where "דובכל" appears at the end.
+    //   B) Next line:   "לכבוד:" then the name on the line below
+    //   C) OCR column-mix: the two-column header is flattened so the
+    //      "לכבוד:" line is immediately followed by the right-column
+    //      label ("תאריך חשבונית: 31/03/26"), and the actual business
+    //      name sits at the start of the NEXT line — but that next line
+    //      ALSO has right-column content trailing it
+    //      (e.g. "פט ויני עזריאלי בע"מ תאריך הדפסה: 07/04/26").
+    //   D) Visual-reversed RTL output where "דובכל" appears at the end.
+    //
+    // "Right-column" labels we trim from the name: תאריך, שעת, מספר/מס',
+    // פעיל, פרטים, טלפון, Email, Haifa.
+
+    // JS \b only triggers on ASCII word chars, so for Hebrew keywords we
+    // use explicit boundary chars (whitespace, colon, hyphen, end).
+    /** Strip right-column metadata that OCR flattens onto the name line. */
+    const cleanNameSegment = (raw: string): string =>
+      raw
+        .replace(/\s+(?:תאריך|שעת|מספר|מס['׳.]?|פרטים|טלפון|Email|Haifa|פעיל)(?:[\s:\-]|$).*$/i, "")
+        .replace(/[,،]/g, "")
+        .replace(/ח\.?פ\.?.*$/, "")
+        .replace(/ת\.?ז\.?.*$/, "")
+        .trim();
+
+    /** A captured segment that STARTS with a label keyword is column-mix noise, not the name. */
+    const isColumnMixNoise = (raw: string): boolean =>
+      /^(?:תאריך|שעת|מספר|מס['׳.]?|פרטים|טלפון|Email|Haifa|פעיל)(?:[\s:\-]|$)/i.test(raw.trim());
+
     let franchiseeName = "";
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
 
-      // Normal order — same line: "לכבוד: NAME"
       const lekavod = line.match(/לכבוד[:\s]+(.+)/);
       if (lekavod && lekavod[1].trim().length > 0) {
-        franchiseeName = lekavod[1]
-          .replace(/[,،]/g, "")
-          .replace(/ח\.פ\..*$/, "")
-          .replace(/ת\.ז\..*$/, "")
-          .trim();
-        break;
-      }
-
-      // Normal order — label-only line ("לכבוד:" or "לכבוד" alone),
-      // franchisee name follows on the next non-empty line.
-      if (/^לכבוד\s*:?\s*$/.test(line) && i + 1 < lines.length) {
-        const candidate = lines[i + 1]
-          .replace(/[,،]/g, "")
-          .replace(/ח\.פ\..*$/, "")
-          .replace(/ת\.ז\..*$/, "")
-          .trim();
-        if (candidate.length > 0) {
-          franchiseeName = candidate;
+        const captured = lekavod[1].trim();
+        if (isColumnMixNoise(captured) && i + 1 < lines.length) {
+          // Case C: fall through to the next line, which starts with the name.
+          const nextClean = cleanNameSegment(lines[i + 1]);
+          if (nextClean.length > 0) {
+            franchiseeName = nextClean;
+            break;
+          }
+        }
+        const cleaned = cleanNameSegment(captured);
+        if (cleaned.length > 0) {
+          franchiseeName = cleaned;
           break;
         }
       }
 
-      // Visual reversed: "NAME ... דובכל"
+      // Case B: label-only line, name on the next line
+      if (/^לכבוד\s*:?\s*$/.test(line) && i + 1 < lines.length) {
+        const nextClean = cleanNameSegment(lines[i + 1]);
+        if (nextClean.length > 0) {
+          franchiseeName = nextClean;
+          break;
+        }
+      }
+
+      // Case D: visual-reversed "NAME ... דובכל"
       const reversed = line.match(/(.+?)\s*:?\s*דובכל/);
       if (reversed) {
         franchiseeName = reversed[1]
@@ -117,6 +267,18 @@ export async function parseHaatFile(
       const invRevMatch = text.match(/(\S+)\s+תזכרמ\s+סמ\s+תינובשח/);
       if (invRevMatch) {
         invoiceNumber = invRevMatch[1];
+      }
+    }
+
+    // Normalize OCR-mangled "SI" prefix. Tesseract renders "SI266007620" as
+    // "5!266007620", "5[266007620", "5|266007620" etc., and sometimes drops
+    // the "I" altogether. HAAT invoice numbers are always "SI" followed by
+    // 6+ digits, so we rebuild the prefix whenever we've captured something
+    // that looks like a numeric suffix with 8+ digits.
+    if (invoiceNumber && !/^SI\d+$/i.test(invoiceNumber)) {
+      const digits = invoiceNumber.replace(/\D/g, "");
+      if (digits.length >= 8 && /^[5S][^0-9]?\d{8,}$/i.test(invoiceNumber)) {
+        invoiceNumber = `SI${digits.slice(1)}`;
       }
     }
 
@@ -273,10 +435,12 @@ export async function parseHaatFile(
     if (subtotalMatch) {
       preVatTotal = parseFloat(subtotalMatch[1].replace(/,/g, ""));
     }
-    // After discount takes priority
-    const afterDiscountMatch = text.match(
-      /מחיר\s+אחרי\s+הנחה[:\s]*([\d,]+\.?\d*)/
-    );
+    // After discount takes priority. Tolerate OCR mangling of "אחרי" —
+    // tesseract has been seen turning it into "‎nx‏" or similar garbage —
+    // by accepting any short token between "מחיר" and "הנחה".
+    const afterDiscountMatch =
+      text.match(/מחיר\s+אחרי\s+הנחה[:\s]*([\d,]+\.?\d*)/) ||
+      text.match(/מחיר\s+\S{1,6}\s+הנחה[:\s]*([\d,]+\.?\d*)/);
     if (afterDiscountMatch) {
       preVatTotal = parseFloat(afterDiscountMatch[1].replace(/,/g, ""));
     }
@@ -305,6 +469,19 @@ export async function parseHaatFile(
       );
       if (vatRevMatch) {
         vatAmount = parseFloat(vatRevMatch[1].replace(/,/g, ""));
+      }
+    }
+    // OCR-tolerant: tesseract occasionally mangles "מע"מ" into junk like
+    // "n"yn" and reverses the parens, so the normal-order match fails.
+    // Anchor on the "18%" VAT rate — HAAT VAT is always 18%, so this
+    // avoids accidentally matching unrelated percent-number pairs such as
+    // the "0.01%-( 0.10-" discount line.
+    if (vatAmount === 0) {
+      const vatLooseMatch = text.match(
+        /[()]?\s*18(?:\.0+)?%\s*[()]?\s*(?:[^\d\n]*\s)?₪?\s*([\d,]+\.\d{2})/
+      );
+      if (vatLooseMatch) {
+        vatAmount = parseFloat(vatLooseMatch[1].replace(/,/g, ""));
       }
     }
 
@@ -347,6 +524,18 @@ export async function parseHaatFile(
     // If we have grand total and VAT but no pre-VAT, calculate it
     if (preVatTotal === 0 && grandTotal > 0 && vatAmount > 0) {
       preVatTotal = grandTotal - vatAmount;
+    }
+
+    // Arithmetic truth: when we have BOTH grand total and VAT, the
+    // post-discount pre-VAT is exactly `grand - VAT`. Prefer that over the
+    // regex-extracted pre-VAT whenever the difference can't be explained
+    // (e.g. OCR captured the pre-discount "מחיר כולל" instead of the
+    // post-discount "מחיר אחרי הנחה"). The real pre-VAT = grand − VAT.
+    if (grandTotal > 0 && vatAmount > 0) {
+      const arithmeticPreVat = Math.round((grandTotal - vatAmount) * 100) / 100;
+      if (Math.abs(arithmeticPreVat - preVatTotal) > 0.02) {
+        preVatTotal = arithmeticPreVat;
+      }
     }
 
     // If we only have grand total, estimate pre-VAT (18% VAT)

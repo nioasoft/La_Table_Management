@@ -32,3 +32,36 @@ describe("parseWoltInvoice — Castra Tomai 2026-03", () => {
     expect(result.data?.netAmount).toBeCloseTo(196127.17, 2);
   });
 });
+
+/**
+ * Regression: Wolt Nathanson invoice was auto-assigned to "פט ויני עזריאלי
+ * חיפה" (wrong franchisee) because the PDF is billed to the shared legal
+ * entity "פט ויני עזריאלי בע"מ". The branch-line "חיפה | NATANZON | נתנזון"
+ * is the only disambiguating signal, and the old extractor stopped at the
+ * first pipe (which fenced off the Hebrew "נתנזון" on the far side).
+ *
+ * The fix collects the ~3 lines after "לכבוד" and flattens pipes so both
+ * the legal entity AND the "NATANZON" / "נתנזון" trade tokens end up in the
+ * search string, letting the fuzzy matcher's token-sequence alias pass
+ * pick up the Nathanson-only alias "NATANZON" exactly.
+ */
+describe("parseWoltInvoice — Nathanson 2026-03 (shared-legal-entity disambiguation)", () => {
+  it("extracts BOTH legal entity and branch tokens from the 'לכבוד' block", async () => {
+    const buf = readFileSync(
+      resolve(__dirname, "fixtures/wolt-nathanson-haifa-2026-03.pdf")
+    );
+    const result = await parseWoltInvoice(buf, "application/pdf");
+
+    expect(result.success).toBe(true);
+    const extracted = result.data?.franchiseeName ?? "";
+    // Must include the disambiguating branch tokens, not just legal entity.
+    expect(extracted).toMatch(/NATANZON/);
+    expect(extracted).toMatch(/נתנזון/);
+    // And still include the legal entity so legitimate Azrieli invoices
+    // (which DO lack the Nathanson tokens) keep matching correctly.
+    expect(extracted).toMatch(/עזריאלי/);
+
+    // Amounts should be unchanged by the name-extraction refactor.
+    expect(result.data?.totalAmount).toBeCloseTo(11384.15, 2);
+  });
+});
