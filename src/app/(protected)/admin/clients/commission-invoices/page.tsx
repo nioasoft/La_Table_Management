@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -157,6 +157,16 @@ export default function CommissionInvoicesPage() {
     string | null
   >(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  // When the user opens a client's detail panel, scroll it into view so the
+  // user actually sees the panel that just appeared below the summary table.
+  // Without this, on long lists the click looked like nothing happened.
+  useEffect(() => {
+    if (selectedClientId && detailRef.current) {
+      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedClientId]);
 
   const { data: clients } = useClients({ active: true });
   const { data: filterFranchisees } = useFranchisees({ category: "all" });
@@ -380,28 +390,30 @@ export default function CommissionInvoicesPage() {
 
       {/* Per-Franchisee Detail View */}
       {selectedClientId && (
-        <ClientVerificationDetail
-          clientId={selectedClientId}
-          clientName={
-            summaryData?.find((s) => s.clientId === selectedClientId)
-              ?.clientName ?? ""
-          }
-          periodMonth={periodMonth}
-          periodYear={periodYear}
-          rows={
-            selectedFranchiseeId
-              ? (verificationRows ?? []).filter(
-                  (r) => r.franchiseeId === selectedFranchiseeId
-                )
-              : (verificationRows ?? [])
-          }
-          allClientFranchisees={(verificationRows ?? []).map((r) => ({
-            id: r.franchiseeId,
-            name: r.franchiseeName,
-          }))}
-          isLoading={verificationLoading}
-          onClose={() => setSelectedClientId(null)}
-        />
+        <div ref={detailRef} className="scroll-mt-4">
+          <ClientVerificationDetail
+            clientId={selectedClientId}
+            clientName={
+              summaryData?.find((s) => s.clientId === selectedClientId)
+                ?.clientName ?? ""
+            }
+            periodMonth={periodMonth}
+            periodYear={periodYear}
+            rows={
+              selectedFranchiseeId
+                ? (verificationRows ?? []).filter(
+                    (r) => r.franchiseeId === selectedFranchiseeId
+                  )
+                : (verificationRows ?? [])
+            }
+            allClientFranchisees={(verificationRows ?? []).map((r) => ({
+              id: r.franchiseeId,
+              name: r.franchiseeName,
+            }))}
+            isLoading={verificationLoading}
+            onClose={() => setSelectedClientId(null)}
+          />
+        </div>
       )}
 
       {/* Upload Dialog */}
