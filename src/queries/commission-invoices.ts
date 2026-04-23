@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
+  InvoiceVerificationFlatRow,
   InvoiceVerificationRow,
   InvoiceVerificationSummaryRow,
 } from "@/data-access/commission-invoices";
@@ -31,6 +32,18 @@ export const commissionInvoiceKeys = {
       clientId,
       periodMonth,
       periodYear,
+    ] as const,
+  flat: (
+    periodMonth: number,
+    periodYear: number,
+    franchiseeId: string | null
+  ) =>
+    [
+      ...commissionInvoiceKeys.all,
+      "flat",
+      periodMonth,
+      periodYear,
+      franchiseeId ?? "all",
     ] as const,
 };
 
@@ -68,6 +81,23 @@ async function fetchVerification(
   return data.rows;
 }
 
+async function fetchVerificationFlat(
+  periodMonth: number,
+  periodYear: number,
+  franchiseeId: string | null
+): Promise<InvoiceVerificationFlatRow[]> {
+  const params = new URLSearchParams({
+    view: "flat",
+    periodMonth: String(periodMonth),
+    periodYear: String(periodYear),
+  });
+  if (franchiseeId) params.set("franchiseeId", franchiseeId);
+  const res = await fetch(`/api/clients/commission-invoices?${params}`);
+  if (!res.ok) throw new Error("שגיאה בטעינת נתוני אימות");
+  const data = await res.json();
+  return data.rows;
+}
+
 // ─── Hooks ──────────────────────────────────────────────────────────────────
 
 export function useInvoiceVerificationSummary(
@@ -99,6 +129,18 @@ export function useInvoiceVerification(
     ),
     queryFn: () => fetchVerification(clientId!, periodMonth, periodYear),
     enabled: !!clientId,
+  });
+}
+
+export function useInvoiceVerificationFlat(
+  periodMonth: number,
+  periodYear: number,
+  franchiseeId: string | null = null
+) {
+  return useQuery({
+    queryKey: commissionInvoiceKeys.flat(periodMonth, periodYear, franchiseeId),
+    queryFn: () =>
+      fetchVerificationFlat(periodMonth, periodYear, franchiseeId),
   });
 }
 

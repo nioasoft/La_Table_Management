@@ -2,14 +2,16 @@
  * Commission Invoice Verification API
  *
  * GET /api/clients/commission-invoices
- *   ?periodMonth=X&periodYear=Y           → summary per client
- *   ?periodMonth=X&periodYear=Y&clientId=Z → per-franchisee verification rows
+ *   ?periodMonth=X&periodYear=Y                 → summary per client
+ *   ?periodMonth=X&periodYear=Y&clientId=Z      → per-franchisee rows for one client
+ *   ?periodMonth=X&periodYear=Y&view=flat       → per-franchisee rows across all clients
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import {
   getInvoiceVerification,
+  getInvoiceVerificationAll,
   getInvoiceVerificationSummary,
 } from "@/data-access/commission-invoices";
 
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
   const periodYear = parseInt(searchParams.get("periodYear") ?? "");
   const clientId = searchParams.get("clientId");
   const franchiseeId = searchParams.get("franchiseeId");
+  const view = searchParams.get("view");
 
   if (isNaN(periodMonth) || isNaN(periodYear)) {
     return NextResponse.json(
@@ -37,6 +40,16 @@ export async function GET(request: NextRequest) {
         clientId,
         periodMonth,
         periodYear
+      );
+      return NextResponse.json({ rows });
+    }
+
+    if (view === "flat") {
+      // Per-franchisee rows across all clients (optionally filtered by franchisee)
+      const rows = await getInvoiceVerificationAll(
+        periodMonth,
+        periodYear,
+        franchiseeId
       );
       return NextResponse.json({ rows });
     }

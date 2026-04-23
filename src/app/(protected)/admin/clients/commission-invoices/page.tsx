@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -64,8 +64,7 @@ import {
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
 import {
-  useInvoiceVerificationSummary,
-  useInvoiceVerification,
+  useInvoiceVerificationFlat,
   commissionInvoiceKeys,
 } from "@/queries/commission-invoices";
 import { useQueryClient } from "@tanstack/react-query";
@@ -286,38 +285,19 @@ export default function CommissionInvoicesPage() {
   const now = new Date();
   const [periodMonth, setPeriodMonth] = useState(now.getMonth() + 1);
   const [periodYear, setPeriodYear] = useState(now.getFullYear());
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedFranchiseeId, setSelectedFranchiseeId] = useState<
     string | null
   >(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
-  const detailRef = useRef<HTMLDivElement>(null);
-
-  // When the user opens a client's detail panel, scroll it into view so the
-  // user actually sees the panel that just appeared below the summary table.
-  // Without this, on long lists the click looked like nothing happened.
-  useEffect(() => {
-    if (selectedClientId && detailRef.current) {
-      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [selectedClientId]);
 
   const { data: clients } = useClients({ active: true });
   const { data: filterFranchisees } = useFranchisees({ category: "all" });
 
-  const {
-    data: summaryData,
-    isLoading: summaryLoading,
-  } = useInvoiceVerificationSummary(
+  const { data: flatRows, isLoading: rowsLoading } = useInvoiceVerificationFlat(
     periodMonth,
     periodYear,
     selectedFranchiseeId
   );
-
-  const {
-    data: verificationRows,
-    isLoading: verificationLoading,
-  } = useInvoiceVerification(selectedClientId, periodMonth, periodYear);
 
   // Period navigation
   const goToPrevMonth = useCallback(() => {
@@ -338,14 +318,36 @@ export default function CommissionInvoicesPage() {
     }
   }, [periodMonth]);
 
-  // Summary totals
-  const totalInvoices = summaryData?.reduce((s, r) => s + r.invoiceCount, 0) ?? 0;
-  const totalMatched = summaryData?.reduce((s, r) => s + r.matchedCount, 0) ?? 0;
-  const totalMismatch = summaryData?.reduce((s, r) => s + r.mismatchCount, 0) ?? 0;
-  const totalMissing = summaryData?.reduce(
-    (s, r) => s + r.missingInvoiceCount,
-    0
-  ) ?? 0;
+  // Per-client franchisee lists, derived once for the reassign dialog.
+  const franchiseesByClient = useMemo(() => {
+    const map = new Map<string, Array<{ id: string; name: string }>>();
+    for (const row of flatRows ?? []) {
+      const list = map.get(row.clientId) ?? [];
+      if (!list.some((f) => f.id === row.franchiseeId)) {
+        list.push({ id: row.franchiseeId, name: row.franchiseeName });
+      }
+      map.set(row.clientId, list);
+    }
+    return map;
+  }, [flatRows]);
+
+  // Summary totals — computed client-side from the flat rows. "חסר" covers
+  // both missing_invoice and missing_report so users see a single actionable
+  // count even when the report side is the thing that's missing.
+  const totals = useMemo(() => {
+    const rows = flatRows ?? [];
+    let matched = 0;
+    let mismatch = 0;
+    let missing = 0;
+    let invoices = 0;
+    for (const r of rows) {
+      if (r.invoiceDocumentId) invoices++;
+      if (r.verificationStatus === "matched") matched++;
+      else if (r.verificationStatus === "mismatch") mismatch++;
+      else missing++;
+    }
+    return { invoices, matched, mismatch, missing };
+  }, [flatRows]);
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -390,7 +392,7 @@ export default function CommissionInvoicesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalInvoices}</div>
+            <div className="text-2xl font-bold">{totals.invoices}</div>
           </CardContent>
         </Card>
         <Card>
@@ -401,7 +403,7 @@ export default function CommissionInvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600">
-              {totalMatched}
+              {totals.matched}
             </div>
           </CardContent>
         </Card>
@@ -413,7 +415,7 @@ export default function CommissionInvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">
-              {totalMismatch}
+              {totals.mismatch}
             </div>
           </CardContent>
         </Card>
@@ -425,74 +427,135 @@ export default function CommissionInvoicesPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {totalMissing}
+              {totals.missing}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Client Summary Table */}
-      {summaryLoading ? (
+      {/* Flat per-franchisee table */}
+      {rowsLoading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
-      ) : summaryData && summaryData.length > 0 ? (
+      ) : flatRows && flatRows.length > 0 ? (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">סיכום לפי לקוח</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <Table dir="rtl">
               <TableHeader>
                 <TableRow>
                   <TableHead>לקוח</TableHead>
-                  <TableHead className="text-center">חשבוניות</TableHead>
-                  <TableHead className="text-center">תקין</TableHead>
-                  <TableHead className="text-center">חריג</TableHead>
-                  <TableHead className="text-center">חסר</TableHead>
-                  <TableHead className="text-start">סכום מחשבונית</TableHead>
-                  <TableHead className="text-start">סכום צפוי</TableHead>
+                  <TableHead>זכיין</TableHead>
+                  <TableHead className="text-start">סכום דוח לקוח</TableHead>
+                  <TableHead className="text-start">עמלה צפויה</TableHead>
+                  <TableHead className="text-start">סכום חשבונית</TableHead>
+                  <TableHead className="text-start">הפרש</TableHead>
+                  <TableHead className="text-center">סטטוס</TableHead>
+                  <TableHead className="text-center">הערה</TableHead>
+                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {summaryData.map((row) => (
-                  <TableRow
-                    key={row.clientId}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedClientId(row.clientId)}
-                  >
+                {flatRows.map((row) => (
+                  <TableRow key={`${row.clientId}::${row.franchiseeId}`}>
                     <TableCell className="font-medium">
                       {row.clientName}
                       {row.clientCode && (
-                        <span className="text-muted-foreground text-xs ms-2">
-                          ({row.clientCode})
+                        <Badge
+                          variant="outline"
+                          className="font-mono text-xs ms-2"
+                        >
+                          {row.clientCode}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>{row.franchiseeName}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span className="tabular-nums">
+                          {formatAmountDetailed(row.reportTotalAmount)}
                         </span>
+                        <DocumentLink
+                          documentId={row.reportDocumentId}
+                          variant="emerald"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {row.expectedCommission !== null ? (
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="tabular-nums">
+                            {formatAmountDetailed(row.expectedCommission)}
+                          </span>
+                          {row.systemCommissionRate !== null && (
+                            <span className="text-xs text-muted-foreground">
+                              ({row.systemCommissionRate}%)
+                            </span>
+                          )}
+                        </div>
+                      ) : row.systemCommissionRates.length > 1 ? (
+                        <span className="text-xs text-muted-foreground">
+                          מעורב (
+                          {row.systemCommissionRates
+                            .map((r) => `${r}%`)
+                            .join(" / ")}
+                          )
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span className="tabular-nums">
+                          {formatAmountDetailed(row.invoiceAmount)}
+                        </span>
+                        <DocumentLink
+                          documentId={row.invoiceDocumentId}
+                          fileName={row.invoiceFileName}
+                          variant="blue"
+                        />
+                        <InvoiceSourceBadge source={row.invoiceSource} />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {row.difference !== null ? (
+                        <span
+                          className={cn(
+                            "tabular-nums",
+                            Math.abs(row.difference) > 30
+                              ? "text-amber-600 font-medium"
+                              : "text-muted-foreground"
+                          )}
+                        >
+                          {row.difference > 0 ? "+" : ""}
+                          {formatAmountDetailed(row.difference)}
+                        </span>
+                      ) : (
+                        "—"
                       )}
                     </TableCell>
                     <TableCell className="text-center">
-                      {row.invoiceCount}
+                      <VerificationStatusBadge status={row.verificationStatus} />
                     </TableCell>
                     <TableCell className="text-center">
-                      {row.matchedCount > 0 && (
-                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                          {row.matchedCount}
-                        </Badge>
+                      <InvoiceNoteCell
+                        documentId={row.invoiceDocumentId}
+                        initialNote={row.invoiceNotes}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {row.invoiceDocumentId && (
+                        <ReassignFranchiseeAction
+                          documentId={row.invoiceDocumentId}
+                          currentFranchiseeId={row.franchiseeId}
+                          currentFranchiseeName={row.franchiseeName}
+                          candidates={
+                            franchiseesByClient.get(row.clientId) ?? []
+                          }
+                        />
                       )}
                     </TableCell>
-                    <TableCell className="text-center">
-                      {row.mismatchCount > 0 && (
-                        <Badge variant="destructive">{row.mismatchCount}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {row.missingInvoiceCount > 0 && (
-                        <Badge variant="secondary">
-                          {row.missingInvoiceCount}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{formatAmountDetailed(row.totalInvoiced)}</TableCell>
-                    <TableCell>{formatAmountDetailed(row.totalExpected)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -505,34 +568,6 @@ export default function CommissionInvoicesPage() {
             אין נתונים לתקופה זו
           </CardContent>
         </Card>
-      )}
-
-      {/* Per-Franchisee Detail View */}
-      {selectedClientId && (
-        <div ref={detailRef} className="scroll-mt-4">
-          <ClientVerificationDetail
-            clientId={selectedClientId}
-            clientName={
-              summaryData?.find((s) => s.clientId === selectedClientId)
-                ?.clientName ?? ""
-            }
-            periodMonth={periodMonth}
-            periodYear={periodYear}
-            rows={
-              selectedFranchiseeId
-                ? (verificationRows ?? []).filter(
-                    (r) => r.franchiseeId === selectedFranchiseeId
-                  )
-                : (verificationRows ?? [])
-            }
-            allClientFranchisees={(verificationRows ?? []).map((r) => ({
-              id: r.franchiseeId,
-              name: r.franchiseeName,
-            }))}
-            isLoading={verificationLoading}
-            onClose={() => setSelectedClientId(null)}
-          />
-        </div>
       )}
 
       {/* Upload Dialog */}
@@ -550,193 +585,8 @@ export default function CommissionInvoicesPage() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Client Verification Detail
+// Reassign Franchisee Action
 // ─────────────────────────────────────────────────────────────────────────────
-
-interface ClientVerificationDetailProps {
-  clientId: string;
-  clientName: string;
-  periodMonth: number;
-  periodYear: number;
-  rows: Array<{
-    franchiseeId: string;
-    franchiseeName: string;
-    invoiceDocumentId: string | null;
-    invoiceAmount: number | null;
-    invoiceFileName: string | null;
-    invoiceSource: "manual_upload" | "gmail_fetch" | null;
-    invoiceNotes: string | null;
-    reportDocumentId: string | null;
-    reportTotalAmount: number | null;
-    systemCommissionRate: number | null;
-    systemCommissionRates: number[];
-    expectedCommission: number | null;
-    difference: number | null;
-    verificationStatus: string;
-  }>;
-  allClientFranchisees: Array<{ id: string; name: string }>;
-  isLoading: boolean;
-  onClose: () => void;
-}
-
-function ClientVerificationDetail({
-  clientName,
-  periodMonth,
-  periodYear,
-  rows,
-  allClientFranchisees,
-  isLoading,
-  onClose,
-}: ClientVerificationDetailProps) {
-  const [search, setSearch] = useState("");
-
-  const filteredRows = search
-    ? rows.filter((r) =>
-        r.franchiseeName.toLowerCase().includes(search.toLowerCase())
-      )
-    : rows;
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">
-            פירוט אימות — {clientName} — {MONTHS[periodMonth - 1]} {periodYear}
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            סגור
-          </Button>
-        </div>
-        {rows.length > 0 && (
-          <Input
-            placeholder="חיפוש זכיין..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs mt-2"
-          />
-        )}
-      </CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" />
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            {search ? "לא נמצאו זכיינים תואמים" : "אין זכיינים מקושרים ללקוח זה"}
-          </div>
-        ) : (
-          <Table dir="rtl">
-            <TableHeader>
-              <TableRow>
-                <TableHead>זכיין</TableHead>
-                <TableHead className="text-start">סכום דוח לקוח</TableHead>
-                <TableHead className="text-start">עמלה צפויה</TableHead>
-                <TableHead className="text-start">סכום חשבונית</TableHead>
-                <TableHead className="text-start">הפרש</TableHead>
-                <TableHead className="text-center">סטטוס</TableHead>
-                <TableHead className="text-center">הערה</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRows.map((row) => (
-                <TableRow key={row.franchiseeId}>
-                  <TableCell className="font-medium">
-                    {row.franchiseeName}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <span>{formatAmountDetailed(row.reportTotalAmount)}</span>
-                      <DocumentLink
-                        documentId={row.reportDocumentId}
-                        variant="emerald"
-                      />
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {row.expectedCommission !== null ? (
-                      <>
-                        <div>{formatAmountDetailed(row.expectedCommission)}</div>
-                        {row.systemCommissionRate !== null && (
-                          <div className="text-xs text-muted-foreground">
-                            ({row.systemCommissionRate}%)
-                          </div>
-                        )}
-                      </>
-                    ) : row.systemCommissionRates.length > 1 ? (
-                      <div className="text-xs text-muted-foreground">
-                        מעורב ({row.systemCommissionRates.map((r) => `${r}%`).join(" / ")})
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1.5">
-                      <span>{formatAmountDetailed(row.invoiceAmount)}</span>
-                      <DocumentLink
-                        documentId={row.invoiceDocumentId}
-                        fileName={row.invoiceFileName}
-                        variant="blue"
-                      />
-                      <InvoiceSourceBadge source={row.invoiceSource} />
-                    </div>
-                    {row.invoiceFileName && (
-                      <div
-                        className="text-xs text-muted-foreground truncate max-w-[150px]"
-                        title={row.invoiceFileName}
-                      >
-                        {row.invoiceFileName}
-                      </div>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {row.difference !== null ? (
-                      <span
-                        className={
-                          Math.abs(row.difference) > 30
-                            ? "text-amber-600 font-medium"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {row.difference > 0 ? "+" : ""}
-                        {formatAmountDetailed(row.difference)}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <VerificationStatusBadge
-                      status={row.verificationStatus}
-                    />
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <InvoiceNoteCell
-                      documentId={row.invoiceDocumentId}
-                      initialNote={row.invoiceNotes}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {row.invoiceDocumentId && (
-                      <ReassignFranchiseeAction
-                        documentId={row.invoiceDocumentId}
-                        currentFranchiseeId={row.franchiseeId}
-                        currentFranchiseeName={row.franchiseeName}
-                        candidates={allClientFranchisees}
-                      />
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 function ReassignFranchiseeAction({
   documentId,

@@ -66,6 +66,12 @@ export interface InvoiceVerificationSummaryRow {
   totalExpected: number;
 }
 
+export interface InvoiceVerificationFlatRow extends InvoiceVerificationRow {
+  clientId: string;
+  clientName: string;
+  clientCode: string | null;
+}
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -468,4 +474,218 @@ export async function getInvoiceVerificationSummary(
   }
 
   return summaries;
+}
+
+/**
+ * Get per-franchisee invoice verification rows across ALL clients for a period.
+ *
+ * Same 5-queries-in-parallel pattern as getInvoiceVerificationSummary — avoids
+ * the N×5 queries that would result from looping getInvoiceVerification per
+ * client. Each row carries clientId/clientName/clientCode so a single flat
+ * table can render the full landscape.
+ *
+ * Sort order: clientName → status severity (mismatch → missing → matched) →
+ * franchiseeName, so problem rows float to the top within each client.
+ */
+export async function getInvoiceVerificationAll(
+  periodMonth: number,
+  periodYear: number,
+  franchiseeIdFilter?: string | null
+): Promise<InvoiceVerificationFlatRow[]> {
+  const [clients, links, franchisees, invoiceDocs, reportDocs] =
+    await Promise.all([
+      database
+        .select({
+          id: client.id,
+          name: client.name,
+          code: client.code,
+          deliveryCommission: client.deliveryCommission,
+          dineInCommission: client.dineInCommission,
+          takeawayCommission: client.takeawayCommission,
+          eventsCommission: client.eventsCommission,
+        })
+        .from(client)
+        .where(eq(client.isActive, true)),
+      database
+        .select({
+          clientId: clientFranchisee.clientId,
+          franchiseeId: clientFranchisee.franchiseeId,
+        })
+        .from(clientFranchisee),
+      database
+        .select({
+          id: franchisee.id,
+          name: franchisee.name,
+        })
+        .from(franchisee),
+      database
+        .select({
+          id: clientDocument.id,
+          clientId: clientDocument.clientId,
+          franchiseeId: clientDocument.franchiseeId,
+          totalAmount: clientDocument.totalAmount,
+          originalFileName: clientDocument.originalFileName,
+          source: clientDocument.source,
+          reviewNotes: clientDocument.reviewNotes,
+        })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.periodMonth, periodMonth),
+            eq(clientDocument.periodYear, periodYear),
+            eq(clientDocument.documentType, "commission_invoice")
+          )
+        ),
+      database
+        .select({
+          id: clientDocument.id,
+          clientId: clientDocument.clientId,
+          franchiseeId: clientDocument.franchiseeId,
+          totalAmount: clientDocument.totalAmount,
+          commissionAmount: clientDocument.commissionAmount,
+        })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.periodMonth, periodMonth),
+            eq(clientDocument.periodYear, periodYear),
+            eq(clientDocument.documentType, "client_report")
+          )
+        ),
+    ]);
+
+  const franchiseeNameById = new Map(franchisees.map((f) => [f.id, f.name]));
+
+  const linksByClient = new Map<string, string[]>();
+  for (const link of links) {
+    const list = linksByClient.get(link.clientId) ?? [];
+    list.push(link.franchiseeId);
+    linksByClient.set(link.clientId, list);
+  }
+
+  const keyOf = (cId: string, fId: string) => `${cId}::${fId}`;
+
+  const invoiceByKey = new Map<
+    string,
+    {
+      id: string;
+      amount: number | null;
+      fileName: string | null;
+      source: "manual_upload" | "gmail_fetch" | null;
+      reviewNotes: string | null;
+    }
+  >();
+  for (const d of invoiceDocs) {
+    if (!d.clientId || !d.franchiseeId) continue;
+    invoiceByKey.set(keyOf(d.clientId, d.franchiseeId), {
+      id: d.id,
+      amount: d.totalAmount ? parseFloat(d.totalAmount) : null,
+      fileName: d.originalFileName,
+      source: d.source as "manual_upload" | "gmail_fetch" | null,
+      reviewNotes: d.reviewNotes,
+    });
+  }
+
+  const reportByKey = new Map<
+    string,
+    { id: string; totalAmount: number | null; commissionAmount: number | null }
+  >();
+  for (const d of reportDocs) {
+    if (!d.clientId || !d.franchiseeId) continue;
+    reportByKey.set(keyOf(d.clientId, d.franchiseeId), {
+      id: d.id,
+      totalAmount: d.totalAmount ? parseFloat(d.totalAmount) : null,
+      commissionAmount: d.commissionAmount
+        ? parseFloat(d.commissionAmount)
+        : null,
+    });
+  }
+
+  const rows: InvoiceVerificationFlatRow[] = [];
+
+  for (const c of clients) {
+    const { rate: systemRate, allRates: systemRates } =
+      getClientCommissionRate(c);
+    let franchiseeIds = linksByClient.get(c.id) ?? [];
+    if (franchiseeIdFilter) {
+      franchiseeIds = franchiseeIds.filter((id) => id === franchiseeIdFilter);
+    }
+    if (franchiseeIds.length === 0) continue;
+
+    for (const fId of franchiseeIds) {
+      const name = franchiseeNameById.get(fId);
+      // Skip unknown franchisees (consistent with the other queries)
+      if (!name) continue;
+
+      const key = keyOf(c.id, fId);
+      const invoice = invoiceByKey.get(key);
+      const report = reportByKey.get(key);
+
+      const invoiceAmount = invoice?.amount ?? null;
+      const reportTotalAmount = report?.totalAmount ?? null;
+      const reportCommissionAmount = report?.commissionAmount ?? null;
+
+      const expectedCommission =
+        reportTotalAmount !== null && systemRate !== null
+          ? Math.round(reportTotalAmount * (systemRate / 100) * 100) / 100
+          : null;
+
+      let verificationStatus: VerificationStatus;
+      let difference: number | null = null;
+
+      if (!invoice) {
+        verificationStatus = "missing_invoice";
+      } else if (!report) {
+        verificationStatus = "missing_report";
+      } else if (expectedCommission !== null && invoiceAmount !== null) {
+        difference =
+          Math.round((invoiceAmount - expectedCommission) * 100) / 100;
+        verificationStatus =
+          Math.abs(difference) <= COMMISSION_INVOICE_THRESHOLD
+            ? "matched"
+            : "mismatch";
+      } else {
+        verificationStatus = "missing_report";
+      }
+
+      rows.push({
+        clientId: c.id,
+        clientName: c.name,
+        clientCode: c.code,
+        franchiseeId: fId,
+        franchiseeName: name,
+        invoiceDocumentId: invoice?.id ?? null,
+        invoiceAmount,
+        invoiceFileName: invoice?.fileName ?? null,
+        invoiceSource: invoice?.source ?? null,
+        invoiceNotes: invoice?.reviewNotes ?? null,
+        reportDocumentId: report?.id ?? null,
+        reportTotalAmount,
+        reportCommissionAmount,
+        systemCommissionRate: systemRate,
+        systemCommissionRates: systemRates,
+        expectedCommission,
+        difference,
+        verificationStatus,
+      });
+    }
+  }
+
+  const statusOrder: Record<VerificationStatus, number> = {
+    mismatch: 0,
+    missing_invoice: 1,
+    missing_report: 2,
+    matched: 3,
+  };
+
+  rows.sort((a, b) => {
+    const clientCmp = a.clientName.localeCompare(b.clientName, "he");
+    if (clientCmp !== 0) return clientCmp;
+    const statusCmp =
+      statusOrder[a.verificationStatus] - statusOrder[b.verificationStatus];
+    if (statusCmp !== 0) return statusCmp;
+    return a.franchiseeName.localeCompare(b.franchiseeName, "he");
+  });
+
+  return rows;
 }
