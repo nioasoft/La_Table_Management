@@ -206,7 +206,12 @@ export async function GET(request: NextRequest) {
 
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 
-    const filename = `עמלות לקוחות ${monthName} ${periodYear}.xlsx`;
+    // Filename is a static "עמלות לקוחות.xlsx" — the accountant imports
+    // the same-named file into Hashavshevet every period and renames after
+    // import if they need to archive. Including month/year in the name
+    // caused every download to accumulate a "(2)/(3)/…" counter in their
+    // downloads folder.
+    const filename = "עמלות לקוחות.xlsx";
     const encodedFilename = encodeURIComponent(filename);
 
     return new NextResponse(buffer, {
