@@ -26,6 +26,28 @@ describe("parseHaatFile — Pat Vinni Azrieli SI266007620 (text-layer)", () => {
     expect(result.data?.franchiseeName).not.toMatch(/האאט|האט/);
     expect(result.data?.franchiseeName).toMatch(/פט ויני עזריאלי/);
   });
+
+  // Regression: pdf-parse output for this invoice puts numeric values on
+  // one line and the matching Hebrew label on the NEXT line, so every
+  // "LABEL: VALUE" regex in the parser missed. The "largest numbers"
+  // fallback coincidentally returned the right number (1342.00 appears
+  // twice in the doc as both ₪-prefixed and plain), but that was luck.
+  // With the line-based value-before-label pass, the three totals are
+  // extracted properly and the headline amount equals grand total (incl.
+  // VAT) — NOT the pre-VAT subtotal.
+  it("extracts grand total (incl. VAT) as headline — not pre-VAT — from RTL text-layer layout", async () => {
+    const buf = readFileSync(
+      resolve(__dirname, "fixtures/haat-pat-vinni-azrieli-SI266007620.pdf")
+    );
+    const result = await parseHaatFile(buf, "application/pdf");
+
+    expect(result.success).toBe(true);
+    // Grand total (incl. VAT) = 1342.00 — the number the franchisee pays
+    // and the number the user reconciles against.
+    expect(result.data?.totalAmount).toBeCloseTo(1342.0, 2);
+    expect(result.data?.netAmount).toBeCloseTo(1342.0, 2);
+    expect(result.data?.commissionAmount).toBeCloseTo(1342.0, 2);
+  });
 });
 
 /**
@@ -70,9 +92,12 @@ describe("parseHaatFile — OCR fixtures (image-only)", () => {
       // and pick up the actual legal entity on the next line.
       expect(result.data?.franchiseeName).not.toMatch(/^תאריך/);
       expect(result.data?.franchiseeName).toMatch(/פט ויני עזריאלי/);
-      // Arithmetic truth: pre-VAT = grandTotal - VAT (= 844.00 - 128.75).
-      expect(result.data?.totalAmount).toBeCloseTo(715.25, 2);
+      // Headline amount is the WITH-VAT grand total (what the franchisee
+      // actually pays and what gets reconciled). Pre-VAT remains extracted
+      // internally for arithmetic checks but is no longer the primary.
+      expect(result.data?.totalAmount).toBeCloseTo(844.0, 2);
       expect(result.data?.netAmount).toBeCloseTo(844.0, 2);
+      expect(result.data?.commissionAmount).toBeCloseTo(844.0, 2);
       expect(
         (result.data as { invoiceNumber?: string } | null | undefined)
           ?.invoiceNumber
@@ -93,8 +118,10 @@ describe("parseHaatFile — OCR fixtures (image-only)", () => {
       // OCR mangles "קסטרא טומאיי" → "קסטרא טומאוי" — fuzzy matcher will
       // still catch it downstream, we just confirm the shape here.
       expect(result.data?.franchiseeName).toMatch(/קסטרא/);
-      expect(result.data?.totalAmount).toBeCloseTo(10806.78, 2);
+      // Headline = with-VAT grand total (12,752), not pre-VAT (10,806.78).
+      expect(result.data?.totalAmount).toBeCloseTo(12752.0, 2);
       expect(result.data?.netAmount).toBeCloseTo(12752.0, 2);
+      expect(result.data?.commissionAmount).toBeCloseTo(12752.0, 2);
       expect(
         (result.data as { invoiceNumber?: string } | null | undefined)
           ?.invoiceNumber

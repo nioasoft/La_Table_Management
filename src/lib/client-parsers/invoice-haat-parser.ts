@@ -17,8 +17,11 @@
  * - Franchisee name from "לכבוד:" line
  * - Invoice number (SI...)
  * - Period from "פרטים:" or invoice date
- * - Pre-VAT total = totalAmount = commissionAmount
- * - Grand total (incl. VAT) = netAmount
+ * - Grand total (incl. VAT) = totalAmount = commissionAmount = netAmount
+ *   (HAAT invoices are billed WITH VAT; the payable amount is what gets
+ *   reconciled and shown to the user.)
+ * - Pre-VAT subtotal is still parsed for arithmetic checks, but no longer
+ *   stored as the primary headline amount.
  */
 
 import { createRequire } from "node:module";
@@ -516,6 +519,47 @@ export async function parseHaatFile(
       }
     }
 
+    // Text-layer RTL fallback: some HAAT PDFs (e.g. Pat Vini Azrieli) come
+    // out of pdf-parse with values on one line and their labels on a
+    // following line, so all "LABEL: VALUE" regexes above miss. Walk the
+    // line list and pair each anchor label with the nearest numeric line
+    // that precedes it.
+    const findPrecedingNumber = (
+      labelIdx: number,
+      maxLookback = 6
+    ): number => {
+      for (let j = labelIdx - 1; j >= Math.max(0, labelIdx - maxLookback); j--) {
+        const m = lines[j].match(
+          /^\s*(?:ש"ח\s*)?([\d,]+\.\d{2})(?:\s*ש"ח)?\s*$/
+        );
+        if (m) return parseFloat(m[1].replace(/,/g, ""));
+      }
+      return 0;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (
+        grandTotal === 0 &&
+        /^סה"כ\s+(?:מחיר|נותר\s+לתשלום)\s*$/.test(line)
+      ) {
+        const v = findPrecedingNumber(i);
+        if (v > 0) grandTotal = v;
+      }
+      if (
+        vatAmount === 0 &&
+        /מע"מ/.test(line) &&
+        /\d+\.?\d*\s*%/.test(line)
+      ) {
+        const v = findPrecedingNumber(i);
+        if (v > 0) vatAmount = v;
+      }
+      if (preVatTotal === 0 && /^מחיר\s+אחרי\s+הנחה\s*$/.test(line)) {
+        const v = findPrecedingNumber(i);
+        if (v > 0) preVatTotal = v;
+      }
+    }
+
     // If we have pre-VAT and VAT but no grand total, calculate it
     if (grandTotal === 0 && preVatTotal > 0 && vatAmount > 0) {
       grandTotal = preVatTotal + vatAmount;
@@ -574,14 +618,19 @@ export async function parseHaatFile(
       warnings.push("לא זוהתה תקופת החשבונית");
     }
 
+    // HAAT headline amount is the WITH-VAT grand total — that's what the
+    // franchisee pays and what the user expects to see in reports. Fall
+    // back to preVatTotal only if grand total couldn't be derived at all.
+    const headlineAmount = grandTotal || preVatTotal;
+
     return {
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
-        totalAmount: preVatTotal,
-        commissionAmount: preVatTotal, // The entire invoice IS the commission charge
+        totalAmount: headlineAmount,
+        commissionAmount: headlineAmount, // The entire invoice IS the commission charge
         commissionRate: 0, // Not percentage-based; flat service charges
-        netAmount: grandTotal || preVatTotal, // Total incl. VAT
+        netAmount: headlineAmount, // Total incl. VAT (same as headline)
         periodMonth,
         periodYear,
         invoiceNumber: invoiceNumber || undefined,
@@ -592,8 +641,8 @@ export async function parseHaatFile(
                 {
                   date: null,
                   description: `חשבונית מס ${invoiceNumber || "האט"}`,
-                  amount: preVatTotal,
-                  commission: preVatTotal,
+                  amount: headlineAmount,
+                  commission: headlineAmount,
                 },
               ],
         rawText: text,
