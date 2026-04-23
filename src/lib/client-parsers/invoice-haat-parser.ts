@@ -51,12 +51,17 @@ export async function parseHaatFile(
     // ---------------------------------------------------------------
     // Franchisee name
     // ---------------------------------------------------------------
-    // "לכבוד: פט ויני עזריאלי בע"מ" or reversed visual order
+    // Two layouts seen in HAAT invoices:
+    //   A) Same line:   "לכבוד: פט ויני עזריאלי בע"מ"
+    //   B) Next line:   "לכבוד:" then "פט ויני עזריאלי בע"מ" on the line below
+    // Also visual-reversed RTL output where "דובכל" appears at the end.
     let franchiseeName = "";
-    for (const line of lines) {
-      // Normal order: "לכבוד: ..."
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      // Normal order — same line: "לכבוד: NAME"
       const lekavod = line.match(/לכבוד[:\s]+(.+)/);
-      if (lekavod) {
+      if (lekavod && lekavod[1].trim().length > 0) {
         franchiseeName = lekavod[1]
           .replace(/[,،]/g, "")
           .replace(/ח\.פ\..*$/, "")
@@ -64,7 +69,22 @@ export async function parseHaatFile(
           .trim();
         break;
       }
-      // Visual reversed: "דובכל" at end of line
+
+      // Normal order — label-only line ("לכבוד:" or "לכבוד" alone),
+      // franchisee name follows on the next non-empty line.
+      if (/^לכבוד\s*:?\s*$/.test(line) && i + 1 < lines.length) {
+        const candidate = lines[i + 1]
+          .replace(/[,،]/g, "")
+          .replace(/ח\.פ\..*$/, "")
+          .replace(/ת\.ז\..*$/, "")
+          .trim();
+        if (candidate.length > 0) {
+          franchiseeName = candidate;
+          break;
+        }
+      }
+
+      // Visual reversed: "NAME ... דובכל"
       const reversed = line.match(/(.+?)\s*:?\s*דובכל/);
       if (reversed) {
         franchiseeName = reversed[1]
