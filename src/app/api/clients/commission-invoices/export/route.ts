@@ -9,7 +9,7 @@ import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
 import * as XLSX from "xlsx";
 
 const SHEET_NAME = "ייבוא חשבשבת";
-const NAMED_RANGE = "תנועות";
+const NAMED_RANGE = "עמלות לקוחות";
 
 // Header row — verbatim from the user's template file (typos preserved on purpose,
 // Hashavshevet's importer expects this exact layout).
