@@ -14,6 +14,9 @@ import {
   deleteClientDocument,
 } from "@/data-access/client-documents";
 import { deleteDocumentFile } from "@/lib/storage";
+import { database } from "@/db";
+import { clientDocument, franchisee, clientFranchisee } from "@/db/schema";
+import { and, eq, ne } from "drizzle-orm";
 
 export async function GET(
   request: NextRequest,
@@ -48,7 +51,7 @@ export async function PATCH(
 
   try {
     const body = await request.json();
-    const { processingStatus, reviewNotes } = body;
+    const { processingStatus, reviewNotes, franchiseeId } = body;
 
     const existing = await getClientDocumentById(id);
     if (!existing) {
@@ -64,6 +67,76 @@ export async function PATCH(
     }
     if (reviewNotes !== undefined) {
       updateData.reviewNotes = reviewNotes;
+    }
+    if (franchiseeId !== undefined && franchiseeId !== existing.franchiseeId) {
+      // Verify franchisee exists
+      const [franchiseeRecord] = await database
+        .select({ id: franchisee.id })
+        .from(franchisee)
+        .where(eq(franchisee.id, franchiseeId))
+        .limit(1);
+      if (!franchiseeRecord) {
+        return NextResponse.json(
+          { error: "הזכיין שנבחר לא קיים" },
+          { status: 400 }
+        );
+      }
+
+      // Verify franchisee is linked to the document's client (if document has a client)
+      if (existing.clientId) {
+        const [link] = await database
+          .select({ franchiseeId: clientFranchisee.franchiseeId })
+          .from(clientFranchisee)
+          .where(
+            and(
+              eq(clientFranchisee.clientId, existing.clientId),
+              eq(clientFranchisee.franchiseeId, franchiseeId)
+            )
+          )
+          .limit(1);
+        if (!link) {
+          return NextResponse.json(
+            { error: "הזכיין אינו משויך ללקוח של מסמך זה" },
+            { status: 400 }
+          );
+        }
+      }
+
+      // Prevent duplicate: another doc of same type/period/client/franchisee
+      if (existing.clientId && existing.periodMonth && existing.periodYear) {
+        const [duplicate] = await database
+          .select({ id: clientDocument.id })
+          .from(clientDocument)
+          .where(
+            and(
+              ne(clientDocument.id, id),
+              eq(clientDocument.clientId, existing.clientId),
+              eq(clientDocument.franchiseeId, franchiseeId),
+              eq(clientDocument.documentType, existing.documentType),
+              eq(clientDocument.periodMonth, existing.periodMonth),
+              eq(clientDocument.periodYear, existing.periodYear)
+            )
+          )
+          .limit(1);
+        if (duplicate) {
+          return NextResponse.json(
+            {
+              error:
+                "כבר קיים מסמך מאותו סוג ותקופה לזכיין זה — לא ניתן לבצע שיוך כפול",
+            },
+            { status: 409 }
+          );
+        }
+      }
+
+      updateData.franchiseeId = franchiseeId;
+      // Track this as a manual review action
+      updateData.reviewedBy = user.id;
+      updateData.reviewedAt = new Date();
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(existing);
     }
 
     const updated = await updateClientDocument(id, updateData);

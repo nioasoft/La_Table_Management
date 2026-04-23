@@ -38,6 +38,7 @@ export interface InvoiceVerificationRow {
   invoiceDocumentId: string | null;
   invoiceAmount: number | null; // pre-VAT (= totalAmount on commission_invoice doc)
   invoiceFileName: string | null;
+  invoiceSource: "manual_upload" | "gmail_fetch" | null;
   // Client report side
   reportDocumentId: string | null;
   reportTotalAmount: number | null; // total sales from client_report
@@ -155,6 +156,7 @@ export async function getInvoiceVerification(
       franchiseeId: clientDocument.franchiseeId,
       totalAmount: clientDocument.totalAmount,
       originalFileName: clientDocument.originalFileName,
+      source: clientDocument.source,
     })
     .from(clientDocument)
     .where(
@@ -173,6 +175,7 @@ export async function getInvoiceVerification(
         id: d.id,
         amount: d.totalAmount ? parseFloat(d.totalAmount) : null,
         fileName: d.originalFileName,
+        source: d.source,
       },
     ])
   );
@@ -250,6 +253,7 @@ export async function getInvoiceVerification(
       invoiceDocumentId: invoice?.id ?? null,
       invoiceAmount,
       invoiceFileName: invoice?.fileName ?? null,
+      invoiceSource: invoice?.source ?? null,
       reportDocumentId: report?.id ?? null,
       reportTotalAmount,
       reportCommissionAmount,

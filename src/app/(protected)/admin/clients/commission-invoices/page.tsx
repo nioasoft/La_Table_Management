@@ -55,6 +55,9 @@ import {
   ChevronsUpDown,
   Check,
   X,
+  FileText,
+  Mail,
+  UserCog,
 } from "lucide-react";
 import { useClients } from "@/queries/clients";
 import { useFranchisees } from "@/queries/franchisees";
@@ -73,15 +76,6 @@ const MONTHS = [
   "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
 ];
 
-function formatAmount(amount: number | null): string {
-  if (amount === null || amount === undefined) return "—";
-  return new Intl.NumberFormat("he-IL", {
-    style: "currency",
-    currency: "ILS",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function formatAmountDetailed(amount: number | null): string {
   if (amount === null || amount === undefined) return "—";
   return new Intl.NumberFormat("he-IL", {
@@ -90,6 +84,66 @@ function formatAmountDetailed(amount: number | null): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount);
+}
+
+function InvoiceSourceBadge({
+  source,
+}: {
+  source: "manual_upload" | "gmail_fetch" | null;
+}) {
+  if (!source) return null;
+  if (source === "gmail_fetch") {
+    return (
+      <Badge
+        variant="outline"
+        className="h-5 px-1.5 text-[10px] gap-1 border-blue-300 text-blue-700 dark:text-blue-300"
+        title="התקבל אוטומטית מהמייל"
+      >
+        <Mail className="h-3 w-3" />
+        מהמייל
+      </Badge>
+    );
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="h-5 px-1.5 text-[10px] text-muted-foreground"
+      title="הועלה ידנית"
+    >
+      ידני
+    </Badge>
+  );
+}
+
+function DocumentLink({
+  documentId,
+  fileName,
+  variant = "blue",
+}: {
+  documentId: string | null;
+  fileName?: string | null;
+  variant?: "blue" | "emerald";
+}) {
+  if (!documentId) return null;
+  const colorClasses =
+    variant === "blue"
+      ? "text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+      : "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950";
+  return (
+    <a
+      href={`/api/clients/documents/${documentId}/download`}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={fileName ?? "פתח מסמך"}
+      onClick={(e) => e.stopPropagation()}
+      className={cn(
+        "inline-flex items-center justify-center h-6 w-6 rounded shrink-0",
+        colorClasses
+      )}
+    >
+      <FileText className="h-3.5 w-3.5" />
+    </a>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,13 +348,21 @@ export default function CommissionInvoicesPage() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell>{formatAmount(row.totalInvoiced)}</TableCell>
-                    <TableCell>{formatAmount(row.totalExpected)}</TableCell>
+                    <TableCell>{formatAmountDetailed(row.totalInvoiced)}</TableCell>
+                    <TableCell>{formatAmountDetailed(row.totalExpected)}</TableCell>
                     <TableCell>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedClientId(row.clientId);
+                        }}
+                      >
                         פירוט
-                        <ChevronLeft className="h-4 w-4" />
-                      </span>
+                        <ChevronLeft className="h-4 w-4 ms-1" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -333,6 +395,10 @@ export default function CommissionInvoicesPage() {
                 )
               : (verificationRows ?? [])
           }
+          allClientFranchisees={(verificationRows ?? []).map((r) => ({
+            id: r.franchiseeId,
+            name: r.franchiseeName,
+          }))}
           isLoading={verificationLoading}
           onClose={() => setSelectedClientId(null)}
         />
@@ -367,6 +433,7 @@ interface ClientVerificationDetailProps {
     invoiceDocumentId: string | null;
     invoiceAmount: number | null;
     invoiceFileName: string | null;
+    invoiceSource: "manual_upload" | "gmail_fetch" | null;
     reportDocumentId: string | null;
     reportTotalAmount: number | null;
     systemCommissionRate: number | null;
@@ -374,6 +441,7 @@ interface ClientVerificationDetailProps {
     difference: number | null;
     verificationStatus: string;
   }>;
+  allClientFranchisees: Array<{ id: string; name: string }>;
   isLoading: boolean;
   onClose: () => void;
 }
@@ -383,6 +451,7 @@ function ClientVerificationDetail({
   periodMonth,
   periodYear,
   rows,
+  allClientFranchisees,
   isLoading,
   onClose,
 }: ClientVerificationDetailProps) {
@@ -433,6 +502,7 @@ function ClientVerificationDetail({
                 <TableHead className="text-start">סכום חשבונית</TableHead>
                 <TableHead className="text-start">הפרש</TableHead>
                 <TableHead className="text-center">סטטוס</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -442,7 +512,13 @@ function ClientVerificationDetail({
                     {row.franchiseeName}
                   </TableCell>
                   <TableCell>
-                    {formatAmountDetailed(row.reportTotalAmount)}
+                    <div className="flex items-center gap-1.5">
+                      <span>{formatAmountDetailed(row.reportTotalAmount)}</span>
+                      <DocumentLink
+                        documentId={row.reportDocumentId}
+                        variant="emerald"
+                      />
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div>{formatAmountDetailed(row.expectedCommission)}</div>
@@ -453,8 +529,14 @@ function ClientVerificationDetail({
                     )}
                   </TableCell>
                   <TableCell>
-                    <div>
-                      {formatAmountDetailed(row.invoiceAmount)}
+                    <div className="flex items-center gap-1.5">
+                      <span>{formatAmountDetailed(row.invoiceAmount)}</span>
+                      <DocumentLink
+                        documentId={row.invoiceDocumentId}
+                        fileName={row.invoiceFileName}
+                        variant="blue"
+                      />
+                      <InvoiceSourceBadge source={row.invoiceSource} />
                     </div>
                     {row.invoiceFileName && (
                       <div
@@ -486,6 +568,16 @@ function ClientVerificationDetail({
                       status={row.verificationStatus}
                     />
                   </TableCell>
+                  <TableCell>
+                    {row.invoiceDocumentId && (
+                      <ReassignFranchiseeAction
+                        documentId={row.invoiceDocumentId}
+                        currentFranchiseeId={row.franchiseeId}
+                        currentFranchiseeName={row.franchiseeName}
+                        candidates={allClientFranchisees}
+                      />
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -493,6 +585,138 @@ function ClientVerificationDetail({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ReassignFranchiseeAction({
+  documentId,
+  currentFranchiseeId,
+  currentFranchiseeName,
+  candidates,
+}: {
+  documentId: string;
+  currentFranchiseeId: string;
+  currentFranchiseeName: string;
+  candidates: Array<{ id: string; name: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  const others = candidates.filter((c) => c.id !== currentFranchiseeId);
+
+  const handleSave = async () => {
+    if (!selectedId) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch(`/api/clients/documents/${documentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ franchiseeId: selectedId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "שגיאה בשינוי שיוך הזכיין");
+        return;
+      }
+      toast.success("שיוך הזכיין עודכן");
+      queryClient.invalidateQueries({ queryKey: commissionInvoiceKeys.all });
+      setOpen(false);
+      setSelectedId(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "שגיאה בשינוי שיוך הזכיין");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setSelectedId(null);
+      }}
+    >
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8"
+        title="שנה שיוך זכיין"
+        onClick={() => setOpen(true)}
+      >
+        <UserCog className="h-4 w-4" />
+      </Button>
+      <DialogContent className="sm:max-w-[420px]" dir="rtl">
+        <DialogHeader>
+          <DialogTitle>שינוי שיוך זכיין</DialogTitle>
+          <DialogDescription>
+            החשבונית משויכת כעת ל-<strong>{currentFranchiseeName}</strong>.
+            בחר זכיין אחר מאותו לקוח.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-2">
+          <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={pickerOpen}
+                className="w-full justify-between font-normal"
+                dir="rtl"
+              >
+                <span className={cn(!selectedId && "text-muted-foreground")}>
+                  {selectedId
+                    ? others.find((o) => o.id === selectedId)?.name
+                    : "בחר זכיין..."}
+                </span>
+                <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[380px] p-0" align="start" dir="rtl">
+              <Command>
+                <CommandInput placeholder="חפש זכיין..." className="h-9" />
+                <CommandList>
+                  <CommandEmpty>לא נמצאו זכיינים</CommandEmpty>
+                  <CommandGroup>
+                    {others.map((f) => (
+                      <CommandItem
+                        key={f.id}
+                        value={`${f.name} ${f.id}`}
+                        onSelect={() => {
+                          setSelectedId(f.id);
+                          setPickerOpen(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "me-2 h-4 w-4",
+                            selectedId === f.id ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        {f.name}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isSaving}>
+            ביטול
+          </Button>
+          <Button onClick={handleSave} disabled={!selectedId || isSaving}>
+            {isSaving && <Loader2 className="h-4 w-4 me-2 animate-spin" />}
+            שמור
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -600,17 +824,50 @@ function UploadInvoiceDialog({
     onOpenChange(nextOpen);
   };
 
-  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files ?? []);
-    if (picked.length === 0) return;
-    const newRows: FileRow[] = picked.map((f) => ({
+  const [isDragging, setIsDragging] = useState(false);
+
+  const addFiles = useCallback((files: File[]) => {
+    const pdfs = files.filter(
+      (f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf")
+    );
+    if (pdfs.length === 0) return;
+    if (pdfs.length < files.length) {
+      toast.warning("רק קבצי PDF התווספו; שאר הקבצים נפסלו");
+    }
+    const newRows: FileRow[] = pdfs.map((f) => ({
       id: `${f.name}-${f.size}-${f.lastModified}`,
       file: f,
       status: "pending",
     }));
     setRows((prev) => [...prev, ...newRows]);
+  }, []);
+
+  const handleFilesPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    addFiles(picked);
     // allow re-selecting the same file after removing it
     e.target.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (isUploading || !clientId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (isUploading || !clientId) return;
+    addFiles(Array.from(e.dataTransfer.files ?? []));
   };
 
   const updateRow = useCallback(
@@ -816,17 +1073,33 @@ function UploadInvoiceDialog({
             </div>
           </div>
 
-          {/* File input */}
+          {/* File input + drag-drop zone */}
           <div className="grid gap-2">
-            <Label>קבצי חשבונית (PDF — ניתן לבחור מספר קבצים)</Label>
-            <Input
-              type="file"
-              accept=".pdf,application/pdf"
-              multiple
-              dir="ltr"
-              disabled={isUploading || !clientId}
-              onChange={handleFilesPicked}
-            />
+            <Label>קבצי חשבונית (PDF — ניתן לבחור מספר קבצים או לגרור לכאן)</Label>
+            <div
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={cn(
+                "rounded-md border-2 border-dashed p-4 transition-colors",
+                isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25",
+                (isUploading || !clientId) && "opacity-60"
+              )}
+            >
+              <Input
+                type="file"
+                accept=".pdf,application/pdf"
+                multiple
+                dir="ltr"
+                disabled={isUploading || !clientId}
+                onChange={handleFilesPicked}
+              />
+              <p className="text-xs text-muted-foreground text-center mt-2">
+                {isDragging ? "שחרר כאן להוספת הקבצים" : "ניתן גם לגרור קבצי PDF לתיבה זו"}
+              </p>
+            </div>
             {!clientId && (
               <p className="text-xs text-amber-600">
                 יש לבחור לקוח לפני העלאת קבצים
