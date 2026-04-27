@@ -3040,6 +3040,10 @@ export const clientDocument = pgTable(
     netAmount: decimal("net_amount", { precision: 12, scale: 2 }),
     // Invoice number extracted by parser (used for Hashavshevet journal export)
     invoiceNumber: text("invoice_number"),
+    // Israeli tax allocation number (מספר הקצאה) — 9 digits, required on
+    // invoices over the threshold (₪10,000 today, dropping to ₪5,000).
+    // Extracted by invoice parsers and surfaced in the Hashavshevet journal export.
+    allocationNumber: text("allocation_number"),
     // Email tracking
     gmailMessageId: text("gmail_message_id"),
     // Review

@@ -14,6 +14,7 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
@@ -152,6 +153,10 @@ export async function parseTenbisFile(
       warnings.push("לא זוהה שם הזכיין מהמסמך");
     }
 
+    // Israeli tax allocation number (מספר הקצאה) — surfaced when the report
+    // happens to include one (rare for client_report files but harmless).
+    const allocationNumber = extractAllocationNumber(text);
+
     return {
       success: true,
       data: {
@@ -162,6 +167,7 @@ export async function parseTenbisFile(
         netAmount,
         periodMonth,
         periodYear,
+        allocationNumber,
       },
       errors,
       warnings,

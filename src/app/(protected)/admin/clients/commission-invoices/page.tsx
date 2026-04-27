@@ -45,6 +45,16 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import {
+  ALLOCATION_NUMBER_THRESHOLD,
+  isAllocationNumberMissing,
+} from "@/lib/allocation-number";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Receipt,
   Loader2,
   Upload,
@@ -532,6 +542,26 @@ export default function CommissionInvoicesPage() {
                         <span className="tabular-nums">
                           {formatAmountDetailed(row.invoiceAmount)}
                         </span>
+                        {isAllocationNumberMissing(
+                          row.invoiceAmount,
+                          row.invoiceAllocationNumber
+                        ) ? (
+                          <TooltipProvider delayDuration={200}>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle
+                                  className="h-3.5 w-3.5 text-amber-500"
+                                  aria-label="חסר מספר הקצאה"
+                                />
+                              </TooltipTrigger>
+                              <TooltipContent dir="rtl">
+                                חשבונית מעל ₪
+                                {ALLOCATION_NUMBER_THRESHOLD.toLocaleString()}{" "}
+                                ללא מספר הקצאה — נדרש על פי חוק
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        ) : null}
                         <DocumentLink
                           documentId={row.invoiceDocumentId}
                           fileName={row.invoiceFileName}
@@ -798,6 +828,7 @@ interface FileRow {
   status: FileStatus;
   message?: string;
   invoiceNumber?: string | null;
+  allocationNumber?: string | null;
   totalAmount?: number | null;
   periodMonth?: number | null;
   periodYear?: number | null;
@@ -956,6 +987,7 @@ function UploadInvoiceDialog({
           status: "success",
           message: data?.skippedDuplicate ? "כבר הועלה (דילוג)" : undefined,
           invoiceNumber: pr.invoiceNumber ?? doc.invoiceNumber ?? null,
+          allocationNumber: pr.allocationNumber ?? doc.allocationNumber ?? null,
           totalAmount:
             pr.totalAmount ??
             (doc.totalAmount ? parseFloat(doc.totalAmount) : null),
@@ -1159,7 +1191,29 @@ function UploadInvoiceDialog({
                         {row.invoiceNumber ?? "—"}
                       </TableCell>
                       <TableCell className="text-xs">
-                        {formatAmountDetailed(row.totalAmount ?? null)}
+                        <span className="inline-flex items-center gap-1">
+                          {formatAmountDetailed(row.totalAmount ?? null)}
+                          {isAllocationNumberMissing(
+                            row.totalAmount,
+                            row.allocationNumber
+                          ) ? (
+                            <TooltipProvider delayDuration={200}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <AlertTriangle
+                                    className="h-3.5 w-3.5 text-amber-500"
+                                    aria-label="חסר מספר הקצאה"
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent dir="rtl">
+                                  חשבונית מעל ₪
+                                  {ALLOCATION_NUMBER_THRESHOLD.toLocaleString()}{" "}
+                                  ללא מספר הקצאה — נדרש על פי חוק
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          ) : null}
+                        </span>
                       </TableCell>
                       <TableCell className="text-xs">
                         {row.status === "needs_franchisee" ? (

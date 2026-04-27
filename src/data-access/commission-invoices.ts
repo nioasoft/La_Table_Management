@@ -40,6 +40,8 @@ export interface InvoiceVerificationRow {
   invoiceFileName: string | null;
   invoiceSource: "manual_upload" | "gmail_fetch" | null;
   invoiceNotes: string | null; // free-text review notes from clientDocument.reviewNotes
+  /** Israeli tax allocation number (מספר הקצאה) — null when invoice is below threshold or pre-feature. */
+  invoiceAllocationNumber: string | null;
   // Client report side
   reportDocumentId: string | null;
   reportTotalAmount: number | null; // total sales from client_report
@@ -183,6 +185,7 @@ export async function getInvoiceVerification(
       originalFileName: clientDocument.originalFileName,
       source: clientDocument.source,
       reviewNotes: clientDocument.reviewNotes,
+      allocationNumber: clientDocument.allocationNumber,
     })
     .from(clientDocument)
     .where(
@@ -203,6 +206,7 @@ export async function getInvoiceVerification(
         fileName: d.originalFileName,
         source: d.source,
         reviewNotes: d.reviewNotes,
+        allocationNumber: d.allocationNumber,
       },
     ])
   );
@@ -282,6 +286,7 @@ export async function getInvoiceVerification(
       invoiceFileName: invoice?.fileName ?? null,
       invoiceSource: invoice?.source ?? null,
       invoiceNotes: invoice?.reviewNotes ?? null,
+      invoiceAllocationNumber: invoice?.allocationNumber ?? null,
       reportDocumentId: report?.id ?? null,
       reportTotalAmount,
       reportCommissionAmount,
@@ -527,6 +532,7 @@ export async function getInvoiceVerificationAll(
           originalFileName: clientDocument.originalFileName,
           source: clientDocument.source,
           reviewNotes: clientDocument.reviewNotes,
+          allocationNumber: clientDocument.allocationNumber,
         })
         .from(clientDocument)
         .where(
@@ -573,6 +579,7 @@ export async function getInvoiceVerificationAll(
       fileName: string | null;
       source: "manual_upload" | "gmail_fetch" | null;
       reviewNotes: string | null;
+      allocationNumber: string | null;
     }
   >();
   for (const d of invoiceDocs) {
@@ -583,6 +590,7 @@ export async function getInvoiceVerificationAll(
       fileName: d.originalFileName,
       source: d.source as "manual_upload" | "gmail_fetch" | null,
       reviewNotes: d.reviewNotes,
+      allocationNumber: d.allocationNumber,
     });
   }
 
@@ -659,6 +667,7 @@ export async function getInvoiceVerificationAll(
         invoiceFileName: invoice?.fileName ?? null,
         invoiceSource: invoice?.source ?? null,
         invoiceNotes: invoice?.reviewNotes ?? null,
+        invoiceAllocationNumber: invoice?.allocationNumber ?? null,
         reportDocumentId: report?.id ?? null,
         reportTotalAmount,
         reportCommissionAmount,

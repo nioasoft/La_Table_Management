@@ -15,6 +15,7 @@
  */
 
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 /**
  * Parse Cibus/Pluxee email body text.
@@ -148,6 +149,9 @@ export async function parseCibusFile(
       warnings.push("לא זוהה שם הזכיין מהמסמך");
     }
 
+    // Israeli tax allocation number (מספר הקצאה) — surfaced when present.
+    const allocationNumber = extractAllocationNumber(text);
+
     return {
       success: true,
       data: {
@@ -159,6 +163,7 @@ export async function parseCibusFile(
         transactionCount: dates.length,
         periodMonth,
         periodYear,
+        allocationNumber,
         lineItems,
       },
       errors,

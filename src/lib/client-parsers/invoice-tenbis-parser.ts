@@ -19,6 +19,7 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
@@ -408,6 +409,10 @@ export async function parseTenbisInvoice(
       .filter(Boolean)
       .join(" | ");
 
+    // Israeli tax allocation number (מספר הקצאה) — only present on invoices
+    // over the threshold (₪10,000 today, dropping to ₪5,000). undefined when absent.
+    const allocationNumber = extractAllocationNumber(text);
+
     return {
       success: true,
       data: {
@@ -422,6 +427,7 @@ export async function parseTenbisInvoice(
         netAmount: grandTotal,
         periodMonth,
         periodYear,
+        allocationNumber,
         lineItems:
           lineItems.length > 0
             ? lineItems

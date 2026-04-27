@@ -237,6 +237,7 @@ export async function processClientDocument(
         fileName,
         processingResult.data?.lineItems
       ),
+      allocationNumber: processingResult.data?.allocationNumber ?? null,
       gmailMessageId: gmailMessageId ?? null,
       createdBy: userId ?? null,
       updatedAt: new Date(),

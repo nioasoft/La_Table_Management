@@ -331,6 +331,13 @@ export interface ExportRow {
   netAmount: number | null;
   /** Last invoice number seen on the client_report documents for this client+period. */
   invoiceNumber: string | null;
+  /**
+   * Israeli tax allocation number (מספר הקצאה) — 9 digits.
+   * Last value seen on the client_report documents for this client+period.
+   * Null when no document carried one (invoices below the threshold are not
+   * required to have an allocation number).
+   */
+  allocationNumber: string | null;
   approvedAt: Date;
 }
 
@@ -381,6 +388,7 @@ export async function getApprovedForExport(input: {
       totalAmount: clientDocument.totalAmount,
       netAmount: clientDocument.netAmount,
       invoiceNumber: clientDocument.invoiceNumber,
+      allocationNumber: clientDocument.allocationNumber,
     })
     .from(clientDocument)
     .where(
@@ -395,6 +403,7 @@ export async function getApprovedForExport(input: {
   const tabitAmounts = new Map<string, number>();
   const netAmounts = new Map<string, number | null>();
   const invoiceNumbers = new Map<string, string>();
+  const allocationNumbers = new Map<string, string>();
 
   for (const d of docs) {
     if (!d.clientId) continue;
@@ -408,6 +417,9 @@ export async function getApprovedForExport(input: {
       }
       if (d.invoiceNumber) {
         invoiceNumbers.set(d.clientId, d.invoiceNumber);
+      }
+      if (d.allocationNumber) {
+        allocationNumbers.set(d.clientId, d.allocationNumber);
       }
     } else if (d.documentType === "tabit_report") {
       tabitAmounts.set(d.clientId, (tabitAmounts.get(d.clientId) ?? 0) + total);
@@ -490,6 +502,7 @@ export async function getApprovedForExport(input: {
       tabitAmount: tabitAmt ?? 0,
       netAmount: netAmounts.get(c.id) ?? null,
       invoiceNumber: invoiceNumbers.get(c.id) ?? null,
+      allocationNumber: allocationNumbers.get(c.id) ?? null,
       approvedAt: approvedAtByClient.get(c.id) ?? new Date(),
     });
   }

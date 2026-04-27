@@ -3,7 +3,7 @@
  *
  * GET /api/reports/hashavshevet/franchisee-journal-entries-export?franchiseeId=&periodMonth=&periodYear=
  *
- * Produces a 10-column Hashavshevet "תנועות" sheet for the journal
+ * Produces an 11-column Hashavshevet "תנועות" sheet for the journal
  * entries booking the invoices we RECEIVE FROM clients — Mishlocha, Wolt,
  * HAAT today (anyone flagged `client.journalEntryGeneration = true`).
  *
@@ -23,8 +23,13 @@
  *   I. סכום זכות 2       — VAT portion. Formula `=G/1.18*0.18` on VAT-split rows; empty on HEVER contra
  *   J. פרטים             — "ארוחות" for regular rows; "עמלה" for HEVER commission;
  *                            "מיון" for HEVER-to-אמריקן contra.
+ *   K. מספר הקצאה        — Israeli tax allocation number (9 digits) extracted from
+ *                            the source invoice. Only required by law on invoices
+ *                            over ₪10,000 (dropping to ₪5,000) — empty when absent.
+ *                            HEVER contra row is always empty (it's a routing entry,
+ *                            not a real invoice line).
  *
- * Named range: "תנועות" → 'ייבוא חשבשבת'!$A$1:$J${lastRow}
+ * Named range: "תנועות" → 'ייבוא חשבשבת'!$A$1:$K${lastRow}
  *
  * Note: column-A header uses the Hebrew spelling typo from Reut's sample
  * ("אסמתכא" instead of "אסמכתא"); matched verbatim so Hashavshevet import
@@ -174,6 +179,10 @@ export async function GET(request: NextRequest) {
           row.hashavshevetCode ||
           row.clientName;
 
+        // Israeli tax allocation number (מספר הקצאה) — empty when the invoice
+        // didn't carry one (under threshold, or pre-feature documents).
+        const allocationNumber = row.allocationNumber ?? "";
+
         // HEVER special: emit two rows that REPLACE the standard single row.
         if (row.clientCode === HEVER_CLIENT_CODE) {
           const commissionAmount = -(amount * HEVER_COMMISSION_RATE);
@@ -190,6 +199,7 @@ export async function GET(request: NextRequest) {
                 0,                               // H  סכום זכות 1  (replaced with formula below)
                 0,                               // I  סכום זכות 2  (replaced with formula below)
                 DETAILS_HEVER_COMMISSION,        // J  פרטים = "עמלה"
+                allocationNumber,                // K  מספר הקצאה
               ],
               vatSplit: true,
             },
@@ -205,6 +215,7 @@ export async function GET(request: NextRequest) {
                 amount,                 // H  סכום זכות 1 (static gross, no split)
                 "",                     // I  סכום זכות 2 (no VAT)
                 DETAILS_HEVER_CONTRA,   // J  פרטים = "מיון"
+                "",                     // K  מספר הקצאה (contra row — not an invoice line)
               ],
               vatSplit: false,
             },
@@ -214,16 +225,17 @@ export async function GET(request: NextRequest) {
         return [
           {
             cells: [
-              asmachta2,      // A  אסמתכא 2
-              lastDay,        // B  תאריך אסמכתא
-              lastDay,        // C  תאריך ערך
-              debitAccount,   // D  חן חובה
-              revenueAccount, // E  חן זכות 1 (honours Natanzon override)
-              VAT_ACCOUNT,    // F  חן זכות 2
-              amount,         // G  סכום חובה
-              0,              // H  סכום זכות 1 (replaced with formula below)
-              0,              // I  סכום זכות 2 (replaced with formula below)
-              DETAILS_MEALS,  // J  פרטים = "ארוחות"
+              asmachta2,        // A  אסמתכא 2
+              lastDay,          // B  תאריך אסמכתא
+              lastDay,          // C  תאריך ערך
+              debitAccount,     // D  חן חובה
+              revenueAccount,   // E  חן זכות 1 (honours Natanzon override)
+              VAT_ACCOUNT,      // F  חן זכות 2
+              amount,           // G  סכום חובה
+              0,                // H  סכום זכות 1 (replaced with formula below)
+              0,                // I  סכום זכות 2 (replaced with formula below)
+              DETAILS_MEALS,    // J  פרטים = "ארוחות"
+              allocationNumber, // K  מספר הקצאה
             ],
             vatSplit: true,
           },
@@ -249,6 +261,7 @@ export async function GET(request: NextRequest) {
       "סכום זכות 1",
       "סכום זכות 2",
       "פרטים",
+      "מספר הקצאה",
     ];
     const ws = XLSX.utils.aoa_to_sheet(
       [headers, ...rows.map((r) => r.cells)],
@@ -324,6 +337,7 @@ export async function GET(request: NextRequest) {
       { wch: 14 }, // H סכום זכות 1
       { wch: 14 }, // I סכום זכות 2
       { wch: 20 }, // J פרטים
+      { wch: 14 }, // K מספר הקצאה
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
@@ -333,7 +347,7 @@ export async function GET(request: NextRequest) {
     const lastRow = rows.length + 1;
     wb.Workbook.Names.push({
       Name: "תנועות",
-      Ref: `'ייבוא חשבשבת'!$A$1:$J$${lastRow}`,
+      Ref: `'ייבוא חשבשבת'!$A$1:$K$${lastRow}`,
     });
 
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });

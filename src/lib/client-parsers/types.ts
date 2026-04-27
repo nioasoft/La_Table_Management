@@ -37,6 +37,12 @@ export interface ClientParsedData {
   rawText?: string;
   /** Invoice number extracted from the source document (used in Hashavshevet journal export) */
   invoiceNumber?: string;
+  /**
+   * Israeli tax allocation number (מספר הקצאה) — 9 digits.
+   * Required by Israeli tax law on invoices over ₪10,000 (dropping to ₪5,000).
+   * Surfaced in the Hashavshevet journal-entries export (column K).
+   */
+  allocationNumber?: string;
 }
 
 /** Processing result wrapping parsed data with errors/warnings */

@@ -14,6 +14,7 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const sharp = require("sharp");
@@ -239,6 +240,10 @@ function parseInvoiceText(
     return { success: false, data: null, errors, warnings };
   }
 
+  // Israeli tax allocation number (מספר הקצאה) — only present on invoices
+  // over the threshold (₪10,000 today, dropping to ₪5,000). undefined when absent.
+  const allocationNumber = extractAllocationNumber(text);
+
   return {
     success: true,
     data: {
@@ -250,6 +255,7 @@ function parseInvoiceText(
       periodMonth,
       periodYear,
       invoiceNumber: invoiceNumber || undefined,
+      allocationNumber,
       lineItems: [
         {
           date: null,

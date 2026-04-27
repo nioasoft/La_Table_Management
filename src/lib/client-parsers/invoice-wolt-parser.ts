@@ -27,6 +27,7 @@
 
 import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
@@ -189,17 +190,6 @@ function extractInvoiceNumber(text: string): string {
   const match =
     text.match(/(\d{5,10})\s*(?:חשבונית|הרוטקפ)/) ||
     text.match(/(?:חשבונית|הרוטקפ)\s*(?:'מס|סמ)?\s*\n?\s*(\d{5,10})/);
-
-  return match ? (match[1] || match[2] || "") : "";
-}
-
-/**
- * Extract the allocation number (מספר הקצאה).
- */
-function extractAllocationNumber(text: string): string {
-  const match =
-    text.match(/(\d{8,12})\s*(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)/) ||
-    text.match(/(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)\s*\n?\s*(\d{8,12})/);
 
   return match ? (match[1] || match[2] || "") : "";
 }
@@ -467,6 +457,9 @@ export async function parseWoltInvoice(
         // doesn't have to fall back to regex-ing the description line and
         // so Hashavshevet export has a real reference number.
         invoiceNumber: invoiceNumber || undefined,
+        // Israeli tax allocation number (מספר הקצאה) — only present on
+        // invoices over the threshold (₪10,000 today). undefined when absent.
+        allocationNumber: allocationNumber || undefined,
         lineItems,
         rawText: text,
       },

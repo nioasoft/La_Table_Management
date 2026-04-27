@@ -17,6 +17,7 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
+import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
@@ -185,6 +186,10 @@ function parseEzcountWoltInvoice(
     invoiceNumber = invoiceMatch[1];
   }
 
+  // Israeli tax allocation number (מספר הקצאה) — only present on invoices
+  // over the threshold (₪10,000 today, dropping to ₪5,000). undefined when absent.
+  const allocationNumber = extractAllocationNumber(text);
+
   if (gross === 0) {
     errors.push("לא נמצא סכום מכירות (סה\"כ מכירות) בחשבונית וולט");
     return { success: false, data: null, errors, warnings };
@@ -213,6 +218,7 @@ function parseEzcountWoltInvoice(
       periodMonth,
       periodYear,
       invoiceNumber: invoiceNumber || undefined,
+      allocationNumber,
       lineItems: [
         {
           date: null,
@@ -420,12 +426,8 @@ function parseTaxInvoice(
     invoiceNumber = invoiceMatch[1];
   }
 
-  // Extract allocation number (מספר הקצאה)
-  let allocationNumber = "";
-  const allocMatch = text.match(/הקצאה\s+מספר\s*\n?\s*(\d+)/);
-  if (allocMatch) {
-    allocationNumber = allocMatch[1];
-  }
+  // Israeli tax allocation number (מספר הקצאה) — shared 9-digit extractor.
+  const allocationNumber = extractAllocationNumber(text);
 
   // Extract period
   let periodMonth: number | undefined;
@@ -487,6 +489,7 @@ function parseTaxInvoice(
       periodMonth,
       periodYear,
       invoiceNumber: invoiceNumber || undefined,
+      allocationNumber,
       lineItems: [
         {
           date: null,
