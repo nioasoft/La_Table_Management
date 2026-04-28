@@ -34,6 +34,8 @@ export const CUSTOM_PARSER_CODES = new Set([
   "TREZ_PAZOS",
   "MITLAND",
   "DAGEI_HAKIBBUTZIM",
+  "MAKATI",
+  "TNUVA",
 ]);
 
 /**

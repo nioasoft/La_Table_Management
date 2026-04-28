@@ -35,6 +35,7 @@ export { parseTrezPazosFile } from "./trez-pazos-parser";
 export { parseMitlandFile } from "./mitland-parser";
 export { parseDageiHakibbutzimFile } from "./dagei-hakibbutzim-parser";
 export { parseMakatiFile } from "./makati-parser";
+export { parseTnuvaFile } from "./tnuva-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, and optional vatProducts
 export type CustomParserFn = (
@@ -166,6 +167,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   MAKATI: async (buffer, vatRate) => {
     const { parseMakatiFile } = await import("./makati-parser");
     return parseMakatiFile(buffer, vatRate);
+  },
+  TNUVA: async (buffer) => {
+    const { parseTnuvaFile } = await import("./tnuva-parser");
+    return parseTnuvaFile(buffer);
   },
 };
 
