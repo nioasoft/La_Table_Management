@@ -37,7 +37,7 @@
  *
  * HEVER exception: emits TWO rows instead of one (replaces the standard row):
  *   Row 1 — VAT-split row with debit=HEVER, amount = −18% of gross (commission).
- *   Row 2 — contra entry: debit="אמריקן", credit 1=HEVER, gross in סכום זכות 1;
+ *   Row 2 — contra entry: debit=HEVER, credit 1="אמריקן", gross in סכום זכות 1;
  *           no VAT split (F and I empty), אסמתכא 2 empty.
  */
 
@@ -208,8 +208,8 @@ export async function GET(request: NextRequest) {
                 asmachta2,              // A  אסמתכא 2 = "9999"
                 lastDay,                // B  תאריך אסמכתא
                 lastDay,                // C  תאריך ערך
-                HEVER_CONTRA_ACCOUNT,   // D  חן חובה = "אמריקן"
-                debitAccount,           // E  חן זכות 1 = HEVER
+                debitAccount,           // D  חן חובה = HEVER (resolved account)
+                HEVER_CONTRA_ACCOUNT,   // E  חן זכות 1 = "אמריקן"
                 "",                     // F  חן זכות 2 (no VAT)
                 amount,                 // G  סכום חובה (gross original)
                 amount,                 // H  סכום זכות 1 (static gross, no split)
