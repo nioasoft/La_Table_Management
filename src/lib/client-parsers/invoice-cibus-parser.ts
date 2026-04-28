@@ -224,46 +224,79 @@ export async function parseCibusInvoice(
     // so we use new RegExp() with template literals to interpolate NUM_PATTERN.
     // The Hebrew strings use unicode escapes to avoid quote-within-quote issues.
 
-    // Pre-VAT subtotal: סה"כ מחיר XXXX.XX
+    // Pre-VAT subtotal and VAT amount.
+    //
+    // pdf-parse emits the totals block of a real Cibus invoice as:
+    //
+    //     12,838.99
+    //     2,311.01
+    //     סה"כ מחיר
+    //     (18.00%) מע"מ
+    //      ש"ח15,150.00סה"כ לחשבונית
+    //
+    // i.e. the *numbers come BEFORE the labels*: the first number is the
+    // pre-VAT subtotal, the second is the VAT amount, and the labels follow
+    // on subsequent lines. The two numbers are paired with the two labels
+    // ("סה"כ מחיר" / "מע"מ"). We capture both at once with a single anchored
+    // regex so we don't accidentally pick up unrelated numbers.
     let preVatTotal = 0;
-
-    // Try all number patterns near "מחיר" keyword for pre-VAT total
-    const preVatPatterns = [
-      // Standard order: סה"כ מחיר 2,319.49
-      new RegExp(`סה"כ\\s*מחיר\\s+(${NUM_PATTERN})`),
-      // Reversed visual: 2,319.49 מחיר כ"סה
-      new RegExp(`(${NUM_PATTERN})\\s+ריחמ\\s+כ"הס`),
-      // Alternative: מחיר כ"סה 2,319.49
-      new RegExp(`מחיר\\s+כ"סה\\s+(${NUM_PATTERN})`),
-    ];
-    for (const pattern of preVatPatterns) {
-      if (preVatTotal > 0) break;
-      const m = text.match(pattern);
-      if (m) preVatTotal = parseNumber(m[1]);
-    }
-
-    // VAT amount: מע"מ (18.00%) 417.51
     let vatAmount = 0;
-    const vatPatterns = [
-      // Standard: מע"מ (18.00%) 417.51
-      new RegExp(`מע"מ\\s*\\(\\d+[\\.\\d]*%\\)\\s+(${NUM_PATTERN})`),
-      // Reversed: 417.51 (%18.00) מע"מ
-      new RegExp(`(${NUM_PATTERN})\\s+\\(\\d+[\\.\\d]*%\\)\\s+מע"מ`),
-      // Simple: מע"מ 417.51
-      new RegExp(`מע"מ\\s+(${NUM_PATTERN})`),
-    ];
-    for (const pattern of vatPatterns) {
-      if (vatAmount > 0) break;
-      const m = text.match(pattern);
-      if (m) vatAmount = parseNumber(m[1]);
+
+    // Pattern P1 — paired numbers above paired labels (real-PDF layout).
+    // Captures pre-VAT (group 1) and VAT (group 2) together.
+    const pairedNumbersPattern = new RegExp(
+      `(${NUM_PATTERN})\\s*\\n\\s*(${NUM_PATTERN})\\s*\\n\\s*סה"כ\\s*מחיר\\s*\\n\\s*\\([\\d\\.]+%\\)\\s*מע"מ`
+    );
+    const pairedMatch = text.match(pairedNumbersPattern);
+    if (pairedMatch) {
+      preVatTotal = parseNumber(pairedMatch[1]);
+      vatAmount = parseNumber(pairedMatch[2]);
     }
 
-    // Grand total: סה"כ לחשבונית 2,737.00 ש"ח
+    // Fallback patterns for older / alternative layouts.
+    if (preVatTotal === 0) {
+      const preVatPatterns = [
+        // Standard order: סה"כ מחיר 2,319.49
+        new RegExp(`סה"כ\\s*מחיר\\s+(${NUM_PATTERN})`),
+        // Reversed visual (Hebrew text reversed): 2,319.49 ריחמ כ"הס
+        new RegExp(`(${NUM_PATTERN})\\s+ריחמ\\s+כ"הס`),
+        // Alternative: מחיר כ"סה 2,319.49
+        new RegExp(`מחיר\\s+כ"סה\\s+(${NUM_PATTERN})`),
+      ];
+      for (const pattern of preVatPatterns) {
+        if (preVatTotal > 0) break;
+        const m = text.match(pattern);
+        if (m) preVatTotal = parseNumber(m[1]);
+      }
+    }
+
+    if (vatAmount === 0) {
+      const vatPatterns = [
+        // Standard: מע"מ (18.00%) 417.51
+        new RegExp(`מע"מ\\s*\\(\\d+[\\.\\d]*%\\)\\s+(${NUM_PATTERN})`),
+        // Reversed: 417.51 (%18.00) מע"מ
+        new RegExp(`(${NUM_PATTERN})\\s+\\(\\d+[\\.\\d]*%\\)\\s+מע"מ`),
+        // Simple: מע"מ 417.51
+        new RegExp(`מע"מ\\s+(${NUM_PATTERN})`),
+      ];
+      for (const pattern of vatPatterns) {
+        if (vatAmount > 0) break;
+        const m = text.match(pattern);
+        if (m) vatAmount = parseNumber(m[1]);
+      }
+    }
+
+    // Grand total — Cibus PDF emits this as:
+    //     ש"ח15,150.00סה"כ לחשבונית
+    // (currency, then number, then label — all run together with no spaces).
     let grandTotal = 0;
     const grandTotalPatterns = [
-      // Standard: סה"כ לחשבונית 2,737.00 ש"ח
+      // Real-PDF layout: ש"ח15,150.00סה"כ לחשבונית (number flanked by label
+      // on the right and currency on the left, all glued together)
+      new RegExp(`(?:ש"ח|₪)\\s*(${NUM_PATTERN})\\s*סה"כ\\s*לחשבונית`),
+      // Standard order: סה"כ לחשבונית 2,737.00 ש"ח
       new RegExp(`סה"כ\\s*לחשבונית\\s+(${NUM_PATTERN})\\s*(?:ש"ח|₪)?`),
-      // Reversed: ח"ש 2,737.00 תינובשחל כ"הס
+      // Reversed visual: ח"ש 2,737.00 תינובשחל כ"הס
       new RegExp(`(?:ח"ש|₪)\\s*(${NUM_PATTERN})\\s+תינובשחל\\s+כ"הס`),
       // Alternative: לחשבונית כ"סה 2,737.00
       new RegExp(`לחשבונית\\s+כ"סה\\s+(${NUM_PATTERN})\\s*(?:ש"ח|₪)?`),
