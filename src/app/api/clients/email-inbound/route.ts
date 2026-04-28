@@ -56,6 +56,11 @@ const INVOICE_SUBJECT_KEYWORDS = [
   // signature is reliable.
   "easycount invoice",
   "ezcount invoice",
+  // Cibus/Plaxie monthly commission invoice — subject:
+  //   "FW: החשבונית החודשית מפלאקסי ישראל"
+  // Distinct from the Cibus reconciliation report whose subject is
+  //   "Pluxee דוח", so this phrase is safe and unique to the invoice email.
+  "החשבונית החודשית",
 ];
 
 /**
