@@ -41,11 +41,11 @@ describe("parseCibusInvoice — Castra Tomai SI266046922 (text-layer)", () => {
     // Franchisee — comes from "תאור פרויקט: קסטרא טומאיי בע"מ" (Pattern B)
     expect(result.data?.franchiseeName).toBe('קסטרא טומאיי בע"מ');
 
-    // Pre-VAT subtotal (the commission charged before VAT)
-    expect(result.data?.totalAmount).toBeCloseTo(12838.99, 2);
-    expect(result.data?.commissionAmount).toBeCloseTo(12838.99, 2);
-
-    // Grand total (incl. VAT) = what the franchisee actually pays
+    // Headline amount is the WITH-VAT grand total (15,150.00) — what the
+    // franchisee actually pays and what reconciliation compares against.
+    // totalAmount = commissionAmount = netAmount, all equal to grand total.
+    expect(result.data?.totalAmount).toBeCloseTo(15150.0, 2);
+    expect(result.data?.commissionAmount).toBeCloseTo(15150.0, 2);
     expect(result.data?.netAmount).toBeCloseTo(15150.0, 2);
 
     // Period — from "01/03/26-31/03/26" (March 2026)

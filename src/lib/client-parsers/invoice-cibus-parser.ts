@@ -54,11 +54,11 @@ function expandYear(year: number): number {
 /**
  * Parse a Cibus/Plaxie tax invoice PDF.
  *
- * For commission invoices:
- * - totalAmount = pre-VAT subtotal (the commission charged, before VAT)
- * - commissionAmount = same as totalAmount
- * - commissionRate = 0 (rate is not derivable from the invoice alone)
- * - netAmount = grand total including VAT
+ * For commission invoices we follow the same convention as HAAT/Mishloha
+ * — the headline amount the franchisee pays IS the with-VAT grand total,
+ * so totalAmount = commissionAmount = netAmount = grand total including VAT.
+ * The pre-VAT subtotal is still extracted internally for arithmetic
+ * cross-validation but does not become the headline.
  */
 export async function parseCibusInvoice(
   buffer: Buffer,
@@ -381,24 +381,25 @@ export async function parseCibusInvoice(
     // ---------------------------------------------------------------
     // 8. Build result
     // ---------------------------------------------------------------
-    // For commission invoices:
-    // - totalAmount = pre-VAT commission amount (what they charge us)
-    // - commissionAmount = same (the whole invoice IS the commission)
-    // - commissionRate = 0 (not derivable from the invoice alone;
-    //   rate depends on transaction volume which is on a separate report)
-    // - netAmount = grand total including VAT (what we actually pay)
+    // Cibus headline amount is the WITH-VAT grand total — that's what the
+    // franchisee actually pays and what reconciliation reports compare
+    // against. Fall back to preVatTotal only if grand total couldn't be
+    // derived at all (degraded data is better than no document).
+    const headlineAmount = grandTotal || preVatTotal;
 
     const invoiceDescription = invoiceNumber
       ? `חשבונית מס מרכזת ${invoiceNumber}`
       : "חשבונית מס מרכזת סיבוס/פלאקסי";
 
-    // If no line items were parsed, create a single summary line item
-    if (lineItems.length === 0 && preVatTotal > 0) {
+    // If no line items were parsed, create a single summary line item.
+    // The line item carries the headline (with-VAT) amount to stay
+    // consistent with totalAmount above.
+    if (lineItems.length === 0 && headlineAmount > 0) {
       lineItems.push({
         date: null,
         description: invoiceDescription,
-        amount: preVatTotal,
-        commission: preVatTotal,
+        amount: headlineAmount,
+        commission: headlineAmount,
       });
     }
 
@@ -410,10 +411,10 @@ export async function parseCibusInvoice(
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
-        totalAmount: preVatTotal,
-        commissionAmount: preVatTotal,
-        commissionRate: 0,
-        netAmount: grandTotal || preVatTotal,
+        totalAmount: headlineAmount,
+        commissionAmount: headlineAmount, // The entire invoice IS the commission charge
+        commissionRate: 0, // Not percentage-based; flat service charges
+        netAmount: headlineAmount, // Total incl. VAT (same as headline)
         transactionCount: lineItems.length,
         periodMonth,
         periodYear,
