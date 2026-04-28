@@ -418,11 +418,21 @@ export async function getApprovedForExport(input: {
       if (d.invoiceNumber) {
         invoiceNumbers.set(d.clientId, d.invoiceNumber);
       }
+      // client_report's allocation number is preferred when present (it's the
+      // outgoing tax invoice the franchisee issued to the client).
       if (d.allocationNumber) {
         allocationNumbers.set(d.clientId, d.allocationNumber);
       }
     } else if (d.documentType === "tabit_report") {
       tabitAmounts.set(d.clientId, (tabitAmounts.get(d.clientId) ?? 0) + total);
+    } else if (d.documentType === "commission_invoice") {
+      // Fallback source for allocation number: when the client_report is
+      // missing one (typical for old uploads or below-threshold reports), the
+      // commission invoice the franchisee received from the same client often
+      // does carry one. Don't overwrite a client_report value.
+      if (d.allocationNumber && !allocationNumbers.has(d.clientId)) {
+        allocationNumbers.set(d.clientId, d.allocationNumber);
+      }
     }
   }
 

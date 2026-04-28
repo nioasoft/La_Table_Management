@@ -706,6 +706,8 @@ export async function getInvoiceVerificationAll(
 export interface CommissionInvoiceExportRow {
   invoiceDocumentId: string;
   invoiceNumber: string | null;
+  /** Israeli tax allocation number (מספר הקצאה) — null when invoice is below threshold or pre-feature. */
+  allocationNumber: string | null;
   totalAmountWithVat: number;
   periodMonth: number;
   periodYear: number;
@@ -748,6 +750,7 @@ export async function getCommissionInvoicesForExport(
     .select({
       invoiceDocumentId: clientDocument.id,
       invoiceNumber: clientDocument.invoiceNumber,
+      allocationNumber: clientDocument.allocationNumber,
       totalAmount: clientDocument.totalAmount,
       periodMonth: clientDocument.periodMonth,
       periodYear: clientDocument.periodYear,
@@ -775,6 +778,7 @@ export async function getCommissionInvoicesForExport(
     rows.push({
       invoiceDocumentId: r.invoiceDocumentId,
       invoiceNumber: r.invoiceNumber,
+      allocationNumber: r.allocationNumber,
       totalAmountWithVat: total,
       periodMonth: r.periodMonth,
       periodYear: r.periodYear,

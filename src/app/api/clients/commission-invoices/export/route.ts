@@ -30,6 +30,7 @@ const HEADERS = [
   "סכום חובה 2",   // H — VAT amount = I − G
   "סכום זכות 2",   // I — total with VAT
   "פרטים",         // J — "עמלה <Hebrew month>"
+  "מספר הקצאה",    // K — Israeli tax allocation number (9 digits) when invoice ≥ ₪10K
 ] as const;
 
 const DEBIT_ACCOUNT_1 = "עמלות מלקוחות";
@@ -133,16 +134,17 @@ export async function GET(request: NextRequest) {
       );
 
       return [
-        invoiceRef(row.invoiceNumber), // A
-        invoiceDateSerial,              // B
-        invoiceDateSerial,              // C
-        DEBIT_ACCOUNT_1,                // D
-        DEBIT_ACCOUNT_2,                // E
-        accountName,                    // F
-        netAmount,                      // G
-        vatAmount,                      // H
-        totalWithVat,                   // I
-        description,                    // J
+        invoiceRef(row.invoiceNumber),     // A
+        invoiceDateSerial,                  // B
+        invoiceDateSerial,                  // C
+        DEBIT_ACCOUNT_1,                    // D
+        DEBIT_ACCOUNT_2,                    // E
+        accountName,                        // F
+        netAmount,                          // G
+        vatAmount,                          // H
+        totalWithVat,                       // I
+        description,                        // J
+        row.allocationNumber ?? "",         // K — empty when invoice is below threshold
       ];
     });
 
@@ -191,6 +193,7 @@ export async function GET(request: NextRequest) {
       { wch: 12 }, // סכום חובה 2
       { wch: 12 }, // סכום זכות 2
       { wch: 18 }, // פרטים
+      { wch: 14 }, // מספר הקצאה
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, SHEET_NAME);
@@ -201,7 +204,7 @@ export async function GET(request: NextRequest) {
     if (!wb.Workbook.Names) wb.Workbook.Names = [];
     wb.Workbook.Names.push({
       Name: NAMED_RANGE,
-      Ref: `'${SHEET_NAME}'!$A$1:$J$${lastRowExcel}`,
+      Ref: `'${SHEET_NAME}'!$A$1:$K$${lastRowExcel}`,
     });
 
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
