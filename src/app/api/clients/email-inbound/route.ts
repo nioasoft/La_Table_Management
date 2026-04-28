@@ -227,9 +227,14 @@ export async function POST(request: NextRequest) {
       .where(eq(franchisee.isActive, true));
 
     // ─── Step 7: Process — body-based or attachment-based ──────────────
-    const isBodyBased = BODY_BASED_CLIENTS.has(
-      identifiedClient.clientCode.toUpperCase()
-    );
+    // BODY_BASED_CLIENTS only applies to client_report emails. Commission
+    // invoices always arrive as PDF attachments (e.g. Cibus "חשבונית מס מרכזת
+    // SI...") regardless of how the client normally sends reports — so we
+    // force the attachment-based path when the subject identifies the email
+    // as a commission invoice.
+    const isBodyBased =
+      BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
+      documentType !== "commission_invoice";
 
     if (isBodyBased) {
       // ── Body-based client (Cibus) ──
