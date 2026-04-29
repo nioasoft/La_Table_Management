@@ -50,6 +50,29 @@ jobs:
           echo "BACKUP_DATE=${BACKUP_DATE}" >> $GITHUB_ENV
           echo "DUMP_FILE=${DUMP_FILE}" >> $GITHUB_ENV
 
+      - name: Validate required secrets
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          BACKUP_NOTIFICATION_TO: ${{ secrets.BACKUP_NOTIFICATION_TO }}
+        run: |
+          set -e
+          missing=()
+          [ -z "$DATABASE_URL" ] && missing+=("DATABASE_URL")
+          [ -z "$BLOB_READ_WRITE_TOKEN" ] && missing+=("BLOB_READ_WRITE_TOKEN")
+          [ -z "$RESEND_API_KEY" ] && missing+=("RESEND_API_KEY")
+          [ -z "$EMAIL_FROM" ] && missing+=("EMAIL_FROM")
+          [ -z "$BACKUP_NOTIFICATION_TO" ] && missing+=("BACKUP_NOTIFICATION_TO")
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "ERROR: missing required secrets: ${missing[*]}"
+            exit 1
+          fi
+          echo "All required secrets are set."
+          echo "DATABASE_URL length: ${#DATABASE_URL}"
+          echo "DATABASE_URL prefix: ${DATABASE_URL:0:15}..."
+
       - name: Run pg_dump
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
