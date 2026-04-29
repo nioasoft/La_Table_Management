@@ -1,0 +1,81 @@
+name: Daily Database Backup
+
+on:
+  schedule:
+    # 00:00 UTC = 02:00 Israel winter / 03:00 Israel summer
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: Dump and upload Postgres backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Postgres 17 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          pg_dump --version
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Generate backup metadata
+        run: |
+          BACKUP_DATE=$(date -u +%Y-%m-%d)
+          DUMP_FILE="backup-${BACKUP_DATE}.dump"
+          echo "BACKUP_DATE=${BACKUP_DATE}" >> $GITHUB_ENV
+          echo "DUMP_FILE=${DUMP_FILE}" >> $GITHUB_ENV
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          pg_dump "$DATABASE_URL" \
+            --format=custom \
+            --compress=9 \
+            --no-owner \
+            --no-privileges \
+            --file="$DUMP_FILE"
+          ls -lh "$DUMP_FILE"
+
+      - name: Upload backup and notify
+        env:
+          DUMP_FILE: ${{ env.DUMP_FILE }}
+          BACKUP_DATE: ${{ env.BACKUP_DATE }}
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_FROM_NAME: ${{ secrets.EMAIL_FROM_NAME }}
+          BACKUP_NOTIFICATION_TO: ${{ secrets.BACKUP_NOTIFICATION_TO }}
+          BACKUP_NOTIFICATION_CC: ${{ secrets.BACKUP_NOTIFICATION_CC }}
+          BACKUP_RETENTION_DAYS: ${{ secrets.BACKUP_RETENTION_DAYS }}
+        run: npm run backup:run
+
+      - name: Upload dump as artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failed-backup-${{ env.BACKUP_DATE }}
+          path: ${{ env.DUMP_FILE }}
+          retention-days: 7
+          if-no-files-found: ignore
