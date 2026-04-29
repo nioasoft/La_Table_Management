@@ -22,6 +22,7 @@ jobs:
   backup:
     name: Dump and upload Postgres backup
     runs-on: ubuntu-latest
+    environment: Production
     timeout-minutes: 30
     steps:
       - name: Checkout repository
