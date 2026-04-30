@@ -1,19 +1,22 @@
 /**
  * Custom parser for קיל ביל (KILL_BILL) supplier files
  *
- * Problem: File has grouped structure where franchisee name appears only on first row of group
- * Structure:
- *   - Row 1: Period info (skip)
- *   - Row 2: Headers
- *   - Column A: Amount ("סכום במטבע החשבונית")
- *   - Column G: Franchisee name ("שם לקוח") - only on first row of each group
- *   - "סה"כ" rows mark end of each franchisee group (skip)
+ * Two layouts supported (auto-detected from headers in row 1):
  *
- * The parser:
- *   1. Tracks the current franchisee name
- *   2. When a row has franchisee name in column G, switches to that franchisee
- *   3. When a row has empty column G (not a סה"כ row), adds amount to current franchisee
- *   4. Aggregates all amounts by franchisee
+ * LEGACY layout (grouped, franchisee header row + detail rows):
+ *   - Row 0: Period info
+ *   - Row 1: Headers (col A "סכום במטבע החשבונית", col G "שם לקוח")
+ *   - Col A: Amount (NET)
+ *   - Col G: Franchisee name (only on first row of each group)
+ *   - "סה״כ" rows mark group boundaries (skip)
+ *
+ * NEW layout (one aggregated row per franchisee, 8 columns):
+ *   - Row 0: Period info ("נכון לתקופה: dd/mm/yyyy-dd/mm/yyyy")
+ *   - Row 1: Headers ["מטבע", "הכנסה משוערכת", "מטבע", "הכנסה", "הכנסה כולל מע\"מ", "שם לקוח", "מס. לקוח", "חודש"]
+ *   - Col B (1): Net amount in source currency
+ *   - Col D (3): Net amount in functional currency (ש"ח)
+ *   - Col E (4): Gross amount with VAT
+ *   - Col F (5): Franchisee name
  */
 
 import * as XLSX from "xlsx";
@@ -24,20 +27,20 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
-// Column indices (0-based)
-const AMOUNT_COL = 0; // Column A - סכום במטבע החשבונית
-const FRANCHISEE_COL = 6; // Column G - שם לקוח
+// LEGACY layout column indices
+const LEGACY_AMOUNT_COL = 0;
+const LEGACY_FRANCHISEE_COL = 6;
 
-// Row configuration
-const HEADER_ROW = 1; // Row 2 (0-indexed)
-const DATA_START_ROW = 2; // Row 3 (0-indexed)
+// NEW layout column indices
+const NEW_NET_COL = 3; // "הכנסה" — net in functional currency
+const NEW_GROSS_COL = 4; // "הכנסה כולל מע\"מ" — with VAT
+const NEW_FRANCHISEE_COL = 5; // "שם לקוח"
 
-// Skip keywords (summary rows)
+const HEADER_ROW = 1;
+const DATA_START_ROW = 2;
+
 const SKIP_KEYWORDS = ['סה"כ', "סהכ", "total", "grand"];
 
-/**
- * Parse a numeric value from cell content
- */
 function parseNumericValue(value: unknown): number {
   if (value === null || value === undefined) return 0;
   if (typeof value === "number") return isNaN(value) ? 0 : value;
@@ -57,9 +60,6 @@ function parseNumericValue(value: unknown): number {
   return isNaN(parsed) ? 0 : parsed;
 }
 
-/**
- * Check if a row should be skipped (summary rows)
- */
 function shouldSkipRow(row: unknown[]): boolean {
   const rowText = row.map((cell) => String(cell || "").toLowerCase()).join(" ");
   return SKIP_KEYWORDS.some((keyword) =>
@@ -67,9 +67,17 @@ function shouldSkipRow(row: unknown[]): boolean {
   );
 }
 
-/**
- * Parse קיל ביל supplier file with aggregation by franchisee
- */
+type Layout = "legacy" | "new";
+
+function detectLayout(headers: unknown[]): Layout {
+  const franchiseeAtNew = String(headers[NEW_FRANCHISEE_COL] || "");
+  const grossAtNew = String(headers[NEW_GROSS_COL] || "");
+  if (franchiseeAtNew.includes("לקוח") && grossAtNew.includes("מע")) {
+    return "new";
+  }
+  return "legacy";
+}
+
 export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
   const warnings: import("../file-processing-errors").FileProcessingError[] = [];
@@ -78,12 +86,7 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
   const data: ParsedRowData[] = [];
 
   try {
-    // Read the workbook
-    const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
-
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
       errors.push(createFileProcessingError("NO_WORKSHEETS"));
@@ -104,154 +107,13 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Validate headers
     const headers = rawData[HEADER_ROW] || [];
-    const amountHeader = String(headers[AMOUNT_COL] || "");
-    const franchiseeHeader = String(headers[FRANCHISEE_COL] || "");
+    const layout = detectLayout(headers);
 
-    // Log header validation for debugging
-    if (!amountHeader.includes("סכום")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected amount column header at A, found: "${amountHeader}"`,
-        })
-      );
+    if (layout === "new") {
+      return parseNewLayout(rawData, errors, warnings, legacyErrors, legacyWarnings);
     }
-    if (!franchiseeHeader.includes("לקוח")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected franchisee column header at G, found: "${franchiseeHeader}"`,
-        })
-      );
-    }
-
-    // Aggregate amounts by franchisee
-    const franchiseeTotals: Map<string, { amount: number; rowCount: number; firstRow: number }> = new Map();
-    let currentFranchisee: string | null = null;
-    let skippedRows = 0;
-    let totalRawRows = 0;
-
-    for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
-      const row = rawData[rowIdx];
-      if (!row || row.length === 0) {
-        skippedRows++;
-        continue;
-      }
-
-      // Skip summary rows
-      if (shouldSkipRow(row)) {
-        skippedRows++;
-        continue;
-      }
-
-      totalRawRows++;
-
-      // Extract values
-      const franchiseeName = String(row[FRANCHISEE_COL] || "").trim();
-      const amount = parseNumericValue(row[AMOUNT_COL]);
-
-      // Update current franchisee if name is present
-      if (franchiseeName) {
-        currentFranchisee = franchiseeName;
-      }
-
-      // Skip if no current franchisee yet
-      if (!currentFranchisee) {
-        warnings.push(
-          createFileProcessingError("EMPTY_FRANCHISEE_NAME", {
-            rowNumber: rowIdx + 1,
-            details: "Row found before any franchisee name",
-          })
-        );
-        legacyWarnings.push(`Row ${rowIdx + 1}: No franchisee name found yet`);
-        skippedRows++;
-        continue;
-      }
-
-      // Skip rows with zero amount
-      if (amount === 0) {
-        warnings.push(
-          createFileProcessingError("ZERO_AMOUNT", {
-            rowNumber: rowIdx + 1,
-            details: `Skipping row with zero amount for "${currentFranchisee}"`,
-          })
-        );
-        skippedRows++;
-        continue;
-      }
-
-      // Get or create franchisee totals
-      const existing = franchiseeTotals.get(currentFranchisee) || {
-        amount: 0,
-        rowCount: 0,
-        firstRow: rowIdx + 1,
-      };
-
-      // Add to totals (including negative amounts for returns/credits)
-      existing.amount += amount;
-      existing.rowCount++;
-
-      franchiseeTotals.set(currentFranchisee, existing);
-    }
-
-    // Convert aggregated data to ParsedRowData
-    let totalAmount = 0;
-    let processedFranchisees = 0;
-    let rowNumber = 1;
-
-    for (const [franchisee, amounts] of franchiseeTotals.entries()) {
-      // Skip franchisees with zero or negative total (after aggregation)
-      if (amounts.amount <= 0) {
-        warnings.push(
-          createFileProcessingError("NEGATIVE_AMOUNT", {
-            rowNumber: amounts.firstRow,
-            details: `Franchisee "${franchisee}" has non-positive total after aggregation: ${amounts.amount} (${amounts.rowCount} rows)`,
-            value: String(amounts.amount),
-          })
-        );
-        continue;
-      }
-
-      // Kill Bill amounts are NET (before VAT) - need to add VAT for gross
-      const netAmount = roundAmount(amounts.amount);
-      const grossAmount = roundAmount(amounts.amount * 1.18);
-
-      data.push({
-        franchisee,
-        date: null,
-        grossAmount,
-        netAmount,
-        originalAmount: grossAmount,
-        rowNumber: rowNumber++,
-      });
-
-      totalAmount += netAmount;
-      processedFranchisees++;
-    }
-
-    if (processedFranchisees === 0) {
-      errors.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: "Could not extract any franchisee data from the file",
-        })
-      );
-      legacyErrors.push("Could not extract any franchisee data from the file");
-      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
-    }
-
-    return createResult(
-      true,
-      data,
-      errors,
-      warnings,
-      legacyErrors,
-      legacyWarnings,
-      rawData.length,
-      processedFranchisees,
-      skippedRows,
-      roundAmount(totalAmount * 1.18), // totalGrossAmount
-      totalAmount // totalNetAmount (original amounts are net)
-    );
+    return parseLegacyLayout(rawData, headers, errors, warnings, legacyErrors, legacyWarnings, data);
   } catch (error) {
     errors.push(
       createFileProcessingError("SYSTEM_ERROR", {
@@ -261,6 +123,266 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
     legacyErrors.push(error instanceof Error ? error.message : "Unknown error");
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
   }
+}
+
+function parseNewLayout(
+  rawData: unknown[][],
+  errors: import("../file-processing-errors").FileProcessingError[],
+  warnings: import("../file-processing-errors").FileProcessingError[],
+  legacyErrors: string[],
+  legacyWarnings: string[]
+): FileProcessingResult {
+  const data: ParsedRowData[] = [];
+  // One aggregated row per franchisee — but the same franchisee can appear in
+  // multiple monthly rows (col "חודש"). Aggregate to a single row per name.
+  const franchiseeTotals = new Map<string, { netAmount: number; grossAmount: number; rowCount: number; firstRow: number }>();
+  let skippedRows = 0;
+
+  for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
+    const row = rawData[rowIdx];
+    if (!row || row.length === 0) {
+      skippedRows++;
+      continue;
+    }
+    if (shouldSkipRow(row)) {
+      skippedRows++;
+      continue;
+    }
+
+    const franchisee = String(row[NEW_FRANCHISEE_COL] || "").trim();
+    if (!franchisee) {
+      skippedRows++;
+      continue;
+    }
+
+    const netAmount = parseNumericValue(row[NEW_NET_COL]);
+    const grossAmount = parseNumericValue(row[NEW_GROSS_COL]);
+
+    if (netAmount === 0 && grossAmount === 0) {
+      warnings.push(
+        createFileProcessingError("ZERO_AMOUNT", {
+          rowNumber: rowIdx + 1,
+          details: `Skipping zero-amount row for "${franchisee}"`,
+        })
+      );
+      skippedRows++;
+      continue;
+    }
+
+    const existing = franchiseeTotals.get(franchisee) || {
+      netAmount: 0,
+      grossAmount: 0,
+      rowCount: 0,
+      firstRow: rowIdx + 1,
+    };
+    existing.netAmount += netAmount;
+    existing.grossAmount += grossAmount;
+    existing.rowCount++;
+    franchiseeTotals.set(franchisee, existing);
+  }
+
+  let totalNetAmount = 0;
+  let totalGrossAmount = 0;
+  let processed = 0;
+  let rowNumber = 1;
+
+  for (const [franchisee, totals] of franchiseeTotals.entries()) {
+    if (totals.netAmount <= 0) {
+      warnings.push(
+        createFileProcessingError("NEGATIVE_AMOUNT", {
+          rowNumber: totals.firstRow,
+          details: `Franchisee "${franchisee}" non-positive total: ${totals.netAmount}`,
+          value: String(totals.netAmount),
+        })
+      );
+      continue;
+    }
+
+    // Some monthly rows may have empty gross — if grossAmount is 0 but net isn't,
+    // back-calc gross with 18% VAT (matches Kill Bill's standard markup).
+    const net = roundAmount(totals.netAmount);
+    const gross = totals.grossAmount > 0 ? roundAmount(totals.grossAmount) : roundAmount(totals.netAmount * 1.18);
+
+    data.push({
+      franchisee,
+      date: null,
+      grossAmount: gross,
+      netAmount: net,
+      originalAmount: gross,
+      rowNumber: rowNumber++,
+    });
+
+    totalNetAmount += net;
+    totalGrossAmount += gross;
+    processed++;
+  }
+
+  if (processed === 0) {
+    errors.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: "Could not extract any franchisee data from the file (new layout)",
+      })
+    );
+    legacyErrors.push("Could not extract any franchisee data from the file (new layout)");
+    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
+  }
+
+  return createResult(
+    true,
+    data,
+    errors,
+    warnings,
+    legacyErrors,
+    legacyWarnings,
+    rawData.length,
+    processed,
+    skippedRows,
+    totalGrossAmount,
+    totalNetAmount
+  );
+}
+
+function parseLegacyLayout(
+  rawData: unknown[][],
+  headers: unknown[],
+  errors: import("../file-processing-errors").FileProcessingError[],
+  warnings: import("../file-processing-errors").FileProcessingError[],
+  legacyErrors: string[],
+  legacyWarnings: string[],
+  data: ParsedRowData[]
+): FileProcessingResult {
+  const amountHeader = String(headers[LEGACY_AMOUNT_COL] || "");
+  const franchiseeHeader = String(headers[LEGACY_FRANCHISEE_COL] || "");
+
+  if (!amountHeader.includes("סכום")) {
+    warnings.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: `Expected amount column header at A, found: "${amountHeader}"`,
+      })
+    );
+  }
+  if (!franchiseeHeader.includes("לקוח")) {
+    warnings.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: `Expected franchisee column header at G, found: "${franchiseeHeader}"`,
+      })
+    );
+  }
+
+  const franchiseeTotals = new Map<string, { amount: number; rowCount: number; firstRow: number }>();
+  let currentFranchisee: string | null = null;
+  let skippedRows = 0;
+  let totalRawRows = 0;
+
+  for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
+    const row = rawData[rowIdx];
+    if (!row || row.length === 0) {
+      skippedRows++;
+      continue;
+    }
+
+    if (shouldSkipRow(row)) {
+      skippedRows++;
+      continue;
+    }
+
+    totalRawRows++;
+
+    const franchiseeName = String(row[LEGACY_FRANCHISEE_COL] || "").trim();
+    const amount = parseNumericValue(row[LEGACY_AMOUNT_COL]);
+
+    if (franchiseeName) {
+      currentFranchisee = franchiseeName;
+    }
+
+    if (!currentFranchisee) {
+      warnings.push(
+        createFileProcessingError("EMPTY_FRANCHISEE_NAME", {
+          rowNumber: rowIdx + 1,
+          details: "Row found before any franchisee name",
+        })
+      );
+      legacyWarnings.push(`Row ${rowIdx + 1}: No franchisee name found yet`);
+      skippedRows++;
+      continue;
+    }
+
+    if (amount === 0) {
+      warnings.push(
+        createFileProcessingError("ZERO_AMOUNT", {
+          rowNumber: rowIdx + 1,
+          details: `Skipping row with zero amount for "${currentFranchisee}"`,
+        })
+      );
+      skippedRows++;
+      continue;
+    }
+
+    const existing = franchiseeTotals.get(currentFranchisee) || {
+      amount: 0,
+      rowCount: 0,
+      firstRow: rowIdx + 1,
+    };
+    existing.amount += amount;
+    existing.rowCount++;
+    franchiseeTotals.set(currentFranchisee, existing);
+  }
+
+  let totalAmount = 0;
+  let processedFranchisees = 0;
+  let rowNumber = 1;
+
+  for (const [franchisee, amounts] of franchiseeTotals.entries()) {
+    if (amounts.amount <= 0) {
+      warnings.push(
+        createFileProcessingError("NEGATIVE_AMOUNT", {
+          rowNumber: amounts.firstRow,
+          details: `Franchisee "${franchisee}" has non-positive total after aggregation: ${amounts.amount} (${amounts.rowCount} rows)`,
+          value: String(amounts.amount),
+        })
+      );
+      continue;
+    }
+
+    const netAmount = roundAmount(amounts.amount);
+    const grossAmount = roundAmount(amounts.amount * 1.18);
+
+    data.push({
+      franchisee,
+      date: null,
+      grossAmount,
+      netAmount,
+      originalAmount: grossAmount,
+      rowNumber: rowNumber++,
+    });
+
+    totalAmount += netAmount;
+    processedFranchisees++;
+  }
+
+  if (processedFranchisees === 0) {
+    errors.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: "Could not extract any franchisee data from the file",
+      })
+    );
+    legacyErrors.push("Could not extract any franchisee data from the file");
+    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
+  }
+
+  return createResult(
+    true,
+    data,
+    errors,
+    warnings,
+    legacyErrors,
+    legacyWarnings,
+    rawData.length,
+    processedFranchisees,
+    skippedRows,
+    roundAmount(totalAmount * 1.18),
+    totalAmount
+  );
 }
 
 function createResult(
