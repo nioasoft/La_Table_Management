@@ -36,6 +36,7 @@ export { parseMitlandFile } from "./mitland-parser";
 export { parseDageiHakibbutzimFile } from "./dagei-hakibbutzim-parser";
 export { parseMakatiFile } from "./makati-parser";
 export { parseTnuvaFile } from "./tnuva-parser";
+export { parseYekevLuriaFile } from "./yekev-luria-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, and optional vatProducts
 export type CustomParserFn = (
@@ -171,6 +172,11 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   TNUVA: async (buffer) => {
     const { parseTnuvaFile } = await import("./tnuva-parser");
     return parseTnuvaFile(buffer);
+  },
+  // Hebrew supplier code (matches supplier.code in DB)
+  "לוריא": async (buffer) => {
+    const { parseYekevLuriaFile } = await import("./yekev-luria-parser");
+    return parseYekevLuriaFile(buffer);
   },
 };
 

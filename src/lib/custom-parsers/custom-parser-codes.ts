@@ -36,6 +36,7 @@ export const CUSTOM_PARSER_CODES = new Set([
   "DAGEI_HAKIBBUTZIM",
   "MAKATI",
   "TNUVA",
+  "לוריא",
 ]);
 
 /**

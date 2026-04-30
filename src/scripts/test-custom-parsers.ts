@@ -15,6 +15,7 @@ import { parseOrenJuicesFile } from "../lib/custom-parsers/oren-juices-parser";
 import { parseSoberLernerFile } from "../lib/custom-parsers/sober-lerner-parser";
 import { parseWongShuFile } from "../lib/custom-parsers/wong-shu-parser";
 import { parseSuperNovaFile } from "../lib/custom-parsers/super-nova-parser";
+import { parseYekevLuriaFile } from "../lib/custom-parsers/yekev-luria-parser";
 
 const BASE_PATH = "raw_data/raw_files_suppliers/קבצים לעמלות רשת";
 
@@ -74,6 +75,11 @@ const testCases: TestCase[] = [
     name: "סופר נובה",
     file: "סופר נובה.xlsx",
     parser: parseSuperNovaFile,
+  },
+  {
+    name: "יקב לוריא",
+    file: "יקב לוריא.xlsx",
+    parser: parseYekevLuriaFile,
   },
 ];
 
