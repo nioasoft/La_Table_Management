@@ -199,15 +199,18 @@ export async function POST(request: NextRequest) {
           (a): a is { filename: string; content: string } => a !== null
         );
 
+        const html =
+          fwdEmail.html ||
+          (fwdEmail.text
+            ? `<pre>${fwdEmail.text}</pre>`
+            : "<p>(no body)</p>");
+
         const resendForward = new Resend(process.env.RESEND_API_KEY);
         const { error: forwardError } = await resendForward.emails.send({
           from: process.env.EMAIL_FROM || "noreply@latable.co.il",
           to: ["Hadas@latableg.com"],
           subject: `[Backup] ${fwdEmail.subject || "(no subject)"}`,
-          html:
-            (fwdEmail.html ?? undefined) ||
-            (fwdEmail.text ? `<pre>${fwdEmail.text}</pre>` : undefined),
-          text: fwdEmail.text ?? undefined,
+          html,
           attachments:
             cleanAttachments.length > 0 ? cleanAttachments : undefined,
         });
