@@ -263,10 +263,9 @@ export async function POST(request: NextRequest) {
           documentType
         );
 
-        if (!franchiseeMatch) {
-          const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
+        if (!franchiseeMatch.ok) {
           errorCount++;
-          errorDetails.push(msg);
+          errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
         } else {
           const result = await processClientDocument({
             buffer,
@@ -337,10 +336,9 @@ export async function POST(request: NextRequest) {
             documentType
           );
 
-          if (!franchiseeMatch) {
-            const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
+          if (!franchiseeMatch.ok) {
             errorCount++;
-            errorDetails.push(msg);
+            errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
             continue;
           }
 
@@ -404,10 +402,9 @@ export async function POST(request: NextRequest) {
           attachmentDocumentType
         );
 
-        if (!franchiseeMatch) {
-          const msg = `לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`;
+        if (!franchiseeMatch.ok) {
           errorCount++;
-          errorDetails.push(msg);
+          errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
           continue;
         }
 
@@ -512,6 +509,18 @@ const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
  * 2. Attachment filename (e.g. Wolt: "קינג קונג חדרה הכשר__sales_report__...")
  * 3. Email subject matching
  */
+type ResolveFranchiseeResult =
+  | { ok: true; franchiseeId: string; franchiseeName: string }
+  | {
+      ok: false;
+      // Diagnostics: what was tried and why it failed. Surfaced into
+      // gmail_sync_log.error_details so we can debug without asking the
+      // user to forward the original email each time.
+      extractedName?: string;
+      filenameAttempt?: string;
+      reason: string;
+    };
+
 async function resolveFranchisee(
   buffer: Buffer,
   mimeType: string,
@@ -520,7 +529,7 @@ async function resolveFranchisee(
   franchisees: Franchisee[],
   attachmentFilename?: string,
   documentType: "client_report" | "commission_invoice" = "client_report"
-): Promise<{ franchiseeId: string; franchiseeName: string } | null> {
+): Promise<ResolveFranchiseeResult> {
   // Strategy 1: Parse document and use extracted franchisee name.
   // Critical: commission invoices (Mishloha, Wolt, etc.) have a SEPARATE
   // parser registered under getInvoiceParser — the sales/report parser has
@@ -529,6 +538,7 @@ async function resolveFranchisee(
     documentType === "commission_invoice"
       ? getInvoiceParser(parserCode)
       : getClientParser(parserCode);
+  let extractedName: string | undefined;
   if (parser) {
     try {
       const parseResult = await parser(buffer, mimeType);
@@ -537,16 +547,18 @@ async function resolveFranchisee(
         parseResult.data?.franchiseeName &&
         !UNKNOWN_FRANCHISEE_NAMES.has(parseResult.data.franchiseeName)
       ) {
+        extractedName = parseResult.data.franchiseeName;
         const match = matchFranchiseeName(
-          parseResult.data.franchiseeName,
+          extractedName,
           franchisees,
           { minConfidence: 0.6 }
         );
         if (match.matchedFranchisee) {
           console.log(
-            `[email-inbound] Matched franchisee from document content: "${parseResult.data.franchiseeName}" → "${match.matchedFranchisee.name}"`
+            `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${match.matchedFranchisee.name}"`
           );
           return {
+            ok: true,
             franchiseeId: match.matchedFranchisee.id,
             franchiseeName: match.matchedFranchisee.name,
           };
@@ -565,12 +577,41 @@ async function resolveFranchisee(
       console.log(
         `[email-inbound] Matched franchisee from filename: "${attachmentFilename}" → "${filenameMatch.franchiseeName}"`
       );
-      return filenameMatch;
+      return { ok: true, ...filenameMatch };
     }
   }
 
   // Strategy 3: Fall back to subject matching
-  return matchFranchiseeFromSubject(subject, franchisees);
+  const subjectMatch = matchFranchiseeFromSubject(subject, franchisees);
+  if (subjectMatch) {
+    return { ok: true, ...subjectMatch };
+  }
+
+  return {
+    ok: false,
+    extractedName,
+    filenameAttempt: attachmentFilename,
+    reason: extractedName
+      ? `Extracted "${extractedName}" but no franchisee alias matched (≥0.6 confidence)`
+      : "Parser did not extract a franchisee name; filename and subject also did not match",
+  };
+}
+
+function formatResolveFailure(
+  failure: Extract<ResolveFranchiseeResult, { ok: false }>,
+  subject: string
+): string {
+  // Single-line, Hebrew-fronted, with English diagnostics tail. Stored in
+  // gmail_sync_log.error_details — visible in the cron-monitor admin UI.
+  const parts: string[] = [`לא זוהה זכיין מהמסמך או מנושא המייל: "${subject}"`];
+  if (failure.extractedName) {
+    parts.push(`extracted="${failure.extractedName}"`);
+  }
+  if (failure.filenameAttempt) {
+    parts.push(`filename="${failure.filenameAttempt}"`);
+  }
+  parts.push(`reason=${failure.reason}`);
+  return parts.join(" | ");
 }
 
 /**

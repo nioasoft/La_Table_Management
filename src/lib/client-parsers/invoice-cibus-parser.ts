@@ -86,40 +86,58 @@ export async function parseCibusInvoice(
     // Pattern C: Hebrew text near "לכבוד" in visual order
     let franchiseeName = "";
 
-    // Pattern A: "לכבוד:" then the name (may be on same line or next line)
+    // Preference rule (added 2026-04-30 after the SI266047807 / KingKong-Big
+    // misroute): if Pattern A captures a name containing 'בע"מ' (= a real
+    // legal entity), use it. Otherwise fall back to Pattern B which is
+    // sometimes cleaner for non-corporate names. Previously Pattern B always
+    // overrode Pattern A — which silently routed KingKong Big invoices to
+    // KingKong Horev because Big's "תאור פרויקט: קינג קונג -חיפה - חיפה"
+    // shared the token "חיפה" with Horev's aliases.
+    //
+    // Char class change (same fix): horizontal whitespace [ \t] only — never
+    // \s — so trailing greetings like "בברכה" two lines below the name don't
+    // get pulled into the captured group. Hyphen / en-dash kept because some
+    // legal names use them (e.g. 'קינג קונג חורב בע"מ -(קריות)').
+
+    // Pattern A: "לכבוד:" then the name on the same or next line.
     const lechavodMatch = text.match(
-      /לכבוד:?\s*\n?\s*([\u0590-\u05FF][\u0590-\u05FF\s"'"\u05F3\u05F4\-\u2013]+)/
+      /לכבוד:?[ \t]*\n?[ \t]*([\u0590-\u05FF][\u0590-\u05FF "'"\u05F3\u05F4\-\u2013]*)/
     );
-    if (lechavodMatch) {
-      franchiseeName = lechavodMatch[1].trim();
-    }
+    const lechavodName = lechavodMatch ? lechavodMatch[1].trim() : "";
 
-    // Pattern B: "תאור פרויקט:" in footer - more reliable if present
+    // Pattern B: "תאור פרויקט:" in footer.
     const projectMatch = text.match(
-      /תאור\s*פרויקט:?\s*([\u0590-\u05FF][\u0590-\u05FF\s"'"\u05F3\u05F4\-\u2013]*)/
+      /תאור[ \t]*פרויקט:?[ \t]*([\u0590-\u05FF][\u0590-\u05FF "'"\u05F3\u05F4\-\u2013]*)/
     );
-    if (projectMatch) {
-      const projectName = projectMatch[1].trim();
-      // Prefer project description as it's typically the clean name
-      if (projectName) {
-        franchiseeName = projectName;
-      }
+    const projectName = projectMatch ? projectMatch[1].trim() : "";
+
+    // Prefer the legal-entity form (contains בע"מ).
+    const lechavodIsLegal = /בע"?מ/.test(lechavodName);
+    const projectIsLegal = /בע"?מ/.test(projectName);
+    if (lechavodIsLegal) {
+      franchiseeName = lechavodName;
+    } else if (projectIsLegal) {
+      franchiseeName = projectName;
+    } else if (projectName) {
+      franchiseeName = projectName;
+    } else if (lechavodName) {
+      franchiseeName = lechavodName;
     }
 
-    // Pattern C: Visual order - name appears BEFORE "לכבוד" on the line
+    // Pattern C: Visual order — name appears BEFORE "לכבוד" on the line.
     if (!franchiseeName) {
       const visualMatch = text.match(
-        /([\u0590-\u05FF][\u0590-\u05FF\s"'"\u05F3\u05F4\-\u2013]+)\s+:?לכבוד/
+        /([\u0590-\u05FF][\u0590-\u05FF "'"\u05F3\u05F4\-\u2013]*)[ \t]+:?לכבוד/
       );
       if (visualMatch) {
         franchiseeName = visualMatch[1].trim();
       }
     }
 
-    // Pattern D: Visual order for project description
+    // Pattern D: Visual order for project description.
     if (!franchiseeName) {
       const visualProjectMatch = text.match(
-        /([\u0590-\u05FF][\u0590-\u05FF\s"'"\u05F3\u05F4\-\u2013]+)\s+:?פרויקט\s+תאור/
+        /([\u0590-\u05FF][\u0590-\u05FF "'"\u05F3\u05F4\-\u2013]*)[ \t]+:?פרויקט[ \t]+תאור/
       );
       if (visualProjectMatch) {
         franchiseeName = visualProjectMatch[1].trim();
