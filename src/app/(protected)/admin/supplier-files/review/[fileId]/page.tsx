@@ -15,7 +15,6 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -34,6 +33,14 @@ import {
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
   Loader2,
   CheckCircle2,
   XCircle,
@@ -47,7 +54,6 @@ import {
   Edit,
   Plus,
   Ban,
-  Search,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -160,16 +166,6 @@ export default function SupplierFileDetailPage() {
   const sortedFranchisees = useMemo(() => {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, "he"));
   }, [franchisees]);
-
-  const filteredFranchisees = useMemo(() => {
-    if (!franchiseeSearch.trim()) return sortedFranchisees;
-    const search = franchiseeSearch.toLowerCase();
-    return sortedFranchisees.filter(
-      (f) =>
-        f.name.toLowerCase().includes(search) ||
-        f.code.toLowerCase().includes(search)
-    );
-  }, [sortedFranchisees, franchiseeSearch]);
 
   // Review action mutation
   const reviewMutation = useMutation({
@@ -729,39 +725,46 @@ export default function SupplierFileDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            {/* Search input */}
-            <div className="relative">
-              <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
+            {/* Combined search + list — types and pick in one box */}
+            <Command
+              dir="rtl"
+              className="border rounded-md"
+              filter={(value, search) => {
+                const v = value.toLowerCase();
+                const s = search.toLowerCase();
+                return v.includes(s) ? 1 : 0;
+              }}
+            >
+              <CommandInput
                 placeholder="חיפוש זכיין..."
                 value={franchiseeSearch}
-                onChange={(e) => setFranchiseeSearch(e.target.value)}
-                className="pr-10"
+                onValueChange={setFranchiseeSearch}
               />
-            </div>
-
-            {/* Franchisee list */}
-            <div className="max-h-60 overflow-y-auto border rounded-md">
-              {filteredFranchisees.length === 0 ? (
-                <div className="p-4 text-center text-muted-foreground">
-                  לא נמצאו זכיינים
-                </div>
-              ) : (
-                filteredFranchisees.map((f) => (
-                  <div
-                    key={f.id}
-                    onClick={() => setSelectedFranchisee(f.id)}
-                    className={cn(
-                      "p-3 cursor-pointer hover:bg-muted border-b last:border-b-0 transition-colors",
-                      selectedFranchisee === f.id && "bg-primary/10"
-                    )}
-                  >
-                    <p className="font-medium">{f.name}</p>
-                    <p className="text-sm text-muted-foreground">{f.code}</p>
-                  </div>
-                ))
-              )}
-            </div>
+              <CommandList className="max-h-60">
+                <CommandEmpty>לא נמצאו זכיינים</CommandEmpty>
+                <CommandGroup>
+                  {sortedFranchisees.map((f) => (
+                    <CommandItem
+                      key={f.id}
+                      value={`${f.name} ${f.code}`}
+                      onSelect={() => setSelectedFranchisee(f.id)}
+                      className={cn(
+                        "flex flex-col items-start gap-0.5 cursor-pointer",
+                        selectedFranchisee === f.id && "bg-primary/10 data-[selected=true]:bg-primary/15"
+                      )}
+                    >
+                      <span className="font-medium flex items-center gap-2">
+                        {selectedFranchisee === f.id && (
+                          <Check className="h-3.5 w-3.5 text-primary" />
+                        )}
+                        {f.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{f.code}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
 
             {/* Add as alias checkbox */}
             <div className="flex items-center gap-2">
