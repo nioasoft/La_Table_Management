@@ -1364,6 +1364,10 @@ export interface SupplierFileProcessingResult {
   }>;
 
   processedAt: string;
+
+  // Set when the parser failed and we still want a record in the review queue.
+  // The review UI surfaces this as a red badge and disables the approve action.
+  error?: string;
 }
 
 // ============================================================================

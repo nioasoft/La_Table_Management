@@ -97,6 +97,26 @@ export async function GET(
 }
 
 /**
+ * Build a SupplierFileProcessingResult that records a parser failure.
+ * Used so failed uploads land in the review queue with a visible error
+ * instead of a NULL processing_result that the UI can't act on.
+ */
+function buildErrorProcessingResult(error: string): SupplierFileProcessingResult {
+  return {
+    totalRows: 0,
+    processedRows: 0,
+    skippedRows: 0,
+    totalGrossAmount: 0,
+    totalNetAmount: 0,
+    vatAdjusted: false,
+    matchStats: { total: 0, exactMatches: 0, fuzzyMatches: 0, unmatched: 0 },
+    franchiseeMatches: [],
+    processedAt: new Date().toISOString(),
+    error,
+  };
+}
+
+/**
  * POST /api/public/upload/[token] - Upload file to an upload link (public, no auth required)
  */
 export async function POST(
@@ -504,7 +524,9 @@ export async function POST(
             fileUrl: uploadResult.url,
             fileSize: uploadResult.fileSize,
             processingStatus: "needs_review",
-            processingResult: null,
+            processingResult: buildErrorProcessingResult(
+              "לא הוגדרה מיפוי לקובץ עבור ספק זה. יש להגדיר מיפוי או פרסר ידני בעמוד עריכת הספק."
+            ),
             periodStartDate: null,
             periodEndDate: null,
             createdBy: null,
@@ -554,6 +576,12 @@ export async function POST(
           if (!processResult.success || processResult.data.length === 0) {
             console.error("Failed to process supplier file:", processResult.errors);
 
+            const parserErrorMessage =
+              processResult.errors?.[0]?.message ||
+              (processResult.data.length === 0
+                ? "לא נמצאו נתונים לעיבוד בקובץ"
+                : "כשל בעיבוד קובץ הספק");
+
             // Create supplier_file_upload record even on failure so it appears in the correct review queue
             const supplierFileRecord = await createSupplierFileUpload({
               supplierId: supplier.id,
@@ -561,7 +589,7 @@ export async function POST(
               fileUrl: uploadResult.url,
               fileSize: uploadResult.fileSize,
               processingStatus: "needs_review",
-              processingResult: null,
+              processingResult: buildErrorProcessingResult(parserErrorMessage),
               periodStartDate: null,
               periodEndDate: null,
               createdBy: null,
@@ -823,6 +851,9 @@ export async function POST(
       } catch (supplierError) {
         console.error("Error processing supplier file:", supplierError);
 
+        const supplierErrorMessage =
+          supplierError instanceof Error ? supplierError.message : "שגיאה לא ידועה בעיבוד הקובץ";
+
         // Create supplier_file_upload record on error so it appears in the correct review queue
         if (supplier) {
           const supplierFileRecord = await createSupplierFileUpload({
@@ -831,7 +862,7 @@ export async function POST(
             fileUrl: uploadResult.url,
             fileSize: uploadResult.fileSize,
             processingStatus: "needs_review",
-            processingResult: null,
+            processingResult: buildErrorProcessingResult(supplierErrorMessage),
             periodStartDate: null,
             periodEndDate: null,
             createdBy: null,

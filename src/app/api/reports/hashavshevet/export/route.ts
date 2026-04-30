@@ -108,8 +108,9 @@ export async function GET(request: NextRequest) {
         eq(supplierFileUpload.processingStatus, "auto_approved")
       ),
       isNotNull(supplier.hashavshevetCode),
-      gte(supplierFileUpload.periodStartDate, startDate),
-      lte(supplierFileUpload.periodEndDate, endDate),
+      // Period overlap (mirrors /api/reports/hashavshevet)
+      lte(supplierFileUpload.periodStartDate, endDate),
+      gte(supplierFileUpload.periodEndDate, startDate),
     ];
 
     // Add supplier filter if specified

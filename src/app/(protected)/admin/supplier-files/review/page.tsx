@@ -69,6 +69,7 @@ interface ReviewFile {
       unmatched: number;
     };
     processedAt: string;
+    error?: string;
   } | null;
   periodStartDate: string | null;
   periodEndDate: string | null;
@@ -308,7 +309,17 @@ export default function SupplierFilesReviewPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        {file.processingResult?.matchStats ? (
+                        {file.processingResult?.error ? (
+                          <div className="flex flex-col gap-1 max-w-[280px]">
+                            <Badge variant="destructive" className="gap-1 self-start" title={file.processingResult.error}>
+                              <XCircle className="h-3 w-3" />
+                              שגיאת עיבוד
+                            </Badge>
+                            <p className="text-xs text-muted-foreground line-clamp-2" title={file.processingResult.error}>
+                              {file.processingResult.error}
+                            </p>
+                          </div>
+                        ) : file.processingResult?.matchStats ? (
                           <div className="flex flex-col gap-1">
                             <div className="flex items-center gap-2">
                               <Badge variant="success" className="gap-1">
@@ -354,6 +365,8 @@ export default function SupplierFilesReviewPage() {
                             variant="default"
                             className="bg-green-600 hover:bg-green-700"
                             onClick={() => handleOpenDialog(file, "approve")}
+                            disabled={!!file.processingResult?.error}
+                            title={file.processingResult?.error ? "לא ניתן לאשר קובץ עם שגיאת עיבוד — יש לדחות ולהעלות מחדש" : undefined}
                           >
                             <Check className="h-4 w-4 ms-1" />
                             אשר

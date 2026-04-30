@@ -122,9 +122,10 @@ export async function GET(request: NextRequest) {
       ),
       // Only suppliers with hashavshevet code
       isNotNull(supplier.hashavshevetCode),
-      // Period filter
-      gte(supplierFileUpload.periodStartDate, startDate),
-      lte(supplierFileUpload.periodEndDate, endDate),
+      // Period filter — overlap semantics so annual files appear in sub-period exports.
+      // file.start <= requested.end AND file.end >= requested.start
+      lte(supplierFileUpload.periodStartDate, endDate),
+      gte(supplierFileUpload.periodEndDate, startDate),
     ];
 
     // Apply supplier filter if specified

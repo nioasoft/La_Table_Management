@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
             processedRows: file.processingResult.processedRows,
             matchStats: file.processingResult.matchStats,
             processedAt: file.processingResult.processedAt,
+            error: file.processingResult.error,
           }
         : null,
       periodStartDate: file.periodStartDate,
