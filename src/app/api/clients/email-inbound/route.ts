@@ -175,6 +175,33 @@ export async function POST(request: NextRequest) {
       `[email-inbound] Received email from ${from} to ${to.join(",")} subject: "${subject}"`
     );
 
+    // ─── Step 2b: Backup forward to Hadas ──────────────────────────────
+    // Every inbound email is forwarded to Hadas as a safety net so nothing
+    // can be silently dropped by parser/extractor gaps. Uses Resend's
+    // built-in forward (preserves attachments). Failures here MUST NOT
+    // block the rest of the pipeline — we log and continue.
+    try {
+      const resendForward = new Resend(process.env.RESEND_API_KEY);
+      const { error: forwardError } = await resendForward.emails.receiving.forward({
+        emailId: email_id,
+        to: "Hadas@latableg.com",
+        from: process.env.EMAIL_FROM || "noreply@latable.co.il",
+      });
+      if (forwardError) {
+        console.warn(
+          `[email-inbound] Backup forward to Hadas failed for ${email_id}:`,
+          forwardError
+        );
+      } else {
+        console.log(`[email-inbound] Backup-forwarded ${email_id} to Hadas`);
+      }
+    } catch (err) {
+      console.warn(
+        `[email-inbound] Backup forward threw for ${email_id}:`,
+        err
+      );
+    }
+
     // ─── Step 3: Identify client ───────────────────────────────────────
     const identifiedClient = await identifyClientFromEmail(to, from, subject);
 
