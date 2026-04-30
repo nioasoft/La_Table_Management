@@ -177,23 +177,50 @@ export async function POST(request: NextRequest) {
 
     // ─── Step 2b: Backup forward to Hadas ──────────────────────────────
     // Every inbound email is forwarded to Hadas as a safety net so nothing
-    // can be silently dropped by parser/extractor gaps. Uses Resend's
-    // built-in forward (preserves attachments). Failures here MUST NOT
-    // block the rest of the pipeline — we log and continue.
+    // can be silently dropped by parser/extractor gaps. Resend SDK v6 does
+    // not expose emails.receiving.forward (newer API), so we replicate it
+    // manually: fetch raw email + attachments, then resend via emails.send.
+    // Failures here MUST NOT block the rest of the pipeline — we log and
+    // continue.
     try {
-      const resendForward = new Resend(process.env.RESEND_API_KEY);
-      const { error: forwardError } = await resendForward.emails.receiving.forward({
-        emailId: email_id,
-        to: "Hadas@latableg.com",
-        from: process.env.EMAIL_FROM || "noreply@latable.co.il",
-      });
-      if (forwardError) {
-        console.warn(
-          `[email-inbound] Backup forward to Hadas failed for ${email_id}:`,
-          forwardError
+      const fwdEmail = await fetchInboundEmail(email_id);
+      if (fwdEmail) {
+        const fwdAttachments = await Promise.all(
+          fwdEmail.attachments.map(async (a) => {
+            const buf = await downloadAttachment(a.downloadUrl);
+            if (!buf) return null;
+            return {
+              filename: a.filename,
+              content: buf.toString("base64"),
+            };
+          })
         );
-      } else {
-        console.log(`[email-inbound] Backup-forwarded ${email_id} to Hadas`);
+        const cleanAttachments = fwdAttachments.filter(
+          (a): a is { filename: string; content: string } => a !== null
+        );
+
+        const resendForward = new Resend(process.env.RESEND_API_KEY);
+        const { error: forwardError } = await resendForward.emails.send({
+          from: process.env.EMAIL_FROM || "noreply@latable.co.il",
+          to: ["Hadas@latableg.com"],
+          subject: `[Backup] ${fwdEmail.subject || "(no subject)"}`,
+          html:
+            (fwdEmail.html ?? undefined) ||
+            (fwdEmail.text ? `<pre>${fwdEmail.text}</pre>` : undefined),
+          text: fwdEmail.text ?? undefined,
+          attachments:
+            cleanAttachments.length > 0 ? cleanAttachments : undefined,
+        });
+        if (forwardError) {
+          console.warn(
+            `[email-inbound] Backup forward to Hadas failed for ${email_id}:`,
+            forwardError
+          );
+        } else {
+          console.log(
+            `[email-inbound] Backup-forwarded ${email_id} to Hadas (${cleanAttachments.length} attachment(s))`
+          );
+        }
       }
     } catch (err) {
       console.warn(
