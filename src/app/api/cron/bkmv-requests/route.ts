@@ -10,9 +10,22 @@ import {
 import { eq, and } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
 import { sendDirectEmail } from "@/lib/email/service";
+import { getEmailTemplateByCode } from "@/data-access/emailTemplates";
 import { BkmvRequestEmail } from "@/emails/bkmv-request";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { startCronLog } from "@/lib/cron-logger";
+
+// Resolve default email template for BKMV file requests.
+// Without this the cron silently created file_requests with no template,
+// sendFileRequestEmail returned { success: false, error: "No email template specified" },
+// and the failure was swallowed so the cron reported success while no email went out.
+let cachedBkmvTemplateId: string | undefined;
+async function resolveBkmvTemplateId(): Promise<string | undefined> {
+  if (cachedBkmvTemplateId) return cachedBkmvTemplateId;
+  const template = await getEmailTemplateByCode("bkmv_request");
+  cachedBkmvTemplateId = template?.id;
+  return cachedBkmvTemplateId;
+}
 
 /**
  * BKMV File Requests Cron Job
@@ -121,6 +134,14 @@ async function processBkmvRequests(dryRun: boolean): Promise<{
   const allFranchisees = await getActiveFranchisees();
   const startDate = getBkmvStartDate();
 
+  const emailTemplateId = await resolveBkmvTemplateId();
+  if (!emailTemplateId && !dryRun) {
+    results.errors.push(
+      'Email template "bkmv_request" not found in database. Aborting before any file requests are created.'
+    );
+    return results;
+  }
+
   for (const f of allFranchisees) {
     try {
       // Get accountant email
@@ -166,6 +187,7 @@ async function processBkmvRequests(dryRun: boolean): Promise<{
         description: `קובץ מבנה אחיד BKMV מ-${startDate} ועד היום`,
         recipientEmail,
         recipientName: f.name,
+        emailTemplateId,
         maxFiles: 1,
         sendImmediately: true,
         metadata: {

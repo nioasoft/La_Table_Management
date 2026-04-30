@@ -254,12 +254,21 @@ export async function createFileRequest(
     })
     .returning()) as unknown as FileRequest[];
 
-  // Send email immediately if requested and no scheduling
+  // Send email immediately if requested and no scheduling.
+  // We surface failures by throwing so callers (cron jobs, admin endpoints)
+  // can count them as failed instead of silently reporting success while no
+  // email actually went out. The file_request row stays in DB with
+  // status=pending and sent_at=null, which is the truthful state.
   if (sendImmediately && (!scheduledFor || scheduledFor <= now)) {
-    await sendFileRequestEmail({
+    const sendResult = await sendFileRequestEmail({
       fileRequestId: id,
       templateId: emailTemplateId,
     });
+    if (!sendResult.success) {
+      throw new Error(
+        `Failed to send file request email: ${sendResult.error ?? "unknown error"}`
+      );
+    }
   }
 
   return enrichFileRequest(newRequest);
