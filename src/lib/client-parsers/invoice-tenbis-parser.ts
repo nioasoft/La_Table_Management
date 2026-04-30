@@ -4,14 +4,20 @@
  * Extracts data from Tenbis tax invoices (חשבונית מס).
  * These are commission invoices issued BY 10bis TO the franchisee.
  *
+ * For commission invoices we follow the same convention as Cibus/HAAT/Mishloha
+ * — the headline amount the franchisee pays IS the with-VAT grand total, so
+ * totalAmount = commissionAmount = netAmount = grand total including VAT.
+ * The pre-VAT subtotal is still extracted internally for arithmetic
+ * cross-validation but does not become the headline.
+ *
  * Key data points extracted:
  * - Franchisee name (from "לכבוד:" section)
  * - Invoice number (חשבונית מס מספר)
  * - Invoice date (תאריך)
  * - Period month/year (from line item description "דוח [month]" or invoice date)
- * - Pre-VAT total (commission amount being charged)
+ * - Pre-VAT subtotal (internal — for cross-validation only)
  * - VAT amount and rate
- * - Grand total including VAT
+ * - Grand total including VAT (headline)
  *
  * Note: pdf-parse outputs Hebrew in visual RTL order.
  * "חשבונית מס מספר 500102320" may appear as "500102320 מספר מס חשבונית"
@@ -150,10 +156,25 @@ export async function parseTenbisInvoice(
     // 3. Extract invoice date
     // ---------------------------------------------------------------
     // "תאריך: 15/02/2026" in visual RTL: "15/02/2026 :תאריך"
+    //
+    // Real-PDF layout (Invoice 500105038) uses labels-above-values where
+    // "ח.פ:" / "תאריך:" sit on their own lines and their values appear two
+    // lines below in the same order:
+    //
+    //   ח.פ:
+    //   תאריך:
+    //   512963489
+    //   24/03/2026
+    //
+    // The bounded `[\s\S]{0,40}?` fallback handles that — it picks the first
+    // DD/MM/YYYY within ~40 chars after "תאריך", which is more than enough
+    // to skip the supplier tax ID but won't cross-match the "לתשלום עד"
+    // due date later in the document.
     let invoiceDate: { day: number; month: number; year: number } | null = null;
     const dateMatch =
       text.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})\s*:?\s*תאריך/) ||
-      text.match(/תאריך\s*:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      text.match(/תאריך\s*:?\s*(\d{1,2})\/(\d{1,2})\/(\d{4})/) ||
+      text.match(/תאריך:?[\s\S]{0,40}?(\d{1,2})\/(\d{1,2})\/(\d{4})/);
     if (dateMatch) {
       invoiceDate = {
         day: parseInt(dateMatch[1]),
@@ -413,32 +434,36 @@ export async function parseTenbisInvoice(
     // over the threshold (₪10,000 today, dropping to ₪5,000). undefined when absent.
     const allocationNumber = extractAllocationNumber(text);
 
+    // Cibus/HAAT/Mishloha/Wolt convention — headline is the with-VAT grand
+    // total. Fall back to preVatTotal only if grandTotal couldn't be derived
+    // at all (degraded data is better than no document). The fallback line
+    // item also carries the headline amount so per-line and aggregate totals
+    // stay consistent.
+    const headlineAmount = grandTotal || preVatTotal;
+    const fallbackLineItems =
+      lineItems.length > 0
+        ? lineItems
+        : [
+            {
+              date: null,
+              description: invoiceDesc,
+              amount: headlineAmount,
+              commission: headlineAmount,
+            },
+          ];
+
     return {
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
-        // totalAmount = pre-VAT invoice amount — this IS the commission being charged
-        totalAmount: preVatTotal,
-        // commissionAmount = same as totalAmount (the invoice IS a commission charge)
-        commissionAmount: preVatTotal,
-        // commissionRate = 0 (not derivable from the invoice alone)
+        totalAmount: headlineAmount,
+        commissionAmount: headlineAmount,
         commissionRate: 0,
-        // netAmount = total with VAT
-        netAmount: grandTotal,
+        netAmount: headlineAmount,
         periodMonth,
         periodYear,
         allocationNumber,
-        lineItems:
-          lineItems.length > 0
-            ? lineItems
-            : [
-                {
-                  date: null,
-                  description: invoiceDesc,
-                  amount: preVatTotal,
-                  commission: preVatTotal,
-                },
-              ],
+        lineItems: fallbackLineItems,
         rawText: text,
       },
       errors,
