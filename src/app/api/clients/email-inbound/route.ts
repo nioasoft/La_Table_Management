@@ -845,8 +845,10 @@ async function filterAttachments(
 /**
  * Extract download links from email HTML body and download the PDFs.
  * Supports:
- * - Tenbis: Mandrill tracking links wrapping cdn.10bis.co.il PDF URLs
- * - Direct PDF links
+ * - Tenbis monthly reports: Mandrill tracking links wrapping cdn.10bis.co.il PDFs
+ * - Tenbis tax invoices (חשבונית מס): invoice-one.com Y_GreeViewer pages
+ *   that resolve to a Download endpoint returning the PDF as octet-stream
+ * - ezcount (Mishloha, Haat): files.ezcount.co.il links that 302 to S3 PDFs
  */
 async function extractAndDownloadLinks(
   htmlBody: string,
@@ -854,8 +856,9 @@ async function extractAndDownloadLinks(
 ): Promise<Array<{ buffer: Buffer; fileName: string }>> {
   const results: Array<{ buffer: Buffer; fileName: string }> = [];
 
-  // Pattern 1: Tenbis — Mandrill tracking links with base64-encoded target URL
-  // The base64 `p` param contains JSON with the actual cdn.10bis.co.il URL
+  // Pattern 1: Tenbis monthly reports — Mandrill tracking links with
+  // base64-encoded target URL. The `p` param JSON-decodes to an object whose
+  // `url` field is the real cdn.10bis.co.il PDF.
   if (clientCode === "TENBIS") {
     const mandrillLinks = htmlBody.match(
       /https?:\/\/mandrillapp\.com\/track\/click\/[^"'\s<>]+/g
@@ -889,6 +892,61 @@ async function extractAndDownloadLinks(
         results.push({ buffer, fileName });
       } catch (err) {
         console.warn("[email-inbound] Failed to decode Mandrill link:", err);
+      }
+    }
+
+    // Pattern 1b: Tenbis tax invoices (חשבונית מס) — these come via the
+    // invoice-one.com viewer, NOT Mandrill. Each email contains a viewer
+    // URL like:
+    //   https://invoice-one.com/ViewerNew/pages/Y_GreeViewer_document/<DOCID>
+    // The PDF itself is at:
+    //   https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=<DOCID>
+    // (returns application/octet-stream; the same DocID also appears in the
+    // SetMailOpened tracking pixel inside the email body.)
+    if (results.length === 0) {
+      const viewerLinks = [
+        ...htmlBody.matchAll(
+          /https?:\/\/(?:www\.)?invoice-one\.com\/ViewerNew\/pages\/Y_GreeViewer_document\/(\w+)/gi
+        ),
+      ];
+      // Dedupe by DocumentID — forwarded emails often carry the same link
+      // both inline and as href, plus the SetMailOpened tracking-pixel URL.
+      const docIds = [...new Set(viewerLinks.map((m) => m[1]))];
+
+      for (const docId of docIds) {
+        const pdfUrl = `https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=${docId}`;
+        try {
+          console.log(`[email-inbound] Tenbis: downloading invoice from ${pdfUrl}`);
+          const response = await fetch(pdfUrl);
+          if (!response.ok) {
+            console.warn(`[email-inbound] Failed to download ${pdfUrl}: ${response.status}`);
+            continue;
+          }
+          const contentType = response.headers.get("content-type") ?? "";
+          // The endpoint returns application/octet-stream when the doc exists
+          // and text/html (the SPA shell) when the DocID is invalid. Skip the
+          // HTML case so we don't try to PDF-parse an Angular index page.
+          if (
+            !contentType.includes("octet-stream") &&
+            !contentType.includes("application/pdf")
+          ) {
+            console.warn(
+              `[email-inbound] invoice-one.com returned non-PDF content-type "${contentType}" for DocID ${docId} — skipping`
+            );
+            continue;
+          }
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          results.push({
+            buffer,
+            fileName: `tenbis-invoice-${docId}.pdf`,
+          });
+        } catch (err) {
+          console.warn(
+            `[email-inbound] Failed to download invoice-one.com PDF (DocID ${docId}):`,
+            err
+          );
+        }
       }
     }
   }
