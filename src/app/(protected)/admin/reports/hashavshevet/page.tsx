@@ -36,6 +36,7 @@ import type { SettlementPeriodType } from "@/db/schema";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatNumber } from "@/lib/report-utils";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -245,10 +246,12 @@ export default function HashavshevetExportPage() {
 
       if (suppliersRes.ok) {
         const suppliersData = await suppliersRes.json();
-        // Filter to only show suppliers with hashavshevet code
-        const suppliersWithCode = (suppliersData.suppliers || []).filter(
-          (s: SupplierOption) => s.hashavshevetCode
-        );
+        // Filter to only show suppliers with hashavshevet code, sorted alphabetically (Hebrew)
+        const suppliersWithCode = (suppliersData.suppliers || [])
+          .filter((s: SupplierOption) => s.hashavshevetCode)
+          .sort((a: SupplierOption, b: SupplierOption) =>
+            a.name.localeCompare(b.name, "he")
+          );
         setSuppliers(suppliersWithCode);
       }
     } catch (err) {
@@ -581,7 +584,12 @@ export default function HashavshevetExportPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">
-                ספקים עם קוד חשבשבת ({suppliers.length})
+                ספקים עם קוד חשבשבת
+                <span className="ms-2 text-xs text-muted-foreground font-normal">
+                  {selectedSupplierIds.length > 0
+                    ? `${selectedSupplierIds.length} מתוך ${suppliers.length} נבחרו`
+                    : `${suppliers.length} ספקים זמינים`}
+                </span>
               </Label>
               <Button
                 variant="ghost"
@@ -600,25 +608,30 @@ export default function HashavshevetExportPage() {
                 </AlertDescription>
               </Alert>
             ) : (
-              <div className="flex flex-wrap gap-3 max-h-40 overflow-y-auto p-2 border rounded-md">
-                {suppliers.map((supplier) => (
-                  <div key={supplier.id} className="flex items-center space-x-2 space-x-reverse">
-                    <Checkbox
-                      id={`supplier-${supplier.id}`}
-                      checked={selectedSupplierIds.includes(supplier.id)}
-                      onCheckedChange={() => handleSupplierToggle(supplier.id)}
-                    />
-                    <Label
-                      htmlFor={`supplier-${supplier.id}`}
-                      className="cursor-pointer text-sm flex items-center gap-1"
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 max-h-64 overflow-y-auto p-2 border rounded-md bg-muted/20">
+                {suppliers.map((supplier) => {
+                  const isSelected = selectedSupplierIds.includes(supplier.id);
+                  return (
+                    <button
+                      key={supplier.id}
+                      type="button"
+                      onClick={() => handleSupplierToggle(supplier.id)}
+                      className={cn(
+                        "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-start transition-colors",
+                        "hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        isSelected && "bg-primary/10 hover:bg-primary/15"
+                      )}
                     >
-                      {supplier.name}
-                      <span className="text-xs text-muted-foreground font-mono">
-                        ({supplier.hashavshevetCode})
-                      </span>
-                    </Label>
-                  </div>
-                ))}
+                      <Checkbox
+                        checked={isSelected}
+                        tabIndex={-1}
+                        className="pointer-events-none"
+                        aria-hidden
+                      />
+                      <span className="truncate flex-1">{supplier.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
