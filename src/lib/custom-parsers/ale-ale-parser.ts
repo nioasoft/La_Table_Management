@@ -1,22 +1,18 @@
 /**
  * Custom parser for עלה עלה (ALE_ALE) supplier files
  *
- * Two layouts supported (auto-detected from buffer signature):
+ * Two CSV layouts supported (auto-detected from headers in row 0):
  *
- * LEGACY layout (Windows-1255 CSV, per-product rows):
- *   - Row 0: Headers (תקופה, שם לקוח, מקט, שם פריט, כמות, מחיר, מחיר תקליט, סהכ לפריט)
- *   - Row 1+: Per-product rows. Aggregate by customer (col B), use col H as net.
- *   - VAT: amounts are NET; supports per-item VAT via vatProducts.
+ * LEGACY layout (8-column Windows-1255 CSV):
+ *   - Headers: [תקופה, שם לקוח, מקט, שם פריט, כמות, מחיר, מחיר תקליט, סהכ לפריט]
+ *   - Per-product rows. Aggregate by customer (col B), use col H (idx 7) as net.
  *
- * NEW layout (binary .xls "ריכוז מכירות ללקוחות" — sales summary):
- *   - Row 0: Filter info row
- *   - Row 1: Title + headers ("ריכוז מכירות ללקוחות" appears here)
- *   - Row 2+: One aggregated row per customer
- *       col B (1): gross amount with VAT
- *       col C (2): customer name
- *       col D (3): customer card / ID
- *   - Last rows include "סה״כ מכירות" total + "מערכת תוכנה" footer (skip).
- *   - VAT: amount is GROSS; back-calculate net = gross / 1.18.
+ * NEW layout (7-column Windows-1255 CSV):
+ *   - Headers: [תקופה, שם לקוח, מקט, שם פריט, כמות, מחיר, סהכ לפריט]
+ *   - "מחיר תקליט" was dropped, so the line total moves from col H (idx 7)
+ *     to col G (idx 6).
+ *
+ * VAT: amounts are NET; supports per-item VAT via vatProducts.
  */
 
 import * as XLSX from "xlsx";
@@ -29,178 +25,37 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
-// Legacy column indices
-const LEGACY_DATE_COL = 0;
-const LEGACY_FRANCHISEE_COL = 1;
-const LEGACY_PRODUCT_NAME_COL = 3;
+// Common to both layouts
+const DATE_COL = 0;
+const FRANCHISEE_COL = 1;
+const PRODUCT_NAME_COL = 3;
+
+// Layout-specific amount column
 const LEGACY_AMOUNT_COL = 7;
+const NEW_AMOUNT_COL = 6;
 
-// New layout column indices
-const NEW_GROSS_COL = 1;
-const NEW_FRANCHISEE_COL = 2;
-
-const NEW_LAYOUT_TITLE = "ריכוז מכירות ללקוחות";
-const NEW_SKIP_KEYWORDS = ['סה"כ', "סהכ", "מערכת תוכנה"];
+const LEGACY_TOTAL_HEADER = "סהכ לפריט";
+const LEGACY_RECORDPRICE_HEADER = "מחיר תקליט";
 
 /**
- * Detect whether the buffer is the new binary .xls "sales summary" layout or
- * the legacy Windows-1255 CSV. Cheap heuristic: try to read as binary; if
- * the resulting first sheet has the title "ריכוז מכירות ללקוחות" anywhere in
- * the first two rows, treat as new layout.
+ * Pick the right amount column based on the header row. Defaults to legacy
+ * if headers are unclear so existing callers don't regress.
  */
-function isNewLayout(buffer: Buffer): boolean {
-  try {
-    const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) return false;
-    const rows: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-      header: 1,
-      raw: false,
-      defval: "",
-    });
-    for (let i = 0; i < Math.min(rows.length, 3); i++) {
-      const row = rows[i] || [];
-      const joined = row.map((c) => String(c || "")).join(" ");
-      if (joined.includes(NEW_LAYOUT_TITLE)) return true;
-    }
-    return false;
-  } catch {
-    return false;
+function pickAmountCol(headers: unknown[]): number {
+  const h7 = String(headers[7] || "");
+  const h6 = String(headers[6] || "");
+  if (h7.includes(LEGACY_TOTAL_HEADER) || h7.includes(LEGACY_RECORDPRICE_HEADER)) {
+    return LEGACY_AMOUNT_COL;
   }
+  if (h6.includes(LEGACY_TOTAL_HEADER)) {
+    return NEW_AMOUNT_COL;
+  }
+  return LEGACY_AMOUNT_COL;
 }
 
 export function parseAleAleFile(
   buffer: Buffer,
   vatRate: number = ISRAEL_VAT_RATE,
-  vatProducts?: Set<string>
-): FileProcessingResult {
-  if (isNewLayout(buffer)) {
-    return parseNewLayoutXls(buffer);
-  }
-  return parseLegacyCsv(buffer, vatRate, vatProducts);
-}
-
-function parseNewLayoutXls(buffer: Buffer): FileProcessingResult {
-  const errors: import("../file-processing-errors").FileProcessingError[] = [];
-  const warnings: import("../file-processing-errors").FileProcessingError[] = [];
-  const legacyErrors: string[] = [];
-  const legacyWarnings: string[] = [];
-  const data: ParsedRowData[] = [];
-
-  try {
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-    const sheetName = workbook.SheetNames[0];
-    if (!sheetName) {
-      errors.push(createFileProcessingError("NO_WORKSHEETS"));
-      legacyErrors.push("No worksheets found in file");
-      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
-    }
-    const sheet = workbook.Sheets[sheetName];
-    const rawData: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
-      header: 1,
-      raw: false,
-      defval: "",
-    });
-
-    if (!rawData || rawData.length < 3) {
-      errors.push(createFileProcessingError("FILE_EMPTY"));
-      legacyErrors.push("File is empty or too short");
-      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
-    }
-
-    let totalGrossAmount = 0;
-    let totalNetAmount = 0;
-    let processed = 0;
-    let skipped = 0;
-    let rowNumber = 1;
-
-    // Data starts at row 2 (after filter row + header row)
-    for (let i = 2; i < rawData.length; i++) {
-      const row = rawData[i] || [];
-      if (row.length === 0) {
-        skipped++;
-        continue;
-      }
-
-      const franchisee = String(row[NEW_FRANCHISEE_COL] || "").trim();
-      const grossStr = String(row[NEW_GROSS_COL] || "").trim();
-
-      // Skip summary / footer rows
-      const joined = row.map((c) => String(c || "")).join(" ");
-      if (NEW_SKIP_KEYWORDS.some((kw) => joined.includes(kw))) {
-        skipped++;
-        continue;
-      }
-
-      if (!franchisee || !grossStr) {
-        skipped++;
-        continue;
-      }
-
-      const gross = parseFloat(grossStr.replace(/[,\s₪]/g, ""));
-      if (isNaN(gross) || gross <= 0) {
-        skipped++;
-        continue;
-      }
-
-      // ALE_ALE new layout reports GROSS (with VAT). Back-calc net.
-      const grossRounded = roundAmount(gross);
-      const netRounded = roundAmount(gross / (1 + ISRAEL_VAT_RATE));
-
-      data.push({
-        franchisee,
-        date: null,
-        grossAmount: grossRounded,
-        netAmount: netRounded,
-        originalAmount: grossRounded,
-        rowNumber: rowNumber++,
-      });
-
-      totalGrossAmount += grossRounded;
-      totalNetAmount += netRounded;
-      processed++;
-    }
-
-    if (processed === 0) {
-      errors.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: "Could not extract any franchisee data from the new-layout file",
-        })
-      );
-      legacyErrors.push("Could not extract any franchisee data from the new-layout file");
-      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
-    }
-
-    const result = createResult(
-      true,
-      data,
-      errors,
-      warnings,
-      legacyErrors,
-      legacyWarnings,
-      rawData.length,
-      processed,
-      skipped,
-      totalGrossAmount,
-      totalNetAmount
-    );
-    // VAT was added by us (not in source), so flag accordingly.
-    result.summary.vatAdjusted = true;
-    return result;
-  } catch (error) {
-    errors.push(
-      createFileProcessingError("SYSTEM_ERROR", {
-        details: error instanceof Error ? error.message : "Unknown error",
-      })
-    );
-    legacyErrors.push(error instanceof Error ? error.message : "Unknown error");
-    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
-  }
-}
-
-function parseLegacyCsv(
-  buffer: Buffer,
-  vatRate: number,
   vatProducts?: Set<string>
 ): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
@@ -233,6 +88,8 @@ function parseLegacyCsv(
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
+    const amountCol = pickAmountCol(rawData[0] || []);
+
     const franchiseeAmounts: Map<
       string,
       { netAmount: number; grossAmount: number; date: string | null }
@@ -243,10 +100,10 @@ function parseLegacyCsv(
       const row = rawData[i];
       if (!row || row.length === 0) continue;
 
-      const franchisee = String(row[LEGACY_FRANCHISEE_COL] || "").trim();
-      const amountStr = String(row[LEGACY_AMOUNT_COL] || "").trim();
-      const dateStr = String(row[LEGACY_DATE_COL] || "").trim();
-      const productName = String(row[LEGACY_PRODUCT_NAME_COL] || "").trim();
+      const franchisee = String(row[FRANCHISEE_COL] || "").trim();
+      const amountStr = String(row[amountCol] || "").trim();
+      const dateStr = String(row[DATE_COL] || "").trim();
+      const productName = String(row[PRODUCT_NAME_COL] || "").trim();
 
       if (productName) uniqueProducts.add(productName);
       if (!franchisee) continue;
