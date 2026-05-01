@@ -398,10 +398,22 @@ export async function sendFileRequestEmail(
   // Prefer the actual period end date recorded on the request. Fall back to
   // due date only when a period end wasn't captured (e.g. legacy requests).
   if (meta?.periodEndDate) metaVariables.period_end_date = String(meta.periodEndDate);
+  // BKMV cron writes startDate to metadata; the bkmv_request template uses
+  // {{start_date}} (snake_case) so map it across.
+  if (meta?.startDate) metaVariables.start_date = String(meta.startDate);
+
+  // Some templates address the franchisee directly (e.g. bkmv_request uses
+  // {{franchisee_name}}). Mirror entity_name into franchisee_name when the
+  // request targets a franchisee so those templates render correctly.
+  const franchiseeName =
+    request.entityType === "franchisee"
+      ? request.entityName || request.recipientName || ""
+      : "";
 
   const templateVariables: Record<string, string> = {
     recipient_name: request.recipientName || request.recipientEmail,
     entity_name: request.entityName || "Unknown",
+    franchisee_name: franchiseeName,
     document_type: request.documentType,
     upload_link: uploadUrl || "",
     due_date: request.dueDate || "",
