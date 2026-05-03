@@ -60,8 +60,20 @@ async function resendGet<T>(path: string): Promise<T | null> {
 }
 
 export async function POST(request: NextRequest) {
-  const authResult = await requireSuperUser(request);
-  if (isAuthError(authResult)) return authResult;
+  // Accept either a super_user session OR a CRON_SECRET bearer token —
+  // the latter lets the maintainer trigger this from a terminal without
+  // copying a session cookie. CRON_SECRET is server-only, never exposed.
+  const authHeader = request.headers.get("authorization");
+  const cronSecret = process.env.CRON_SECRET;
+  const isCronAuthorized =
+    cronSecret &&
+    authHeader &&
+    authHeader === `Bearer ${cronSecret}`;
+
+  if (!isCronAuthorized) {
+    const authResult = await requireSuperUser(request);
+    if (isAuthError(authResult)) return authResult;
+  }
 
   const dryRun = request.nextUrl.searchParams.get("dryRun") === "true";
 
