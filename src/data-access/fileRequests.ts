@@ -214,10 +214,16 @@ export async function createFileRequest(
     bkmv: "העלאת קובץ מבנה אחיד BKMV",
   };
 
-  // Allowed MIME types per document type (must match file.type in browser)
+  // Allowed MIME types per document type (must match file.type in browser).
+  //
+  // BKMVDATA files are plain text but Chrome — especially on Windows — often
+  // reports them as `application/octet-stream` or with an empty MIME type.
+  // The actual content check (magic-byte / text-validation) is enforced
+  // server-side, so we widen the client-allowed list to keep the upload
+  // dialog from rejecting legitimate BKMVDATA.txt files.
   const documentTypeFileTypes: Record<string, string> = {
     settlement_report: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/csv",
-    bkmv: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/csv,text/plain",
+    bkmv: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/csv,text/plain,application/octet-stream",
   };
 
   // Generate secure upload link

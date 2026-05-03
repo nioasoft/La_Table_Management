@@ -167,17 +167,54 @@ export async function POST(
       );
     }
 
-    // Validate file type (client-provided MIME type)
+    // Validate file type (client-provided MIME type).
+    //
+    // Chrome on Windows often reports text files (BKMVDATA.txt, .csv) as
+    // `application/octet-stream` or with an empty MIME type. When that
+    // happens, fall back to inferring the type from the extension so the
+    // upload isn't rejected for a legitimate file. The downstream
+    // `validateFileType` call still verifies the actual content with
+    // magic-byte / text-validation, so spoofing is not a concern.
     const allowedTypes = link.allowedFileTypes
       ? link.allowedFileTypes.split(",").map((t) => t.trim())
       : getAllowedMimeTypes();
 
-    if (!allowedTypes.includes(file.type) && !isAllowedFileType(file.type)) {
+    const inferMimeFromName = (name: string): string | null => {
+      const ext = name.toLowerCase().split(".").pop();
+      const map: Record<string, string> = {
+        txt: "text/plain",
+        csv: "text/csv",
+        pdf: "application/pdf",
+        xls: "application/vnd.ms-excel",
+        xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        doc: "application/msword",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        gif: "image/gif",
+      };
+      return ext ? map[ext] ?? null : null;
+    };
+
+    let effectiveMimeType = file.type;
+    if (!effectiveMimeType || effectiveMimeType === "application/octet-stream") {
+      const inferred = inferMimeFromName(file.name);
+      if (inferred) effectiveMimeType = inferred;
+    }
+
+    if (
+      !allowedTypes.includes(effectiveMimeType) &&
+      !allowedTypes.includes(file.type) &&
+      !isAllowedFileType(effectiveMimeType)
+    ) {
       return NextResponse.json(
         {
           error: "סוג קובץ לא מורשה",
           code: "INVALID_FILE_TYPE",
           allowedTypes,
+          claimed: file.type,
+          inferred: effectiveMimeType,
         },
         { status: 400 }
       );
@@ -198,9 +235,12 @@ export async function POST(
     // Convert to buffer for magic byte validation
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    // Validate file content matches claimed type (magic byte detection)
-    // This prevents MIME type spoofing attacks
-    const fileValidation = await validateFileType(buffer, file.type);
+    // Validate file content matches claimed type (magic byte detection).
+    // This prevents MIME type spoofing attacks. Use the extension-inferred
+    // type when the browser sent application/octet-stream or a blank MIME,
+    // so a legitimate BKMVDATA.txt is treated as text/plain by the
+    // validator instead of forced down the binary magic-byte path.
+    const fileValidation = await validateFileType(buffer, effectiveMimeType);
     if (!fileValidation.valid) {
       console.warn("File upload rejected - type mismatch:", {
         claimed: file.type,
@@ -255,7 +295,7 @@ export async function POST(
     const uploadResult = await uploadDocument(
       buffer,
       file.name,
-      fileValidation.detectedMimeType || file.type,
+      fileValidation.detectedMimeType || effectiveMimeType || file.type,
       link.entityType,
       link.entityId,
       customFileName ? { customFileName } : undefined

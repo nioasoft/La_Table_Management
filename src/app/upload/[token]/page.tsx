@@ -79,6 +79,35 @@ function getEntityTypeLabel(entityType: string): string {
   return labels[entityType as keyof typeof labels] || entityType;
 }
 
+/**
+ * Infer a MIME type from a filename extension.
+ *
+ * Chrome on Windows in particular often reports `BKMVDATA.txt` as
+ * `application/octet-stream` (or an empty MIME type), which causes the
+ * client-side validator to reject the file before it ever reaches the
+ * server. This helper lets us fall back on the extension when the browser
+ * has not given us a usable MIME type. The server still validates the
+ * actual content via magic-byte detection, so this is purely a UX fix.
+ */
+function inferMimeFromName(name: string): string | null {
+  const ext = name.toLowerCase().split(".").pop();
+  if (!ext) return null;
+  const map: Record<string, string> = {
+    txt: "text/plain",
+    csv: "text/csv",
+    pdf: "application/pdf",
+    xls: "application/vnd.ms-excel",
+    xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    gif: "image/gif",
+  };
+  return map[ext] ?? null;
+}
+
 export default function PublicUploadPage({
   params,
 }: {
@@ -138,8 +167,19 @@ export default function PublicUploadPage({
       for (let i = 0; i < newFiles.length && filesToAdd.length < maxAllowed; i++) {
         const file = newFiles[i];
 
-        // Validate file type
-        if (!uploadLinkInfo.allowedFileTypes.includes(file.type)) {
+        // Validate file type. Browsers — especially Chrome on Windows —
+        // sometimes report a `BKMVDATA.txt` file with an empty MIME or
+        // `application/octet-stream`. Treat those as the extension-implied
+        // type so legitimate uploads aren't blocked at the picker. The
+        // server still verifies content via magic-byte checks.
+        const inferredType =
+          !file.type || file.type === "application/octet-stream"
+            ? inferMimeFromName(file.name) ?? file.type
+            : file.type;
+        if (
+          !uploadLinkInfo.allowedFileTypes.includes(inferredType) &&
+          !uploadLinkInfo.allowedFileTypes.includes(file.type)
+        ) {
           setErrorMessage(he.upload.errors.invalidFileType);
           continue;
         }
