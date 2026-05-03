@@ -8,7 +8,8 @@ export const CLIENT_PARSER_CODES = new Set([
   "TENBIS",      // Tenbis - PDF with embedded text
   "WOLT",        // Wolt - PDF tax invoice (text-based)
   "HEVER",       // Hever - Excel with all franchisees
-  // MISHLOHA & HAAT: invoice parsers only (no report parsers yet)
+  "HAAT",        // HAAT - monthly report PDF (Azure Blob, HAAT-native layout)
+  "MISHLOCHA",   // Mishloha - ezcount tax invoice
 ]);
 
 /**

@@ -1127,21 +1127,38 @@ async function extractAndDownloadLinks(
     }
   }
 
-  // Pattern 3: Direct PDF links (generic fallback)
+  // Pattern 3: Direct PDF links (generic fallback) — covers HAAT (Azure
+  // Blob), occasional Wolt/Mishloha direct links, and anything else that
+  // posts a PDF URL straight in the body.
+  //
+  // CRITICAL: query strings must be preserved. HAAT links carry a SAS token
+  // appended after `.pdf` (`?sv=...&sig=...`); without it Azure returns 403.
   if (results.length === 0) {
-    const directLinks = htmlBody.match(
-      /https?:\/\/[^\s"'<>]+\.pdf/gi
-    ) || [];
+    const directLinks =
+      htmlBody.match(
+        /https?:\/\/[^\s"'<>]+\.pdf(?:\?[^\s"'<>]*)?/gi
+      ) || [];
 
-    for (const pdfUrl of directLinks) {
+    // De-dup — HTML often repeats the same URL (text + href).
+    const uniqueLinks = [...new Set(directLinks.map((u) => u.replace(/&amp;/g, "&")))];
+
+    for (const pdfUrl of uniqueLinks) {
       try {
         console.log(`[email-inbound] Downloading direct PDF: ${pdfUrl}`);
         const response = await fetch(pdfUrl);
-        if (!response.ok) continue;
+        if (!response.ok) {
+          console.warn(
+            `[email-inbound] Direct PDF download failed: ${response.status} ${response.statusText} (${pdfUrl})`
+          );
+          continue;
+        }
 
         const arrayBuffer = await response.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const fileName = pdfUrl.split("/").pop() ?? "report.pdf";
+        // Strip query string from filename — keep only the actual `.pdf`
+        // basename, never the SAS token.
+        const fileName =
+          pdfUrl.split("?")[0].split("/").pop() ?? "report.pdf";
 
         results.push({ buffer, fileName });
       } catch (err) {

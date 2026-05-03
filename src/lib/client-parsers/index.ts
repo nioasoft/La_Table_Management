@@ -40,9 +40,11 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     return parseMishlohaFile(buffer, mimeType);
   },
   HAAT: async (buffer, mimeType) => {
-    // Haat uses the same ezcount format as Mishloha
-    const { parseMishlohaFile } = await import("./mishloha-parser");
-    return parseMishlohaFile(buffer, mimeType);
+    // HAAT's monthly REPORT is a direct Azure Blob PDF in HAAT's own layout
+    // (NOT ezcount). The commission INVOICE for HAAT is ezcount-issued and
+    // routes through INVOICE_PARSERS.HAAT (parseHaatFile / invoice parser).
+    const { parseHaatReportFile } = await import("./haat-report-parser");
+    return parseHaatReportFile(buffer, mimeType);
   },
 };
 
