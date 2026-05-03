@@ -67,8 +67,14 @@ const INVOICE_PARSERS: Record<string, ClientParserFn> = {
     return parseMishlohaFile(buffer, mimeType);
   },
   HAAT: async (buffer, mimeType) => {
-    const { parseHaatFile } = await import("./invoice-haat-parser");
-    return parseHaatFile(buffer, mimeType);
+    // HAAT and Mishloha both issue commission invoices via ezcount in
+    // identical layouts. The dedicated invoice-haat-parser was an early
+    // attempt that failed to extract the franchisee on EasyCount-style
+    // invoices ("לא זוהה"). The Mishloha parser handles every HAAT PDF
+    // we've seen (issuer = restaurant, recipient = Haat Delivery) and
+    // also produces a better franchisee name on the older HAAT files.
+    const { parseMishlohaFile } = await import("./invoice-mishloha-parser");
+    return parseMishlohaFile(buffer, mimeType);
   },
 };
 
