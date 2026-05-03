@@ -42,6 +42,18 @@ export async function updateSyncLogEntry(
     errorCount?: number;
     errorDetails?: unknown;
     runCompletedAt?: Date;
+    // Diagnostics — populated by inbound webhook so production failures
+    // are debuggable without forwarding the original email.
+    emailId?: string | null;
+    fromAddress?: string | null;
+    toAddresses?: unknown;
+    subject?: string | null;
+    clientCode?: string | null;
+    identifiedBy?: string | null;
+    rawAttachments?: unknown;
+    rawAttachmentCount?: number | null;
+    filteredAttachmentCount?: number | null;
+    bodyExcerpt?: string | null;
   }
 ): Promise<GmailSyncLog | null> {
   const [updated] = await database

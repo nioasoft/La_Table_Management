@@ -3257,6 +3257,17 @@ export const gmailSyncLog = pgTable(
       .notNull(),
     // Error details
     errorDetails: jsonb("error_details"),
+    // Diagnostics (added 2026-05-03 to investigate Wolt failures)
+    emailId: text("email_id"),
+    fromAddress: text("from_address"),
+    toAddresses: jsonb("to_addresses"),
+    subject: text("subject"),
+    clientCode: text("client_code"),
+    identifiedBy: text("identified_by"),
+    rawAttachments: jsonb("raw_attachments"),
+    rawAttachmentCount: integer("raw_attachment_count"),
+    filteredAttachmentCount: integer("filtered_attachment_count"),
+    bodyExcerpt: text("body_excerpt"),
     // Audit
     triggeredBy: text("triggered_by").references(() => user.id, {
       onDelete: "set null",
@@ -3268,6 +3279,8 @@ export const gmailSyncLog = pgTable(
   (table) => [
     index("idx_gmail_sync_log_status").on(table.status),
     index("idx_gmail_sync_log_created").on(table.createdAt),
+    index("idx_gmail_sync_log_email_id").on(table.emailId),
+    index("idx_gmail_sync_log_client_code").on(table.clientCode),
   ]
 );
 

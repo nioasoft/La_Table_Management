@@ -89,6 +89,34 @@ export async function POST(request: NextRequest) {
   let errorCount = 0;
   const errorDetails: string[] = [];
 
+  // Diagnostics captured on every webhook invocation. Always written to
+  // gmail_sync_log so production failures (e.g. "no attachments") can be
+  // investigated without forwarding the original email or chasing Vercel
+  // console logs.
+  const diagnostics: {
+    emailId: string | null;
+    fromAddress: string | null;
+    toAddresses: string[] | null;
+    subject: string | null;
+    clientCode: string | null;
+    identifiedBy: string | null;
+    rawAttachments: Array<{ filename: string; contentType: string; size: number }> | null;
+    rawAttachmentCount: number | null;
+    filteredAttachmentCount: number | null;
+    bodyExcerpt: string | null;
+  } = {
+    emailId: null,
+    fromAddress: null,
+    toAddresses: null,
+    subject: null,
+    clientCode: null,
+    identifiedBy: null,
+    rawAttachments: null,
+    rawAttachmentCount: null,
+    filteredAttachmentCount: null,
+    bodyExcerpt: null,
+  };
+
   try {
     // ─── Step 1: Verify webhook signature ──────────────────────────────
     const body = await request.text();
@@ -171,6 +199,13 @@ export async function POST(request: NextRequest) {
     const { email_id, from, to, subject } = event.data;
     messagesScanned = 1;
 
+    // Capture into diagnostics immediately — anything that fails after this
+    // point will still have from/to/subject/email_id stored in gmail_sync_log.
+    diagnostics.emailId = email_id;
+    diagnostics.fromAddress = from;
+    diagnostics.toAddresses = to;
+    diagnostics.subject = subject;
+
     console.log(
       `[email-inbound] Received email from ${from} to ${to.join(",")} subject: "${subject}"`
     );
@@ -247,9 +282,13 @@ export async function POST(request: NextRequest) {
         duplicatesSkipped,
         errorCount,
         errorDetails,
+        ...diagnostics,
       });
       return NextResponse.json({ received: true, error: msg });
     }
+
+    diagnostics.clientCode = identifiedClient.clientCode;
+    diagnostics.identifiedBy = identifiedClient.identifiedBy;
 
     console.log(
       `[email-inbound] Identified client: ${identifiedClient.clientCode} (by ${identifiedClient.identifiedBy})`
@@ -269,6 +308,7 @@ export async function POST(request: NextRequest) {
         duplicatesSkipped,
         errorCount,
         errorDetails,
+        ...diagnostics,
       });
       return NextResponse.json({ received: true, error: msg });
     }
@@ -335,6 +375,8 @@ export async function POST(request: NextRequest) {
             periodYear: period.year,
             documentType,
             source: "gmail_fetch",
+            // Body-based emails have a single virtual "attachment" (the body),
+            // so the email_id is sufficient and unique on its own.
             gmailMessageId: email_id,
           });
 
@@ -350,6 +392,17 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // ── Attachment-based client ──
+
+      // Capture every raw attachment into diagnostics — written to
+      // gmail_sync_log.raw_attachments so we can see what Resend handed us
+      // BEFORE any filtering, even when nothing makes it through to a
+      // client_document record.
+      diagnostics.rawAttachmentCount = email.attachments.length;
+      diagnostics.rawAttachments = email.attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size,
+      }));
 
       // Log ALL raw attachments so we can diagnose filter/selection issues.
       console.log(
@@ -369,6 +422,8 @@ export async function POST(request: NextRequest) {
           a.filename.endsWith(".xls")
       );
 
+      diagnostics.filteredAttachmentCount = documentAttachments.length;
+
       // If no document attachments, try to extract download links from email body
       if (documentAttachments.length === 0) {
         const downloadedFiles = await extractAndDownloadLinks(
@@ -380,9 +435,17 @@ export async function POST(request: NextRequest) {
           const msg = `מייל ${email_id} ללא קבצים מצורפים ולא נמצאו לינקים להורדה`;
           errorCount++;
           errorDetails.push(msg);
+
+          // Capture body excerpt so we can see what the email actually
+          // contained without going to Resend or the backup mailbox.
+          const body = email.html || email.text || "";
+          if (body) {
+            diagnostics.bodyExcerpt = body.length > 8000 ? body.slice(0, 8000) : body;
+          }
         }
 
-        for (const file of downloadedFiles) {
+        for (let i = 0; i < downloadedFiles.length; i++) {
+          const file = downloadedFiles[i];
           const franchiseeMatch = await resolveFranchisee(
             file.buffer,
             "application/pdf",
@@ -410,7 +473,12 @@ export async function POST(request: NextRequest) {
             periodYear: period.year,
             documentType,
             source: "gmail_fetch",
-            gmailMessageId: email_id,
+            // CRITICAL: gmail_message_id has a UNIQUE index. When a single
+            // email yields multiple downloaded files (e.g. multiple ezcount
+            // links), every file must use a DISTINCT key — otherwise the
+            // 2nd+ files are silently rejected as duplicates. Append the
+            // index to keep the prefix `email_id#` stable and searchable.
+            gmailMessageId: `${email_id}#dl${i}`,
           });
 
           if (result.skippedDuplicate) {
@@ -480,7 +548,15 @@ export async function POST(request: NextRequest) {
           periodYear: period.year,
           documentType: attachment.documentType ?? documentType,
           source: "gmail_fetch",
-          gmailMessageId: email_id,
+          // CRITICAL: gmail_message_id has a UNIQUE index. Wolt emails carry
+          // BOTH File A (commission_invoice) AND File B (client_report) as
+          // separate attachments — using just `email_id` made the 2nd one
+          // get rejected as a duplicate, silently dropping File B (the file
+          // needed for the Tabit reconciliation). The Resend attachment id
+          // is a UUID, unique within the email, so this composite key keeps
+          // re-deliveries idempotent while still allowing both attachments
+          // through.
+          gmailMessageId: `${email_id}#${attachment.id}`,
         });
 
         if (result.skippedDuplicate) {
@@ -506,6 +582,7 @@ export async function POST(request: NextRequest) {
       duplicatesSkipped,
       errorCount,
       errorDetails: errorDetails.length > 0 ? errorDetails : undefined,
+      ...diagnostics,
     });
 
     console.log(
@@ -530,6 +607,7 @@ export async function POST(request: NextRequest) {
       duplicatesSkipped,
       errorCount: errorCount + 1,
       errorDetails: [...errorDetails, errorMessage],
+      ...diagnostics,
     });
 
     // Always return 200 to prevent Resend retries
@@ -798,6 +876,8 @@ function matchFranchiseeFromSubject(
 }
 
 type Attachment = {
+  /** Resend attachment ID — UUID unique within the email. */
+  id: string;
   filename: string;
   contentType: string;
   downloadUrl: string;
@@ -1082,6 +1162,19 @@ async function finalizeSyncLog(
     duplicatesSkipped: number;
     errorCount: number;
     errorDetails?: string[];
+    // Diagnostics — captured into gmail_sync_log so production failures can
+    // be debugged from the cron-monitor admin UI without forwarding the
+    // original email or chasing Vercel console logs.
+    emailId?: string | null;
+    fromAddress?: string | null;
+    toAddresses?: string[] | null;
+    subject?: string | null;
+    clientCode?: string | null;
+    identifiedBy?: string | null;
+    rawAttachments?: Array<{ filename: string; contentType: string; size: number }> | null;
+    rawAttachmentCount?: number | null;
+    filteredAttachmentCount?: number | null;
+    bodyExcerpt?: string | null;
   }
 ) {
   await updateSyncLogEntry(id, {
@@ -1092,5 +1185,15 @@ async function finalizeSyncLog(
     errorCount: stats.errorCount,
     errorDetails: stats.errorDetails,
     runCompletedAt: new Date(),
+    emailId: stats.emailId ?? null,
+    fromAddress: stats.fromAddress ?? null,
+    toAddresses: stats.toAddresses ?? null,
+    subject: stats.subject ?? null,
+    clientCode: stats.clientCode ?? null,
+    identifiedBy: stats.identifiedBy ?? null,
+    rawAttachments: stats.rawAttachments ?? null,
+    rawAttachmentCount: stats.rawAttachmentCount ?? null,
+    filteredAttachmentCount: stats.filteredAttachmentCount ?? null,
+    bodyExcerpt: stats.bodyExcerpt ?? null,
   });
 }
