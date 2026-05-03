@@ -186,6 +186,17 @@ interface ReplayOutcome {
   documentsCreated?: number;
   duplicatesSkipped?: number;
   error?: string;
+  // Diagnostics — populated on failure paths so we can see why a replay
+  // produced 0 documents without grepping Vercel logs.
+  trace?: {
+    rawAttachmentCount?: number;
+    documentAttachmentCount?: number;
+    extractedLinks?: number;
+    downloadedFiles?: number;
+    franchiseeResolveFailures?: string[];
+    parseFailures?: string[];
+    processFailures?: string[];
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -217,7 +228,16 @@ export async function POST(request: NextRequest) {
   const outcomes: ReplayOutcome[] = [];
 
   for (const emailId of emailIds) {
-    const outcome: ReplayOutcome = { emailId, status: "error" };
+    const outcome: ReplayOutcome = {
+      emailId,
+      status: "error",
+      trace: {
+        franchiseeResolveFailures: [],
+        parseFailures: [],
+        processFailures: [],
+      },
+    };
+    const trace = outcome.trace!;
     try {
       const email = await fetchInboundEmail(emailId);
       if (!email) {
@@ -292,10 +312,21 @@ export async function POST(request: NextRequest) {
             a.filename.endsWith(".xls")
         );
 
+        trace.rawAttachmentCount = email.attachments.length;
+        trace.documentAttachmentCount = docAtts.length;
+
         if (docAtts.length === 0) {
-          const downloaded = await extractAndDownloadLinks(
-            email.html || email.text || ""
-          );
+          const html = email.html || email.text || "";
+          const linkCount =
+            (html.match(
+              /https?:\/\/files\.ezcount\.co\.il\/front\/documents\/get\/[^"'\s<>]+/g
+            ) || []).length +
+            (html.match(/https?:\/\/[^\s"'<>]+\.pdf(?:\?[^\s"'<>]*)?/gi) || []).length;
+          trace.extractedLinks = linkCount;
+
+          const downloaded = await extractAndDownloadLinks(html);
+          trace.downloadedFiles = downloaded.length;
+
           for (let i = 0; i < downloaded.length; i++) {
             const f = downloaded[i];
             const fr = await resolveFranchisee(
@@ -307,7 +338,10 @@ export async function POST(request: NextRequest) {
               f.fileName,
               documentType
             );
-            if (!fr) continue;
+            if (!fr) {
+              trace.franchiseeResolveFailures!.push(f.fileName);
+              continue;
+            }
             const r = await processClientDocument({
               buffer: f.buffer,
               fileName: f.fileName,
@@ -323,6 +357,10 @@ export async function POST(request: NextRequest) {
             });
             if (r.skippedDuplicate) duplicatesSkipped++;
             else if (r.success) documentsCreated++;
+            else
+              trace.processFailures!.push(
+                `${f.fileName}: ${r.error ?? "unknown"}`
+              );
           }
         } else {
           // Wolt File A/B selector for attachment-based emails (mirror of
