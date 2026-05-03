@@ -66,16 +66,27 @@ export async function parseHaatReportFile(
     }
 
     // ── Franchisee name ──
-    // The line after the header typically has the form
-    //   "<EnglishBrand>פט ויני עזריאלי בע\"מ"
-    // i.e. an English business name glued onto a Hebrew "<...> בע\"מ" name.
-    // Prefer the Hebrew "<...> בע\"מ" since franchisee aliases use Hebrew.
+    // The line right after the "דווח האאט MM/YYYY" header carries the
+    // business name. Two layouts have been seen:
+    //   "Natanzon Burgerפט ויני עזריאלי בע\"מ" — English brand glued onto
+    //       a Hebrew "<...> בע\"מ" company. Prefer the Hebrew side.
+    //   "minna tomei" — English-only, no "בע\"מ".
+    //
+    // Strategy: try Hebrew "<...> בע\"מ" first, then fall back to anything
+    // on the line directly following the header.
     let franchiseeName = "";
     const hebrewBizMatch = text.match(
       /([֐-׿][֐-׿\s"']{3,}?(?:בע"מ|בעמ|בע״מ))/
     );
     if (hebrewBizMatch) {
       franchiseeName = hebrewBizMatch[1].trim();
+    } else {
+      const headerLineMatch = text.match(
+        /דווח\s*האאט\s*\d{2}\/\d{4}\s*\r?\n([^\r\n]+)/
+      );
+      if (headerLineMatch) {
+        franchiseeName = headerLineMatch[1].trim();
+      }
     }
 
     // ── Sales total ──
