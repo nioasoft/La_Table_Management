@@ -1,24 +1,18 @@
 /**
  * Custom parser for מדג (MADAG) supplier files
  *
- * Two layouts supported (auto-detected from buffer signature):
- *
- * LEGACY layout (xlsx with embedded customer headers):
- *   - Row 0: Title
+ * Layout (xlsx with embedded customer headers, sheet usually "PRID*.tmp"):
+ *   - Row 0: Title ("מכירות ללקוח לפי מוצר (חשבוניות)")
  *   - Row 1: Date range
  *   - Row 2: Headers (מק"ט, תאור מוצר, מטבע, הכנסה, יח', כמות, סה"כ חיוב לקוח בגין עמלות)
- *   - Row 3+: Customer header "מס. לקוח: XXXXX, שם לקוח: <name>" followed by product rows.
- *   - Sale amount per product row in column 3 ("הכנסה"), aggregated per customer.
+ *   - Row 3+: Customer header "מס. לקוח: XXXXX, שם לקוח: <name>" followed by
+ *     product rows. Sale amount per product row in column 3 ("הכנסה"),
+ *     aggregated per customer.
  *
- * NEW layout ("ריכוז מכירות ללקוחות" — binary .xls customer summary):
- *   - Row 0: Filter info row (skip)
- *   - Row 1: Title + headers ("ריכוז מכירות ללקוחות" appears here)
- *   - Row 2+: One aggregated row per customer
- *       col B (1): gross amount with VAT
- *       col C (2): customer name
- *       col D (3): customer card / ID
- *   - Last rows include "סה״כ מכירות" total + "מערכת תוכנה" footer (skip).
- *   - VAT: amount is GROSS; back-calculate net = gross / 1.18.
+ * Note: a "ריכוז מכירות ללקוחות" compact layout used to live here too — that
+ * format actually belongs to AREL_PACKAGING and is handled by
+ * arel-arizot-parser.ts. Do not re-add it here; doing so silently mis-attributes
+ * AREL sales as MADAG commissions.
  *
  * Commission rate: Madag uses a fixed 10% configured at the supplier level —
  * we only need the sale amount for cross-reference.
@@ -34,28 +28,8 @@ import { createFileProcessingError } from "../file-processing-errors";
 
 const VAT_RATE = 0.18;
 
-// LEGACY: customer name embedded in cell text
+// Customer name embedded in cell text
 const CUSTOMER_NAME_REGEX = /שם לקוח[:\s]*([^\n,]+)/;
-
-// NEW layout column indices
-const NEW_GROSS_COL = 1;
-const NEW_FRANCHISEE_COL = 2;
-
-const NEW_LAYOUT_TITLE = "ריכוז מכירות ללקוחות";
-const NEW_SKIP_KEYWORDS = ['סה"כ', "סה״כ", "סהכ", "מערכת תוכנה"];
-
-/**
- * Detect new "ריכוז מכירות ללקוחות" layout: binary xlsx whose first three
- * rows contain that title.
- */
-function isNewLayout(rawData: unknown[][]): boolean {
-  for (let i = 0; i < Math.min(rawData.length, 3); i++) {
-    const row = rawData[i] || [];
-    const joined = row.map((c) => String(c || "")).join(" ");
-    if (joined.includes(NEW_LAYOUT_TITLE)) return true;
-  }
-  return false;
-}
 
 export function parseMadagFile(buffer: Buffer): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
@@ -86,10 +60,7 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    if (isNewLayout(rawData)) {
-      return parseNewLayout(rawData, errors, warnings, legacyErrors, legacyWarnings);
-    }
-    return parseLegacyLayout(rawData, data, errors, warnings, legacyErrors, legacyWarnings);
+    return parseEmbeddedCustomerLayout(rawData, data, errors, warnings, legacyErrors, legacyWarnings);
   } catch (error) {
     errors.push(
       createFileProcessingError("SYSTEM_ERROR", {
@@ -101,96 +72,7 @@ export function parseMadagFile(buffer: Buffer): FileProcessingResult {
   }
 }
 
-function parseNewLayout(
-  rawData: unknown[][],
-  errors: import("../file-processing-errors").FileProcessingError[],
-  warnings: import("../file-processing-errors").FileProcessingError[],
-  legacyErrors: string[],
-  legacyWarnings: string[]
-): FileProcessingResult {
-  const data: ParsedRowData[] = [];
-  let totalGrossAmount = 0;
-  let totalNetAmount = 0;
-  let processed = 0;
-  let skipped = 0;
-  let rowNumber = 1;
-
-  // Data starts at row 2 (after filter row + header row)
-  for (let i = 2; i < rawData.length; i++) {
-    const row = rawData[i] || [];
-    if (row.length === 0) {
-      skipped++;
-      continue;
-    }
-
-    const franchisee = String(row[NEW_FRANCHISEE_COL] || "").trim();
-    const grossStr = String(row[NEW_GROSS_COL] || "").trim();
-
-    // Skip summary / footer rows
-    const joined = row.map((c) => String(c || "")).join(" ");
-    if (NEW_SKIP_KEYWORDS.some((kw) => joined.includes(kw))) {
-      skipped++;
-      continue;
-    }
-
-    if (!franchisee || !grossStr) {
-      skipped++;
-      continue;
-    }
-
-    const gross = parseFloat(grossStr.replace(/[,\s₪]/g, ""));
-    if (isNaN(gross) || gross <= 0) {
-      skipped++;
-      continue;
-    }
-
-    // New layout reports GROSS (with VAT). Back-calc net.
-    const grossRounded = roundAmount(gross);
-    const netRounded = roundAmount(gross / (1 + VAT_RATE));
-
-    data.push({
-      franchisee,
-      date: null,
-      grossAmount: grossRounded,
-      netAmount: netRounded,
-      originalAmount: grossRounded,
-      rowNumber: rowNumber++,
-    });
-
-    totalGrossAmount += grossRounded;
-    totalNetAmount += netRounded;
-    processed++;
-  }
-
-  if (processed === 0) {
-    errors.push(
-      createFileProcessingError("PARSE_ERROR", {
-        details: "Could not extract any customer data from the new-layout file",
-      })
-    );
-    legacyErrors.push("Could not extract any customer data from the new-layout file");
-    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
-  }
-
-  const result = createResult(
-    true,
-    data,
-    errors,
-    warnings,
-    legacyErrors,
-    legacyWarnings,
-    rawData.length,
-    processed,
-    skipped,
-    totalGrossAmount,
-    totalNetAmount
-  );
-  // VAT was inferred from gross, so flag accordingly.
-  result.summary.vatAdjusted = true;
-  return result;
-}
-
-function parseLegacyLayout(
+function parseEmbeddedCustomerLayout(
   rawData: unknown[][],
   data: ParsedRowData[],
   errors: import("../file-processing-errors").FileProcessingError[],
