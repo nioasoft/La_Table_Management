@@ -30,27 +30,60 @@ async function resolveBkmvTemplateId(): Promise<string | undefined> {
 /**
  * BKMV File Requests Cron Job
  *
- * Runs on the 15th of January, April, July, October.
- * Sends BKMV (מבנה אחיד) file requests to franchisee accountants.
+ * Schedule fires quarterly (15th of Jan/Apr/Jul/Oct), but the cron ALSO runs
+ * daily catch-up: for the most recent past BKMV cycle, any franchisee who
+ * hasn't received the email yet will get it on the next successful run.
+ * Dedup is per-cycle (cycleKey = "YYYY-MM"), so each franchisee gets exactly
+ * one email per quarterly cycle even if the cron runs many times.
  *
  * Flow:
- * 1. Get all active franchisees
- * 2. For each: find accountant contact (role=accountant)
- * 3. Create file request with upload link
- * 4. Send email to accountant
+ * 1. Resolve current BKMV cycle (most recent past Jan/Apr/Jul/Oct 15th)
+ * 2. Get all active franchisees
+ * 3. For each: find accountant contact (role=accountant)
+ * 4. Skip if a request already exists for this cycle
+ * 5. Otherwise: create file request + send email
  *
  * Period: From start of fiscal year (01/01/YYYY) until today
  *
  * Query params:
  * - action: "all" (default)
  * - dryRun: "true" to simulate without sending emails
+ * - force: "true" to bypass the "must be on/after a BKMV date" check
  */
 
-// Check if today is a BKMV request date (15th of Jan/Apr/Jul/Oct)
-function isBkmvRequestDate(date: Date): boolean {
-  const day = date.getDate();
-  const month = date.getMonth() + 1; // 1-indexed
-  return day === 15 && [1, 4, 7, 10].includes(month);
+interface BkmvCycle {
+  year: number;
+  month: number; // 1, 4, 7, 10
+  cycleKey: string; // e.g. "2026-04"
+  startDate: string; // "01/01/YYYY" (display)
+}
+
+// Return the most recent BKMV cycle whose 15th is <= today, or null if none
+// has occurred yet this calendar year (e.g., cron runs in early January
+// before Jan 15).
+function getCurrentBkmvCycle(date: Date): BkmvCycle | null {
+  const year = date.getFullYear();
+  const cycleMonths = [1, 4, 7, 10]; // 1-indexed
+  let chosen: { year: number; month: number } | null = null;
+
+  for (const m of cycleMonths) {
+    const cycleDate = new Date(year, m - 1, 15);
+    if (cycleDate.getTime() <= date.getTime()) {
+      chosen = { year, month: m };
+    }
+  }
+
+  // Wrap to previous year's Q4 if we're between Jan 1 and Jan 14.
+  if (!chosen) {
+    chosen = { year: year - 1, month: 10 };
+  }
+
+  return {
+    year: chosen.year,
+    month: chosen.month,
+    cycleKey: `${chosen.year}-${String(chosen.month).padStart(2, "0")}`,
+    startDate: `01/01/${chosen.year}`,
+  };
 }
 
 // Get start date for BKMV period (01/01 of current year)
@@ -89,9 +122,12 @@ async function getAccountantEmail(franchiseeId: string): Promise<string | null> 
   return results[0]?.email || null;
 }
 
-// Check if a BKMV request already exists for this franchisee and period
+// Check if a BKMV request already exists for this franchisee and cycle.
+// Falls back to startDate match for legacy requests created before cycleKey
+// was tracked in metadata.
 async function hasExistingBkmvRequest(
   franchiseeId: string,
+  cycleKey: string,
   startDate: string
 ): Promise<boolean> {
   const existing = await database
@@ -107,20 +143,36 @@ async function hasExistingBkmvRequest(
 
   for (const req of existing) {
     const meta = req.metadata as Record<string, unknown> | null;
-    if (meta?.requestType === "bkmv" && meta?.startDate === startDate) {
-      return true;
+    if (meta?.requestType !== "bkmv") continue;
+    if (meta?.cycleKey === cycleKey) return true;
+    // Legacy: if no cycleKey was stored, treat any record from this cycle's
+    // startDate as a match for that cycle.
+    if (!meta?.cycleKey && meta?.startDate === startDate) {
+      const created = req.createdAt ? new Date(req.createdAt) : null;
+      if (created) {
+        const [, monthStr] = cycleKey.split("-");
+        const cycleMonth = parseInt(monthStr, 10) - 1;
+        const cycleStart = new Date(parseInt(cycleKey.split("-")[0], 10), cycleMonth, 15);
+        const nextCycleStart = new Date(cycleStart);
+        nextCycleStart.setMonth(nextCycleStart.getMonth() + 3);
+        if (created >= cycleStart && created < nextCycleStart) return true;
+      }
     }
   }
   return false;
 }
 
-async function processBkmvRequests(dryRun: boolean): Promise<{
+async function processBkmvRequests(
+  dryRun: boolean,
+  cycle: BkmvCycle
+): Promise<{
   processed: number;
   skipped: number;
   failed: number;
   noAccountant: number;
   errors: string[];
   franchisees: string[];
+  cycleKey: string;
 }> {
   const results = {
     processed: 0,
@@ -129,10 +181,11 @@ async function processBkmvRequests(dryRun: boolean): Promise<{
     noAccountant: 0,
     errors: [] as string[],
     franchisees: [] as string[],
+    cycleKey: cycle.cycleKey,
   };
 
   const allFranchisees = await getActiveFranchisees();
-  const startDate = getBkmvStartDate();
+  const startDate = cycle.startDate;
 
   const emailTemplateId = await resolveBkmvTemplateId();
   if (!emailTemplateId && !dryRun) {
@@ -164,9 +217,9 @@ async function processBkmvRequests(dryRun: boolean): Promise<{
 
       const recipientEmail = accountantEmail || f.primaryContactEmail || f.contactEmail!;
 
-      // Dedup check
+      // Dedup check (per BKMV cycle, with legacy startDate fallback)
       if (!dryRun) {
-        const alreadySent = await hasExistingBkmvRequest(f.id, startDate);
+        const alreadySent = await hasExistingBkmvRequest(f.id, cycle.cycleKey, startDate);
         if (alreadySent) {
           results.skipped++;
           continue;
@@ -193,6 +246,7 @@ async function processBkmvRequests(dryRun: boolean): Promise<{
         metadata: {
           requestType: "bkmv",
           startDate,
+          cycleKey: cycle.cycleKey,
           cronTriggered: true,
           requestedAt: new Date().toISOString(),
         },
@@ -225,20 +279,23 @@ export async function POST(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const dryRun = searchParams.get("dryRun") === "true";
-    const forceRun = searchParams.get("force") === "true";
+    // `force` is kept for backwards compatibility but no longer required:
+    // the cron now runs daily catch-up for the most recent past BKMV cycle.
 
-    // Check if today is a BKMV request date (unless force flag)
-    if (!forceRun && !isBkmvRequestDate(new Date())) {
+    const now = new Date();
+    const cycle = getCurrentBkmvCycle(now);
+
+    if (!cycle) {
       return NextResponse.json({
         success: true,
-        message: "Not a BKMV request date. Use force=true to override.",
-        timestamp: formatDateAsLocal(new Date()),
+        message: "No BKMV cycle has occurred yet.",
+        timestamp: formatDateAsLocal(now),
         nextBkmvDate: getNextBkmvDate(),
       });
     }
 
     const cronLog = dryRun ? null : await startCronLog("bkmv-requests");
-    const bkmvResults = await processBkmvRequests(dryRun);
+    const bkmvResults = await processBkmvRequests(dryRun, cycle);
 
     await cronLog?.complete({
       emailsSent: bkmvResults.processed,
@@ -253,7 +310,8 @@ export async function POST(request: NextRequest) {
       success: true,
       timestamp: formatDateAsLocal(new Date()),
       dryRun,
-      startDate: getBkmvStartDate(),
+      cycle: cycle.cycleKey,
+      startDate: cycle.startDate,
       ...bkmvResults,
     });
   } catch (error) {

@@ -111,31 +111,36 @@ export default function SchedulesTab() {
     },
   });
 
-  // Send file request mutation
+  // Send file request mutation — uses the dedicated schedules/send endpoint
+  // which mirrors the cron's per-entity logic (resolves the most recently
+  // closed period, looks up the right recipient, dedups against existing
+  // requests). This avoids the bug where the generic /api/file-requests
+  // endpoint would 400 because the UI didn't include recipientEmail, and
+  // ensures manual sends target the closed period (e.g. Q1 in May), not the
+  // open one (e.g. Q2).
   const sendRequestMutation = useMutation({
     mutationFn: async ({ entityType, entityId }: { entityType: string; entityId: string }) => {
-      const response = await fetch("/api/file-requests", {
+      const response = await fetch("/api/communications/schedules/send", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          entityType,
-          entityId,
-          documentType: "settlement_report",
-          sendImmediately: true,
-        }),
+        body: JSON.stringify({ entityType, entityId }),
       });
 
+      const data = await response.json();
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to send request");
+        throw new Error(data.error || "Failed to send request");
       }
 
-      return response.json();
+      return data as { success: true; alreadySent: boolean; message: string };
     },
-    onSuccess: () => {
-      toast.success(t.messages.sendSuccess);
+    onSuccess: (data) => {
+      if (data.alreadySent) {
+        toast.info(data.message);
+      } else {
+        toast.success(data.message || t.messages.sendSuccess);
+      }
       queryClient.invalidateQueries({ queryKey: ["communication-schedules"] });
     },
     onError: (error: Error) => {

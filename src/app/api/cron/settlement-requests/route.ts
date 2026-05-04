@@ -20,19 +20,24 @@ import { startCronLog } from "@/lib/cron-logger";
 /**
  * Settlement File Requests Cron Job
  *
- * Runs daily. On the LAST DAY of each settlement period, sends file requests
- * to suppliers for that period's commission report.
+ * Runs daily. For each settlement frequency, sends file requests to suppliers
+ * for the most recently CLOSED period (period.endDate <= today).
  *
- * Settlement Frequencies:
+ * Catch-up behaviour: if the cron failed to run on the last day of a period,
+ * subsequent days will still send the email (dedup via hasExistingFileRequest
+ * keeps suppliers from receiving duplicates).
+ *
+ * Settlement Frequencies (period closes on):
  * - monthly: last day of each month
  * - quarterly: 31/3, 30/6, 30/9, 31/12
  * - semi_annual: 30/6, 31/12
- * - annual: 31/12
+ * - annual: last day of fiscal year
  *
  * Query params:
  * - action: "all" | specific frequency (default: "all")
  * - dryRun: "true" to simulate without sending emails
  * - emailTemplateId: Optional template ID for file request emails
+ * - date: YYYY-MM-DD reference date for retroactive sends
  */
 
 // Map settlement frequency to settlement period type
@@ -51,57 +56,12 @@ function frequencyToPeriodType(frequency: SettlementFrequency): SettlementPeriod
   }
 }
 
-/**
- * Get the last day of the current period for a given frequency.
- * Returns true if today is the last day of a period for that frequency.
- */
-function isLastDayOfPeriod(frequency: SettlementFrequency, date: Date): boolean {
-  const day = date.getDate();
-  const month = date.getMonth(); // 0-indexed
-  const lastDayOfMonth = new Date(date.getFullYear(), month + 1, 0).getDate();
-
-  switch (frequency) {
-    case "monthly":
-      // Last day of every month
-      return day === lastDayOfMonth;
-
-    case "quarterly":
-      // Last day of March (31), June (30), September (30), December (31)
-      return day === lastDayOfMonth && [2, 5, 8, 11].includes(month);
-
-    case "semi_annual":
-      // Last day of June (30), December (31)
-      return day === lastDayOfMonth && [5, 11].includes(month);
-
-    case "annual":
-      // Last day of December (31)
-      return day === lastDayOfMonth && month === 11;
-
-    case "bi_weekly":
-      // 1st and 15th of each month
-      return day === 1 || day === 15;
-
-    case "weekly":
-      // Every Sunday
-      return date.getDay() === 0;
-
-    default:
-      return false;
-  }
-}
-
-// Determine which settlement frequencies should be processed on this date
-function getActiveFrequencies(date: Date): SettlementFrequency[] {
-  const frequencies: SettlementFrequency[] = [];
-  const all: SettlementFrequency[] = ["monthly", "quarterly", "semi_annual", "annual", "bi_weekly"];
-
-  for (const freq of all) {
-    if (isLastDayOfPeriod(freq, date)) {
-      frequencies.push(freq);
-    }
-  }
-
-  return frequencies;
+// All settlement frequencies are evaluated every day. The dedup check inside
+// processFrequency (hasExistingFileRequest) ensures each supplier only gets
+// one email per period, so running daily makes the cron resilient to missed
+// days without producing duplicate sends.
+function getActiveFrequencies(): SettlementFrequency[] {
+  return ["monthly", "quarterly", "semi_annual", "annual"];
 }
 
 // Get suppliers by settlement frequency
@@ -270,32 +230,38 @@ async function processFrequency(
   let periodDueDateStr: string | null = null;
 
   if (periodType) {
-    const periods = getPeriodsForFrequency(periodType, now, 1, 1, true);
-    if (periods.length > 0) {
-      const currentPeriod = periods[0];
-      periodDescription = currentPeriod.nameHe;
-      periodEndDateStr = formatDateForDisplay(currentPeriod.endDate);
-      periodDueDateStr = formatDateAsLocal(currentPeriod.dueDate);
+    // Pick the most recently CLOSED period: prefer "current" if its endDate
+    // has passed (or is today), otherwise fall back to the previous period.
+    // This is the catch-up mechanism — running on May 4 still picks April
+    // for monthly suppliers if April's email never went out.
+    const candidates = getPeriodsForFrequency(periodType, now, 1, 1, true);
+    const closedPeriod = candidates.find((p) => p.endDate.getTime() <= now.getTime());
 
-      if (!dryRun) {
-        try {
-          const result = await getOrCreateSettlementPeriodByPeriodKey(
-            currentPeriod.key
-          );
-          if (result) {
-            results.settlementPeriodCreated = {
-              periodKey: currentPeriod.key,
-              created: result.created,
-            };
-          }
-        } catch (error) {
-          results.errors.push(
-            `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
-          );
+    if (!closedPeriod) {
+      // No closed period yet for this frequency — nothing to send.
+      return results;
+    }
+
+    periodDescription = closedPeriod.nameHe;
+    periodEndDateStr = formatDateForDisplay(closedPeriod.endDate);
+    periodDueDateStr = formatDateAsLocal(closedPeriod.dueDate);
+
+    if (!dryRun) {
+      try {
+        const result = await getOrCreateSettlementPeriodByPeriodKey(
+          closedPeriod.key
+        );
+        if (result) {
+          results.settlementPeriodCreated = {
+            periodKey: closedPeriod.key,
+            created: result.created,
+          };
         }
+      } catch (error) {
+        results.errors.push(
+          `Failed to create settlement period: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
       }
-    } else {
-      periodDescription = getPeriodDescription(frequency, now);
     }
   } else {
     // bi_weekly / weekly — keep the old ad-hoc description.
@@ -422,7 +388,7 @@ export async function POST(request: NextRequest) {
     let frequenciesToProcess: SettlementFrequency[];
 
     if (action === "all") {
-      frequenciesToProcess = getActiveFrequencies(referenceDate || new Date());
+      frequenciesToProcess = getActiveFrequencies();
     } else if (
       ["monthly", "quarterly", "semi_annual", "annual", "bi_weekly", "weekly"].includes(action)
     ) {

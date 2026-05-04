@@ -7,67 +7,31 @@ import { database } from "@/db";
 import { supplier, franchisee, contact, fileRequest } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import type { SettlementFrequency, Supplier, Franchisee } from "@/db/schema";
+import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 
 /**
- * Calculate next request date based on settlement frequency
+ * Returns the dueDate of the most recently CLOSED settlement period for a
+ * frequency. This is the period the supplier should be reminded about — the
+ * one that just ended, not the open period currently being measured. Returns
+ * null for frequencies without a SettlementPeriodType mapping (weekly /
+ * bi_weekly).
  */
-function calculateNextRequestDate(
+function getNextRequestDateForClosedPeriod(
   frequency: SettlementFrequency,
   fromDate: Date = new Date()
-): Date {
-  const next = new Date(fromDate);
+): Date | null {
+  const periodTypeMap: Partial<Record<SettlementFrequency, "monthly" | "quarterly" | "semi_annual" | "annual">> = {
+    monthly: "monthly",
+    quarterly: "quarterly",
+    semi_annual: "semi_annual",
+    annual: "annual",
+  };
+  const periodType = periodTypeMap[frequency];
+  if (!periodType) return null;
 
-  switch (frequency) {
-    case "weekly":
-      // Next Monday
-      const daysUntilMonday = (8 - next.getDay()) % 7 || 7;
-      next.setDate(next.getDate() + daysUntilMonday);
-      break;
-    case "bi_weekly":
-      // 1st or 15th of month
-      if (next.getDate() < 15) {
-        next.setDate(15);
-      } else {
-        next.setMonth(next.getMonth() + 1);
-        next.setDate(1);
-      }
-      break;
-    case "monthly":
-      // 1st of next month
-      next.setMonth(next.getMonth() + 1);
-      next.setDate(1);
-      break;
-    case "quarterly":
-      // 1st of next quarter (Jan, Apr, Jul, Oct)
-      const currentQuarter = Math.floor(next.getMonth() / 3);
-      const nextQuarterMonth = (currentQuarter + 1) * 3;
-      if (nextQuarterMonth >= 12) {
-        next.setFullYear(next.getFullYear() + 1);
-        next.setMonth(0);
-      } else {
-        next.setMonth(nextQuarterMonth);
-      }
-      next.setDate(1);
-      break;
-    case "semi_annual":
-      // 1st of Jan or Jul
-      if (next.getMonth() < 6) {
-        next.setMonth(6);
-      } else {
-        next.setFullYear(next.getFullYear() + 1);
-        next.setMonth(0);
-      }
-      next.setDate(1);
-      break;
-    case "annual":
-      // 1st of January
-      next.setFullYear(next.getFullYear() + 1);
-      next.setMonth(0);
-      next.setDate(1);
-      break;
-  }
-
-  return next;
+  const candidates = getPeriodsForFrequency(periodType, fromDate, 1, 1, true);
+  const closed = candidates.find((p) => p.endDate.getTime() <= fromDate.getTime());
+  return closed?.dueDate ?? null;
 }
 
 /**
@@ -86,10 +50,11 @@ function getFrequencyLabel(frequency: SettlementFrequency): string {
 }
 
 /**
- * Calculate the next BKMV request date (15th of Jan/Apr/Jul/Oct)
+ * Returns the date of the most recent past BKMV request cycle (15th of
+ * Jan/Apr/Jul/Oct). This is the cycle the franchisee should be reminded
+ * about — the one whose request window has opened, not the next future one.
  */
-function getNextBkmvDate(): Date {
-  const now = new Date();
+function getCurrentBkmvDate(now: Date = new Date()): Date {
   const year = now.getFullYear();
   const bkmvDates = [
     new Date(year, 0, 15), // Jan 15
@@ -98,10 +63,12 @@ function getNextBkmvDate(): Date {
     new Date(year, 9, 15), // Oct 15
   ];
 
+  let chosen: Date | null = null;
   for (const d of bkmvDates) {
-    if (d > now) return d;
+    if (d.getTime() <= now.getTime()) chosen = d;
   }
-  return new Date(year + 1, 0, 15);
+  // Wrap to previous year's Q4 cycle if we're between Jan 1 and Jan 14.
+  return chosen ?? new Date(year - 1, 9, 15);
 }
 
 interface ScheduleItem {
@@ -194,6 +161,10 @@ export async function GET(request: NextRequest) {
       for (const s of suppliers) {
         const frequency = s.settlementFrequency || "monthly";
         const lastRequestDate = lastRequestsMap.get(s.id);
+        // Show the dueDate of the most recently CLOSED period — that's the
+        // period the supplier should report on. Fall back to today if no
+        // closed period exists yet (shouldn't happen in practice).
+        const nextDate = getNextRequestDateForClosedPeriod(frequency) ?? new Date();
 
         schedules.push({
           id: s.id,
@@ -205,7 +176,7 @@ export async function GET(request: NextRequest) {
           email: s.contactEmail || s.secondaryContactEmail || null,
           contactName: s.contactName || s.secondaryContactName || null,
           lastRequestDate: lastRequestDate ? new Date(lastRequestDate).toISOString() : null,
-          nextRequestDate: calculateNextRequestDate(frequency).toISOString(),
+          nextRequestDate: nextDate.toISOString(),
           pendingRequests: pendingRequestsMap.get(s.id) || 0,
           isActive: s.isActive,
         });
@@ -285,7 +256,7 @@ export async function GET(request: NextRequest) {
           lastBkmvQuery.map((r) => [r.entityId, r.lastSentAt])
         );
 
-        const nextBkmvDate = getNextBkmvDate();
+        const nextBkmvDate = getCurrentBkmvDate();
 
         for (const f of franchisees) {
           const accountant = accountantMap.get(f.id);
