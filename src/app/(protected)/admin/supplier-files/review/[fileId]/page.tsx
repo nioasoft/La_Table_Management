@@ -54,6 +54,7 @@ import {
   Edit,
   Plus,
   Ban,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -353,33 +354,50 @@ export default function SupplierFileDetailPage() {
           </div>
           <p className="text-muted-foreground">{file.fileName}</p>
         </div>
-        {!isReviewed && (
-          <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {file.fileUrl && (
             <Button
-              variant="default"
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => setIsApproveDialogOpen(true)}
+              variant="outline"
+              onClick={() =>
+                window.open(
+                  `/api/reports/supplier-files/${file.id}/download`,
+                  "_blank"
+                )
+              }
+              title="הורד את קובץ המקור"
             >
-              <Check className="h-4 w-4 ms-2" />
-              אשר קובץ
+              <Download className="h-4 w-4 ms-2" />
+              הורד קובץ
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => setIsRejectDialogOpen(true)}
+          )}
+          {!isReviewed && (
+            <>
+              <Button
+                variant="default"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => setIsApproveDialogOpen(true)}
+              >
+                <Check className="h-4 w-4 ms-2" />
+                אשר קובץ
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => setIsRejectDialogOpen(true)}
+              >
+                <X className="h-4 w-4 ms-2" />
+                דחה קובץ
+              </Button>
+            </>
+          )}
+          {isReviewed && (
+            <Badge
+              variant={file.processingStatus === "approved" ? "success" : "destructive"}
+              className="text-base px-4 py-2"
             >
-              <X className="h-4 w-4 ms-2" />
-              דחה קובץ
-            </Button>
-          </div>
-        )}
-        {isReviewed && (
-          <Badge
-            variant={file.processingStatus === "approved" ? "success" : "destructive"}
-            className="text-base px-4 py-2"
-          >
-            {file.processingStatus === "approved" ? "אושר" : "נדחה"}
-          </Badge>
-        )}
+              {file.processingStatus === "approved" ? "אושר" : "נדחה"}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* File Info & Stats */}

@@ -31,6 +31,7 @@ import {
   Calendar,
   Check,
   Ban,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { he as dateFnsHe } from "date-fns/locale";
@@ -82,6 +83,7 @@ interface SupplierFile {
   createdAt: Date | string;
   reviewedAt: Date | string | null;
   reviewNotes: string | null;
+  fileUrl?: string | null;
 }
 
 const t = he.admin.suppliers.detail.processedFiles;
@@ -289,6 +291,21 @@ export function SupplierFilesTab({ supplierId, supplierName }: SupplierFilesTabP
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 shrink-0">
+                          {file.fileUrl && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                window.open(
+                                  `/api/reports/supplier-files/${file.id}/download`,
+                                  "_blank"
+                                )
+                              }
+                              title="הורד קובץ"
+                            >
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          )}
                           {file.processingStatus === "needs_review" && (
                             <Link href={`/admin/supplier-files/review/${file.id}`}>
                               <Button variant="outline" size="sm">
