@@ -6,9 +6,9 @@ import { emailLog } from "@/db/schema";
 import { sendDirectEmail } from "@/lib/email/service";
 import { MonthlyUploadReminderEmail } from "@/emails/monthly-upload-reminder";
 import { startCronLog } from "@/lib/cron-logger";
-import { isFirstWorkdayOfMonth } from "@/lib/israel-workday";
+import { isIsraelWorkday } from "@/lib/israel-workday";
 
-const RECIPIENT_EMAIL = "reut32100@gmail.com";
+const RECIPIENT_EMAIL = "hadas@latableg.com";
 const ENTITY_TYPE = "monthly_upload_reminder";
 
 const HEBREW_MONTHS = [
@@ -78,16 +78,21 @@ async function handle(request: NextRequest) {
   const cronLog = dryRun ? null : await startCronLog("monthly-upload-reminder");
 
   try {
-    if (!force && !isFirstWorkdayOfMonth(now)) {
+    // Catch-up policy: send on the first workday of the month that the cron
+    // actually fires on, not strictly the calendar's first workday. The
+    // alreadySentThisMonth dedup guarantees a single send per month even
+    // when Vercel fires the cron on multiple days. Skip non-workdays so the
+    // reminder doesn't land in Hadas's inbox over the weekend.
+    if (!force && !isIsraelWorkday(now)) {
       await cronLog?.complete({
         emailsSent: 0,
         totalSkipped: 1,
-        summary: { reason: "not_first_workday", date: now.toISOString(), monthKey },
+        summary: { reason: "not_workday", date: now.toISOString(), monthKey },
       });
       return NextResponse.json({
         success: true,
         skipped: true,
-        reason: "not_first_workday",
+        reason: "not_workday",
         monthKey,
       });
     }
@@ -113,7 +118,7 @@ async function handle(request: NextRequest) {
     const periodLabel = previousMonthLabel(now);
 
     const emailVars = {
-      recipient_name: "רעות",
+      recipient_name: "הדס",
       period_label: periodLabel,
       upload_link: uploadLink,
     };
