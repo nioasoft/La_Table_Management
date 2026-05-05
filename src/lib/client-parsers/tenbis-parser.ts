@@ -18,8 +18,14 @@ import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
+//
+// `require` is unavailable in ESM-mode tsx (which the reprocess scripts use).
+// Use `createRequire(import.meta.url)` so this module loads cleanly under
+// both Next.js (CJS-via-bundler) and tsx ESM. See memory:
+// gotcha-inbound-email-pipeline (pdf-parse + tsx ESM).
+import { createRequire } from "node:module";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
 
 /**
  * Strip an HTML body to plain text using the same conservative rules

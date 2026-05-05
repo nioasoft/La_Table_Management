@@ -230,16 +230,40 @@ export function combinedSimilarity(str1: string, str2: string): number {
 // ============================================================================
 
 /**
+ * Latin → Hebrew brand-token normalisation.
+ *
+ * Some upstream sources (Pluxee/Cibus body reports, occasional Wolt
+ * filenames) write the brand name in Latin while our franchisee aliases
+ * are stored in Hebrew. Without this mapping, `bag-of-tokens` fails for
+ * inputs like "Vinni - חיפה" because none of the active aliases for
+ * "פט ויני עזריאלי חיפה" use the Latin spelling — the matcher falls
+ * back to fuzzy similarity and routes the report to "ויני חדרה"
+ * instead. That is exactly the misroute Reut reported on 2026-05-05.
+ *
+ * Rather than maintain Latin spellings on every franchisee row, we
+ * rewrite known brand tokens at normalisation time.
+ */
+const LATIN_TO_HEBREW_BRAND_TOKENS: Record<string, string> = {
+  vinni: "ויני",
+  vinny: "ויני",
+  natanzon: "נתנזון",
+  kingkong: "קינגקונג",
+  // (No mapping for "wolt" / "haat" / "tenbis" / "cibus" — those are
+  // client identifiers, not franchisee brands.)
+};
+
+/**
  * Normalize a name for comparison
  * - Convert to lowercase
  * - Remove extra whitespace
  * - Remove common punctuation
  * - Normalize Hebrew characters
+ * - Map known Latin brand tokens to their Hebrew equivalents
  */
 export function normalizeName(name: string): string {
   if (!name) return "";
 
-  return name
+  const normalised = name
     .toLowerCase()
     .trim()
     // Remove common punctuation
@@ -247,6 +271,13 @@ export function normalizeName(name: string): string {
     // Normalize whitespace
     .replace(/\s+/g, " ")
     .trim();
+
+  if (!normalised) return "";
+
+  return normalised
+    .split(" ")
+    .map((token) => LATIN_TO_HEBREW_BRAND_TOKENS[token] ?? token)
+    .join(" ");
 }
 
 /**

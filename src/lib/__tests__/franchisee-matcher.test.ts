@@ -18,7 +18,7 @@
  * contiguous pass catches this permutation.
  */
 import { describe, it, expect } from "vitest";
-import { matchFranchiseeName } from "../franchisee-matcher";
+import { matchFranchiseeName, normalizeName } from "../franchisee-matcher";
 import type { Franchisee } from "@/db/schema";
 
 // Minimal fixture covering the "shared ויני" family that actually
@@ -147,5 +147,29 @@ describe("matchFranchiseeName — Wolt invoice scrambled-token regression", () =
     if (result.matchedFranchisee) {
       expect(result.matchedOn).not.toMatch(/^bag-alias:/);
     }
+  });
+});
+
+describe("Latin → Hebrew brand-token normalisation", () => {
+  it("rewrites the Latin 'Vinni' brand token to its Hebrew equivalent", () => {
+    expect(normalizeName("Vinni - חיפה")).toContain("ויני");
+    expect(normalizeName("VINNI רגבה")).toContain("ויני");
+  });
+
+  it('routes Pluxee "Vinni - חיפה" body extract to Pat Vini Azrieli Haifa, NOT Vini Hadera (production bug 2026-05-05)', () => {
+    // Real-world string Cibus body parser extracts from Pluxee reports for
+    // the Haifa branch. Before the brand-token mapping was added the
+    // matcher fuzzy-routed this to Vini Hadera and corrupted reconciliation.
+    const result = matchFranchiseeName("Vinni - חיפה", VINNI_FAMILY, {
+      minConfidence: 0.6,
+    });
+    expect(result.matchedFranchisee?.id).toBe("vinni-haifa");
+  });
+
+  it('routes Pluxee "VINNI - רגבה" to Vini Regba (sanity check)', () => {
+    const result = matchFranchiseeName("VINNI - רגבה", VINNI_FAMILY, {
+      minConfidence: 0.6,
+    });
+    expect(result.matchedFranchisee?.id).toBe("vinni-regba");
   });
 });
