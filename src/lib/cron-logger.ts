@@ -9,7 +9,8 @@ export type CronJobName =
   | "upload-reminders"
   | "franchisee-reminders"
   | "bkmv-requests"
-  | "monthly-upload-reminder";
+  | "monthly-upload-reminder"
+  | "email-pipeline-health";
 
 export type CronTriggerType = "cron" | "manual";
 

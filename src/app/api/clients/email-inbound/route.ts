@@ -280,6 +280,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, error: msg });
     }
 
+    // Capture diagnostics from every inbound email — not just on the
+    // "no attachments" failure path. Without this the May 2026 outage
+    // accumulated 30+ failed gmail_sync_log rows where we couldn't see
+    // what the email body actually looked like, and had to re-fetch
+    // each one via the Resend API to diagnose. Now `body_excerpt` and
+    // `raw_attachments` are always present, so the Cron Monitor admin
+    // tab is enough to spot a vendor format change same-day.
+    {
+      const body = email.html || email.text || "";
+      if (body) {
+        diagnostics.bodyExcerpt = body.length > 8000 ? body.slice(0, 8000) : body;
+      }
+      diagnostics.rawAttachmentCount = email.attachments.length;
+      diagnostics.rawAttachments = email.attachments.map((a) => ({
+        filename: a.filename,
+        contentType: a.contentType,
+        size: a.size,
+      }));
+    }
+
     // ─── Step 5: Resolve period ────────────────────────────────────────
     const period = resolvePeriod(subject, email.createdAt);
 
@@ -374,17 +394,8 @@ export async function POST(request: NextRequest) {
       }
     } else {
       // ── Attachment-based client ──
-
-      // Capture every raw attachment into diagnostics — written to
-      // gmail_sync_log.raw_attachments so we can see what Resend handed us
-      // BEFORE any filtering, even when nothing makes it through to a
-      // client_document record.
-      diagnostics.rawAttachmentCount = email.attachments.length;
-      diagnostics.rawAttachments = email.attachments.map((a) => ({
-        filename: a.filename,
-        contentType: a.contentType,
-        size: a.size,
-      }));
+      // raw_attachment_count + raw_attachments + body_excerpt are populated
+      // earlier, right after fetchInboundEmail succeeds.
 
       // Log ALL raw attachments so we can diagnose filter/selection issues.
       console.log(
