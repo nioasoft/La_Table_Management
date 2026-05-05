@@ -124,19 +124,36 @@ async function extractAndDownloadInvoiceOneLinks(
   return out;
 }
 
-async function processOne(emailId: string) {
+/** Clients whose `client_report` arrives in the email body, not attached. */
+const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
+
+export interface ReprocessResult {
+  success: boolean;
+  documentsCreated: number;
+  duplicatesSkipped: number;
+  errors: string[];
+}
+
+export async function reprocessEmail(emailId: string): Promise<ReprocessResult> {
+  const result: ReprocessResult = {
+    success: false,
+    documentsCreated: 0,
+    duplicatesSkipped: 0,
+    errors: [],
+  };
+
   console.log(`\n=== ${emailId} ===`);
   const email = await fetchInboundEmail(emailId);
   if (!email) {
-    console.error("  could not fetch from Resend");
-    return;
+    result.errors.push("could not fetch from Resend");
+    return result;
   }
   console.log(`  from=${email.from}  subject="${email.subject}"`);
 
   const ic = await identifyClientFromEmail(email.to, email.from, email.subject);
   if (!ic) {
-    console.error("  client not identified");
-    return;
+    result.errors.push("client not identified");
+    return result;
   }
   console.log(`  client=${ic.clientCode} (by ${ic.identifiedBy})`);
 
@@ -149,7 +166,67 @@ async function processOne(emailId: string) {
     .from(franchisee)
     .where(eq(franchisee.isActive, true))) as Franchisee[];
 
-  // Mirror the attachment-based branch only — that's where these failed.
+  // Body-based path: matches route.ts. Used for CIBUS report emails and
+  // for the post-2026-05-05 TENBIS HTML report shape.
+  const tenbisInlineHtmlReport =
+    ic.clientCode.toUpperCase() === "TENBIS" &&
+    documentType === "client_report" &&
+    email.attachments.length === 0 &&
+    /למסעדת|פירוט\s+עסקאות|תן\s+ביס/.test(email.html || email.text || "");
+
+  const isBodyBased =
+    (BODY_BASED_CLIENTS.has(ic.clientCode.toUpperCase()) &&
+      documentType !== "commission_invoice") ||
+    tenbisInlineHtmlReport;
+
+  if (isBodyBased) {
+    const content = email.html || email.text || "";
+    if (!content) {
+      result.errors.push("body-based but no HTML/text body");
+      return result;
+    }
+    const buf = Buffer.from(content, "utf-8");
+    const mimeType = email.html ? "text/html" : "text/plain";
+    const fr = await resolveFranchisee(
+      buf,
+      mimeType,
+      ic.parserCode,
+      email.subject,
+      allFranchisees,
+      undefined,
+      documentType,
+    );
+    if (!fr) {
+      result.errors.push("franchisee not resolved from body");
+      return result;
+    }
+    const r = await processClientDocument({
+      buffer: buf,
+      fileName: `email-${emailId}.${email.html ? "html" : "txt"}`,
+      mimeType,
+      clientId: ic.clientId,
+      parserCode: ic.parserCode,
+      franchiseeId: fr.franchiseeId,
+      periodMonth: period.month,
+      periodYear: period.year,
+      documentType,
+      source: "gmail_fetch",
+      gmailMessageId: emailId,
+    });
+    if (r.skippedDuplicate) {
+      result.duplicatesSkipped++;
+      console.log(`  body → skipped (duplicate) for ${fr.franchiseeName}`);
+    } else if (r.success) {
+      result.documentsCreated++;
+      console.log(`  body → CREATED for ${fr.franchiseeName}`);
+    } else {
+      result.errors.push(`body → FAILED: ${r.error}`);
+    }
+    result.success = result.errors.length === 0;
+    return result;
+  }
+
+  // Attachment-based path
   let buffers: Array<{ buffer: Buffer; fileName: string; mimeType: string }> = [];
 
   for (const a of email.attachments) {
@@ -168,8 +245,8 @@ async function processOne(emailId: string) {
   }
 
   if (buffers.length === 0) {
-    console.error("  no PDFs found via attachments or links");
-    return;
+    result.errors.push("no PDFs found via attachments or links");
+    return result;
   }
 
   for (const b of buffers) {
@@ -180,10 +257,10 @@ async function processOne(emailId: string) {
       email.subject,
       allFranchisees,
       b.fileName,
-      documentType
+      documentType,
     );
     if (!fr) {
-      console.error(`  franchisee not resolved for ${b.fileName}`);
+      result.errors.push(`franchisee not resolved for ${b.fileName}`);
       continue;
     }
     const r = await processClientDocument({
@@ -200,22 +277,34 @@ async function processOne(emailId: string) {
       gmailMessageId: emailId,
     });
     if (r.skippedDuplicate) {
+      result.duplicatesSkipped++;
       console.log(`  ${b.fileName} → skipped (duplicate)`);
     } else if (r.success) {
+      result.documentsCreated++;
       console.log(`  ${b.fileName} → CREATED for ${fr.franchiseeName}`);
     } else {
-      console.error(`  ${b.fileName} → FAILED: ${r.error}`);
+      result.errors.push(`${b.fileName} → FAILED: ${r.error}`);
     }
   }
+
+  result.success = result.documentsCreated > 0 || result.duplicatesSkipped > 0;
+  return result;
 }
 
 async function main() {
+  // Skip CLI driver when imported as a library (`reprocess-failed-inbound.ts`).
+  const isDirectCli =
+    typeof require !== "undefined" &&
+    typeof require.main !== "undefined" &&
+    require.main === module;
+  if (!isDirectCli) return;
+
   const ids = process.argv.slice(2);
   if (ids.length === 0) {
     console.error("Usage: npx tsx scripts/reprocess-inbound-email.ts <emailId> [<emailId> ...]");
     process.exit(1);
   }
-  for (const id of ids) await processOne(id);
+  for (const id of ids) await reprocessEmail(id);
 }
 
 main()
@@ -223,4 +312,8 @@ main()
     console.error("Fatal:", err);
     process.exit(1);
   })
-  .finally(() => process.exit(0));
+  .finally(() => {
+    if (typeof require !== "undefined" && require.main === module) {
+      process.exit(0);
+    }
+  });
