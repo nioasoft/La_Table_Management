@@ -25,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import {
   Calendar,
   RefreshCw,
@@ -36,6 +37,7 @@ import {
   Store,
   Mail,
   Users,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { he } from "@/lib/translations/he";
@@ -91,6 +93,7 @@ export default function SchedulesTab() {
   const queryClient = useQueryClient();
   const [typeFilter, setTypeFilter] = useState<"all" | "supplier" | "franchisee">("all");
   const [frequencyFilter, setFrequencyFilter] = useState<"all" | SettlementFrequency>("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   // Fetch schedules
   const { data, isLoading, refetch, isFetching } = useQuery<ScheduleResponse>({
@@ -150,6 +153,18 @@ export default function SchedulesTab() {
 
   const schedules = data?.schedules || [];
   const stats = data?.stats;
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredSchedules = normalizedSearch
+    ? schedules.filter((s) => {
+        return (
+          s.name.toLowerCase().includes(normalizedSearch) ||
+          s.code.toLowerCase().includes(normalizedSearch) ||
+          (s.email?.toLowerCase().includes(normalizedSearch) ?? false) ||
+          (s.contactName?.toLowerCase().includes(normalizedSearch) ?? false)
+        );
+      })
+    : schedules;
 
   if (isLoading) {
     return (
@@ -214,6 +229,17 @@ export default function SchedulesTab() {
 
           <div className="flex items-center gap-2 flex-row-reverse">
             <span className="text-sm text-muted-foreground">סינון:</span>
+            <div className="relative">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder={t.filters.searchPlaceholder}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-[240px] pe-9"
+                dir="rtl"
+              />
+            </div>
             <Select
               value={typeFilter}
               onValueChange={(value) => setTypeFilter(value as "all" | "supplier" | "franchisee")}
@@ -263,10 +289,10 @@ export default function SchedulesTab() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {schedules.length === 0 ? (
+          {filteredSchedules.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Calendar className="h-12 w-12 mx-auto mb-4 opacity-20" />
-              <p>{t.emptyState}</p>
+              <p>{normalizedSearch ? t.noSearchResults : t.emptyState}</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -283,7 +309,7 @@ export default function SchedulesTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {schedules.map((schedule, index) => (
+                  {filteredSchedules.map((schedule, index) => (
                     <TableRow
                       key={schedule.id}
                       className={cn(

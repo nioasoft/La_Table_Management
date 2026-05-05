@@ -2348,6 +2348,7 @@ export const he = {
         franchisees: "זכיינים",
         allFrequencies: "כל התדירויות",
         frequency: "תדירות",
+        searchPlaceholder: "חפש לפי שם, קוד או אימייל...",
       },
 
       frequencies: {
@@ -2378,6 +2379,7 @@ export const he = {
       },
 
       emptyState: "לא נמצאו לוחות זמנים",
+      noSearchResults: "לא נמצאו תוצאות לחיפוש",
 
       errors: {
         failedToFetch: "שגיאה בטעינת לוחות הזמנים",
