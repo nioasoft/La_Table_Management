@@ -769,3 +769,38 @@ export async function markFileRequestAsSubmitted(
     submittedAt: new Date(),
   });
 }
+
+/**
+ * Mark the most recent open BKMV file_request for a franchisee as submitted.
+ * Used by the admin BKMV upload flow (no upload_link involved) so that
+ * reminder/escalation crons stop pinging once the operations team has
+ * uploaded the file out-of-band.
+ *
+ * Only updates rows currently in "sent" or "in_progress" status. Skips
+ * already-submitted/cancelled/expired requests.
+ */
+export async function markFranchiseeBkmvRequestSubmitted(
+  franchiseeId: string,
+  submittedAt: Date = new Date()
+): Promise<FileRequest | null> {
+  const results = await database
+    .select()
+    .from(fileRequest)
+    .where(
+      and(
+        eq(fileRequest.entityType, "franchisee"),
+        eq(fileRequest.entityId, franchiseeId),
+        eq(fileRequest.documentType, "bkmv"),
+        or(
+          eq(fileRequest.status, "sent"),
+          eq(fileRequest.status, "in_progress")
+        )
+      )
+    )
+    .orderBy(desc(fileRequest.createdAt))
+    .limit(1);
+
+  if (results.length === 0) return null;
+
+  return updateFileRequestStatus(results[0].id, "submitted", { submittedAt });
+}

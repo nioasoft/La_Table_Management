@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/db";
-import { fileRequest, contact, type FileRequest } from "@/db/schema";
-import { eq, and, lt } from "drizzle-orm";
-import { sendFileRequestReminder, updateFileRequest } from "@/data-access/fileRequests";
+import { fileRequest, uploadedFile, contact, type FileRequest } from "@/db/schema";
+import { eq, and, gte } from "drizzle-orm";
+import {
+  sendFileRequestReminder,
+  updateFileRequest,
+  updateFileRequestStatus,
+} from "@/data-access/fileRequests";
 import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AdminEscalationEmail } from "@/emails/admin-escalation";
 import { BkmvOwnerEscalationEmail } from "@/emails/bkmv-owner-escalation";
@@ -36,8 +40,70 @@ interface ReminderResult {
   processed: number;
   escalated: number;
   failed: number;
+  autoClosed: number;
   errors: string[];
   requests: string[];
+}
+
+/**
+ * Defense-in-depth: detect file_requests whose file is actually already on
+ * disk. Two upload paths exist:
+ *  - Public link: uploaded_file.upload_link_id == fileRequest.upload_link_id
+ *  - Admin BKMV upload: uploaded_file.franchisee_id == fileRequest.entity_id
+ *    (no upload_link), only counts uploads created on/after the file_request
+ *    so we don't false-match an upload from a previous cycle.
+ *
+ * If a match exists we self-heal by closing the file_request to "submitted"
+ * and skipping the reminder. This guards against the historical bug where
+ * markFileRequestAsSubmitted was never called on upload completion.
+ */
+async function findUploadedFileForRequest(
+  req: FileRequest
+): Promise<Date | null> {
+  if (req.uploadLinkId) {
+    const linkMatches = await database
+      .select({ createdAt: uploadedFile.createdAt })
+      .from(uploadedFile)
+      .where(eq(uploadedFile.uploadLinkId, req.uploadLinkId))
+      .orderBy(uploadedFile.createdAt)
+      .limit(1);
+    if (linkMatches.length > 0) return linkMatches[0].createdAt;
+  }
+
+  const meta = req.metadata as Record<string, unknown> | null;
+  const isBkmv = req.entityType === "franchisee" && meta?.requestType === "bkmv";
+  if (isBkmv && req.entityId && req.createdAt) {
+    // Parse the cycle start (stored as "DD/MM/YYYY" in metadata) so we don't
+    // accept an admin upload for a previous fiscal year.
+    const cycleStart = parseDdMmYyyy(meta?.startDate as string | undefined);
+
+    const conditions = [
+      eq(uploadedFile.franchiseeId, req.entityId),
+      gte(uploadedFile.createdAt, req.createdAt),
+    ];
+    if (cycleStart) {
+      conditions.push(gte(uploadedFile.periodStartDate, cycleStart));
+    }
+
+    const adminMatches = await database
+      .select({ createdAt: uploadedFile.createdAt })
+      .from(uploadedFile)
+      .where(and(...conditions))
+      .orderBy(uploadedFile.createdAt)
+      .limit(1);
+    if (adminMatches.length > 0) return adminMatches[0].createdAt;
+  }
+
+  return null;
+}
+
+function parseDdMmYyyy(value: string | undefined): string | null {
+  if (!value) return null;
+  const parts = value.split("/");
+  if (parts.length !== 3) return null;
+  const [dd, mm, yyyy] = parts;
+  if (!dd || !mm || !yyyy) return null;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
 }
 
 // Reminder config per entity type
@@ -189,6 +255,7 @@ async function processReminders(dryRun: boolean): Promise<ReminderResult> {
     processed: 0,
     escalated: 0,
     failed: 0,
+    autoClosed: 0,
     errors: [],
     requests: [],
   };
@@ -198,6 +265,20 @@ async function processReminders(dryRun: boolean): Promise<ReminderResult> {
 
   for (const req of allRequests) {
     try {
+      // Self-heal: if the file already arrived (public link or admin upload),
+      // close the request and skip the reminder.
+      const uploadedAt = await findUploadedFileForRequest(req);
+      if (uploadedAt) {
+        if (!dryRun) {
+          await updateFileRequestStatus(req.id, "submitted", {
+            submittedAt: uploadedAt,
+          });
+        }
+        results.autoClosed++;
+        results.requests.push(`${req.id} (auto-closed: file already uploaded)`);
+        continue;
+      }
+
       const config = getReminderConfig(req);
       const reminders = (req.remindersSent || []) as string[];
       const reminderCount = reminders.length;
@@ -321,6 +402,7 @@ export async function POST(request: NextRequest) {
       emailsSent: reminderResults.processed + reminderResults.escalated,
       emailsFailed: reminderResults.failed,
       totalProcessed: reminderResults.processed,
+      totalSkipped: reminderResults.autoClosed,
       totalFailed: reminderResults.failed,
       summary: reminderResults as unknown as Record<string, unknown>,
     }, reminderResults.errors.length > 0 ? reminderResults.errors.join("; ") : undefined);

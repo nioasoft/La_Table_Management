@@ -9,6 +9,7 @@ import {
   deleteUploadedFile,
 } from "@/data-access/uploadLinks";
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
+import { markFileRequestAsSubmitted } from "@/data-access/fileRequests";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
 import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
@@ -327,6 +328,9 @@ export async function POST(
     const newFilesCount = currentFilesCount + 1;
     if (newFilesCount >= link.maxFiles) {
       await markUploadLinkAsUsed(link.id, uploaderEmail || undefined);
+      // Mark the underlying file_request as submitted so reminder crons stop
+      // pinging accountants/owners after the file has been received.
+      await markFileRequestAsSubmitted(link.id);
     }
 
     // Automatic BKMVDATA processing for franchisee uploads
