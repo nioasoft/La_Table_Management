@@ -11,6 +11,7 @@ import {
   reviewSupplierFile,
 } from "@/data-access/supplier-file-uploads";
 import { getSupplierById } from "@/data-access/suppliers";
+import { snapPeriodToFrequency } from "@/lib/settlement-periods";
 import type { SupplierFileProcessingResult } from "@/db/schema";
 
 /**
@@ -186,6 +187,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Snap a sub-frequency upload to the supplier's frequency window.
+    // Example: a quarterly supplier whose franchisees ship one file per month —
+    // the user uploads with the month's range (Apr 1–Apr 30), but the
+    // completeness dashboard keys by the full quarter (Apr 1–Jun 30).
+    // Without snap, the file becomes invisible to the dashboard.
+    let effectivePeriodStart = periodStartDate as string;
+    let effectivePeriodEnd = periodEndDate as string;
+    let periodSnapped = false;
+    if (supplier.settlementFrequency && periodStartDate && periodEndDate) {
+      const snap = snapPeriodToFrequency(
+        periodStartDate,
+        periodEndDate,
+        supplier.settlementFrequency,
+        supplier.fiscalYearStartMonth ?? 1
+      );
+      effectivePeriodStart = snap.startDate;
+      effectivePeriodEnd = snap.endDate;
+      periodSnapped = snap.snapped;
+    }
+
     // Check for existing file for this period
     const isMultiFile = (supplier.fileMapping?.maxUploadFiles ?? 1) > 1;
     let replacedFileId: string | undefined;
@@ -200,8 +221,8 @@ export async function POST(request: NextRequest) {
       if (matchedFranchiseeIds.length > 0) {
         const duplicates = await findDuplicateSupplierFiles(
           supplierId,
-          periodStartDate,
-          periodEndDate,
+          effectivePeriodStart,
+          effectivePeriodEnd,
           matchedFranchiseeIds
         );
 
@@ -243,8 +264,8 @@ export async function POST(request: NextRequest) {
       // Single-file supplier: existing behavior
       const existingFile = await getSupplierFileByPeriod(
         supplierId,
-        new Date(periodStartDate),
-        new Date(periodEndDate)
+        new Date(effectivePeriodStart),
+        new Date(effectivePeriodEnd)
       );
 
       if (existingFile) {
@@ -293,8 +314,8 @@ export async function POST(request: NextRequest) {
       fileSize: fileSize || 0,
       processingStatus,
       processingResult: processingResult as SupplierFileProcessingResult,
-      periodStartDate: periodStartDate,
-      periodEndDate: periodEndDate,
+      periodStartDate: effectivePeriodStart,
+      periodEndDate: effectivePeriodEnd,
       createdBy: user.id,
     });
 
@@ -312,6 +333,9 @@ export async function POST(request: NextRequest) {
           ? "הקובץ אושר אוטומטית - כל הזכיינים מותאמים"
           : "הקובץ נוסף לתור הבדיקה",
       replacedFile: replacedFileId,
+      periodSnapped,
+      effectivePeriodStart,
+      effectivePeriodEnd,
     });
   } catch (error) {
     console.error("Error creating supplier file upload:", error);

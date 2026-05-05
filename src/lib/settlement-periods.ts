@@ -512,6 +512,102 @@ export function getAvailablePeriodsForSupplier(
 }
 
 /**
+ * Parse a YYYY-MM-DD string into a local-time Date.
+ * Avoids the `new Date("YYYY-MM-DD")` UTC-midnight pitfall that shifts
+ * the calendar day in Israel (UTC+2/3).
+ */
+function parseLocalDateString(s: string): Date {
+  const [y, m, d] = s.split("-").map((n) => parseInt(n, 10));
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Snap an arbitrary [start, end] file-period to the supplier's settlement
+ * frequency window that contains `start`.
+ *
+ * Use case: a quarterly supplier whose franchisees ship one file per month.
+ * The user uploads with the month's date range; we want the supplier_file_upload
+ * row tagged with the *containing quarter* so the completeness dashboard
+ * (which keys by frequency-aligned period) finds the file.
+ *
+ * If the input span already covers (or exceeds) the frequency window, returns
+ * the input unchanged. Annual fiscal years are honoured via `fiscalYearStartMonth`
+ * (1=January default).
+ *
+ * Returns the snapped period and a `snapped` flag indicating whether a change
+ * was applied — callers can surface this to the user.
+ */
+export function snapPeriodToFrequency(
+  startDate: string,
+  endDate: string,
+  frequency: SettlementPeriodType | string,
+  fiscalYearStartMonth: number = 1
+): { startDate: string; endDate: string; snapped: boolean } {
+  const start = parseLocalDateString(startDate);
+  const end = parseLocalDateString(endDate);
+  const daySpan = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Don't snap when the input already meets/exceeds the frequency window.
+  // Thresholds are conservative — a few days under the window still snap.
+  const minSpanForFrequency: Record<string, number> = {
+    weekly: 5,
+    bi_weekly: 11,
+    monthly: 25,
+    quarterly: 80,
+    semi_annual: 170,
+    annual: 350,
+  };
+  const threshold = minSpanForFrequency[frequency];
+  if (!threshold || daySpan >= threshold) {
+    return { startDate, endDate, snapped: false };
+  }
+
+  let snappedStart: Date;
+  let snappedEnd: Date;
+
+  switch (frequency) {
+    case "monthly": {
+      snappedStart = new Date(start.getFullYear(), start.getMonth(), 1);
+      snappedEnd = new Date(start.getFullYear(), start.getMonth() + 1, 0);
+      break;
+    }
+    case "quarterly": {
+      const q = Math.floor(start.getMonth() / 3);
+      snappedStart = new Date(start.getFullYear(), q * 3, 1);
+      snappedEnd = new Date(start.getFullYear(), q * 3 + 3, 0);
+      break;
+    }
+    case "semi_annual": {
+      const halfStartMonth = start.getMonth() < 6 ? 0 : 6;
+      snappedStart = new Date(start.getFullYear(), halfStartMonth, 1);
+      snappedEnd = new Date(start.getFullYear(), halfStartMonth + 6, 0);
+      break;
+    }
+    case "annual": {
+      const fyStartMonth0 = Math.max(0, fiscalYearStartMonth - 1);
+      const fyStartYear =
+        start.getMonth() >= fyStartMonth0
+          ? start.getFullYear()
+          : start.getFullYear() - 1;
+      snappedStart = new Date(fyStartYear, fyStartMonth0, 1);
+      snappedEnd = new Date(fyStartYear + 1, fyStartMonth0, 0);
+      break;
+    }
+    default:
+      return { startDate, endDate, snapped: false };
+  }
+
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  return {
+    startDate: fmt(snappedStart),
+    endDate: fmt(snappedEnd),
+    snapped: true,
+  };
+}
+
+/**
  * Format date range for display
  * Handles both Date objects and ISO date strings
  */
