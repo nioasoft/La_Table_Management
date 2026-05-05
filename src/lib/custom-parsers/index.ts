@@ -37,6 +37,7 @@ export { parseDageiHakibbutzimFile } from "./dagei-hakibbutzim-parser";
 export { parseMakatiFile } from "./makati-parser";
 export { parseTnuvaFile } from "./tnuva-parser";
 export { parseYekevLuriaFile } from "./yekev-luria-parser";
+export { parseYevuleiGourmetFile } from "./yevulei-gourmet-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
@@ -178,6 +179,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "לוריא": async (buffer) => {
     const { parseYekevLuriaFile } = await import("./yekev-luria-parser");
     return parseYekevLuriaFile(buffer);
+  },
+  YEVULEI_GOURMET: async (buffer, vatRate) => {
+    const { parseYevuleiGourmetFile } = await import("./yevulei-gourmet-parser");
+    return parseYevuleiGourmetFile(buffer, vatRate);
   },
 };
 
