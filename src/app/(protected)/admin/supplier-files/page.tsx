@@ -166,6 +166,17 @@ interface ProcessingResult {
   storageUploadFailed?: boolean;
 }
 
+/**
+ * Format a YYYY-MM-DD pair as a Hebrew DD/MM/YYYY range.
+ */
+function formatPeriodRangeHe(start: string, end: string): string {
+  const fmt = (s: string) => {
+    const [y, m, d] = s.split("-");
+    return `${d}/${m}/${y}`;
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 export default function SupplierFilesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -466,6 +477,14 @@ export default function SupplierFilesPage() {
       queryClient.invalidateQueries({ queryKey: ["supplier-file-uploads"] });
 
       toast.success(data.message);
+      if (data.periodSnapped && data.effectivePeriodStart && data.effectivePeriodEnd) {
+        toast.info(
+          `התקופה הותאמה לתדירות ההתחשבנות של הספק: ${formatPeriodRangeHe(
+            data.effectivePeriodStart,
+            data.effectivePeriodEnd
+          )}`
+        );
+      }
       return data.file.id;
     } catch (error) {
       console.error("Failed to save file to review queue:", error);
@@ -500,7 +519,7 @@ export default function SupplierFilesPage() {
     supplierId: string,
     periodKey: string,
     overwrite: boolean = false
-  ): Promise<{ success: boolean; result?: ProcessingResult; fileId?: string; error?: string; needsOverwrite?: boolean }> => {
+  ): Promise<{ success: boolean; result?: ProcessingResult; fileId?: string; error?: string; needsOverwrite?: boolean; periodSnapped?: boolean; effectivePeriodStart?: string; effectivePeriodEnd?: string }> => {
     let processedFile = file;
 
     // Convert XLS to XLSX if needed (Vercel WAF blocks XLS files)
@@ -613,7 +632,14 @@ export default function SupplierFilesPage() {
     }
 
     const saveData = await saveResponse.json();
-    return { success: true, result: processingResult, fileId: saveData.file.id };
+    return {
+      success: true,
+      result: processingResult,
+      fileId: saveData.file.id,
+      periodSnapped: saveData.periodSnapped,
+      effectivePeriodStart: saveData.effectivePeriodStart,
+      effectivePeriodEnd: saveData.effectivePeriodEnd,
+    };
   }, []);
 
   // Handle file upload - supports single and multi-file
@@ -686,6 +712,7 @@ export default function SupplierFilesPage() {
 
     let hasOverwritePrompt = false;
     let shouldOverwriteAll = overwriteAllDuplicates;
+    let snappedRange: { start: string; end: string } | null = null;
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
@@ -711,6 +738,17 @@ export default function SupplierFilesPage() {
       if (result.success) {
         progress.succeeded++;
         progress.results.push({ fileName: file.name, success: true, fileId: result.fileId });
+        if (
+          !snappedRange &&
+          result.periodSnapped &&
+          result.effectivePeriodStart &&
+          result.effectivePeriodEnd
+        ) {
+          snappedRange = {
+            start: result.effectivePeriodStart,
+            end: result.effectivePeriodEnd,
+          };
+        }
       } else {
         progress.failed++;
         progress.results.push({ fileName: file.name, success: false, error: result.error });
@@ -725,6 +763,12 @@ export default function SupplierFilesPage() {
       toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
     } else {
       toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    if (snappedRange) {
+      toast.info(
+        `התקופה הותאמה לתדירות ההתחשבנות של הספק: ${formatPeriodRangeHe(snappedRange.start, snappedRange.end)}`
+      );
     }
 
     // Invalidate queries to update history
@@ -844,6 +888,7 @@ export default function SupplierFilesPage() {
     setMultiFileProgress({ ...progress });
 
     let shouldOverwriteAll = false;
+    let snappedRange: { start: string; end: string } | null = null;
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
@@ -863,6 +908,17 @@ export default function SupplierFilesPage() {
       if (result.success) {
         progress.succeeded++;
         progress.results.push({ fileName: file.name, success: true, fileId: result.fileId });
+        if (
+          !snappedRange &&
+          result.periodSnapped &&
+          result.effectivePeriodStart &&
+          result.effectivePeriodEnd
+        ) {
+          snappedRange = {
+            start: result.effectivePeriodStart,
+            end: result.effectivePeriodEnd,
+          };
+        }
       } else {
         progress.failed++;
         progress.results.push({ fileName: file.name, success: false, error: result.error });
@@ -876,6 +932,12 @@ export default function SupplierFilesPage() {
       toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
     } else {
       toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    if (snappedRange) {
+      toast.info(
+        `התקופה הותאמה לתדירות ההתחשבנות של הספק: ${formatPeriodRangeHe(snappedRange.start, snappedRange.end)}`
+      );
     }
 
     queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
