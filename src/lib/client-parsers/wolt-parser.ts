@@ -25,21 +25,143 @@ import { extractAllocationNumber } from "./extract-allocation-number";
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 /**
- * Quick content check: is this buffer the ezcount "restaurant → Wolt" sales
- * invoice (File B), i.e. has `לכבוד Wolt Enterprises` near the recipient block?
+ * Wolt ezcount attachment classification.
  *
- * Used by the email-inbound selector to pick the right attachment when Wolt
- * sends multiple ezcount PDFs (File A = Wolt's commission invoice to the
- * restaurant; File B = restaurant's sales invoice to Wolt) with filenames
- * that differ only by the trailing hash.
+ * Two ezcount PDFs commonly arrive in the same email and look almost
+ * identical to a filename comparator:
+ *   File A — Wolt's commission invoice to the franchisee (commission_invoice)
+ *   File B — franchisee's sales invoice to Wolt Enterprises (client_report)
+ *
+ * The original detector was a single brittle regex
+ *   /לכבוד[\s\S]{0,80}?Wolt\s+Enterprises/
+ * which broke whenever pdf-parse reordered the lines or the recipient block
+ * was rendered more than 80 chars from "לכבוד". When detection mis-fired,
+ * `filterAttachments` silently dropped one of the two attachments.
+ *
+ * Replace with a small content-scoring function that:
+ *   • adds points for each independent File-B signal (English + Hebrew
+ *     variants of the recipient, "לכבוד" proximity, filename markers),
+ *   • returns BOTH a verdict (`fileB` / `fileA` / `unknown`) and the score
+ *     so callers can mark ambiguous cases for review instead of dropping.
  */
-export async function isWoltEzcountFileB(buffer: Buffer): Promise<boolean> {
+type WoltEzcountClass = "fileB" | "fileA" | "unknown";
+
+export interface WoltEzcountScore {
+  verdict: WoltEzcountClass;
+  fileBScore: number;
+  fileAScore: number;
+  signals: readonly string[];
+}
+
+const WOLT_RECIPIENT_PATTERNS = [
+  /Wolt\s+Enterprises/i,
+  /Wolt\s+Israel/i,
+  /וולט\s+אנטרפרייזס/,
+  /וולט\s+ישראל/,
+  /וולט\s+בע"?מ/,
+];
+
+export function scoreWoltEzcountAttachment(
+  text: string,
+  filename: string | undefined,
+): WoltEzcountScore {
+  const signals: string[] = [];
+  let fileBScore = 0;
+  let fileAScore = 0;
+
+  // Recipient block — strongest File B signal
+  for (const pattern of WOLT_RECIPIENT_PATTERNS) {
+    if (pattern.test(text)) {
+      const proximityRe = new RegExp(
+        `לכבוד[\\s\\S]{0,300}?${pattern.source}`,
+        pattern.flags,
+      );
+      if (proximityRe.test(text)) {
+        fileBScore += 3;
+        signals.push(`recipient:${pattern.source}`);
+      } else {
+        // The Wolt token appears but not anywhere near "לכבוד" — could be a
+        // sender block on File A. Half-credit only.
+        fileBScore += 1;
+        signals.push(`recipient-loose:${pattern.source}`);
+      }
+    }
+  }
+
+  // Filename hints — many ezcount/Wolt setups suffix File B with a marker
+  if (filename) {
+    if (/_to_?wolt|sales_to_wolt|to-wolt|לוולט|ל-וולט/i.test(filename)) {
+      fileBScore += 1;
+      signals.push("filename:to-wolt");
+    }
+    if (/from_?wolt|wolt_invoice|commission/i.test(filename)) {
+      fileAScore += 1;
+      signals.push("filename:from-wolt");
+    }
+  }
+
+  // File A markers — Wolt as the issuer (sender block at top, franchisee in "לכבוד")
+  if (
+    /Wolt[\s\S]{0,200}?(?:ע\.מ|ח\.פ)/.test(text) ||
+    /^[\s\S]{0,500}?Wolt\s+Enterprises[\s\S]{0,200}?ח\.פ/.test(text)
+  ) {
+    // Header-region Wolt block but no "לכבוד Wolt" → almost certainly File A
+    if (fileBScore < 3) {
+      fileAScore += 2;
+      signals.push("issuer:wolt-header");
+    }
+  }
+
+  let verdict: WoltEzcountClass = "unknown";
+  if (fileBScore >= 3) {
+    verdict = "fileB";
+  } else if (fileAScore > fileBScore && fileAScore >= 2) {
+    verdict = "fileA";
+  } else if (fileBScore > 0 && fileBScore < 3 && fileAScore === 0) {
+    verdict = "unknown";
+  }
+
+  return { verdict, fileBScore, fileAScore, signals };
+}
+
+/**
+ * Backward-compatible wrapper: returns true when the buffer scores as File B.
+ * Ambiguous content (`unknown` verdict) still returns false so existing
+ * call sites that branch on this boolean are unchanged. New call sites
+ * should prefer scoreWoltEzcountAttachment for the full result.
+ */
+export async function isWoltEzcountFileB(
+  buffer: Buffer,
+  filename?: string,
+): Promise<boolean> {
   try {
     const data = await pdfParse(buffer);
     const text = (data.text as string) ?? "";
-    return /לכבוד[\s\S]{0,80}?Wolt\s+Enterprises/.test(text);
+    return scoreWoltEzcountAttachment(text, filename).verdict === "fileB";
   } catch {
     return false;
+  }
+}
+
+/**
+ * Full classification helper for callers that need to distinguish
+ * "definitely File A" / "definitely File B" / "ambiguous → mark for review".
+ */
+export async function classifyWoltEzcountAttachment(
+  buffer: Buffer,
+  filename?: string,
+): Promise<WoltEzcountScore> {
+  try {
+    const data = await pdfParse(buffer);
+    const text = (data.text as string) ?? "";
+    return scoreWoltEzcountAttachment(text, filename);
+  } catch {
+    return {
+      verdict: "unknown",
+      fileBScore: 0,
+      fileAScore: 0,
+      signals: ["pdf-parse-failed"],
+    };
   }
 }
 

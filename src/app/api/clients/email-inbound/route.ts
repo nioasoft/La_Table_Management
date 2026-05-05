@@ -29,8 +29,12 @@ import {
   updateSyncLogEntry,
 } from "@/data-access/gmail-sync";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
-import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
+import {
+  classifyWoltEzcountAttachment,
+  isWoltEzcountFileB,
+} from "@/lib/client-parsers/wolt-parser";
 import { detectDocumentType } from "@/lib/email/classify-document-type";
+import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -661,6 +665,35 @@ async function resolveFranchisee(
         !UNKNOWN_FRANCHISEE_NAMES.has(parseResult.data.franchiseeName)
       ) {
         extractedName = parseResult.data.franchiseeName;
+
+        // Parent-legal-entity override (e.g. Pat Vini Azrieli → Natanzon
+        // Azrieli Haifa). When the extracted name is a parent legal entity
+        // that issues invoices on behalf of an operating-brand franchisee,
+        // route the document to the operating brand rather than fuzzy-
+        // matching the legal entity. Confirmed by Asaf 2026-04-30 for
+        // Mishlocha invoice 157159 and applies here for the May 2026 Wolt
+        // outage (memory: feedback-franchisee-resolution-rules).
+        const parentOverride = findOperatingBrand(extractedName);
+        if (parentOverride) {
+          const operatingFranchisee = franchisees.find(
+            (f) => f.id === parentOverride.operatingFranchiseeId
+          );
+          if (operatingFranchisee) {
+            console.log(
+              `[email-inbound] Parent-map override: "${extractedName}" → "${parentOverride.operatingFranchiseeName}" (operating brand)`
+            );
+            return {
+              ok: true,
+              franchiseeId: parentOverride.operatingFranchiseeId,
+              franchiseeName: parentOverride.operatingFranchiseeName,
+            };
+          }
+          // Operating-brand franchisee not active — fall through to fuzzy match.
+          console.warn(
+            `[email-inbound] Parent-map matched "${extractedName}" but operating franchisee ${parentOverride.operatingFranchiseeId} is not in the active list — falling back to fuzzy match`
+          );
+        }
+
         const match = matchFranchiseeName(
           extractedName,
           franchisees,
@@ -906,45 +939,66 @@ async function filterAttachments(
     return /^[\u0590-\u05FF][\u0590-\u05FF ]*_(?!_)/.test(a.filename);
   });
 
-  // Peek content of each candidate to split into File A / File B
-  let fileA: Attachment | null = null;
-  let fileB: Attachment | null = null;
-
+  // Score every candidate. With the new content-rich classifier we get a
+  // verdict (`fileA` / `fileB` / `unknown`) plus the underlying scores so
+  // we can pick the BEST File B (highest score, ties broken by order)
+  // and treat the remainder as File A without ever silently dropping a
+  // file — the May 2026 outage was caused by exactly that silent drop.
+  type Scored = {
+    attachment: Attachment;
+    fileBScore: number;
+    fileAScore: number;
+    verdict: "fileA" | "fileB" | "unknown";
+    signals: readonly string[];
+  };
+  const scored: Scored[] = [];
   for (const candidate of ezcountCandidates) {
     const buf = await download(candidate.downloadUrl);
     if (!buf) continue;
-    const isFileB = await isWoltEzcountFileB(buf);
-    if (isFileB && !fileB) {
-      fileB = candidate;
-      console.log(
-        `[email-inbound] Wolt: matched File B (sales invoice to Wolt Enterprises): ${candidate.filename}`
-      );
-    } else if (!isFileB && !fileA) {
-      fileA = candidate;
-      console.log(
-        `[email-inbound] Wolt: matched File A (commission invoice from Wolt): ${candidate.filename}`
-      );
-    }
-    if (fileA && fileB) break;
+    const result = await classifyWoltEzcountAttachment(buf, candidate.filename);
+    scored.push({
+      attachment: candidate,
+      fileBScore: result.fileBScore,
+      fileAScore: result.fileAScore,
+      verdict: result.verdict,
+      signals: result.signals,
+    });
+    console.log(
+      `[email-inbound] Wolt: scored "${candidate.filename}" → verdict=${result.verdict} fileB=${result.fileBScore} fileA=${result.fileAScore} signals=[${result.signals.join(", ")}]`
+    );
   }
 
+  // Pick File B = highest fileBScore that crosses the confidence floor (≥3).
+  // Everything else is File A, in the order Resend gave us them.
+  const fileBCandidate = [...scored]
+    .filter((s) => s.fileBScore >= 3)
+    .sort((a, b) => b.fileBScore - a.fileBScore)[0];
+
   const results: Attachment[] = [];
-  if (fileA) {
-    results.push({ ...fileA, documentType: "commission_invoice" });
+  for (const s of scored) {
+    if (s === fileBCandidate) {
+      results.push({ ...s.attachment, documentType: "client_report" });
+    } else {
+      results.push({ ...s.attachment, documentType: "commission_invoice" });
+    }
   }
-  if (fileB) {
-    results.push({ ...fileB, documentType: "client_report" });
-  } else {
-    // Defensive fallback for the client_report side only:
-    // sales_report (no netAmount will be extracted)
+
+  // Defensive fallback for the client_report side only: if no decisive
+  // File B emerged from the ezcount PDFs, prefer a `sales_report`
+  // attachment if one exists (older Wolt format, no `netAmount`).
+  if (!fileBCandidate) {
     const salesReport = attachments.find((a) =>
       a.filename.toLowerCase().includes("sales_report")
     );
-    if (salesReport) {
+    if (salesReport && !results.some((r) => r.id === salesReport.id)) {
       console.warn(
-        `[email-inbound] Wolt: no File B found among ${ezcountCandidates.length} ezcount PDFs — falling back to sales_report: ${salesReport.filename}`
+        `[email-inbound] Wolt: no decisive File B in ${ezcountCandidates.length} ezcount PDFs — using sales_report fallback: ${salesReport.filename}`
       );
       results.push({ ...salesReport, documentType: "client_report" });
+    } else {
+      console.warn(
+        `[email-inbound] Wolt: no decisive File B in ${ezcountCandidates.length} ezcount PDFs and no sales_report fallback — all ezcount candidates will be processed as commission_invoice`
+      );
     }
   }
 
