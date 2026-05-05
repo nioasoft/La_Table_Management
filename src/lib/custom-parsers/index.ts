@@ -38,11 +38,12 @@ export { parseMakatiFile } from "./makati-parser";
 export { parseTnuvaFile } from "./tnuva-parser";
 export { parseYekevLuriaFile } from "./yekev-luria-parser";
 
-// Custom parser function type - accepts buffer, optional vatRate, and optional vatProducts
+// Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
   buffer: Buffer,
   vatRate?: number,
-  vatProducts?: Set<string>
+  vatProducts?: Set<string>,
+  fileName?: string
 ) => Promise<import("../file-processor").FileProcessingResult>;
 
 // Registry of custom parsers by supplier code
@@ -80,9 +81,9 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
     const { parseArelArizotFile } = await import("./arel-arizot-parser");
     return parseArelArizotFile(buffer);
   },
-  PASTA_LA_CASA: async (buffer, vatRate) => {
+  PASTA_LA_CASA: async (buffer, vatRate, _vatProducts, fileName) => {
     const { parsePastaLaCasaFile } = await import("./pasta-la-casa-parser");
-    return parsePastaLaCasaFile(buffer, vatRate);
+    return parsePastaLaCasaFile(buffer, vatRate, fileName);
   },
   ALE_ALE: async (buffer, vatRate, vatProducts) => {
     const { parseAleAleFile } = await import("./ale-ale-parser");

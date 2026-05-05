@@ -253,7 +253,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       vatRate,
       supplier.code ?? undefined,
       supplier.vatExempt ?? false,
-      vatProductNames
+      vatProductNames,
+      file.name
     );
 
     // Sync extracted products to supplier_product table

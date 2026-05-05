@@ -1,24 +1,26 @@
 /**
  * Custom parser for פסטה לה קאזה (PASTA_LA_CASA) supplier files
  *
- * Supports two formats:
+ * Supports three formats:
  *
- * FORMAT 1 (Old): ZIP with separate XLS files or single XLS file
- *   - Each franchisee gets a separate XLS file
- *   - File structure (per XLS):
- *     - Row 0: Headers (מספר ספק, מספר תעודה, שם ספק, מספר הזמנה, תאריך פעולה, סהכ לפני מעמ)
- *     - Rows 1-N: Transaction data
- *     - Last row: Total (סה״כ)
+ * FORMAT 1 (Old single): A single XLS exported by the supplier's POS.
+ *   - One sheet (often named "ezerNN").
+ *   - Header row may include OR omit "שם ספק" (franchisee name).
+ *     When omitted the franchisee is derived from the filename
+ *     (e.g. "5529 רגבה 1.1-31.3.26.xls" -> רגבה -> פט ויני רגבה).
  *
- * FORMAT 2 (New): Single XLSX with multiple sheets
- *   - Each sheet represents a franchisee (sheet name = franchisee location)
- *   - Sheet names: כרמיאל, נתניה, קרית אתא, חדרה, יהוד, עזריאלי, ויני רגבה
- *   - Same structure as Format 1 per sheet
+ * FORMAT 2 (Old bulk): ZIP containing multiple Format-1 XLS files.
  *
- * Key columns:
- *   - Column C (2): שם ספק - Franchisee name
- *   - Column E (4): תאריך פעולה - Date
- *   - Column F (5): סהכ לפני מעמ - Amount before VAT (net)
+ * FORMAT 3 (New multi-sheet): Single XLSX with one sheet per franchisee.
+ *   - Sheet name encodes the location (e.g. "כרמיאל", "ויני רגבה").
+ *
+ * Column resolution is header-driven (not by fixed index) because the
+ * supplier ships variants with different column counts.
+ *
+ * Recognised headers:
+ *   - שם ספק          -> franchisee name (optional)
+ *   - תאריך פעולה     -> transaction date
+ *   - סהכ לפני מעמ   -> net amount before VAT (required)
  */
 
 import * as XLSX from "xlsx";
@@ -31,246 +33,243 @@ import {
 import { createFileProcessingError } from "../file-processing-errors";
 import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 
-// Column indices
-const FRANCHISEE_NAME_COL = 2; // Column C
-const DATE_COL = 4; // Column E
-const AMOUNT_COL = 5; // Column F
+type ColumnMap = {
+  franchisee: number | null;
+  date: number | null;
+  amount: number | null;
+};
+
+const HEADER_ALIASES: Record<keyof ColumnMap, string[]> = {
+  franchisee: ["שם ספק"],
+  date: ["תאריך פעולה", "תאריך"],
+  amount: [
+    "סהכ לפני מעמ",
+    'סה"כ לפני מע"מ',
+    "סה״כ לפני מע״מ",
+    "סהכ לפני מע\"מ",
+  ],
+};
+
+const TOTAL_ROW_MARKERS = new Set(["סהכ", 'סה"כ', "סה״כ"]);
+
+const LOCATION_TO_FRANCHISEE: Record<string, string> = {
+  "כרמיאל": "ויני כרמיאל",
+  "נתניה": "פט ויני נתניה",
+  "קרית אתא": "פט ויני קרית אתא",
+  "חדרה": "ויני חדרה",
+  "יהוד": "פט ויני יהוד",
+  "עזריאלי": "פט ויני עזריאלי",
+  "ויני רגבה": "פט ויני רגבה",
+  "רגבה": "פט ויני רגבה",
+};
+
+function normaliseHeaderText(value: unknown): string {
+  return String(value ?? "")
+    .replace(/[״"׳']/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function resolveColumns(headerRow: unknown[]): ColumnMap {
+  const indexOfAny = (aliases: string[]): number | null => {
+    const targets = aliases.map(normaliseHeaderText);
+    for (let i = 0; i < headerRow.length; i++) {
+      if (targets.includes(normaliseHeaderText(headerRow[i]))) return i;
+    }
+    return null;
+  };
+
+  return {
+    franchisee: indexOfAny(HEADER_ALIASES.franchisee),
+    date: indexOfAny(HEADER_ALIASES.date),
+    amount: indexOfAny(HEADER_ALIASES.amount),
+  };
+}
+
+function isTotalRow(row: unknown[]): boolean {
+  for (let i = 0; i < Math.min(row.length, 4); i++) {
+    if (TOTAL_ROW_MARKERS.has(normaliseHeaderText(row[i]))) return true;
+  }
+  return false;
+}
+
+function parseDateCell(cell: unknown): Date | null {
+  if (cell instanceof Date && !isNaN(cell.getTime())) return cell;
+  const s = String(cell ?? "").trim();
+  if (!s) return null;
+  const m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return null;
+  const month = parseInt(m[1], 10) - 1;
+  const day = parseInt(m[2], 10);
+  const yearRaw = parseInt(m[3], 10);
+  const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+  return new Date(year, month, day);
+}
+
+function parseAmountCell(cell: unknown): number {
+  const cleaned = String(cell ?? "").replace(/[₪,\s]/g, "");
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+type AggregatedRow = {
+  franchisee: string;
+  amount: number;
+  date: Date | null;
+};
+
+function aggregateRows(
+  rawData: unknown[][],
+  cols: ColumnMap
+): { amount: number; date: Date | null; franchisee: string } | null {
+  if (cols.amount === null) return null;
+
+  let franchisee = "";
+  let totalAmount = 0;
+  let latestDate: Date | null = null;
+
+  for (let i = 1; i < rawData.length; i++) {
+    const row = rawData[i];
+    if (!row) continue;
+    if (isTotalRow(row)) continue;
+
+    if (cols.franchisee !== null && !franchisee) {
+      const cell = String(row[cols.franchisee] ?? "").trim();
+      if (cell) franchisee = cell;
+    }
+
+    totalAmount += parseAmountCell(row[cols.amount]);
+
+    if (cols.date !== null) {
+      const d = parseDateCell(row[cols.date]);
+      if (d && (!latestDate || d > latestDate)) latestDate = d;
+    }
+  }
+
+  return { amount: totalAmount, date: latestDate, franchisee };
+}
 
 /**
- * Parse a single XLS file from Pasta La Casa
+ * Parse a single XLS file from Pasta La Casa.
  */
 function parseSingleFile(
   buffer: Buffer,
   fileName: string
-): { franchisee: string; amount: number; date: Date | null } | null {
+): AggregatedRow | null {
   try {
-    const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
-
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) return null;
 
     const sheet = workbook.Sheets[sheetName];
     const rawData: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
-      raw: false,
+      raw: true,
       defval: "",
     });
 
     if (!rawData || rawData.length < 2) return null;
 
-    // Find franchisee name from first data row
-    let franchisee = "";
-    let totalAmount = 0;
-    let latestDate: Date | null = null;
+    const cols = resolveColumns(rawData[0]);
+    const aggregate = aggregateRows(rawData, cols);
+    if (!aggregate) return null;
 
-    for (let i = 1; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (!row) continue;
+    let { franchisee } = aggregate;
+    if (!franchisee) franchisee = extractFranchiseeFromFilename(fileName);
+    if (!franchisee || aggregate.amount === 0) return null;
 
-      const franchiseeCell = String(row[FRANCHISEE_NAME_COL] || "").trim();
-      const amountCell = String(row[AMOUNT_COL] || "").trim();
-
-      // Skip total row
-      if (franchiseeCell === "סה״כ" || franchiseeCell === 'סה"כ') {
-        continue;
-      }
-
-      // Get franchisee name
-      if (!franchisee && franchiseeCell) {
-        franchisee = franchiseeCell;
-      }
-
-      // Parse amount (remove currency symbol and commas)
-      const cleanAmount = amountCell.replace(/[₪,\s]/g, "");
-      const amount = parseFloat(cleanAmount);
-      if (!isNaN(amount)) {
-        totalAmount += amount;
-      }
-
-      // Parse date
-      const dateCell = row[DATE_COL];
-      if (dateCell) {
-        const dateStr = String(dateCell).trim();
-        // Parse MM/DD/YY format
-        const dateParts = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})/);
-        if (dateParts) {
-          const month = parseInt(dateParts[1], 10) - 1;
-          const day = parseInt(dateParts[2], 10);
-          const year = 2000 + parseInt(dateParts[3], 10);
-          const date = new Date(year, month, day);
-          if (!latestDate || date > latestDate) {
-            latestDate = date;
-          }
-        }
-      }
-    }
-
-    // If no franchisee found in data, try to extract from filename
-    if (!franchisee) {
-      franchisee = extractFranchiseeFromFilename(fileName);
-    }
-
-    if (!franchisee || totalAmount === 0) return null;
-
-    return {
-      franchisee,
-      amount: totalAmount,
-      date: latestDate,
-    };
+    return { franchisee, amount: aggregate.amount, date: aggregate.date };
   } catch {
     return null;
   }
 }
 
 /**
- * Parse a single sheet from a multi-sheet XLSX (new format)
- * The sheet name represents the franchisee location (e.g., "כרמיאל", "נתניה")
+ * Parse a single sheet from a multi-sheet XLSX (new format).
+ * Sheet name encodes the franchisee location.
  */
 function parseSheetData(
   sheet: XLSX.WorkSheet,
   sheetName: string
-): { franchisee: string; amount: number; date: Date | null } | null {
+): AggregatedRow | null {
   try {
     const rawData: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
       header: 1,
-      raw: false,
+      raw: true,
       defval: "",
     });
 
     if (!rawData || rawData.length < 2) return null;
 
-    // Find franchisee name from first data row (column C / index 2)
-    let franchisee = "";
-    let totalAmount = 0;
-    let latestDate: Date | null = null;
+    const cols = resolveColumns(rawData[0]);
+    const aggregate = aggregateRows(rawData, cols);
+    if (!aggregate) return null;
 
-    for (let i = 1; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (!row) continue;
+    let { franchisee } = aggregate;
+    if (!franchisee) franchisee = mapSheetNameToFranchisee(sheetName);
+    if (!franchisee || aggregate.amount === 0) return null;
 
-      const firstCell = String(row[0] || "").trim();
-      const franchiseeCell = String(row[FRANCHISEE_NAME_COL] || "").trim();
-      const amountCell = String(row[AMOUNT_COL] || "").trim();
-
-      // Skip total row (first cell is "סה״כ")
-      if (firstCell === "סה״כ" || firstCell === 'סה"כ') {
-        continue;
-      }
-
-      // Get franchisee name from data
-      if (!franchisee && franchiseeCell) {
-        franchisee = franchiseeCell;
-      }
-
-      // Parse amount (remove currency symbol and commas)
-      const cleanAmount = amountCell.replace(/[₪,\s]/g, "");
-      const amount = parseFloat(cleanAmount);
-      if (!isNaN(amount)) {
-        totalAmount += amount;
-      }
-
-      // Parse date
-      const dateCell = row[DATE_COL];
-      if (dateCell) {
-        const dateStr = String(dateCell).trim();
-        // Parse MM/DD/YY format
-        const dateParts = dateStr.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})/);
-        if (dateParts) {
-          const month = parseInt(dateParts[1], 10) - 1;
-          const day = parseInt(dateParts[2], 10);
-          const year = 2000 + parseInt(dateParts[3], 10);
-          const date = new Date(year, month, day);
-          if (!latestDate || date > latestDate) {
-            latestDate = date;
-          }
-        }
-      }
-    }
-
-    // If no franchisee found in data, map sheet name to franchisee name
-    if (!franchisee) {
-      franchisee = mapSheetNameToFranchisee(sheetName);
-    }
-
-    if (!franchisee || totalAmount === 0) return null;
-
-    return {
-      franchisee,
-      amount: totalAmount,
-      date: latestDate,
-    };
+    return { franchisee, amount: aggregate.amount, date: aggregate.date };
   } catch {
     return null;
   }
 }
 
-/**
- * Map sheet name (location) to franchisee name
- * Sheet names like "כרמיאל" need to be mapped to full names like "ויני כרמיאל"
- */
 function mapSheetNameToFranchisee(sheetName: string): string {
-  // The sheet name is typically just the location part
-  // We can use it as-is since the matching will use aliases
-  const locationMappings: Record<string, string> = {
-    "כרמיאל": "ויני כרמיאל",
-    "נתניה": "פט ויני נתניה",
-    "קרית אתא": "פט ויני קרית אתא",
-    "חדרה": "ויני חדרה",
-    "יהוד": "פט ויני יהוד",
-    "עזריאלי": "פט ויני עזריאלי",
-    "ויני רגבה": "פט ויני רגבה",
-    "רגבה": "פט ויני רגבה",
-  };
-
-  return locationMappings[sheetName] || sheetName;
+  return LOCATION_TO_FRANCHISEE[sheetName] || sheetName;
 }
 
 /**
- * Extract franchisee name from filename
+ * Extract franchisee name from filename.
  * Patterns:
  *   - "5535 ויני כרמיאל 10-12.25.xls"
  *   - "ויני חדרה 10-12.25.xls"
  *   - "ויני יהוד 5562 10-12.25.xls"
+ *   - "5529 רגבה 1.1-31.3.26.xls"  (quarterly DD.MM-DD.MM.YY)
  */
 function extractFranchiseeFromFilename(filename: string): string {
-  // Remove extension
   let name = filename.replace(/\.(xls|xlsx)$/i, "");
 
-  // Remove date patterns at the end
+  // Strip quarterly form "1.1-31.3.26" / "1.1-31.3.2026"
+  name = name.replace(
+    /\s*\d{1,2}\.\d{1,2}\s*[-/]\s*\d{1,2}\.\d{1,2}[.\s]*\d{2,4}$/,
+    ""
+  );
+
+  // Strip "10-12.25" / "10-12/25" trailing form
   name = name.replace(/\s*\d{1,2}[-/]\d{1,2}[.\s]*\d{2,4}$/i, "");
 
-  // Remove leading numbers
+  // Strip leading and trailing standalone numbers (supplier codes)
   name = name.replace(/^\d+\s*/, "");
-
-  // Remove trailing numbers
   name = name.replace(/\s+\d+$/, "");
+  name = name.trim();
 
-  return name.trim();
+  for (const [keyword, franchisee] of Object.entries(LOCATION_TO_FRANCHISEE)) {
+    if (name.includes(keyword)) return franchisee;
+  }
+
+  return name;
 }
 
-/**
- * Check if buffer is a ZIP file
- */
 function isZipFile(buffer: Buffer): boolean {
   // ZIP files start with PK (0x50 0x4B)
   return buffer.length > 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
 }
 
 /**
- * Parse פסטה לה קאזה supplier files
- * Supports:
- * - Single XLS files (old format)
- * - ZIP archives containing multiple XLS files (old format)
- * - Single XLSX with multiple sheets (new format)
+ * Parse פסטה לה קאזה supplier files.
+ * Supports single XLS, ZIP of XLS, and multi-sheet XLSX.
  *
  * @param buffer - The file buffer
  * @param vatRate - Optional VAT rate (defaults to DEFAULT_VAT_RATE from DB config)
+ * @param fileName - Original uploaded filename (used as fallback when the
+ *                   single-sheet variant omits the שם ספק column)
  */
-export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProcessingResult {
-  // Use provided vatRate or fall back to default
+export function parsePastaLaCasaFile(
+  buffer: Buffer,
+  vatRate?: number,
+  fileName?: string
+): FileProcessingResult {
   const effectiveVatRate = vatRate ?? DEFAULT_VAT_RATE;
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
   const warnings: import("../file-processing-errors").FileProcessingError[] = [];
@@ -279,20 +278,39 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
   const data: ParsedRowData[] = [];
 
   try {
-    const franchiseeAmounts: Map<string, { amount: number; date: Date | null }> = new Map();
+    const franchiseeAmounts: Map<string, { amount: number; date: Date | null }> =
+      new Map();
 
-    // Try to parse as Excel file first (XLSX files are also ZIP archives, so check Excel first)
+    // Try Excel first (XLSX is also a ZIP, so check Excel before ZIP).
     let isExcelFile = false;
     let workbook: XLSX.WorkBook | null = null;
 
     try {
       workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
-      // Check if this looks like an Excel file with actual worksheets
-      // A true ZIP archive of XLS files will fail to parse or have no meaningful sheets
-      isExcelFile = workbook.SheetNames.length > 0 && workbook.Sheets[workbook.SheetNames[0]] !== undefined;
+      isExcelFile =
+        workbook.SheetNames.length > 0 &&
+        workbook.Sheets[workbook.SheetNames[0]] !== undefined;
     } catch {
       isExcelFile = false;
     }
+
+    const upsertFranchisee = (row: AggregatedRow) => {
+      const existing = franchiseeAmounts.get(row.franchisee);
+      if (existing) {
+        franchiseeAmounts.set(row.franchisee, {
+          amount: existing.amount + row.amount,
+          date:
+            row.date && (!existing.date || row.date > existing.date)
+              ? row.date
+              : existing.date,
+        });
+      } else {
+        franchiseeAmounts.set(row.franchisee, {
+          amount: row.amount,
+          date: row.date,
+        });
+      }
+    };
 
     if (isExcelFile && workbook) {
       if (workbook.SheetNames.length > 1) {
@@ -303,20 +321,7 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
           const result = parseSheetData(workbook.Sheets[sheetName], sheetName);
 
           if (result) {
-            const existing = franchiseeAmounts.get(result.franchisee);
-            if (existing) {
-              franchiseeAmounts.set(result.franchisee, {
-                amount: existing.amount + result.amount,
-                date: result.date && (!existing.date || result.date > existing.date)
-                  ? result.date
-                  : existing.date,
-              });
-            } else {
-              franchiseeAmounts.set(result.franchisee, {
-                amount: result.amount,
-                date: result.date,
-              });
-            }
+            upsertFranchisee(result);
             processedSheets++;
           } else {
             warnings.push(
@@ -338,13 +343,10 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
           return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
         }
       } else {
-        // Old format: Single sheet XLS/XLSX file
-        const result = parseSingleFile(buffer, "uploaded.xls");
+        // Old format: single-sheet XLS / XLSX file
+        const result = parseSingleFile(buffer, fileName ?? "uploaded.xls");
         if (result) {
-          franchiseeAmounts.set(result.franchisee, {
-            amount: result.amount,
-            date: result.date,
-          });
+          upsertFranchisee(result);
         } else {
           errors.push(
             createFileProcessingError("PARSE_ERROR", {
@@ -356,18 +358,15 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
         }
       }
     } else if (isZipFile(buffer)) {
-      // Handle ZIP file with multiple XLS files (old format)
+      // Old bulk format: ZIP of per-franchisee XLS files
       const zip = new AdmZip(buffer);
       const zipEntries = zip.getEntries();
 
       let processedFiles = 0;
       for (const entry of zipEntries) {
-        // Skip directories and non-XLS files
         if (entry.isDirectory) continue;
         const name = entry.name.toLowerCase();
         if (!name.endsWith(".xls") && !name.endsWith(".xlsx")) continue;
-
-        // Skip hidden/temp files
         if (entry.entryName.includes("__MACOSX") || entry.name.startsWith(".")) {
           continue;
         }
@@ -376,20 +375,7 @@ export function parsePastaLaCasaFile(buffer: Buffer, vatRate?: number): FileProc
         const result = parseSingleFile(fileBuffer, entry.name);
 
         if (result) {
-          const existing = franchiseeAmounts.get(result.franchisee);
-          if (existing) {
-            franchiseeAmounts.set(result.franchisee, {
-              amount: existing.amount + result.amount,
-              date: result.date && (!existing.date || result.date > existing.date)
-                ? result.date
-                : existing.date,
-            });
-          } else {
-            franchiseeAmounts.set(result.franchisee, {
-              amount: result.amount,
-              date: result.date,
-            });
-          }
+          upsertFranchisee(result);
           processedFiles++;
         } else {
           warnings.push(

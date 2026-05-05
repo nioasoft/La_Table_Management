@@ -570,7 +570,8 @@ export async function processSupplierFile(
   vatRate?: number,
   supplierCode?: string,
   vatExempt?: boolean,
-  vatProducts?: Set<string>
+  vatProducts?: Set<string>,
+  fileName?: string
 ): Promise<FileProcessingResult> {
   // First, check if supplier has a custom parser (regardless of fileMapping)
   if (supplierCode) {
@@ -580,7 +581,8 @@ export async function processSupplierFile(
     if (customParser) {
       // Use custom parser - it handles everything internally
       // Pass vatProducts for per-item VAT calculation (e.g., ale-ale)
-      const result = await customParser(fileBuffer, vatRate, vatProducts);
+      // Pass fileName so parsers can fall back to filename-based franchisee inference
+      const result = await customParser(fileBuffer, vatRate, vatProducts, fileName);
 
       // Post-process custom parser results for VAT-exempt suppliers
       // Custom parsers independently calculate gross = net * 1.18,
