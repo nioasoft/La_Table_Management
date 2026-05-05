@@ -30,6 +30,7 @@ import {
 } from "@/data-access/gmail-sync";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
+import { detectDocumentType } from "@/lib/email/classify-document-type";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -38,47 +39,9 @@ import type { Franchisee } from "@/db/schema";
 /** Client codes that parse from email body instead of attachments */
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
 
-/** Keywords in email subject that indicate a commission invoice (not a client report) */
-const INVOICE_SUBJECT_KEYWORDS = [
-  "חשבונית מס",
-  "חשבונית עמלה",
-  "חשבונית מס/קבלה",
-  // HAAT Hebrew subject — "FW: חשבונית מרכזת" (centralized invoice). HAAT
-  // sends one consolidated invoice per franchisee per period and labels it
-  // "מרכזת". This subject is reliable enough to classify as commission_invoice.
-  "חשבונית מרכזת",
-  "tax invoice",
-  "commission invoice",
-  // HAAT and other ezcount-issued invoices use generic English subjects:
-  //   "FW: EasyCount Invoice for HAAT"
-  //   "EasyCount Invoice for ..."
-  // The vendor name varies but the "EasyCount Invoice" / "ezcount Invoice"
-  // signature is reliable.
-  "easycount invoice",
-  "ezcount invoice",
-  // Cibus/Plaxie monthly commission invoice — subject:
-  //   "FW: החשבונית החודשית מפלאקסי ישראל"
-  // Distinct from the Cibus reconciliation report whose subject is
-  //   "Pluxee דוח", so this phrase is safe and unique to the invoice email.
-  "החשבונית החודשית",
-];
-
-/**
- * Detect document type from email subject.
- * Returns "commission_invoice" if subject contains invoice keywords,
- * otherwise "client_report".
- */
-function detectDocumentType(
-  subject: string
-): "client_report" | "commission_invoice" {
-  const lower = subject.toLowerCase();
-  for (const keyword of INVOICE_SUBJECT_KEYWORDS) {
-    if (lower.includes(keyword.toLowerCase())) {
-      return "commission_invoice";
-    }
-  }
-  return "client_report";
-}
+// Subject classifier (`detectDocumentType`) lives in
+// `@/lib/email/classify-document-type` so the offline reprocess script
+// (`scripts/reprocess-inbound-email.ts`) can share the same rules.
 
 export async function POST(request: NextRequest) {
   // Create sync log early
@@ -334,9 +297,24 @@ export async function POST(request: NextRequest) {
     // SI...") regardless of how the client normally sends reports — so we
     // force the attachment-based path when the subject identifies the email
     // as a commission invoice.
+    //
+    // TENBIS sub-rule: as of 2026-05-05, 10bis sends monthly reports
+    // ("דו''ח חודשי למסעדה" from service@10bis.co.il) directly in the
+    // email HTML body — no attachments, no Mandrill/cdn.10bis links.
+    // When that shape is detected we must take the body-based path even
+    // though TENBIS is not in BODY_BASED_CLIENTS. Forwarded variants
+    // ("FW: דוח חודשי מתן ביס לויני רגבה ...") still arrive with PDFs
+    // attached and continue through the attachment-based path.
+    const tenbisInlineHtmlReport =
+      identifiedClient.clientCode.toUpperCase() === "TENBIS" &&
+      documentType === "client_report" &&
+      email.attachments.length === 0 &&
+      /למסעדת|פירוט\s+עסקאות|תן\s+ביס/.test(email.html || email.text || "");
+
     const isBodyBased =
-      BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
-      documentType !== "commission_invoice";
+      (BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
+        documentType !== "commission_invoice") ||
+      tenbisInlineHtmlReport;
 
     if (isBodyBased) {
       // ── Body-based client (Cibus) ──

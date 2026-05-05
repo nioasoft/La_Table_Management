@@ -22,7 +22,152 @@ import { extractAllocationNumber } from "./extract-allocation-number";
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 /**
- * Parse a Tenbis PDF report
+ * Strip an HTML body to plain text using the same conservative rules
+ * as cibus-parser. Used by the HTML branch of parseTenbisFile.
+ */
+function stripTenbisHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/td>/gi, " ")
+    .replace(/<\/th>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#\d+;/g, "");
+}
+
+/**
+ * Parse a Tenbis monthly report delivered as the email HTML body.
+ *
+ * As of 2026-05-05, 10bis sends monthly reports directly in the email
+ * body (subject: "דו''ח חודשי למסעדה", from: service@10bis.co.il).
+ * Earlier deliveries used Mandrill links to PDF attachments — those
+ * still work via the PDF branch below.
+ *
+ * The HTML body uses LTR table cells with logical Hebrew (no pdf-parse
+ * RTL reversal) so the regex shapes are simpler than the PDF parser:
+ *   - Restaurant name: appears in heading
+ *   - Period: "DD/MM/YYYY - DD/MM/YYYY"
+ *   - Totals block (after "סיכום:"):
+ *       'סה"כ עסקאות N ש"ח'
+ *       'עמלת תן ביס N ש"ח'
+ *       'טרמינל N ש"ח'
+ *       'סה"כ לתשלום: N ש"ח'   (may be negative)
+ */
+function parseTenbisHtmlBody(
+  html: string
+): ClientDocumentProcessingResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const text = stripTenbisHtml(html);
+
+  // Franchisee name — the line under "פירוט עסקאות למסעדת <name>".
+  let franchiseeName = "";
+  const nameMatch = text.match(
+    /פירוט\s+עסקאות\s+למסעדת\s+([^\n\r]+?)\s+בין\s+התאריכים/
+  );
+  if (nameMatch?.[1]) {
+    franchiseeName = nameMatch[1].trim();
+  }
+  if (!franchiseeName) {
+    // Defensive: heading sometimes appears before the structured row.
+    const headingMatch = text.match(
+      /למסעדת\s+([֐-׿][֐-׿ "'\-\d/]+?)\s+בין\s+התאריכים/
+    );
+    if (headingMatch?.[1]) {
+      franchiseeName = headingMatch[1].trim();
+    }
+  }
+
+  // Period: "01/04/2026 - 30/04/2026" — period_month from the start date.
+  let periodMonth: number | undefined;
+  let periodYear: number | undefined;
+  const periodMatch = text.match(
+    /(\d{2})\/(\d{2})\/(\d{4})\s*-\s*(\d{2})\/(\d{2})\/(\d{4})/
+  );
+  if (periodMatch) {
+    periodMonth = parseInt(periodMatch[2]);
+    periodYear = parseInt(periodMatch[3]);
+  }
+
+  // Totals — read from the "סיכום:" block at the bottom of the report.
+  const moneyRe = /(-?[\d,.]+)\s*ש"ח/;
+  const totalAmount = (() => {
+    const m = text.match(/סה"כ\s+עסקאות\s+(-?[\d,.]+)\s*ש"ח/);
+    return m ? parseFloat(m[1].replace(/,/g, "")) : 0;
+  })();
+  const commissionTenbis = (() => {
+    const m = text.match(/עמלת\s+תן\s+ביס\s+(-?[\d,.]+)\s*ש"ח/);
+    return m ? parseFloat(m[1].replace(/,/g, "")) : 0;
+  })();
+  const terminalFee = (() => {
+    const m = text.match(/טרמינל\s+(-?[\d,.]+)\s*ש"ח/);
+    return m ? parseFloat(m[1].replace(/,/g, "")) : 0;
+  })();
+  const netAmountFromTotal = (() => {
+    const m = text.match(/סה"כ\s+לתשלום\s*:?\s*(-?[\d,.]+)\s*ש"ח/);
+    return m ? parseFloat(m[1].replace(/,/g, "")) : 0;
+  })();
+  void moneyRe;
+
+  const totalCommission = commissionTenbis + terminalFee;
+  const netAmount =
+    netAmountFromTotal !== 0
+      ? netAmountFromTotal
+      : totalAmount > 0
+      ? totalAmount - totalCommission
+      : 0;
+  const commissionRate =
+    totalAmount > 0
+      ? Math.round((totalCommission / totalAmount) * 10000) / 100
+      : 0;
+
+  if (
+    totalAmount === 0 &&
+    commissionTenbis === 0 &&
+    terminalFee === 0 &&
+    netAmountFromTotal === 0
+  ) {
+    // A genuinely empty period (no orders) is still a valid report — the
+    // restaurant just had nothing to reconcile. Match cibus-parser's
+    // forgiving behaviour so franchisee identification still completes.
+    warnings.push("דוח תן-ביס ללא תנועה — אפס סכומים");
+  }
+
+  if (!franchiseeName) {
+    warnings.push("לא זוהה שם הזכיין מהמסמך");
+  }
+
+  return {
+    success: true,
+    data: {
+      franchiseeName: franchiseeName || "לא זוהה",
+      totalAmount,
+      commissionAmount: totalCommission,
+      commissionRate,
+      netAmount,
+      periodMonth,
+      periodYear,
+      allocationNumber: extractAllocationNumber(text),
+    },
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Parse a Tenbis report.
+ *
+ * Dispatches to the HTML body parser when the input is the email body
+ * (mimeType "text/html" or "text/plain", or content starting with
+ * "<html"/"<body"). Falls through to the legacy PDF parser otherwise.
  */
 export async function parseTenbisFile(
   buffer: Buffer,
@@ -30,6 +175,14 @@ export async function parseTenbisFile(
 ): Promise<ClientDocumentProcessingResult> {
   const errors: string[] = [];
   const warnings: string[] = [];
+
+  // HTML body branch (10bis monthly reports as of 2026-05-05).
+  const isHtml =
+    mimeType.toLowerCase().includes("html") ||
+    /^\s*<(?:!doctype|html|body)/i.test(buffer.toString("utf-8").slice(0, 256));
+  if (isHtml) {
+    return parseTenbisHtmlBody(buffer.toString("utf-8"));
+  }
 
   try {
     const data = await pdfParse(buffer);

@@ -23,31 +23,10 @@ import {
 import { processClientDocument } from "../src/lib/client-document-processor";
 import { getClientParser, getInvoiceParser } from "../src/lib/client-parsers";
 import { matchFranchiseeName } from "../src/lib/franchisee-matcher";
+import { detectDocumentType } from "../src/lib/email/classify-document-type";
 import { database } from "../src/db";
 import { franchisee, type Franchisee } from "../src/db/schema";
 import { eq } from "drizzle-orm";
-
-const INVOICE_SUBJECT_KEYWORDS = [
-  "חשבונית מס",
-  "חשבונית עמלה",
-  "חשבונית מס/קבלה",
-  "חשבונית מרכזת",
-  "tax invoice",
-  "commission invoice",
-  "easycount invoice",
-  "ezcount invoice",
-  "החשבונית החודשית",
-];
-
-function detectDocumentType(
-  subject: string
-): "client_report" | "commission_invoice" {
-  const lower = subject.toLowerCase();
-  for (const k of INVOICE_SUBJECT_KEYWORDS) {
-    if (lower.includes(k.toLowerCase())) return "commission_invoice";
-  }
-  return "client_report";
-}
 
 const UNKNOWN = new Set(["לא זוהה", "Unknown", "unknown"]);
 

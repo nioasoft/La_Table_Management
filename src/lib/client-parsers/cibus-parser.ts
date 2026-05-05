@@ -50,27 +50,56 @@ export async function parseCibusFile(
     }
 
     // Extract restaurant name
+    //
+    // Pluxee renders cells with mixed direction attributes; once HTML is
+    // stripped the resulting plain text exposes two orderings:
+    //   label-first (LTR cell):  "שם מסעדה : VINNI - רגבה"
+    //   value-first (RTL cell):  "VINNI - רגבה : שם מסעדה"
+    // The colon may have surrounding whitespace ("שם מסעדה :", not
+    // "שם מסעדה:"), and the value can be Hebrew, Latin (`VINNI`), or a
+    // mix joined by " - ". Both orderings are accepted.
     let franchiseeName = "";
-    const nameMatch = text.match(/שם מסעדה:\s*(.+)/);
-    if (nameMatch) {
-      franchiseeName = nameMatch[1].trim();
+    const nameLabelFirst = text.match(/שם\s*מסעדה\s*:\s*([^\n\r]+)/);
+    if (nameLabelFirst?.[1]?.trim()) {
+      franchiseeName = nameLabelFirst[1].trim();
+    }
+    if (!franchiseeName) {
+      const nameValueFirst = text.match(/([^\n\r]+?)\s*:\s*שם\s*מסעדה/);
+      if (nameValueFirst?.[1]?.trim()) {
+        franchiseeName = nameValueFirst[1].trim();
+      }
     }
 
-    // Extract restaurant number
+    // Extract restaurant number — same dual-ordering logic.
+    //   label-first: "מספר מסעדה: 44890"
+    //   value-first: "44890 :מספר מסעדה"  (currently used by Pluxee)
     let restaurantNumber = "";
-    const numMatch = text.match(/מספר מסעדה:\s*(\d+)/);
-    if (numMatch) {
-      restaurantNumber = numMatch[1];
+    const numLabelFirst = text.match(/מספר\s*מסעדה\s*:?\s*(\d+)/);
+    if (numLabelFirst?.[1]) {
+      restaurantNumber = numLabelFirst[1];
+    }
+    if (!restaurantNumber) {
+      const numValueFirst = text.match(/(\d+)\s*:?\s*מספר\s*מסעדה/);
+      if (numValueFirst?.[1]) {
+        restaurantNumber = numValueFirst[1];
+      }
     }
 
     // Extract period dates
     let periodMonth: number | undefined;
     let periodYear: number | undefined;
-    // Pattern: "עד יום: DD-MM-YYYY" and "תקופת חיוב: מיום: DD-MM-YYYY"
-    const periodFromMatch = text.match(/מיום:\s*(\d{2})-(\d{2})-(\d{4})/);
-    if (periodFromMatch) {
-      periodMonth = parseInt(periodFromMatch[2]);
-      periodYear = parseInt(periodFromMatch[3]);
+    // Pluxee dates appear in either order:
+    //   label-first: "מיום: 05-05-2026"
+    //   value-first: "05-05-2026: מיום"  (currently used by Pluxee)
+    const periodFromLabelFirst = text.match(
+      /מיום\s*:?\s*(\d{2})-(\d{2})-(\d{4})/
+    );
+    const periodFromValueFirst =
+      periodFromLabelFirst ??
+      text.match(/(\d{2})-(\d{2})-(\d{4})\s*:?\s*מיום/);
+    if (periodFromValueFirst) {
+      periodMonth = parseInt(periodFromValueFirst[2]);
+      periodYear = parseInt(periodFromValueFirst[3]);
     }
 
     // Extract invoice amount (total incl. VAT)
@@ -132,12 +161,16 @@ export async function parseCibusFile(
         : 0;
 
     // Validate
+    //
+    // Pluxee sends a daily report regardless of activity, so an "empty"
+    // body where every figure is 0 is a legitimate report (the franchisee
+    // had no Cibus orders that day). Treat it as a warning, not an error,
+    // so franchisee identification still completes and the period record
+    // is created. Without this, every quiet day would log a failure in
+    // gmail_sync_log even though the email was structurally valid.
     if (grossAmount === 0 && totalCommission === 0) {
-      errors.push("לא נמצאו סכומים בדוח סיבוס");
-      return { success: false, data: null, errors, warnings };
-    }
-
-    if (grossAmount === 0 && totalCommission > 0) {
+      warnings.push("דוח סיבוס ללא תנועה — אפס סכומים");
+    } else if (grossAmount === 0 && totalCommission > 0) {
       warnings.push("לא נמצא סכום חשבונית — רק עמלה");
     }
 
