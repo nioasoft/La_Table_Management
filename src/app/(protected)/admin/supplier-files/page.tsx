@@ -79,21 +79,30 @@ import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 
 /**
- * Convert XLS file to XLSX format in the browser
- * This is needed because Vercel WAF blocks XLS files
+ * Convert XLS file to XLSX format in the browser. Vercel WAF blocks raw XLS
+ * uploads, so legacy BIFF files must be re-encoded client-side before POST.
+ *
+ * Critical: SheetJS's browser bundle ships without the full Windows codepage
+ * tables. Without them, BIFF cells stored in CP1255 (Hebrew), CP1251
+ * (Cyrillic), etc., get decoded as Latin-1 and turn into mojibake — e.g. the
+ * Hebrew title "ריכוז מכירות ללקוחות" arrives at the server as
+ * "øéëåæ îëéøåú ìì÷åçåú", breaking compact-layout detection in
+ * arel-arizot-parser. set_cptable + cpexcel.full registers the full codepage
+ * map so the read step decodes correctly. (Node SSR has the codepage table
+ * loaded by default, which is why this only manifests in production after
+ * the browser-side conversion.)
  */
 async function convertXlsToXlsx(file: File): Promise<File> {
-  // Dynamic import to avoid loading xlsx until needed
   const XLSX = await import("xlsx");
+  // cpexcel.full.mjs ships without TS declarations
+  // @ts-expect-error -- third-party codepage bundle (no .d.ts)
+  const cptable = await import("xlsx/dist/cpexcel.full.mjs");
+  XLSX.set_cptable(cptable);
 
-  // Read the XLS file
   const arrayBuffer = await file.arrayBuffer();
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
-
-  // Write as XLSX
   const xlsxData = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
 
-  // Create new file with xlsx extension
   const newFileName = file.name.replace(/\.xls$/i, ".xlsx");
   const blob = new Blob([xlsxData], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

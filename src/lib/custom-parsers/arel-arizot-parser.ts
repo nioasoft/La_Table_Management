@@ -125,11 +125,6 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
     }
 
     const compact = detectCompactLayout(rawData);
-    console.log("[AREL_PARSER_V2] rows=" + rawData.length +
-      " row0=" + JSON.stringify((rawData[0] || []).slice(0, 8)) +
-      " row1=" + JSON.stringify((rawData[1] || []).slice(0, 8)) +
-      " row2=" + JSON.stringify((rawData[2] || []).slice(0, 8)) +
-      " compact=" + JSON.stringify(compact));
     if (compact) {
       return parseCompactLayout(
         rawData,
@@ -214,10 +209,10 @@ function parseCompactLayout(
   if (processed === 0) {
     errors.push(
       createFileProcessingError("PARSE_ERROR", {
-        details: "Could not extract any franchisee data from the compact-layout file [compact-v2]",
+        details: "Could not extract any franchisee data from the compact-layout file",
       })
     );
-    legacyErrors.push("Could not extract any franchisee data from the compact-layout file [compact-v2]");
+    legacyErrors.push("Could not extract any franchisee data from the compact-layout file");
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
   }
 
@@ -308,17 +303,12 @@ function parseLegacyLayout(
   }
 
   if (processedRows === 0) {
-    // DIAGNOSTIC: embed first 3 rows shape into error so we can inspect it via
-    // file_processing_log when console.log isn't reaching Vercel UI.
-    const dump = (i: number) =>
-      JSON.stringify((rawData[i] || []).slice(0, 8).map((c) => String(c ?? "")));
-    const diag = `rows=${rawData.length} r0=${dump(0)} r1=${dump(1)} r2=${dump(2)}`;
     errors.push(
       createFileProcessingError("PARSE_ERROR", {
-        details: `Could not extract any franchisee data from the file [legacy-v2] | ${diag}`,
+        details: "Could not extract any franchisee data from the file",
       })
     );
-    legacyErrors.push("Could not extract any franchisee data from the file [legacy-v2]");
+    legacyErrors.push("Could not extract any franchisee data from the file");
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
   }
 
