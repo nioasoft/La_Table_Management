@@ -125,6 +125,9 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
     }
 
     const compact = detectCompactLayout(rawData);
+    console.log("[AREL_PARSER] rows=" + rawData.length +
+      " row1=" + JSON.stringify((rawData[1] || []).slice(0, 4)) +
+      " compact=" + JSON.stringify(compact));
     if (compact) {
       return parseCompactLayout(
         rawData,
