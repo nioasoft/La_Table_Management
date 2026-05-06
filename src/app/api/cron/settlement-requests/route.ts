@@ -91,13 +91,17 @@ async function getSupplierBrandNames(supplierId: string): Promise<string> {
   return results.map((r) => r.nameHe).join(" / ");
 }
 
-// Check if a file request already exists for this supplier and period
+// Check if a file request already exists for this supplier and period.
+// Matches by stable periodKey (e.g. "2026-Q1") which is immune to display
+// format changes; falls back to periodDescription only when periodKey is
+// absent (legacy rows that pre-date the backfill).
 async function hasExistingFileRequest(
   supplierId: string,
+  periodKey: string,
   periodDescription: string
 ): Promise<boolean> {
   const existing = await database
-    .select({ id: fileRequest.id })
+    .select({ metadata: fileRequest.metadata })
     .from(fileRequest)
     .where(
       and(
@@ -107,19 +111,11 @@ async function hasExistingFileRequest(
       )
     );
 
-  // Check metadata for matching period
   for (const req of existing) {
-    const full = await database
-      .select()
-      .from(fileRequest)
-      .where(eq(fileRequest.id, req.id))
-      .limit(1);
-    if (full.length > 0) {
-      const meta = full[0].metadata as Record<string, unknown> | null;
-      if (meta?.periodDescription === periodDescription) {
-        return true;
-      }
-    }
+    const meta = req.metadata as Record<string, unknown> | null;
+    if (!meta) continue;
+    if (meta.periodKey && meta.periodKey === periodKey) return true;
+    if (!meta.periodKey && meta.periodDescription === periodDescription) return true;
   }
   return false;
 }
@@ -226,6 +222,7 @@ async function processFrequency(
   // a settlement period for.
   const periodType = frequencyToPeriodType(frequency);
   let periodDescription: string;
+  let periodKey: string | null = null;
   let periodEndDateStr: string | null = null;
   let periodDueDateStr: string | null = null;
 
@@ -243,6 +240,7 @@ async function processFrequency(
     }
 
     periodDescription = closedPeriod.nameHe;
+    periodKey = closedPeriod.key;
     periodEndDateStr = formatDateForDisplay(closedPeriod.endDate);
     periodDueDateStr = formatDateAsLocal(closedPeriod.dueDate);
 
@@ -284,7 +282,11 @@ async function processFrequency(
 
       // Dedup check: skip if already sent for this period
       if (!dryRun) {
-        const alreadySent = await hasExistingFileRequest(supplierData.id, periodDescription);
+        const alreadySent = await hasExistingFileRequest(
+          supplierData.id,
+          periodKey ?? periodDescription,
+          periodDescription
+        );
         if (alreadySent) {
           results.skipped++;
           continue;
@@ -320,6 +322,7 @@ async function processFrequency(
         metadata: {
           settlementFrequency: frequency,
           periodDescription,
+          periodKey,
           periodEndDate: periodEndDateStr,
           brandNames,
           requestedAt: new Date().toISOString(),

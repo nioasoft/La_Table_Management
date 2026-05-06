@@ -47,6 +47,7 @@ async function getSupplierBrandNames(supplierId: string): Promise<string> {
 
 async function hasExistingSupplierFileRequest(
   supplierId: string,
+  periodKey: string,
   periodDescription: string
 ): Promise<boolean> {
   const existing = await database
@@ -61,7 +62,9 @@ async function hasExistingSupplierFileRequest(
     );
   for (const req of existing) {
     const meta = req.metadata as Record<string, unknown> | null;
-    if (meta?.periodDescription === periodDescription) return true;
+    if (!meta) continue;
+    if (meta.periodKey && meta.periodKey === periodKey) return true;
+    if (!meta.periodKey && meta.periodDescription === periodDescription) return true;
   }
   return false;
 }
@@ -156,7 +159,8 @@ async function sendSupplierRequest(
   }
 
   const periodDescription = closedPeriod.nameHe;
-  if (await hasExistingSupplierFileRequest(s.id, periodDescription)) {
+  const periodKey = closedPeriod.key;
+  if (await hasExistingSupplierFileRequest(s.id, periodKey, periodDescription)) {
     return { ok: true, alreadySent: true, period: periodDescription };
   }
 
@@ -183,6 +187,7 @@ async function sendSupplierRequest(
     metadata: {
       settlementFrequency: frequency,
       periodDescription,
+      periodKey,
       periodEndDate: formatDateForDisplay(closedPeriod.endDate),
       brandNames,
       requestedAt: new Date().toISOString(),
