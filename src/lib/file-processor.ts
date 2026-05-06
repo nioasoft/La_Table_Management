@@ -8,6 +8,7 @@ import {
   createCustomError,
   FILE_PROCESSING_ERROR_CODES,
 } from "./file-processing-errors";
+import type { Anomaly } from "@/types/file-anomalies";
 import {
   getCurrentVatRate as getDbVatRate,
   getVatRateForDate as getDbVatRateForDate,
@@ -56,6 +57,12 @@ export interface FileProcessingResult {
      *  Prevents the blanket grossAmount=netAmount override for vatExempt suppliers. */
     hasPartialVat?: boolean;
   };
+  /**
+   * Non-fatal anomalies surfaced by parsers. Aggregated by `processSupplierFile`
+   * and ultimately rendered in the admin pre-save review modal. Optional so
+   * existing parsers/tests that don't emit anomalies continue to work.
+   */
+  anomalies?: Anomaly[];
 }
 
 // Configuration for VAT adjustment
@@ -583,6 +590,7 @@ export async function processSupplierFile(
       // Pass vatProducts for per-item VAT calculation (e.g., ale-ale)
       // Pass fileName so parsers can fall back to filename-based franchisee inference
       const result = await customParser(fileBuffer, vatRate, vatProducts, fileName);
+      attachGenericAnomalies(result);
 
       // Post-process custom parser results for VAT-exempt suppliers
       // Custom parsers independently calculate gross = net * 1.18,
@@ -634,7 +642,58 @@ export async function processSupplierFile(
     vatRate,
   };
 
-  return parseSupplierFile(fileBuffer, fileMapping, vatConfig);
+  const result = parseSupplierFile(fileBuffer, fileMapping, vatConfig);
+  attachGenericAnomalies(result);
+  return result;
+}
+
+/**
+ * Add cross-parser anomalies derived purely from the result shape
+ * (does not require parser-specific knowledge):
+ *   - EMPTY_FILE: file had 0 data rows. Blocks save.
+ *   - ALL_ROWS_FILTERED: data rows existed but every one was rejected. Almost
+ *     always indicates a CP1255 mojibake / wrong-encoding scenario when the
+ *     browser converts xls→xlsx without the cptable.
+ *
+ * Mutates `result` in place.
+ */
+function attachGenericAnomalies(result: FileProcessingResult): void {
+  if (!result || !result.summary) return;
+  const { totalRows, processedRows } = result.summary;
+  const anomalies: Anomaly[] = [];
+
+  if (totalRows === 0) {
+    anomalies.push({
+      code: "EMPTY_FILE",
+      severity: "blocking",
+      messageHe: "הקובץ לא מכיל שורות נתונים — לא ניתן לשמור.",
+      details: {
+        explanationHe:
+          "הקובץ נפתח אך לא נמצאה אף שורה אחרי השורה הכותרת. ייתכן שהוא ריק, שהגיליון שגוי, או שהוא ניזוק.",
+      },
+      suggestedActions: [{ type: "reject_file", labelHe: "ביטול" }],
+    });
+  } else if (totalRows > 0 && processedRows === 0) {
+    anomalies.push({
+      code: "ALL_ROWS_FILTERED",
+      severity: "blocking",
+      messageHe:
+        "הקובץ נסרק (" +
+        totalRows +
+        " שורות) אך אף שורה לא עברה את הפילטר — סביר שהקידוד שגוי.",
+      details: {
+        explanationHe:
+          "תרחיש מוכר: קובץ XLS שהומר ל-XLSX בדפדפן ללא טעינת CP1255 cptable, וטקסט עברי הפך ל-mojibake. נסי להעלות את הקובץ המקורי כ-XLSX ישירות, או נסי שוב מדפדפן עדכני.",
+        totalRows,
+        processedRows,
+      },
+      suggestedActions: [{ type: "reject_file", labelHe: "ביטול" }],
+    });
+  }
+
+  if (anomalies.length > 0) {
+    result.anomalies = [...(result.anomalies ?? []), ...anomalies];
+  }
 }
 
 /**

@@ -11,7 +11,10 @@ import {
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
 import { markFileRequestAsSubmitted } from "@/data-access/fileRequests";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
-import { getFranchiseeByCompanyId, matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import {
+  getFranchiseeByCompanyId,
+  matchFranchiseeNamesFromFileWithAnomalies,
+} from "@/data-access/franchisees";
 import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
 import type { BkmvProcessingResult, SupplierFileMapping, SupplierFileProcessingResult } from "@/db/schema";
 import {
@@ -648,8 +651,12 @@ export async function POST(
               supplierFileId: supplierFileRecord.id,
             };
           } else {
-            // Match franchisee names
-            const matchedResults = await matchFranchiseeNamesFromFile(processResult.data);
+            // Match franchisee names + derive review-modal anomalies
+            const matchOutcome = await matchFranchiseeNamesFromFileWithAnomalies(
+              processResult.data
+            );
+            const matchedResults = matchOutcome.rows;
+            const matchAnomalies = matchOutcome.anomalies;
 
             // Calculate match statistics
             const exactMatches = matchedResults.filter(
@@ -729,6 +736,12 @@ export async function POST(
                 preCalculatedCommission: r.preCalculatedCommission,
               })),
               processedAt: new Date().toISOString(),
+              // Persist anomalies so the admin pre-save modal can replay them
+              // when the file is reviewed later (parser-level + match-level).
+              anomalies: [
+                ...(processResult.anomalies ?? []),
+                ...matchAnomalies,
+              ],
             };
 
             // Check for duplicate files (same supplier + period + franchisee)

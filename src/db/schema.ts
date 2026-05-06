@@ -1368,6 +1368,13 @@ export interface SupplierFileProcessingResult {
   // Set when the parser failed and we still want a record in the review queue.
   // The review UI surfaces this as a red badge and disables the approve action.
   error?: string;
+
+  /**
+   * Non-fatal anomalies (filtered rows, unknown business IDs, etc.) raised by
+   * parsers and the franchisee matcher. Persisted so the admin UI can replay
+   * the pre-save review modal even when revisiting a file later.
+   */
+  anomalies?: import("@/types/file-anomalies").Anomaly[];
 }
 
 // ============================================================================

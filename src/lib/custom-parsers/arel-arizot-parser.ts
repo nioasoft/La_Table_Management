@@ -31,6 +31,30 @@ import {
   roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
+import type { Anomaly } from "@/types/file-anomalies";
+
+/**
+ * Standing anomaly: this parser cannot extract dates. Period selection at
+ * upload time is therefore unverified against file content (real incident
+ * 2026-05-04 — Q4 file mistagged as Q1). Surface this every time so the
+ * admin notices.
+ */
+const DATES_NOT_EXTRACTED_ANOMALY: Anomaly = {
+  code: "DATES_NOT_EXTRACTED",
+  severity: "warning",
+  messageHe:
+    "ה-parser של אראל אריזות אינו חולץ תאריכים מהקובץ — ודאי שהתקופה שתויגה בעמוד ההעלאה תואמת לתוכן הקובץ.",
+  details: {
+    explanationHe:
+      "הקובץ של אראל מכיל סיכום מצטבר ללא תאריכי שורה, ולכן המערכת אינה יכולה לאמת אוטומטית שהתקופה שנבחרה זהה לתקופת הדוח. אם התקופה שגויה, יווצרו עמלות בתקופה הלא נכונה (וניקוי דורש מחיקה ידנית של ה-commissions).",
+  },
+  suggestedActions: [
+    {
+      type: "acknowledge_only",
+      labelHe: "אישרתי שהתקופה נכונה",
+    },
+  ],
+};
 
 const VAT_RATE = 0.18;
 
@@ -355,5 +379,6 @@ function createResult(
       totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
+    anomalies: success && data.length > 0 ? [DATES_NOT_EXTRACTED_ANOMALY] : undefined,
   };
 }

@@ -33,6 +33,18 @@ import {
 import { createFileProcessingError } from "../file-processing-errors";
 import { DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { normalizeBusinessId } from "@/lib/business-id-utils";
+import type { Anomaly } from "@/types/file-anomalies";
+
+/**
+ * One row that failed the Dagei status / doc-type filter. Aggregated into a
+ * single FILTERED_ROWS_BY_DOCTYPE anomaly at the end of parsing.
+ */
+interface FilteredRow {
+  rowNumber: number;
+  status: string;
+  docType: string;
+  amount: number;
+}
 
 // Column indices
 const STATUS_COL = 0; // Column A
@@ -69,7 +81,8 @@ interface FranchiseeData {
  */
 function parseSingleXlsx(
   buffer: Buffer,
-  _fileName: string
+  _fileName: string,
+  filteredRowsOut?: FilteredRow[]
 ): Map<string, FranchiseeData> {
   const franchiseeAmounts = new Map<string, FranchiseeData>();
 
@@ -97,8 +110,25 @@ function parseSingleXlsx(
     const status = String(row[STATUS_COL] || "").trim();
     const docType = String(row[DOC_TYPE_COL] || "").trim();
 
-    // Filter: only open documents that are invoices or credit notes
+    // Filter: only open documents that are invoices or credit notes.
+    // Track everything that gets dropped here so we can surface it in the
+    // pre-save review modal — see FILTERED_ROWS_BY_DOCTYPE anomaly below.
     if (status !== VALID_STATUS || !VALID_DOC_TYPES.has(docType)) {
+      if (filteredRowsOut) {
+        const amountRaw = row[AMOUNT_BEFORE_VAT_COL];
+        const amount =
+          typeof amountRaw === "number"
+            ? amountRaw
+            : parseFloat(String(amountRaw ?? "").replace(/[₪,\s]/g, ""));
+        // i+1 because the source spreadsheet is 1-indexed, with row 1 being
+        // the header row; data rows therefore start at 2.
+        filteredRowsOut.push({
+          rowNumber: i + 1,
+          status: status || "(ריק)",
+          docType: docType || "(ריק)",
+          amount: Number.isNaN(amount) ? 0 : amount,
+        });
+      }
       continue;
     }
 
@@ -170,6 +200,7 @@ export function parseDageiHakibbutzimFile(
   const legacyErrors: string[] = [];
   const legacyWarnings: string[] = [];
   const data: ParsedRowData[] = [];
+  const filteredRows: FilteredRow[] = [];
 
   try {
     const allFranchisees = new Map<string, FranchiseeData>();
@@ -187,7 +218,7 @@ export function parseDageiHakibbutzimFile(
 
     if (isExcelFile) {
       // Single XLSX file
-      const result = parseSingleXlsx(buffer, "uploaded.xlsx");
+      const result = parseSingleXlsx(buffer, "uploaded.xlsx", filteredRows);
       for (const [key, value] of result) {
         allFranchisees.set(key, value);
       }
@@ -206,7 +237,7 @@ export function parseDageiHakibbutzimFile(
 
         const fileBuffer = entry.getData();
         try {
-          const result = parseSingleXlsx(fileBuffer, entry.name);
+          const result = parseSingleXlsx(fileBuffer, entry.name, filteredRows);
           for (const [key, value] of result) {
             const existing = allFranchisees.get(key);
             if (existing) {
@@ -290,6 +321,8 @@ export function parseDageiHakibbutzimFile(
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
+    const anomalies = buildAnomalies(filteredRows);
+
     return createResult(
       true,
       data,
@@ -301,7 +334,8 @@ export function parseDageiHakibbutzimFile(
       processedRows,
       0,
       totalGrossAmount,
-      totalNetAmount
+      totalNetAmount,
+      anomalies
     );
   } catch (error) {
     errors.push(
@@ -327,7 +361,8 @@ function createResult(
   processedRows = 0,
   skippedRows = 0,
   totalGrossAmount = 0,
-  totalNetAmount = 0
+  totalNetAmount = 0,
+  anomalies: Anomaly[] = []
 ): FileProcessingResult {
   return {
     success,
@@ -344,5 +379,70 @@ function createResult(
       totalNetAmount: roundAmount(totalNetAmount),
       vatAdjusted: false,
     },
+    anomalies: anomalies.length > 0 ? anomalies : undefined,
   };
+}
+
+/**
+ * Group filtered rows by document type and emit a FILTERED_ROWS_BY_DOCTYPE
+ * anomaly summarising the breakdown plus the total ₪ excluded. Returns an
+ * empty array when no rows were filtered (so the caller can spread freely).
+ */
+function buildAnomalies(filteredRows: FilteredRow[]): Anomaly[] {
+  if (filteredRows.length === 0) return [];
+
+  // Group by "<doc-type> · <status>" for a clean Hebrew breakdown line.
+  const groups = new Map<string, { count: number; amount: number }>();
+  for (const fr of filteredRows) {
+    const key = `${fr.docType} · ${fr.status}`;
+    const existing = groups.get(key) ?? { count: 0, amount: 0 };
+    existing.count += 1;
+    existing.amount += fr.amount;
+    groups.set(key, existing);
+  }
+
+  const breakdown = Array.from(groups.entries()).map(([label, agg]) => ({
+    label,
+    count: agg.count,
+    amount: roundAmount(agg.amount),
+  }));
+
+  const totalAmount = roundAmount(
+    filteredRows.reduce((sum, fr) => sum + fr.amount, 0)
+  );
+
+  const summaryLine = breakdown
+    .map((g) => `${g.label}: ${g.count} שורות (${formatIls(g.amount)})`)
+    .join("; ");
+
+  return [
+    {
+      code: "FILTERED_ROWS_BY_DOCTYPE",
+      severity: "warning",
+      messageHe: `${filteredRows.length} שורות נופלות מפילטר ה-parser — סה"כ ${formatIls(totalAmount)} לא נכללו`,
+      details: {
+        explanationHe:
+          "ה-parser של דגי הקיבוצים כולל רק 'מסמך פתוח' מסוג 'חשבונית מס' או 'חשבונית זיכוי'. תעודות משלוח, קבלות ומסמכים סגורים מוחרגים בכוונה כדי למנוע ספירה כפולה כשתעודת משלוח הופכת לחשבונית מס.",
+        breakdown,
+        rows: filteredRows,
+        summaryLine,
+      },
+      suggestedActions: [
+        {
+          type: "acknowledge_only",
+          labelHe: "הבנתי, להמשיך",
+        },
+      ],
+      affectedRowNumbers: filteredRows.map((r) => r.rowNumber),
+      affectedAmount: totalAmount,
+    },
+  ];
+}
+
+function formatIls(n: number): string {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    maximumFractionDigits: 0,
+  }).format(n);
 }

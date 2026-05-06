@@ -33,6 +33,7 @@ import {
   type BatchMatchResult,
   type MatcherConfig,
 } from "@/lib/franchisee-matcher";
+import type { Anomaly } from "@/types/file-anomalies";
 
 /**
  * Franchisee with brand information
@@ -1037,6 +1038,302 @@ export async function matchFranchiseeNamesFromFile<
   }
 
   return results;
+}
+
+/**
+ * Same as `matchFranchiseeNamesFromFile`, but also returns aggregated anomalies
+ * for the admin pre-save review modal. Use this in upload routes; the original
+ * function is preserved for callers that don't need anomaly emission yet.
+ */
+export async function matchFranchiseeNamesFromFileWithAnomalies<
+  T extends {
+    franchisee: string;
+    franchiseeId?: string;
+    rowNumber?: number;
+    netAmount?: number;
+    grossAmount?: number;
+  }
+>(
+  parsedData: T[],
+  config?: Partial<MatcherConfig>
+): Promise<{
+  rows: Array<T & { matchResult: FranchiseeMatchResult }>;
+  anomalies: Anomaly[];
+}> {
+  const rows = await matchFranchiseeNamesFromFile(parsedData, config);
+
+  // Re-fetch franchisees once for anomaly suggestions. Cheap relative to the
+  // overall upload pipeline (single SELECT, ~100 rows for La Table).
+  const allFranchisees = (await database
+    .select()
+    .from(franchisee)
+    .orderBy(desc(franchisee.createdAt))) as Franchisee[];
+
+  const anomalies = computeMatchAnomalies(rows, allFranchisees);
+  return { rows, anomalies };
+}
+
+/**
+ * Derive anomalies from already-resolved match results. Pure (no I/O) so it's
+ * safe to call from any caller that already has the matched rows + franchisee
+ * list loaded.
+ *
+ * Groups multiple rows that share the same root cause (e.g., 61 rows with the
+ * same unknown business_id collapse to ONE UNKNOWN_BUSINESS_ID anomaly).
+ */
+export function computeMatchAnomalies<
+  T extends {
+    franchisee: string;
+    franchiseeId?: string;
+    rowNumber?: number;
+    netAmount?: number;
+    grossAmount?: number;
+    matchResult: FranchiseeMatchResult;
+  }
+>(rows: T[], allFranchisees: Franchisee[]): Anomaly[] {
+  const anomalies: Anomaly[] = [];
+
+  // ── 1. UNKNOWN_BUSINESS_ID — group by file's biz_id ─────────────────────
+  // Each unknown biz_id may map to many file rows. Collapse them into one
+  // anomaly per biz_id so the modal stays scannable.
+  const unknownGroups = new Map<
+    string,
+    {
+      bizId: string;
+      addresses: Set<string>;
+      rowNumbers: number[];
+      totalAmount: number;
+    }
+  >();
+
+  for (const r of rows) {
+    if (r.matchResult.matchedFranchisee) continue;
+    if (!r.franchiseeId) continue;
+    const normalized = normalizeBusinessId(r.franchiseeId);
+    if (!normalized) continue;
+    const existing = unknownGroups.get(normalized) ?? {
+      bizId: normalized,
+      addresses: new Set<string>(),
+      rowNumbers: [],
+      totalAmount: 0,
+    };
+    if (r.franchisee) existing.addresses.add(r.franchisee.trim());
+    if (typeof r.rowNumber === "number") existing.rowNumbers.push(r.rowNumber);
+    existing.totalAmount += r.netAmount ?? r.grossAmount ?? 0;
+    unknownGroups.set(normalized, existing);
+  }
+
+  for (const group of unknownGroups.values()) {
+    const suggestions = suggestFranchiseesForUnknownBizId(
+      Array.from(group.addresses),
+      allFranchisees
+    );
+
+    const actions: Anomaly["suggestedActions"] = [];
+    const top = suggestions[0];
+    if (top) {
+      actions.push({
+        type: "update_franchisee_company_id",
+        franchiseeId: top.id,
+        franchiseeName: top.name,
+        currentCompanyId: top.companyId ?? null,
+        newCompanyId: group.bizId,
+        labelHe: `עדכן ח.פ. של "${top.name}" ל-${group.bizId}`,
+      });
+    }
+    actions.push({
+      type: "manual_match_required",
+      labelHe: "התאם ידנית",
+    });
+
+    const addressList = Array.from(group.addresses).filter(Boolean).join(", ");
+    anomalies.push({
+      code: "UNKNOWN_BUSINESS_ID",
+      severity: "warning",
+      messageHe:
+        `${group.rowNumbers.length} שורות (${formatIls(Math.round(group.totalAmount))}) ` +
+        `עם ח.פ. ${group.bizId} שלא רשום במערכת` +
+        (addressList ? ` (כתובת בקובץ: ${addressList})` : ""),
+      details: {
+        explanationHe:
+          "ה-parser זיהה את השורות, אך לא נמצא פרנצ'ייז עם ח.פ. תואם. " +
+          "ייתכן שהפרנצ'ייז הזה לא נוצר עדיין, ששינה ח.פ., או שהספק שולח לישות אחרת. " +
+          "אם יש פרנצ'ייז במערכת עם השם הקרוב, ניתן לעדכן את ה-ח.פ. שלו בלחיצה.",
+        bizId: group.bizId,
+        addresses: Array.from(group.addresses),
+        suggestions: suggestions.map((s) => ({
+          id: s.id,
+          name: s.name,
+          companyId: s.companyId,
+          score: s.score,
+        })),
+      },
+      suggestedActions: actions,
+      affectedRowNumbers: group.rowNumbers,
+      affectedAmount: Math.round(group.totalAmount),
+    });
+  }
+
+  // ── 2. BIZ_ID_MISMATCH — matched by name, but file's biz_id ≠ stored ─────
+  for (const r of rows) {
+    const matched = r.matchResult.matchedFranchisee;
+    if (!matched) continue;
+    if (!r.franchiseeId) continue;
+    if (r.matchResult.matchType === "exact_code") continue; // matched on biz_id, no mismatch
+    const fileNorm = normalizeBusinessId(r.franchiseeId);
+    const dbNorm = normalizeBusinessId(matched.companyId ?? "");
+    if (!fileNorm || !dbNorm) continue;
+    if (fileNorm === dbNorm) continue;
+
+    anomalies.push({
+      code: "BIZ_ID_MISMATCH",
+      severity: "warning",
+      messageHe:
+        `התאמה לפי שם: "${matched.name}" — אך ח.פ. בקובץ (${fileNorm}) שונה מהרשום (${dbNorm}).`,
+      details: {
+        explanationHe:
+          "השם תואם אבל ה-ח.פ. שונה. ייתכן שהפרנצ'ייז שינה ישות חוקית (חברה חדשה) או שהספק שולח לח.פ. שגוי. " +
+          "כדאי לאמת לפני שמירה.",
+        franchiseeId: matched.id,
+        franchiseeName: matched.name,
+        fileBizId: fileNorm,
+        storedCompanyId: dbNorm,
+      },
+      suggestedActions: [
+        {
+          type: "update_franchisee_company_id",
+          franchiseeId: matched.id,
+          franchiseeName: matched.name,
+          currentCompanyId: matched.companyId ?? null,
+          newCompanyId: fileNorm,
+          labelHe: `עדכן ח.פ. של "${matched.name}" ל-${fileNorm}`,
+        },
+        { type: "acknowledge_only", labelHe: "הבנתי, להמשיך" },
+      ],
+      affectedRowNumbers:
+        typeof r.rowNumber === "number" ? [r.rowNumber] : undefined,
+      affectedAmount: r.netAmount ?? r.grossAmount,
+    });
+  }
+
+  // ── 3. LOW_CONFIDENCE_MATCH — fuzzy match below 0.85 ─────────────────────
+  for (const r of rows) {
+    const matched = r.matchResult.matchedFranchisee;
+    if (!matched) continue;
+    if (r.matchResult.confidence >= 0.85) continue;
+    anomalies.push({
+      code: "LOW_CONFIDENCE_MATCH",
+      severity: "warning",
+      messageHe:
+        `התאמה בביטחון נמוך (${Math.round(r.matchResult.confidence * 100)}%): "${r.franchisee}" → "${matched.name}".`,
+      details: {
+        explanationHe: "התאמה זו דורשת אישור ידני לפני שמירה.",
+        originalName: r.franchisee,
+        matchedName: matched.name,
+        confidence: r.matchResult.confidence,
+      },
+      suggestedActions: [
+        { type: "manual_match_required", labelHe: "אישור ידני" },
+      ],
+      affectedRowNumbers:
+        typeof r.rowNumber === "number" ? [r.rowNumber] : undefined,
+      affectedAmount: r.netAmount ?? r.grossAmount,
+    });
+  }
+
+  // ── 4. INACTIVE_FRANCHISEE_MATCHED ───────────────────────────────────────
+  for (const r of rows) {
+    const matched = r.matchResult.matchedFranchisee;
+    if (!matched) continue;
+    if (matched.isActive !== false && matched.status !== "inactive") continue;
+    anomalies.push({
+      code: "INACTIVE_FRANCHISEE_MATCHED",
+      severity: "warning",
+      messageHe: `הותאם לפרנצ'ייז לא פעיל: "${matched.name}".`,
+      details: {
+        explanationHe:
+          "הפרנצ'ייז המתאים מסומן כלא פעיל. ודאי שהשמירה רצויה.",
+        franchiseeId: matched.id,
+        franchiseeName: matched.name,
+        status: matched.status,
+        isActive: matched.isActive,
+      },
+      suggestedActions: [
+        { type: "acknowledge_only", labelHe: "הבנתי, להמשיך" },
+      ],
+      affectedRowNumbers:
+        typeof r.rowNumber === "number" ? [r.rowNumber] : undefined,
+      affectedAmount: r.netAmount ?? r.grossAmount,
+    });
+  }
+
+  return anomalies;
+}
+
+/**
+ * Suggest up to 3 franchisees that look textually similar to the unknown
+ * supplier-side address(es), even below the matcher's normal threshold —
+ * the goal is to give the admin a 1-click path to update the right
+ * franchisee's company_id, not to auto-match.
+ */
+function suggestFranchiseesForUnknownBizId(
+  addresses: string[],
+  allFranchisees: Franchisee[]
+): Array<{
+  id: string;
+  name: string;
+  companyId: string | null;
+  score: number;
+}> {
+  if (addresses.length === 0 || allFranchisees.length === 0) return [];
+
+  const scored = allFranchisees.map((f) => {
+    const score = Math.max(
+      ...addresses.map((addr) => tokenOverlapScore(addr, f.name))
+    );
+    return {
+      id: f.id,
+      name: f.name,
+      companyId: f.companyId,
+      score,
+    };
+  });
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3);
+}
+
+/**
+ * Lightweight token-overlap score [0..1] for Hebrew strings. Splits both
+ * sides into whitespace-delimited tokens (after lowercase + trim), counts
+ * shared tokens, normalizes by the smaller side. Good enough for "רעננה"
+ * vs "קינג קונג רעננה" → 1.0 (full containment of the input tokens).
+ */
+function tokenOverlapScore(a: string, b: string): number {
+  const tokenize = (s: string): Set<string> =>
+    new Set(
+      s
+        .toLowerCase()
+        .replace(/[.,\-_'"()[\]{}!?:;#@&*+=/\\<>|`~^]/g, " ")
+        .split(/\s+/)
+        .filter(Boolean)
+    );
+  const ta = tokenize(a);
+  const tb = tokenize(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared++;
+  return shared / Math.min(ta.size, tb.size);
+}
+
+function formatIls(n: number): string {
+  return new Intl.NumberFormat("he-IL", {
+    style: "currency",
+    currency: "ILS",
+    maximumFractionDigits: 0,
+  }).format(n);
 }
 
 /**

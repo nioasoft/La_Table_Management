@@ -5,7 +5,7 @@ import {
   type AuthenticatedUser,
 } from "@/lib/api-middleware";
 import { getSupplierById } from "@/data-access/suppliers";
-import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
 import type { SupplierFileMapping, SettlementPeriodType } from "@/db/schema";
@@ -274,6 +274,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     // Apply franchisee name matching if enabled
     let matchedData = result.data;
     let matchSummary = null;
+    let matchAnomalies: import("@/types/file-anomalies").Anomaly[] = [];
 
     if (enableMatching && result.data.length > 0) {
       // Parse match config if provided
@@ -286,11 +287,14 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }
       }
 
-      // Match franchisee names from the processed file data
-      const matchedResults = await matchFranchiseeNamesFromFile(
+      // Match franchisee names from the processed file data and derive
+      // anomalies (unknown biz_ids, mismatches, low confidence, inactive).
+      const matchOutcome = await matchFranchiseeNamesFromFileWithAnomalies(
         result.data,
         matchConfig
       );
+      const matchedResults = matchOutcome.rows;
+      matchAnomalies = matchOutcome.anomalies;
 
       matchedData = matchedResults;
 
@@ -569,6 +573,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
       legacyWarnings: result.legacyWarnings,
       // Unmatched franchisee summary
       unmatchedFranchiseeSummary,
+      // Anomalies surfaced for the pre-save admin review modal — combined
+      // from parser-level (e.g. FILTERED_ROWS_BY_DOCTYPE, DATES_NOT_EXTRACTED)
+      // and match-level (UNKNOWN_BUSINESS_ID, BIZ_ID_MISMATCH, ...).
+      anomalies: [...(result.anomalies ?? []), ...matchAnomalies],
       processingDurationMs,
       // File URL from Blob Storage (if upload succeeded)
       fileUrl,

@@ -7,8 +7,37 @@ import { eq, isNotNull, and } from "drizzle-orm";
 import { getDocument } from "@/lib/storage";
 import { processSupplierFile } from "@/lib/file-processor";
 import { getCurrentVatRate } from "@/data-access/vatRates";
-import { matchFranchiseeNamesFromFile } from "@/data-access/franchisees";
+import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { getVatProductNames } from "@/data-access/supplier-products";
+import type { Anomaly } from "@/types/file-anomalies";
+
+/**
+ * Merge acknowledgements from a previous anomaly set onto a fresh one,
+ * keyed by anomaly code + headline message. Anomalies that no longer
+ * occur are dropped (since reprocessing produced a different outcome).
+ * Useful when reprocessing a file: an admin who already triaged a
+ * FILTERED_ROWS_BY_DOCTYPE warning shouldn't be asked again.
+ */
+function mergeAnomalyAcknowledgements(
+  previous: Anomaly[],
+  fresh: Anomaly[]
+): Anomaly[] {
+  if (previous.length === 0) return fresh;
+  const ackIndex = new Map<string, Anomaly>();
+  for (const p of previous) {
+    if (p.acknowledged) ackIndex.set(`${p.code}::${p.messageHe}`, p);
+  }
+  return fresh.map((a) => {
+    const prior = ackIndex.get(`${a.code}::${a.messageHe}`);
+    if (!prior) return a;
+    return {
+      ...a,
+      acknowledged: true,
+      acknowledgedAt: prior.acknowledgedAt,
+      acknowledgedBy: prior.acknowledgedBy,
+    };
+  });
+}
 
 /**
  * POST /api/supplier-files/reprocess
@@ -171,8 +200,12 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        // Re-match franchisee names
-        const matchedResults = await matchFranchiseeNamesFromFile(processResult.data);
+        // Re-match franchisee names + recompute anomalies
+        const matchOutcome = await matchFranchiseeNamesFromFileWithAnomalies(
+          processResult.data
+        );
+        const matchedResults = matchOutcome.rows;
+        const matchAnomalies = matchOutcome.anomalies;
 
         // Preserve manual match overrides from existing result
         const existingResult = file.processingResult as SupplierFileProcessingResult | null;
@@ -246,6 +279,13 @@ export async function POST(request: NextRequest) {
             };
           }),
           processedAt: new Date().toISOString(),
+          // Refresh anomalies; preserve any acknowledgements on matching codes
+          // by code+messageHe combo so the modal doesn't re-flag what was
+          // already triaged on a previous run.
+          anomalies: mergeAnomalyAcknowledgements(
+            existingResult?.anomalies ?? [],
+            [...(processResult.anomalies ?? []), ...matchAnomalies]
+          ),
         };
 
         // Store before values for comparison

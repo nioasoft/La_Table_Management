@@ -75,8 +75,10 @@ import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox"
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
 import { PeriodSelector, type PeriodWithStatus } from "@/components/supplier-files/period-selector";
 import { OverwriteConfirmDialog } from "@/components/supplier-files/overwrite-confirm-dialog";
+import { AnomalyReviewModal } from "@/components/supplier-files/anomaly-review-modal";
 import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
 import { getPeriodByKey } from "@/lib/settlement-periods";
+import type { Anomaly, AnomalyAction } from "@/types/file-anomalies";
 
 /**
  * Convert XLS file to XLSX format in the browser. Vercel WAF blocks raw XLS
@@ -173,6 +175,10 @@ interface ProcessingResult {
   storedFileName?: string;
   // Flag to indicate if storage upload failed (processing succeeded but file not saved)
   storageUploadFailed?: boolean;
+  // Anomalies surfaced by parser + matcher; rendered in AnomalyReviewModal
+  // before the user can save the file. Optional — older API responses or
+  // non-anomaly uploads simply omit it.
+  anomalies?: Anomaly[];
 }
 
 /**
@@ -234,6 +240,14 @@ export default function SupplierFilesPage() {
 
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
+
+  // Pre-save anomaly review modal: when set, the user must triage these
+  // anomalies before saving the file. `null` means modal is closed.
+  const [pendingAnomalyReview, setPendingAnomalyReview] = useState<Anomaly[] | null>(null);
+  // Set true once the user has confirmed the anomaly review dialog. Until
+  // then the Save button stays disabled even if the rest of the page allows
+  // it. Reset whenever a new file is processed.
+  const [anomaliesReviewed, setAnomaliesReviewed] = useState(false);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -428,6 +442,9 @@ export default function SupplierFilesPage() {
         matchStats: recalculatedStats,
         franchiseeMatches,
         processedAt: new Date().toISOString(),
+        // Persist (acknowledged) anomalies so the file's review page can
+        // replay the same warnings the admin saw on upload.
+        anomalies: result.anomalies,
       };
 
       const response = await fetchWithTimeout("/api/supplier-files", {
@@ -661,6 +678,8 @@ export default function SupplierFilesPage() {
     setSavedFileId(null);
     setErrorsOpen(false);
     setWarningsOpen(false);
+    setPendingAnomalyReview(null);
+    setAnomaliesReviewed(false);
 
     if (files.length === 1 && !isMultiFile) {
       // Single file - use original flow (allows manual matching before save)
@@ -697,6 +716,15 @@ export default function SupplierFilesPage() {
 
         setProcessingResult(result);
         setExpandedResults(true);
+        // Open the pre-save anomaly review modal if the parser/matcher
+        // surfaced anything that needs triage. The Save button stays
+        // disabled until the user works through the modal.
+        if (Array.isArray(result.anomalies) && result.anomalies.length > 0) {
+          setPendingAnomalyReview(result.anomalies);
+          setAnomaliesReviewed(false);
+        } else {
+          setAnomaliesReviewed(true);
+        }
       } catch (error) {
         setUploadError(error instanceof Error ? error.message : "Unknown error");
       } finally {
@@ -840,6 +868,8 @@ export default function SupplierFilesPage() {
       setSavedFileId(null);
       setErrorsOpen(false);
       setWarningsOpen(false);
+      setPendingAnomalyReview(null);
+      setAnomaliesReviewed(false);
 
       try {
         if (file.name.toLowerCase().endsWith(".xls") && !file.name.toLowerCase().endsWith(".xlsx")) {
@@ -871,6 +901,12 @@ export default function SupplierFilesPage() {
 
         setProcessingResult(result);
         setExpandedResults(true);
+        if (Array.isArray(result.anomalies) && result.anomalies.length > 0) {
+          setPendingAnomalyReview(result.anomalies);
+          setAnomaliesReviewed(false);
+        } else {
+          setAnomaliesReviewed(true);
+        }
       } catch (error) {
         setUploadError(error instanceof Error ? error.message : "Unknown error");
       } finally {
@@ -1456,8 +1492,35 @@ export default function SupplierFilesPage() {
                         size="sm"
                         variant={canAutoApprove ? "default" : "secondary"}
                         className={canAutoApprove ? "bg-green-600 hover:bg-green-700" : ""}
-                        onClick={() => saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey)}
-                        disabled={isSaving || !processingResult.success || processingResult.storageUploadFailed}
+                        onClick={() => {
+                          // Re-open the anomaly review modal if anomalies
+                          // exist but haven't been triaged yet — saves can
+                          // proceed only after explicit acknowledgement.
+                          if (
+                            !anomaliesReviewed &&
+                            Array.isArray(processingResult.anomalies) &&
+                            processingResult.anomalies.length > 0
+                          ) {
+                            setPendingAnomalyReview(processingResult.anomalies);
+                            return;
+                          }
+                          saveToReviewQueue(processingResult, selectedSupplierId, selectedPeriodKey);
+                        }}
+                        disabled={
+                          isSaving ||
+                          !processingResult.success ||
+                          processingResult.storageUploadFailed ||
+                          (!anomaliesReviewed &&
+                            Array.isArray(processingResult.anomalies) &&
+                            processingResult.anomalies.some((a) => a.severity === "blocking"))
+                        }
+                        title={
+                          !anomaliesReviewed &&
+                          Array.isArray(processingResult.anomalies) &&
+                          processingResult.anomalies.length > 0
+                            ? "יש לבדוק את ההתראות לפני שמירה"
+                            : undefined
+                        }
                       >
                         {isSaving ? (
                           <>
@@ -1762,6 +1825,66 @@ export default function SupplierFilesPage() {
         onConfirm={handleOverwriteConfirm}
         onCancel={handleOverwriteCancel}
         overlappingFranchiseeNames={overlappingFranchiseeNames}
+      />
+
+      {/* Pre-save anomaly review — surfaces non-fatal issues from parser
+          and matcher (filtered rows, unknown business IDs, biz-id
+          mismatches) and forces explicit acknowledgement before saving. */}
+      <AnomalyReviewModal
+        open={!!pendingAnomalyReview}
+        anomalies={pendingAnomalyReview ?? []}
+        fileId={savedFileId}
+        onConfirm={(updatedAnomalies) => {
+          // Persist the (possibly acknowledged) anomalies onto the in-memory
+          // processing result so they round-trip into supplier_file_upload
+          // when the user clicks Save.
+          setProcessingResult((prev) =>
+            prev ? { ...prev, anomalies: updatedAnomalies } : prev
+          );
+          setPendingAnomalyReview(null);
+          setAnomaliesReviewed(true);
+        }}
+        onCancel={() => {
+          // Treat cancel as "abort this upload": clear the result so the user
+          // can pick a different file or fix the underlying issue first.
+          setPendingAnomalyReview(null);
+          setProcessingResult(null);
+          setAnomaliesReviewed(false);
+          setUploadError("ההעלאה בוטלה — חזרי לבדוק את הקובץ");
+        }}
+        onAfterAction={async (anomaly, action) => {
+          if (action.type !== "update_franchisee_company_id") return null;
+          try {
+            const res = await fetchWithTimeout(
+              `/api/admin/franchisees/${action.franchiseeId}/update-company-id`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ newCompanyId: action.newCompanyId }),
+              }
+            );
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err.error || "שגיאה בעדכון ה-ח.פ.");
+            }
+            toast.success(
+              `ה-ח.פ. של "${action.franchiseeName}" עודכן ל-${action.newCompanyId}`
+            );
+            // Drop this anomaly from the list — the underlying issue is
+            // fixed in DB. (The processing_result still shows the row as
+            // unmatched until reprocess; that's surfaced to the user as a
+            // hint to re-upload or wait for the next sync.)
+            const remaining = (pendingAnomalyReview ?? []).filter(
+              (a) => a !== anomaly
+            );
+            setPendingAnomalyReview(remaining);
+            return remaining;
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : "שגיאה לא ידועה";
+            toast.error(msg);
+            return null;
+          }
+        }}
       />
     </div>
   );
