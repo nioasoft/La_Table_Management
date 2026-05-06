@@ -125,8 +125,10 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
     }
 
     const compact = detectCompactLayout(rawData);
-    console.log("[AREL_PARSER] rows=" + rawData.length +
-      " row1=" + JSON.stringify((rawData[1] || []).slice(0, 4)) +
+    console.log("[AREL_PARSER_V2] rows=" + rawData.length +
+      " row0=" + JSON.stringify((rawData[0] || []).slice(0, 8)) +
+      " row1=" + JSON.stringify((rawData[1] || []).slice(0, 8)) +
+      " row2=" + JSON.stringify((rawData[2] || []).slice(0, 8)) +
       " compact=" + JSON.stringify(compact));
     if (compact) {
       return parseCompactLayout(
@@ -212,10 +214,10 @@ function parseCompactLayout(
   if (processed === 0) {
     errors.push(
       createFileProcessingError("PARSE_ERROR", {
-        details: "Could not extract any franchisee data from the compact-layout file",
+        details: "Could not extract any franchisee data from the compact-layout file [compact-v2]",
       })
     );
-    legacyErrors.push("Could not extract any franchisee data from the compact-layout file");
+    legacyErrors.push("Could not extract any franchisee data from the compact-layout file [compact-v2]");
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
   }
 
@@ -308,10 +310,10 @@ function parseLegacyLayout(
   if (processedRows === 0) {
     errors.push(
       createFileProcessingError("PARSE_ERROR", {
-        details: "Could not extract any franchisee data from the file",
+        details: "Could not extract any franchisee data from the file [legacy-v2]",
       })
     );
-    legacyErrors.push("Could not extract any franchisee data from the file");
+    legacyErrors.push("Could not extract any franchisee data from the file [legacy-v2]");
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
   }
 
