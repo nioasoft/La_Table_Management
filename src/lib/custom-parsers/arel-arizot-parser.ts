@@ -308,9 +308,14 @@ function parseLegacyLayout(
   }
 
   if (processedRows === 0) {
+    // DIAGNOSTIC: embed first 3 rows shape into error so we can inspect it via
+    // file_processing_log when console.log isn't reaching Vercel UI.
+    const dump = (i: number) =>
+      JSON.stringify((rawData[i] || []).slice(0, 8).map((c) => String(c ?? "")));
+    const diag = `rows=${rawData.length} r0=${dump(0)} r1=${dump(1)} r2=${dump(2)}`;
     errors.push(
       createFileProcessingError("PARSE_ERROR", {
-        details: "Could not extract any franchisee data from the file [legacy-v2]",
+        details: `Could not extract any franchisee data from the file [legacy-v2] | ${diag}`,
       })
     );
     legacyErrors.push("Could not extract any franchisee data from the file [legacy-v2]");
