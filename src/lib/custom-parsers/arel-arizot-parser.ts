@@ -45,24 +45,48 @@ const NEW_FRANCHISEE_COL = 2;
 
 const NEW_LAYOUT_TITLE = "ריכוז מכירות ללקוחות";
 const NEW_SKIP_KEYWORDS = ['סה"כ', "סה״כ", "סהכ", "מערכת תוכנה"];
+const COMPACT_TITLE_SCAN_ROWS = 5;
+const COMPACT_DATA_SCAN_ROWS = 8;
 
 /**
- * Detect compact "ריכוז מכירות" layout: title in row 1, and the first data
- * row (row 2) has a customer name at col C and a numeric gross at col B.
- * This rules out the legacy alternating-row file, where rows 2-13 are
- * still header/filter junk.
+ * Detect compact "ריכוז מכירות" layout. Returns the row index where data
+ * begins, or null if the file is not in compact layout.
+ *
+ * The title is scanned across the first {@link COMPACT_TITLE_SCAN_ROWS} rows
+ * (rather than locked to row 1), and the first data row is detected
+ * dynamically by walking forward until a row has a customer name at col C
+ * and a positive numeric gross at col B. This tolerates layout drift caused
+ * by browser-side .xls→.xlsx re-encoding (SheetJS in the browser writes
+ * slightly different XLSX bytes than Node, occasionally inserting/shifting
+ * a header row).
  */
-function isCompactLayout(rawData: unknown[][]): boolean {
-  if (rawData.length < 3) return false;
-  const headerJoined = (rawData[1] || []).map((c) => String(c || "")).join(" ");
-  if (!headerJoined.includes(NEW_LAYOUT_TITLE)) return false;
+function detectCompactLayout(rawData: unknown[][]): { dataStartRow: number } | null {
+  if (rawData.length < 3) return null;
 
-  const firstData = rawData[2] || [];
-  const name = String(firstData[NEW_FRANCHISEE_COL] || "").trim();
-  const grossStr = String(firstData[NEW_GROSS_COL] || "").trim();
-  if (!name) return false;
-  const gross = parseFloat(grossStr.replace(/[,\s₪]/g, ""));
-  return !isNaN(gross) && gross > 0;
+  let titleRow = -1;
+  for (let i = 0; i < Math.min(COMPACT_TITLE_SCAN_ROWS, rawData.length); i++) {
+    const joined = (rawData[i] || []).map((c) => String(c || "")).join(" ");
+    if (joined.includes(NEW_LAYOUT_TITLE)) {
+      titleRow = i;
+      break;
+    }
+  }
+  if (titleRow === -1) return null;
+
+  const scanLimit = Math.min(rawData.length, titleRow + 1 + COMPACT_DATA_SCAN_ROWS);
+  for (let i = titleRow + 1; i < scanLimit; i++) {
+    const row = rawData[i] || [];
+    const name = String(row[NEW_FRANCHISEE_COL] || "").trim();
+    if (!name) continue;
+    if (NEW_SKIP_KEYWORDS.some((kw) => name.includes(kw))) continue;
+    const grossStr = String(row[NEW_GROSS_COL] || "").trim();
+    const gross = parseFloat(grossStr.replace(/[,\s₪]/g, ""));
+    if (!isNaN(gross) && gross > 0) {
+      return { dataStartRow: i };
+    }
+  }
+
+  return null;
 }
 
 export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
@@ -100,8 +124,16 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    if (isCompactLayout(rawData)) {
-      return parseCompactLayout(rawData, errors, warnings, legacyErrors, legacyWarnings);
+    const compact = detectCompactLayout(rawData);
+    if (compact) {
+      return parseCompactLayout(
+        rawData,
+        compact.dataStartRow,
+        errors,
+        warnings,
+        legacyErrors,
+        legacyWarnings
+      );
     }
     return parseLegacyLayout(rawData, data, errors, warnings, legacyErrors, legacyWarnings);
   } catch (error) {
@@ -117,6 +149,7 @@ export function parseArelArizotFile(buffer: Buffer): FileProcessingResult {
 
 function parseCompactLayout(
   rawData: unknown[][],
+  dataStartRow: number,
   errors: import("../file-processing-errors").FileProcessingError[],
   warnings: import("../file-processing-errors").FileProcessingError[],
   legacyErrors: string[],
@@ -129,8 +162,7 @@ function parseCompactLayout(
   let skipped = 0;
   let rowNumber = 1;
 
-  // Data starts at row 2 (after filter row + header row)
-  for (let i = 2; i < rawData.length; i++) {
+  for (let i = dataStartRow; i < rawData.length; i++) {
     const row = rawData[i] || [];
     if (row.length === 0) {
       skipped++;
