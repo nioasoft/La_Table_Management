@@ -19,10 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
-  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -235,18 +232,13 @@ export default function FileDetailsPage() {
     return ids;
   }, [fileData?.supplierMatches, editingMatch?.bkmvName]);
 
-  // Split suppliers into available (not matched) and already-matched groups
+  // Flat list of suppliers with a flag for "already matched to another row in this file".
+  // Mapping the same supplier to multiple bkmvNames is intentionally supported (alias mechanism).
   const dropdownSuppliers = useMemo(() => {
-    const available: Supplier[] = [];
-    const alreadyMatched: Supplier[] = [];
-    for (const s of sortedSuppliers) {
-      if (alreadyMatchedSupplierIds.has(s.id)) {
-        alreadyMatched.push(s);
-      } else {
-        available.push(s);
-      }
-    }
-    return { available, alreadyMatched };
+    return sortedSuppliers.map((s) => ({
+      supplier: s,
+      isAlreadyMatched: alreadyMatchedSupplierIds.has(s.id),
+    }));
   }, [sortedSuppliers, alreadyMatchedSupplierIds]);
 
   // Extract available months from monthlyBreakdown
@@ -373,13 +365,20 @@ export default function FileDetailsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ bkmvName, newSupplierId, addAsAlias: addAlias }),
       });
-      if (!response.ok) throw new Error("Failed to update match");
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "שמירת ההתאמה נכשלה" }));
+        throw new Error(err.error || "שמירת ההתאמה נכשלה");
+      }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
       setEditingMatch(null);
       setSelectedNewSupplier("");
+      toast.success(data?.message || "ההתאמה נשמרה");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "שמירת ההתאמה נכשלה");
     },
   });
 
@@ -1295,7 +1294,9 @@ export default function FileDetailsPage() {
           <DialogHeader>
             <DialogTitle>עריכת התאמה</DialogTitle>
             <DialogDescription>
-              בחר ספק חדש עבור &quot;{editingMatch?.bkmvName}&quot;
+              בחר ספק חדש עבור &quot;{editingMatch?.bkmvName}&quot;.
+              <br />
+              ניתן להצמיד את אותו ספק לכמה שמות בקובץ — סמן &quot;הוסף ככינוי לספק&quot; כדי שהשם הזה יזוהה אוטומטית בעתיד.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
@@ -1306,27 +1307,16 @@ export default function FileDetailsPage() {
                   <SelectValue placeholder="בחר ספק..." />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
-                  <SelectGroup>
-                    <SelectLabel>ספקים זמינים</SelectLabel>
-                    {dropdownSuppliers.available.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name} ({s.code})
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  {dropdownSuppliers.alreadyMatched.length > 0 && (
-                    <>
-                      <SelectSeparator />
-                      <SelectGroup>
-                        <SelectLabel className="text-muted-foreground">כבר מותאם</SelectLabel>
-                        {dropdownSuppliers.alreadyMatched.map((s) => (
-                          <SelectItem key={s.id} value={s.id} className="text-muted-foreground">
-                            {s.name} ({s.code})
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </>
-                  )}
+                  {dropdownSuppliers.map(({ supplier: s, isAlreadyMatched }) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span>{s.name} ({s.code})</span>
+                      {isAlreadyMatched && (
+                        <span className="text-xs text-muted-foreground ms-2">
+                          (כבר מותאם לשורה אחרת)
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -275,21 +275,31 @@ export async function PATCH(
       }
     }
 
-    // Optionally add as alias to the supplier
+    // Optionally add as alias to the supplier.
+    // Isolated in try/catch so a failure here doesn't roll back the match update above.
+    let aliasUpdated = false;
     if (addAsAlias) {
-      const existingAliases = newSupplier.bkmvAliases || [];
-      if (!existingAliases.includes(bkmvName)) {
-        await updateSupplier(newSupplierId, {
-          bkmvAliases: [...existingAliases, bkmvName],
-        });
+      try {
+        const existingAliases = newSupplier.bkmvAliases || [];
+        if (!existingAliases.includes(bkmvName)) {
+          await updateSupplier(newSupplierId, {
+            bkmvAliases: [...existingAliases, bkmvName],
+          });
+        }
+        aliasUpdated = true;
+      } catch (aliasError) {
+        console.error("Error adding bkmv alias to supplier:", aliasError);
       }
     }
 
     return NextResponse.json({
       success: true,
-      message: addAsAlias
+      aliasUpdated,
+      message: addAsAlias && aliasUpdated
         ? `התאמה עודכנה והכינוי "${bkmvName}" נוסף לספק ${newSupplier.name}`
-        : `התאמה עודכנה לספק ${newSupplier.name}`,
+        : addAsAlias && !aliasUpdated
+          ? `התאמה עודכנה לספק ${newSupplier.name} (הוספת כינוי נכשלה)`
+          : `התאמה עודכנה לספק ${newSupplier.name}`,
       updatedStats: updatedResult.matchStats,
     });
   } catch (error) {
