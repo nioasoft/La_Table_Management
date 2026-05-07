@@ -217,13 +217,24 @@ export default function SupplierFileDetailPage() {
         body: JSON.stringify({ originalName, franchiseeId, addAsAlias: addAlias }),
       });
       if (!response.ok) throw new Error("Failed to update match");
-      return response.json();
+      return response.json() as Promise<{
+        success: boolean;
+        message: string;
+        sweepNewlyMatched?: number;
+      }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", fileId] });
       setEditingMatch(null);
       setSelectedFranchisee("");
       setFranchiseeSearch("");
+      // Surface the auto-sweep result so the admin understands why other rows
+      // suddenly look matched without them clicking each one.
+      if (data?.sweepNewlyMatched && data.sweepNewlyMatched > 0) {
+        toast.success(
+          `${data.sweepNewlyMatched} שורות נוספות תואמו אוטומטית בעקבות הוספת הכינוי`
+        );
+      }
     },
   });
 

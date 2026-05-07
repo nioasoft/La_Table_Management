@@ -22,6 +22,10 @@ import {
   logFileProcessing,
   createLogInputFromResults,
 } from "@/data-access/fileProcessingLog";
+import {
+  logSupplierFileProcessingDiagnostic,
+  sha256Hex,
+} from "@/data-access/supplier-file-processing-diagnostics";
 import { createAuditContext } from "@/data-access/auditLog";
 import { uploadDocument, generateEntityFileName } from "@/lib/storage";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -413,6 +417,25 @@ export async function POST(request: NextRequest, context: RouteContext) {
       console.error("Failed to log file processing:", logError);
       // Don't fail the request if logging fails
     }
+
+    // Capture a forensic snapshot — file content hash + counts of franchisees
+    // and aliases at this moment — so we can later explain why two uploads of
+    // the "same" file produced different match results. Fire-and-forget; the
+    // helper swallows its own errors.
+    void logSupplierFileProcessingDiagnostic({
+      supplierId,
+      fileName: file.name,
+      fileSizeBytes: file.size,
+      fileSha256: sha256Hex(buffer),
+      matchStats: matchSummary
+        ? {
+            total: matchSummary.total,
+            matched: matchSummary.matched,
+            needsReview: matchSummary.needsReview,
+            unmatched: matchSummary.unmatched,
+          }
+        : null,
+    });
 
     // Upload the supplier file to Blob Storage for permanent storage
     // Extract earliest date from processed data for file naming

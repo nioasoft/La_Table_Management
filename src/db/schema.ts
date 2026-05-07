@@ -1859,6 +1859,30 @@ export const cronExecutionLog = pgTable(
   }
 );
 
+// Supplier File Processing Diagnostics - per-upload snapshot for forensic analysis.
+// Captures the exact state at processing time so we can later explain why two
+// uploads of the same file produced different match results (file content
+// changed? aliases added? franchisees added?).
+export const supplierFileProcessingDiagnostics = pgTable(
+  "supplier_file_processing_diagnostics",
+  {
+    id: text("id").primaryKey(),
+    supplierFileUploadId: text("supplier_file_upload_id"),
+    supplierId: text("supplier_id").references(() => supplier.id, {
+      onDelete: "set null",
+    }),
+    fileName: text("file_name").notNull(),
+    fileSizeBytes: integer("file_size_bytes"),
+    fileSha256: text("file_sha256"),
+    franchiseesSnapshotCount: integer("franchisees_snapshot_count"),
+    aliasesSnapshotCount: integer("aliases_snapshot_count"),
+    matchStats: jsonb("match_stats"),
+    processedAt: timestamp("processed_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  }
+);
+
 // Email Logs table - Log of sent emails
 export const emailLog = pgTable(
   "email_log",

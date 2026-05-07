@@ -8,6 +8,7 @@ import {
   updateSupplierFileMatch,
   addFranchiseeAlias,
   markSupplierFileMatchAsBlacklisted,
+  sweepRematchUnmatchedRows,
 } from "@/data-access/supplier-file-uploads";
 import {
   addToBlacklist,
@@ -227,16 +228,38 @@ export async function PATCH(
     }
 
     // Optionally add as alias to the franchisee
+    let sweepNewlyMatched = 0;
+    let finalStats = updatedFile.processingResult?.matchStats;
     if (addAsAlias) {
       await addFranchiseeAlias(franchiseeId, originalName);
+
+      // After adding the alias, re-run matching across all rows in this file
+      // that are still unmatched. The new alias may unlock other rows whose
+      // names match it (e.g. "ויני רגבה" added as alias also matches a future
+      // row "ויני רגבה - מבצע"). Without this sweep, the admin would need to
+      // re-upload the file to see those rows match.
+      const sweepResult = await sweepRematchUnmatchedRows(fileId);
+      if (sweepResult) {
+        sweepNewlyMatched = sweepResult.newlyMatchedCount;
+        finalStats = sweepResult.file.processingResult?.matchStats;
+      }
+    }
+
+    let message: string;
+    if (addAsAlias) {
+      message =
+        sweepNewlyMatched > 0
+          ? `התאמה עודכנה והכינוי "${originalName}" נוסף לזכיין ${franchisee.name}. עוד ${sweepNewlyMatched} שורות תואמו אוטומטית.`
+          : `התאמה עודכנה והכינוי "${originalName}" נוסף לזכיין ${franchisee.name}`;
+    } else {
+      message = `התאמה עודכנה לזכיין ${franchisee.name}`;
     }
 
     return NextResponse.json({
       success: true,
-      message: addAsAlias
-        ? `התאמה עודכנה והכינוי "${originalName}" נוסף לזכיין ${franchisee.name}`
-        : `התאמה עודכנה לזכיין ${franchisee.name}`,
-      updatedStats: updatedFile.processingResult?.matchStats,
+      message,
+      updatedStats: finalStats,
+      sweepNewlyMatched,
     });
   } catch (error) {
     console.error("Error updating supplier file match:", error);

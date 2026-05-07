@@ -8,6 +8,7 @@ import {
   type CreateSupplierFileUploadData,
   type UpdateSupplierFileUploadData,
   type SupplierFileProcessingResult,
+  type Franchisee,
 } from "@/db/schema";
 import { eq, and, desc, sql, count, gte, lte, ne, or, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -206,6 +207,38 @@ export async function reviewSupplierFile(
 }
 
 /**
+ * Recompute match stats from a franchiseeMatches array.
+ * Shared by updateSupplierFileMatch, markSupplierFileMatchAsBlacklisted,
+ * and sweepRematchUnmatchedRows so they stay consistent.
+ */
+function recomputeMatchStats(
+  matches: SupplierFileProcessingResult["franchiseeMatches"]
+) {
+  const stats = {
+    total: matches.length,
+    exactMatches: 0,
+    fuzzyMatches: 0,
+    unmatched: 0,
+  };
+
+  for (const match of matches) {
+    if (match.matchType === "exact" || match.matchType === "exact_code" || match.matchType === "manual") {
+      stats.exactMatches++;
+    } else if (match.matchType === "fuzzy") {
+      stats.fuzzyMatches++;
+    } else if (
+      match.matchType === "none" ||
+      (!match.matchedFranchiseeId && match.matchType !== "blacklisted")
+    ) {
+      stats.unmatched++;
+    }
+    // blacklisted doesn't count toward any category
+  }
+
+  return stats;
+}
+
+/**
  * Update a single match in the processing result (for manual matching)
  */
 export async function updateSupplierFileMatch(
@@ -237,26 +270,7 @@ export async function updateSupplierFileMatch(
     requiresReview: false,
   };
 
-  // Recalculate match stats
-  const stats = {
-    total: processingResult.franchiseeMatches.length,
-    exactMatches: 0,
-    fuzzyMatches: 0,
-    unmatched: 0,
-  };
-
-  for (const match of processingResult.franchiseeMatches) {
-    if (match.matchType === "exact" || match.matchType === "manual") {
-      stats.exactMatches++;
-    } else if (match.matchType === "fuzzy") {
-      stats.fuzzyMatches++;
-    } else if (match.matchType === "none" || !match.matchedFranchiseeId) {
-      stats.unmatched++;
-    }
-    // blacklisted doesn't count toward any category
-  }
-
-  processingResult.matchStats = stats;
+  processingResult.matchStats = recomputeMatchStats(processingResult.franchiseeMatches);
 
   // Update the record
   const [updated] = await database
@@ -298,25 +312,7 @@ export async function markSupplierFileMatchAsBlacklisted(
     requiresReview: false,
   };
 
-  // Recalculate match stats (blacklisted items don't count toward unmatched)
-  const stats = {
-    total: processingResult.franchiseeMatches.length,
-    exactMatches: 0,
-    fuzzyMatches: 0,
-    unmatched: 0,
-  };
-
-  for (const match of processingResult.franchiseeMatches) {
-    if (match.matchType === "exact" || match.matchType === "manual") {
-      stats.exactMatches++;
-    } else if (match.matchType === "fuzzy") {
-      stats.fuzzyMatches++;
-    } else if (match.matchType === "none" || (!match.matchedFranchiseeId && match.matchType !== "blacklisted")) {
-      stats.unmatched++;
-    }
-  }
-
-  processingResult.matchStats = stats;
+  processingResult.matchStats = recomputeMatchStats(processingResult.franchiseeMatches);
 
   // Update the record
   const [updated] = await database
@@ -545,6 +541,99 @@ export async function addFranchiseeAlias(
     .where(eq(franchisee.id, franchiseeId));
 
   return true;
+}
+
+/**
+ * Re-run franchisee name matching across rows in a supplier file that are still
+ * unmatched, using fresh franchisee/alias state from the DB. Used after the admin
+ * adds a new alias via the review modal so other rows that should match via the
+ * new alias get picked up automatically — eliminating the "re-upload to see full
+ * match" workaround.
+ *
+ * Only touches rows where:
+ *   - matchType is "none", AND
+ *   - no matchedFranchiseeId is set, AND
+ *   - row was not manually matched, blacklisted, or matched by exact_code
+ *
+ * Manual fixes the admin already made are preserved.
+ *
+ * @returns Updated supplier file row with new matchStats, or null if file missing.
+ */
+export async function sweepRematchUnmatchedRows(
+  fileId: string
+): Promise<{
+  file: SupplierFileUpload;
+  newlyMatchedCount: number;
+} | null> {
+  const file = await getSupplierFileById(fileId);
+  if (!file || !file.processingResult) return null;
+
+  const processingResult = { ...file.processingResult };
+  const matches = [...processingResult.franchiseeMatches];
+
+  const targetIndices: number[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const isUnmatched =
+      m.matchType === "none" && !m.matchedFranchiseeId;
+    if (isUnmatched) {
+      targetIndices.push(i);
+    }
+  }
+
+  if (targetIndices.length === 0) {
+    return { file, newlyMatchedCount: 0 };
+  }
+
+  // Fresh franchisees snapshot — picks up aliases written since first processing
+  const allFranchisees = (await database
+    .select()
+    .from(franchisee)
+    .orderBy(desc(franchisee.createdAt))) as Franchisee[];
+
+  const { matchFranchiseeName } = await import("@/lib/franchisee-matcher");
+
+  let newlyMatchedCount = 0;
+
+  for (const i of targetIndices) {
+    const original = matches[i];
+    const result = matchFranchiseeName(original.originalName, allFranchisees);
+
+    if (!result.matchedFranchisee) continue;
+
+    // Translate matcher MatchType -> persisted shape (parity with upload route's getMatchType)
+    let persistedType: typeof original.matchType = "none";
+    if (result.matchType === "exact_code") persistedType = "exact_code";
+    else if (result.confidence === 1) persistedType = "exact";
+    else persistedType = "fuzzy";
+
+    matches[i] = {
+      ...original,
+      matchedFranchiseeId: result.matchedFranchisee.id,
+      matchedFranchiseeName: result.matchedFranchisee.name,
+      confidence: result.confidence,
+      matchType: persistedType,
+      requiresReview: result.requiresReview,
+    };
+
+    newlyMatchedCount++;
+  }
+
+  processingResult.franchiseeMatches = matches;
+  processingResult.matchStats = recomputeMatchStats(matches);
+
+  const [updated] = await database
+    .update(supplierFileUpload)
+    .set({
+      processingResult,
+      updatedAt: new Date(),
+    })
+    .where(eq(supplierFileUpload.id, fileId))
+    .returning();
+
+  return updated
+    ? { file: updated, newlyMatchedCount }
+    : null;
 }
 
 /**

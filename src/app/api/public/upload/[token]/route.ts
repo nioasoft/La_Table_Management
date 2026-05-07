@@ -39,6 +39,10 @@ import { requiresCustomParser } from "@/lib/custom-parsers";
 import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload, findDuplicateSupplierFiles, reviewSupplierFile } from "@/data-access/supplier-file-uploads";
+import {
+  logSupplierFileProcessingDiagnostic,
+  sha256Hex,
+} from "@/data-access/supplier-file-processing-diagnostics";
 import { deleteCommissionsBySourceFile } from "@/data-access/commissions";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
@@ -874,6 +878,16 @@ export async function POST(
               periodStartDate,
               periodEndDate,
               createdBy: null, // Public upload, no user
+            });
+
+            // Forensic diagnostic snapshot — see explanation in /api/suppliers/.../process-file
+            void logSupplierFileProcessingDiagnostic({
+              supplierFileUploadId: supplierFileRecord.id,
+              supplierId: supplier.id,
+              fileName: file.name,
+              fileSizeBytes: uploadResult.fileSize,
+              fileSha256: sha256Hex(buffer),
+              matchStats: storedResult.matchStats,
             });
 
             // Update uploaded_file status
