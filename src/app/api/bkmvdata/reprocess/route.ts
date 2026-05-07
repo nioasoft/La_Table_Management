@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { parseBkmvData, buildMonthlyBreakdown, convertRevenueSummaryToArray, convertAllAccountsSummaryToArray, buildAllAccountsSummary, buildRevenueMonthlyBreakdown, mergeRevenueSummaryIntoAllAccounts } from "@/lib/bkmvdata-parser";
-import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
-import { getSuppliers } from "@/data-access/suppliers";
-import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
-import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
+import {
+  parseBkmvData,
+  buildMonthlyBreakdown,
+} from "@/lib/bkmvdata-parser";
 import { getDocument } from "@/lib/storage";
 import { database } from "@/db";
 import { uploadedFile } from "@/db/schema";
 import type { BkmvProcessingResult } from "@/db/schema";
-import { isNotNull, sql } from "drizzle-orm";
-import { eq } from "drizzle-orm";
+import { isNotNull, sql, eq } from "drizzle-orm";
+import { getSuppliers } from "@/data-access/suppliers";
+import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
+import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
+import {
+  reprocessBkmvFileRow,
+  type BkmvReprocessContext,
+} from "@/data-access/bkmv-reprocess";
 
 /**
  * POST /api/bkmvdata/reprocess
@@ -33,7 +38,6 @@ export async function POST(request: NextRequest) {
     const dryRun = searchParams.get("dryRun") === "true";
     const force = searchParams.get("force") === "true";
 
-    // Find uploaded files that have bkmvProcessingResult
     const allBkmvFiles = await database
       .select({
         id: uploadedFile.id,
@@ -48,7 +52,6 @@ export async function POST(request: NextRequest) {
       .from(uploadedFile)
       .where(isNotNull(uploadedFile.bkmvProcessingResult));
 
-    // Determine which files to process
     let filesToProcess;
     if (force) {
       filesToProcess = allBkmvFiles;
@@ -71,196 +74,138 @@ export async function POST(request: NextRequest) {
           franchiseeId: f.franchiseeId,
           periodStart: f.periodStartDate,
           periodEnd: f.periodEndDate,
-          hasMonthlyBreakdown: !!(f.bkmvProcessingResult as BkmvProcessingResult).monthlyBreakdown,
+          hasMonthlyBreakdown: !!(f.bkmvProcessingResult as BkmvProcessingResult)
+            .monthlyBreakdown,
         })),
       });
     }
 
-    // Load suppliers, blacklist, and small suppliers once for all files
-    const allSuppliers = await getSuppliers();
-    const blacklistedNames = await getBlacklistedNamesSet();
-    const smallSupplierNames = await getSmallSupplierNamesSet();
+    if (force) {
+      // Full rebuild path uses the shared per-file helper so logic stays
+      // identical to the per-file POST /api/bkmvdata/review/[fileId]/reprocess.
+      const ctx: BkmvReprocessContext = {
+        allSuppliers: await getSuppliers(),
+        blacklistedNames: await getBlacklistedNamesSet(),
+        smallSupplierNames: await getSmallSupplierNamesSet(),
+      };
 
+      let processed = 0;
+      let failed = 0;
+      let manualMatchesPreserved = 0;
+      const errors: Array<{ fileId: string; fileName: string; error: string }> = [];
+
+      for (const file of filesToProcess) {
+        const outcome = await reprocessBkmvFileRow(
+          {
+            id: file.id,
+            fileUrl: file.fileUrl,
+            franchiseeId: file.franchiseeId,
+            bkmvProcessingResult:
+              file.bkmvProcessingResult as BkmvProcessingResult | null,
+            originalFileName: file.originalFileName,
+          },
+          ctx
+        );
+
+        if (outcome.success) {
+          processed++;
+          manualMatchesPreserved += outcome.manualMatchesPreserved;
+        } else {
+          failed++;
+          errors.push({
+            fileId: outcome.fileId,
+            fileName: outcome.fileName,
+            error: outcome.error,
+          });
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        force,
+        totalWithBkmv: allBkmvFiles.length,
+        toProcess: filesToProcess.length,
+        processed,
+        failed,
+        manualMatchesPreserved,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    }
+
+    // Legacy backfill path: only rebuild monthlyBreakdown for files missing it.
     let processed = 0;
     let failed = 0;
-    let manualMatchesPreserved = 0;
     const errors: Array<{ fileId: string; fileName: string; error: string }> = [];
 
     for (const file of filesToProcess) {
       try {
-        // Download file from storage
         const buffer = await getDocument(file.fileUrl);
         if (!buffer) {
-          errors.push({ fileId: file.id, fileName: file.originalFileName, error: "Failed to download file" });
+          errors.push({
+            fileId: file.id,
+            fileName: file.originalFileName,
+            error: "Failed to download file",
+          });
           failed++;
           continue;
         }
 
-        // Re-parse BKMVDATA
         const parseResult = parseBkmvData(buffer);
+        const existingResult = file.bkmvProcessingResult as BkmvProcessingResult;
 
-        // Re-match suppliers
-        const matchResults = matchBkmvSuppliers(
-          parseResult.supplierSummary,
-          allSuppliers,
-          { minConfidence: 0.6, reviewThreshold: 1.0 },
-          blacklistedNames,
-          smallSupplierNames
+        // Build supplier ID map from existing matches (no rematch in legacy mode).
+        const supplierIdMap = new Map<string, string | null>();
+        if (existingResult.supplierMatches) {
+          for (const m of existingResult.supplierMatches) {
+            supplierIdMap.set(m.bkmvName, m.matchedSupplierId);
+          }
+        }
+
+        const monthlyBreakdown = buildMonthlyBreakdown(
+          parseResult.transactions,
+          supplierIdMap
         );
 
-        // Collect manual overrides from old supplierMatches (preserve admin edits)
-        const existingResult = file.bkmvProcessingResult as BkmvProcessingResult;
-        const manualOverrides = new Map<string, {
-          matchedSupplierId: string;
-          matchedSupplierName: string | null;
-        }>();
+        const updatedResult: BkmvProcessingResult = {
+          ...existingResult,
+          monthlyBreakdown,
+        };
 
-        if (force && existingResult.supplierMatches) {
-          for (const oldMatch of existingResult.supplierMatches) {
-            if (oldMatch.matchType === "manual" && oldMatch.matchedSupplierId) {
-              manualOverrides.set(oldMatch.bkmvName, {
-                matchedSupplierId: oldMatch.matchedSupplierId,
-                matchedSupplierName: oldMatch.matchedSupplierName,
-              });
-            }
-          }
-        }
+        await database
+          .update(uploadedFile)
+          .set({
+            bkmvProcessingResult: sql`${JSON.stringify(updatedResult)}::jsonb`,
+          })
+          .where(eq(uploadedFile.id, file.id));
 
-        // Build supplier ID map, applying manual overrides
-        // Only include exact matches (confidence === 1) or manual overrides — fuzzy matches should not be stored
-        const supplierIdMap = new Map<string, string | null>();
-        for (const r of matchResults) {
-          const manual = manualOverrides.get(r.bkmvName);
-          if (manual) {
-            supplierIdMap.set(r.bkmvName, manual.matchedSupplierId);
-          } else {
-            const isExact = r.matchResult.matchedSupplier && r.matchResult.confidence === 1;
-            supplierIdMap.set(r.bkmvName, isExact ? r.matchResult.matchedSupplier!.id : null);
-          }
-        }
-
-        // Build monthly breakdown with consistent supplier ID map
-        const monthlyBreakdown = buildMonthlyBreakdown(parseResult.transactions, supplierIdMap);
-
-        if (force) {
-          // Full rebuild: update both supplierMatches and monthlyBreakdown
-          const newSupplierMatches = matchResults.map(r => {
-            const manual = manualOverrides.get(r.bkmvName);
-            if (manual) {
-              manualMatchesPreserved++;
-              return {
-                bkmvName: r.bkmvName,
-                amount: r.amount,
-                transactionCount: r.transactionCount,
-                matchedSupplierId: manual.matchedSupplierId,
-                matchedSupplierName: manual.matchedSupplierName,
-                confidence: 1,
-                matchType: "manual",
-                requiresReview: false,
-              };
-            }
-            return {
-              bkmvName: r.bkmvName,
-              amount: r.amount,
-              transactionCount: r.transactionCount,
-              matchedSupplierId: r.matchResult.matchedSupplier?.id || null,
-              matchedSupplierName: r.matchResult.matchedSupplier?.name || null,
-              confidence: r.matchResult.confidence,
-              matchType: r.matchResult.matchType,
-              requiresReview: r.matchResult.requiresReview,
-            };
-          });
-
-          // Recalculate stats (excluding blacklisted)
-          const nonBlacklisted = newSupplierMatches.filter(m => m.matchType !== "blacklisted");
-          const exactMatches = nonBlacklisted.filter(m => m.matchedSupplierId && m.confidence === 1).length;
-          const fuzzyMatches = nonBlacklisted.filter(m => m.matchedSupplierId && m.confidence < 1).length;
-          const unmatched = nonBlacklisted.filter(m => !m.matchedSupplierId).length;
-
-          // Rebuild revenue from re-parsed data (uses B110 credit turnover fallback)
-          const revenueAccounts = convertRevenueSummaryToArray(parseResult.revenueSummary);
-
-          // Build all-accounts summary for manual revenue classification
-          const allAccountsMap = buildAllAccountsSummary(parseResult);
-          mergeRevenueSummaryIntoAllAccounts(allAccountsMap, parseResult.revenueSummary);
-          const revenueCodeSet = new Set(revenueAccounts.map(a => a.accountCode));
-          const allAccountSummaries = convertAllAccountsSummaryToArray(allAccountsMap).map(a => ({
-            ...a,
-            autoDetectedAsRevenue: revenueCodeSet.has(a.accountCode),
-          }));
-
-          // Preserve confirmed revenue account codes from existing result
-          const confirmedCodes = existingResult.confirmedRevenueAccountCodes
-            ?? (existingResult.confirmedRevenueAccountCode ? [existingResult.confirmedRevenueAccountCode] : undefined);
-
-          // Mark confirmed accounts
-          if (confirmedCodes) {
-            const confirmedSet = new Set(confirmedCodes);
-            for (const ra of revenueAccounts) {
-              ra.isConfirmed = confirmedSet.has(ra.accountCode);
-            }
-          }
-
-          const revenueMonthlyBreakdown = buildRevenueMonthlyBreakdown(
-            parseResult.revenueSummary,
-            confirmedCodes
-          );
-
-          const updatedResult: BkmvProcessingResult = {
-            ...existingResult,
-            supplierMatches: newSupplierMatches,
-            matchStats: {
-              total: newSupplierMatches.length,
-              exactMatches,
-              fuzzyMatches,
-              unmatched,
-            },
-            monthlyBreakdown,
-            revenueAccounts,
-            allAccountSummaries: allAccountSummaries.length > 0 ? allAccountSummaries : undefined,
-            revenueMonthlyBreakdown,
-          };
-
-          await database
-            .update(uploadedFile)
-            .set({
-              bkmvProcessingResult: sql`${JSON.stringify(updatedResult)}::jsonb`,
-            })
-            .where(eq(uploadedFile.id, file.id));
-        } else {
-          // Legacy mode: only update monthlyBreakdown
-          const updatedResult: BkmvProcessingResult = {
-            ...existingResult,
-            monthlyBreakdown,
-          };
-
-          await database
-            .update(uploadedFile)
-            .set({
-              bkmvProcessingResult: sql`${JSON.stringify(updatedResult)}::jsonb`,
-            })
-            .where(eq(uploadedFile.id, file.id));
-        }
-
-        // Archive to year-based BKMV table
         if (file.franchiseeId && monthlyBreakdown) {
           try {
-            const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+            const { upsertFromFullBreakdown } = await import(
+              "@/data-access/franchisee-bkmv-year"
+            );
             await upsertFromFullBreakdown(
               file.franchiseeId,
               monthlyBreakdown,
-              (file.bkmvProcessingResult as BkmvProcessingResult).supplierMatches || null,
+              existingResult.supplierMatches || null,
               file.id
             );
           } catch (yearError) {
-            console.error("Error archiving BKMV year data for file", file.id, yearError);
+            console.error(
+              "Error archiving BKMV year data for file",
+              file.id,
+              yearError
+            );
           }
         }
 
         processed++;
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error";
-        errors.push({ fileId: file.id, fileName: file.originalFileName, error: errorMsg });
+        errors.push({
+          fileId: file.id,
+          fileName: file.originalFileName,
+          error: errorMsg,
+        });
         failed++;
       }
     }
@@ -272,7 +217,6 @@ export async function POST(request: NextRequest) {
       toProcess: filesToProcess.length,
       processed,
       failed,
-      manualMatchesPreserved: force ? manualMatchesPreserved : undefined,
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {

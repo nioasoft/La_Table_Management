@@ -39,6 +39,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
@@ -62,6 +72,7 @@ import {
   ChevronDown,
   ChevronUp,
   Inbox,
+  RefreshCcw,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
@@ -161,6 +172,7 @@ export default function FileDetailsPage() {
   const [reviewNotes, setReviewNotes] = useState("");
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [isReprocessDialogOpen, setIsReprocessDialogOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState<SupplierMatch | null>(null);
   const [selectedNewSupplier, setSelectedNewSupplier] = useState<string>("");
   const [addAsAlias, setAddAsAlias] = useState(true);
@@ -354,6 +366,41 @@ export default function FileDetailsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review"] });
       router.push("/admin/bkmvdata/review");
+    },
+  });
+
+  // Back-to-processing mutation: re-runs parser + matcher and resets the file
+  // to needs_review. Manual overrides are preserved server-side.
+  const reprocessMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetchWithTimeout(
+        `/api/bkmvdata/review/${fileId}/reprocess`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || "החזרה לעיבוד נכשלה");
+      }
+      return response.json() as Promise<{
+        manualMatchesPreserved: number;
+        message: string;
+      }>;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review"] });
+      setIsReprocessDialogOpen(false);
+      toast.success(
+        data.manualMatchesPreserved > 0
+          ? `הקובץ עובד מחדש (${data.manualMatchesPreserved} התאמות ידניות נשמרו)`
+          : data.message
+      );
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "החזרה לעיבוד נכשלה");
     },
   });
 
@@ -618,8 +665,64 @@ export default function FileDetailsPage() {
               {file.processingStatus === "approved" ? "אושר" : "נדחה"}
             </Badge>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsReprocessDialogOpen(true)}
+            disabled={reprocessMutation.isPending}
+            title="הרץ עיבוד מחדש על הקובץ"
+          >
+            {reprocessMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 ms-1.5 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-3.5 w-3.5 ms-1.5" />
+            )}
+            חזור לעיבוד
+          </Button>
         </div>
       </div>
+
+      <AlertDialog
+        open={isReprocessDialogOpen}
+        onOpenChange={setIsReprocessDialogOpen}
+      >
+        <AlertDialogContent className="max-w-md" dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-right">
+              <RefreshCcw className="h-5 w-5 text-primary" />
+              חזרה לעיבוד הקובץ
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3 text-right">
+                <p>
+                  פעולה זו תריץ עיבוד מחדש של הקובץ — פירוק BKMV, התאמת ספקים ובניית סיכום חודשי.
+                </p>
+                <p>
+                  ההתאמות הידניות של הספקים, רשימת ה-blacklist, ספקים קטנים וקודי הכנסה מאושרים יישמרו.
+                </p>
+                <p className="text-muted-foreground text-sm">
+                  לאחר העיבוד הקובץ יחזור למצב &quot;דורש בדיקה&quot; — תצטרך/י לאשר אותו מחדש.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2 sm:gap-2">
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                reprocessMutation.mutate();
+              }}
+              disabled={reprocessMutation.isPending}
+              className="bg-primary"
+            >
+              {reprocessMutation.isPending ? "מעבד..." : "חזור לעיבוד"}
+            </AlertDialogAction>
+            <AlertDialogCancel disabled={reprocessMutation.isPending}>
+              ביטול
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ReviewQueueSheet
         currentFileId={fileId}
