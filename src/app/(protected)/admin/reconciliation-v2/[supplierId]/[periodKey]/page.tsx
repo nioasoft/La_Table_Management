@@ -2,7 +2,7 @@
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { use, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Loader2, ArrowRight, Check, AlertTriangle, Scale } from "lucide-react";
 import {
   ComparisonTable,
   FileApprovalSection,
+  ReconciliationActions,
   StatusBadge,
   SupplierNotes,
 } from "@/components/reconciliation-v2";
@@ -61,10 +62,14 @@ function formatPeriodDate(dateString: string): string {
 export default function ReconciliationComparisonPage({ params }: PageProps) {
   const { supplierId, periodKey } = use(params);
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
 
   // Parse period key to get dates
   const [periodStartDate, periodEndDate] = periodKey.split("_");
+
+  // ?sessionId=... lets us pin to a specific run (used after Match-All to jump to the new run).
+  const sessionIdFromUrl = searchParams.get("sessionId");
 
   // Fetch session data - find by supplier and period
   const { data, isLoading, error, refetch } = useReconciliationSessionWithComparisons(null, {
@@ -72,36 +77,24 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   });
 
   // We need to first get the session ID based on supplier and period
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(sessionIdFromUrl);
   const sessionQuery = useReconciliationSessionWithComparisons(sessionId, {
     enabled: !!sessionId,
   });
 
-  // On mount, try to find or create the session
+  // Sync sessionId state with the URL param so Match-All navigation lands on the new run.
   useMemo(() => {
-    // We'll use the period as the session ID lookup
-    const fetchSession = async () => {
-      try {
-        const res = await fetchWithTimeout(
-          `/api/reconciliation-v2/sessions?supplierId=${supplierId}&periodStart=${periodStartDate}&periodEnd=${periodEndDate}`
-        );
-        if (res.ok) {
-          const sessions = await res.json();
-          if (sessions.length > 0) {
-            setSessionId(sessions[0].id);
-          }
-        }
-      } catch (err) {
-        console.error("Error fetching session:", err);
-      }
-    };
+    if (sessionIdFromUrl && sessionIdFromUrl !== sessionId) {
+      setSessionId(sessionIdFromUrl);
+    }
+  }, [sessionIdFromUrl, sessionId]);
 
-    // For now, we'll try to get the session from the period data
-    // The session should have been created when user clicked "Start Reconciliation"
-    // We need to query by supplier + period dates
+  // On mount (or when no explicit sessionId is in the URL), look up the active session for this period.
+  useMemo(() => {
+    if (sessionIdFromUrl) return;
+
     const findSession = async () => {
       try {
-        // Get supplier periods to find the session ID
         const periodsRes = await fetchWithTimeout(
           `/api/reconciliation-v2/suppliers/${supplierId}/periods`
         );
@@ -120,7 +113,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
     };
 
     findSession();
-  }, [supplierId, periodKey, periodStartDate, periodEndDate]);
+  }, [supplierId, periodKey, periodStartDate, periodEndDate, sessionIdFromUrl]);
 
   const updateStatus = useUpdateComparisonStatus();
   const addToQueue = useAddToReviewQueue();
@@ -232,6 +225,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
 
   const { session, comparisons } = sessionQuery.data;
   const canApproveFile = session.needsReviewCount === 0 && session.toReviewQueueCount === 0;
+  const isArchived = !!session.archivedAt;
 
   return (
     <div className="container max-w-6xl py-8 space-y-6">
@@ -328,6 +322,27 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
           הפרשים עד <strong>₪{RECONCILIATION_THRESHOLD}</strong> מאושרים אוטומטית
         </span>
       </div>
+
+      {/* Archived banner — shown when viewing a previous run */}
+      {isArchived && session.runNumber > 1 && (
+        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg text-sm">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <span className="text-amber-900 dark:text-amber-100">
+            סשן זה הוא Run #{session.runNumber} ונארכב — לתצוגת היסטוריה בלבד.
+            הפעולות מושבתות.
+          </span>
+        </div>
+      )}
+
+      {/* Action toolbar: Match-All, Download, Send Email */}
+      <ReconciliationActions
+        sessionId={session.id}
+        supplierId={session.supplierId}
+        supplierName={session.supplierName}
+        supplierFileId={session.supplierFileId}
+        comparisons={comparisons}
+        isArchived={isArchived}
+      />
 
       {/* Supplier Notes */}
       {currentSupplier?.notes && (

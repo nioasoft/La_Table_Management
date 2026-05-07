@@ -527,6 +527,70 @@ export function useRejectSessionFile() {
 }
 
 /**
+ * Match-All: clones the active session, archives the source, auto-approves all
+ * `needs_review` rows ≤ ₪30. Server returns the new session id; caller navigates to it.
+ */
+export function useMatchAllSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (sessionId: string): Promise<{
+      newSessionId: string;
+      matchedCount: number;
+      belowThresholdCount: number;
+    }> => {
+      const res = await fetchWithTimeout(
+        `/api/reconciliation-v2/sessions/${sessionId}/match-all`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to run Match-All");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reconciliationV2Keys.sessions() });
+      queryClient.invalidateQueries({ queryKey: reconciliationV2Keys.suppliers() });
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === "reconciliation-v2" &&
+          query.queryKey[1] === "periods",
+      });
+    },
+  });
+}
+
+/**
+ * Send a free-form email to the supplier from inside the reconciliation page.
+ * Logged in `email_logs` with entityType="reconciliation_session".
+ */
+export function useSendSupplierEmail(sessionId: string) {
+  return useMutation({
+    mutationFn: async (data: {
+      to: string;
+      subject: string;
+      bodyHtml: string;
+      bodyText?: string;
+    }): Promise<{ success: boolean; messageId?: string }> => {
+      const res = await fetchWithTimeout(
+        `/api/reconciliation-v2/sessions/${sessionId}/email`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        }
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to send email");
+      }
+      return res.json();
+    },
+  });
+}
+
+/**
  * Delete a reconciliation session
  */
 export function useDeleteReconciliationSession() {

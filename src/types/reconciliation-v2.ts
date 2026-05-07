@@ -36,6 +36,10 @@ export interface ReconciliationSession {
   fileRejectionReason: string | null;
   fileApprovedAt: Date | null;
   fileApprovedBy: string | null;
+  // Run versioning — Match-All clones the active session into a new run.
+  runNumber: number;
+  parentSessionId: string | null;
+  archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;

@@ -28,7 +28,7 @@ import {
   type BkmvProcessingResult,
   type SupplierFileMapping,
 } from "@/db/schema";
-import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, isNull, inArray } from "drizzle-orm";
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
@@ -196,7 +196,8 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     }
   }
 
-  // Check which periods already have sessions
+  // Check which periods already have an ACTIVE (non-archived) session.
+  // After Match-All clones a session, the source is archived — we surface only the active run.
   const existingSessions = await database
     .select({
       id: reconciliationSession.id,
@@ -205,7 +206,12 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
       status: reconciliationSession.status,
     })
     .from(reconciliationSession)
-    .where(eq(reconciliationSession.supplierId, supplierId));
+    .where(
+      and(
+        eq(reconciliationSession.supplierId, supplierId),
+        isNull(reconciliationSession.archivedAt)
+      )
+    );
 
   const sessionMap = new Map(
     existingSessions.map((s) => [
@@ -689,6 +695,9 @@ export async function getSessionById(
       fileRejectionReason: reconciliationSession.fileRejectionReason,
       fileApprovedAt: reconciliationSession.fileApprovedAt,
       fileApprovedBy: reconciliationSession.fileApprovedBy,
+      runNumber: reconciliationSession.runNumber,
+      parentSessionId: reconciliationSession.parentSessionId,
+      archivedAt: reconciliationSession.archivedAt,
       createdAt: reconciliationSession.createdAt,
       updatedAt: reconciliationSession.updatedAt,
       createdBy: reconciliationSession.createdBy,
@@ -822,6 +831,204 @@ export async function bulkApproveComparisons(
   }
 
   return result.length;
+}
+
+export type MatchAllResult = {
+  newSessionId: string;
+  matchedCount: number;
+  belowThresholdCount: number;
+};
+
+/**
+ * Match-All: clone the source session into a new run, archive the source,
+ * and auto-approve every comparison whose absolute difference ≤ RECONCILIATION_THRESHOLD
+ * and is currently in `needs_review`. Atomic.
+ *
+ * The source session is preserved (archived) so historical state is auditable.
+ */
+export async function cloneSessionAndMatchAll(
+  sourceSessionId: string,
+  reviewedBy: string
+): Promise<MatchAllResult> {
+  return database.transaction(async (tx) => {
+    const [source] = await tx
+      .select()
+      .from(reconciliationSession)
+      .where(eq(reconciliationSession.id, sourceSessionId))
+      .limit(1);
+
+    if (!source) {
+      throw new Error(`Source session ${sourceSessionId} not found`);
+    }
+
+    if (source.archivedAt) {
+      throw new Error("Cannot run Match-All on an archived session");
+    }
+
+    const sourceComparisons = await tx
+      .select()
+      .from(reconciliationComparison)
+      .where(eq(reconciliationComparison.sessionId, sourceSessionId));
+
+    // Archive the source so it stops appearing as "active" for the period.
+    await tx
+      .update(reconciliationSession)
+      .set({ archivedAt: new Date(), updatedAt: new Date() })
+      .where(eq(reconciliationSession.id, sourceSessionId));
+
+    // Insert the new session at runNumber + 1, parent points back to source.
+    const [newSession] = await tx
+      .insert(reconciliationSession)
+      .values({
+        supplierId: source.supplierId,
+        supplierFileId: source.supplierFileId,
+        periodStartDate: source.periodStartDate,
+        periodEndDate: source.periodEndDate,
+        status: "in_progress",
+        totalSupplierAmount: source.totalSupplierAmount,
+        totalFranchiseeAmount: source.totalFranchiseeAmount,
+        totalDifference: source.totalDifference,
+        runNumber: source.runNumber + 1,
+        parentSessionId: source.id,
+        archivedAt: null,
+        createdBy: reviewedBy,
+      })
+      .returning();
+
+    const now = new Date();
+    let matchedCount = 0;
+    let belowThresholdCount = 0;
+
+    if (sourceComparisons.length > 0) {
+      const newRows = sourceComparisons.map((c) => {
+        const isNeedsReview = c.status === "needs_review";
+        const isBelowThreshold =
+          isNeedsReview && Number(c.absoluteDifference) <= RECONCILIATION_THRESHOLD;
+
+        if (isBelowThreshold) {
+          matchedCount++;
+          belowThresholdCount++;
+        }
+
+        return {
+          sessionId: newSession.id,
+          franchiseeId: c.franchiseeId,
+          supplierAmount: c.supplierAmount,
+          franchiseeAmount: c.franchiseeAmount,
+          difference: c.difference,
+          absoluteDifference: c.absoluteDifference,
+          supplierOriginalName: c.supplierOriginalName,
+          franchiseeFileId: c.franchiseeFileId,
+          status: isBelowThreshold ? ("manually_approved" as const) : c.status,
+          reviewedBy: isBelowThreshold ? reviewedBy : c.reviewedBy,
+          reviewedAt: isBelowThreshold ? now : c.reviewedAt,
+          reviewNotes: isBelowThreshold
+            ? `Match-All ≤₪${RECONCILIATION_THRESHOLD}`
+            : c.reviewNotes,
+          notes: c.notes,
+        };
+      });
+
+      await tx.insert(reconciliationComparison).values(newRows);
+    }
+
+    // Recalculate session stats inline (recalculateSessionStats uses the global db, not tx,
+    // so we compute here directly to stay inside the transaction).
+    let totalFranchisees = 0;
+    let newMatchedCount = 0;
+    let newNeedsReviewCount = 0;
+    let newApprovedCount = 0;
+    let newToReviewQueueCount = 0;
+
+    for (const c of sourceComparisons) {
+      totalFranchisees++;
+      const isNeedsReview = c.status === "needs_review";
+      const isBelowThreshold =
+        isNeedsReview && Number(c.absoluteDifference) <= RECONCILIATION_THRESHOLD;
+      const finalStatus = isBelowThreshold ? "manually_approved" : c.status;
+
+      if (finalStatus === "auto_approved") {
+        newMatchedCount++;
+        newApprovedCount++;
+      } else if (finalStatus === "manually_approved") {
+        newApprovedCount++;
+      } else if (finalStatus === "needs_review") {
+        newNeedsReviewCount++;
+      } else if (finalStatus === "sent_to_review_queue") {
+        newToReviewQueueCount++;
+      }
+    }
+
+    const sessionStatus =
+      newNeedsReviewCount === 0 && newToReviewQueueCount === 0
+        ? "completed"
+        : "in_progress";
+
+    await tx
+      .update(reconciliationSession)
+      .set({
+        totalFranchisees,
+        matchedCount: newMatchedCount,
+        needsReviewCount: newNeedsReviewCount,
+        approvedCount: newApprovedCount,
+        toReviewQueueCount: newToReviewQueueCount,
+        status: sessionStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(reconciliationSession.id, newSession.id));
+
+    return {
+      newSessionId: newSession.id,
+      matchedCount,
+      belowThresholdCount,
+    };
+  });
+}
+
+/**
+ * Find the active (non-archived) session for a (supplier, period) tuple.
+ * Returns null if none exists.
+ */
+export async function getActiveSession(
+  supplierId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<ReconciliationSession | null> {
+  const [row] = await database
+    .select()
+    .from(reconciliationSession)
+    .where(
+      and(
+        eq(reconciliationSession.supplierId, supplierId),
+        eq(reconciliationSession.periodStartDate, periodStartDate),
+        eq(reconciliationSession.periodEndDate, periodEndDate),
+        isNull(reconciliationSession.archivedAt)
+      )
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Return all runs for a (supplier, period), newest run first.
+ * Used for the run-history dropdown in the reconciliation page.
+ */
+export async function getSessionHistory(
+  supplierId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<ReconciliationSession[]> {
+  return database
+    .select()
+    .from(reconciliationSession)
+    .where(
+      and(
+        eq(reconciliationSession.supplierId, supplierId),
+        eq(reconciliationSession.periodStartDate, periodStartDate),
+        eq(reconciliationSession.periodEndDate, periodEndDate)
+      )
+    )
+    .orderBy(desc(reconciliationSession.runNumber));
 }
 
 /**
@@ -1202,6 +1409,9 @@ export async function getAllSessions(filters?: {
       fileRejectionReason: reconciliationSession.fileRejectionReason,
       fileApprovedAt: reconciliationSession.fileApprovedAt,
       fileApprovedBy: reconciliationSession.fileApprovedBy,
+      runNumber: reconciliationSession.runNumber,
+      parentSessionId: reconciliationSession.parentSessionId,
+      archivedAt: reconciliationSession.archivedAt,
       createdAt: reconciliationSession.createdAt,
       updatedAt: reconciliationSession.updatedAt,
       createdBy: reconciliationSession.createdBy,

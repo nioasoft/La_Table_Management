@@ -3445,6 +3445,10 @@ export const reconciliationSession = pgTable(
     fileApprovedBy: text("file_approved_by").references(() => user.id, {
       onDelete: "set null",
     }),
+    // Run versioning: Match-All clones the active session into a new run and archives the source.
+    runNumber: integer("run_number").$default(() => 1).notNull(),
+    parentSessionId: text("parent_session_id"),
+    archivedAt: timestamp("archived_at"),
     // Audit
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())
@@ -3462,11 +3466,12 @@ export const reconciliationSession = pgTable(
     index("idx_reconciliation_session_period").on(table.periodStartDate, table.periodEndDate),
     index("idx_reconciliation_session_status").on(table.status),
     index("idx_reconciliation_session_created_at").on(table.createdAt),
-    // Unique constraint for supplier + period to prevent duplicate sessions
-    uniqueIndex("idx_reconciliation_session_unique").on(
+    // Unique constraint for (supplier, period, run_number) — allows multiple runs per period
+    uniqueIndex("idx_reconciliation_session_unique_run").on(
       table.supplierId,
       table.periodStartDate,
-      table.periodEndDate
+      table.periodEndDate,
+      table.runNumber
     ),
   ]
 );

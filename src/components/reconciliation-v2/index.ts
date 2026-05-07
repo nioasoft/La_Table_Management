@@ -9,3 +9,5 @@ export { FileRejectionDialog } from "./FileRejectionDialog";
 export { ReviewQueueTable } from "./ReviewQueueTable";
 export { HistoryFilters } from "./HistoryFilters";
 export { HistoryTable } from "./HistoryTable";
+export { EmailComposerDialog } from "./EmailComposerDialog";
+export { ReconciliationActions } from "./ReconciliationActions";
