@@ -48,13 +48,12 @@ export function parseMorBriutFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Configuration based on file analysis:
-    // Header row: 2 (index 2)
-    // Data starts: row 4 (index 4) - after customer summary row
-    // Customer column: 4 (index 4) - "שם חשבון"
-    // Price column: 8 (index 8) - "מחיר נטו"
-    // Quantity column: 9 (index 9) - "כמות יציאה"
-    const DATA_START_ROW = 4;
+    // Sheets in the same file can have different header layouts:
+    //   - "מינה" sheet: 3 metadata rows + 1 customer-block header row
+    //   - "קינג קונג" sheet: 1 customer-block header row (data starts at index 1)
+    // Iterate from row 0 and rely on customerName + numeric price/qty checks
+    // to filter non-data rows (file headers, column headers, customer-block headers, subtotal rows).
+    const DATA_START_ROW = 0;
     const CUSTOMER_COL = 4;
     const PRICE_COL = 8;
     const QUANTITY_COL = 9;
