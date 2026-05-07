@@ -759,18 +759,26 @@ export default function BkmvDataPage() {
     if (!supplier) return;
 
     const existingAliases = supplier.bkmvAliases || [];
-    if (existingAliases.includes(alias)) return;
+    const aliasAlreadyExists = existingAliases.includes(alias);
 
-    await updateSupplierMutation.mutateAsync({
-      supplierId,
-      bkmvAliases: [...existingAliases, alias],
-    });
+    // Only call the API if the alias is actually new — but ALWAYS re-run matching
+    // afterward so the table reflects the current alias state (covers the case where
+    // a stale local matchingResults was rendered before the alias was last saved).
+    if (!aliasAlreadyExists) {
+      await updateSupplierMutation.mutateAsync({
+        supplierId,
+        bkmvAliases: [...existingAliases, alias],
+      });
+    }
 
     // Re-run matching with updated suppliers (use classification-filtered summary like initial load)
     if (parseResult && classifiedAccountsRef.current.size > 0) {
+      const effectiveAliases = aliasAlreadyExists
+        ? existingAliases
+        : [...existingAliases, alias];
       const updatedSuppliers = suppliers.map(s =>
         s.id === supplierId
-          ? { ...s, bkmvAliases: [...existingAliases, alias] }
+          ? { ...s, bkmvAliases: effectiveAliases }
           : s
       );
 
