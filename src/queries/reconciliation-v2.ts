@@ -527,6 +527,45 @@ export function useRejectSessionFile() {
 }
 
 /**
+ * Back to processing: archive the current session and re-run parser/matcher
+ * on the underlying supplier file. Manual overrides + acknowledged anomalies
+ * survive. Caller navigates to the file review page using `supplierFileId`.
+ */
+export function useBackToProcessing() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      sessionId: string
+    ): Promise<{ supplierFileId: string }> => {
+      const res = await fetchWithTimeout(
+        `/api/reconciliation-v2/sessions/${sessionId}/back-to-processing`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to send file back to processing");
+      }
+      return res.json();
+    },
+    onSuccess: (_, sessionId) => {
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.session(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.sessions(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.suppliers(),
+      });
+    },
+  });
+}
+
+/**
  * Match-All: clones the active session, archives the source, auto-approves all
  * `needs_review` rows ≤ ₪30. Server returns the new session id; caller navigates to it.
  */

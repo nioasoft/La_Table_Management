@@ -1,8 +1,9 @@
 "use client";
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { useState, useCallback, useMemo } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -123,8 +124,22 @@ interface Franchisee {
 export default function SupplierFileDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const fileId = params.fileId as string;
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (searchParams.get("reprocessed") === "1") {
+      toast.success(
+        "הקובץ עובד מחדש. בדוק/י את האנומליות לפני יצירת השוואה חדשה."
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.delete("reprocessed");
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+    // Run once on mount; the URL param is consumed and removed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [reviewNotes, setReviewNotes] = useState("");
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);

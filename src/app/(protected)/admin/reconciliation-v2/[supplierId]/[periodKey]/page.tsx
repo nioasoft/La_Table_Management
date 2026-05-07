@@ -22,6 +22,7 @@ import {
   useAddToReviewQueue,
   useApproveSessionFile,
   useRejectSessionFile,
+  useBackToProcessing,
   reconciliationV2Keys,
 } from "@/queries/reconciliation-v2";
 
@@ -119,6 +120,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   const addToQueue = useAddToReviewQueue();
   const approveFile = useApproveSessionFile();
   const rejectFile = useRejectSessionFile();
+  const backToProcessing = useBackToProcessing();
 
   // Get supplier data with notes
   const { data: suppliers } = useReconciliationSuppliersWithFiles();
@@ -182,6 +184,21 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       toast.success("קובץ נדחה");
     } catch (error) {
       toast.error("שגיאה בדחיית הקובץ");
+    }
+  };
+
+  const handleBackToProcessing = async () => {
+    if (!sessionId) return;
+    try {
+      const result = await backToProcessing.mutateAsync(sessionId);
+      toast.success("הקובץ נשלח לעיבוד מחדש");
+      router.push(
+        `/admin/supplier-files/review/${result.supplierFileId}?reprocessed=1`
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "שגיאה בהחזרת הקובץ לעיבוד";
+      toast.error(message);
     }
   };
 
@@ -385,8 +402,10 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
             session={session}
             onApprove={handleApproveFile}
             onReject={handleRejectFile}
+            onBackToProcessing={handleBackToProcessing}
             isApproving={approveFile.isPending}
             isRejecting={rejectFile.isPending}
+            isReprocessing={backToProcessing.isPending}
             canApprove={canApproveFile}
           />
         </CardContent>
