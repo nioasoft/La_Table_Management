@@ -31,8 +31,16 @@ import { createFileProcessingError } from "../file-processing-errors";
 // VAT rate in Israel
 const VAT_RATE = 0.18;
 
-// Brand prefixes that indicate a franchisee header row
-const FRANCHISEE_INDICATORS = ["מינה טומאיי", "קינג קונג", "פט ויני"];
+// Brand prefixes that indicate a franchisee header row.
+// File spellings vary across quarters; keep both legacy and current variants.
+const FRANCHISEE_INDICATORS = [
+  "מינה טומאיי",
+  "מינה טומיי",
+  "קינג קונג",
+  "פט ויני",
+  "ויני",
+  "נתנזון",
+];
 
 // Column index for quarterly total
 const TOTAL_COL = 20;
@@ -124,10 +132,14 @@ function parseComplexFormat(rawData: unknown[][]): Map<string, number> {
       break;
     }
 
-    // Check if this is a franchisee header row
-    const isFranchiseeHeader = FRANCHISEE_INDICATORS.some((ind) =>
-      nameCell.startsWith(ind)
-    );
+    // Check if this is a franchisee header row.
+    // Header rows have the brand prefix AND the pack-quantity cell (col 2) empty —
+    // product rows always carry a pack qty, so this disambiguates lines like
+    // "נתנזון - רוטב קוטר 40" (a product) from "נתנזון (ויני עזריאלי)" (a header).
+    const packQtyCell = String(row[2] ?? "").trim();
+    const isFranchiseeHeader =
+      packQtyCell === "" &&
+      FRANCHISEE_INDICATORS.some((ind) => nameCell.startsWith(ind));
 
     if (isFranchiseeHeader) {
       currentFranchisee = nameCell;
