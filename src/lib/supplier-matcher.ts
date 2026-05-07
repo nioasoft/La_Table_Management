@@ -487,8 +487,16 @@ export function matchBkmvSuppliers(
     }
 
     if (matchResult.matchedSupplier) {
-      if (!claimedSupplierIds.has(matchResult.matchedSupplier.id)) {
-        // Supplier not yet claimed - claim it
+      // Explicit alias matches bypass the greedy claim check.
+      // If a user added this bkmvName as an explicit alias on the supplier, that's a
+      // deliberate "yes, this name belongs to this supplier" declaration and must be
+      // honored even when another bkmvName already claimed the same supplier.
+      const isExplicitAliasMatch = matchResult.matchType === "exact_alias";
+
+      if (!claimedSupplierIds.has(matchResult.matchedSupplier.id) || isExplicitAliasMatch) {
+        // First-time claim, or an explicit alias match — both allowed.
+        // We still add to claimedSupplierIds so subsequent fuzzy matches don't grab it,
+        // but multiple explicit-alias entries for the same supplier are all accepted.
         claimedSupplierIds.add(matchResult.matchedSupplier.id);
 
         // Filter alternatives to exclude already-claimed suppliers
@@ -499,8 +507,8 @@ export function matchBkmvSuppliers(
           ),
         };
       } else {
-        // Supplier already claimed by a higher-confidence entry
-        // Re-match excluding all claimed suppliers
+        // Supplier already claimed by a higher-confidence entry AND this is not an
+        // explicit alias match — re-match excluding all claimed suppliers.
         const availableSuppliers = suppliers.filter(s => !claimedSupplierIds.has(s.id));
         matchResult = matchSupplierName(bkmvName, availableSuppliers, config);
 
