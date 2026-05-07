@@ -233,6 +233,7 @@ export default function BkmvDataPage() {
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
   const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
+  const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; autoApproved: boolean } | null>(null);
   const [duplicateDialog, setDuplicateDialog] = useState<{
@@ -385,6 +386,15 @@ export default function BkmvDataPage() {
   });
 
   const historyItems: BkmvHistoryItem[] = historyData?.files || [];
+
+  // Client-side filter by file name (server already filtered by franchisee/status)
+  const filteredHistoryItems = useMemo(() => {
+    const q = historySearchQuery.trim().toLowerCase();
+    if (!q) return historyItems;
+    return historyItems.filter((item) =>
+      (item.fileName || "").toLowerCase().includes(q)
+    );
+  }, [historyItems, historySearchQuery]);
 
   // Sorted suppliers for dropdown (alphabetically by name)
   const sortedSuppliers = useMemo(() => {
@@ -2492,6 +2502,16 @@ export default function BkmvDataPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div className="space-y-2 flex-1 min-w-[220px]">
+                  <Label htmlFor="historySearch">חיפוש שם קובץ</Label>
+                  <Input
+                    id="historySearch"
+                    type="search"
+                    placeholder="חיפוש לפי שם קובץ..."
+                    value={historySearchQuery}
+                    onChange={(e) => setHistorySearchQuery(e.target.value)}
+                  />
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
@@ -2521,10 +2541,10 @@ export default function BkmvDataPage() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
                 </div>
-              ) : historyItems.length === 0 ? (
+              ) : filteredHistoryItems.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileSpreadsheet className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>לא נמצאו קבצים בהיסטוריה</p>
+                  <p>{historySearchQuery ? "לא נמצאו קבצים מתאימים לחיפוש" : "לא נמצאו קבצים בהיסטוריה"}</p>
                 </div>
               ) : (
                 <div className="rounded-md border">
@@ -2541,7 +2561,7 @@ export default function BkmvDataPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {historyItems.map((item) => (
+                      {filteredHistoryItems.map((item) => (
                         <TableRow key={item.id}>
                           <TableCell>
                             {item.franchisee ? (
