@@ -64,9 +64,12 @@ import {
   Store,
   ChevronDown,
   ChevronUp,
+  Inbox,
 } from "lucide-react";
 import Link from "next/link";
 import type { Supplier } from "@/db/schema";
+import { ReviewQueueSheet } from "@/components/bkmvdata/review-queue-sheet";
+import { useBkmvReviewQueueCount } from "@/queries/bkmv-review-queue";
 
 interface SupplierMatch {
   bkmvName: string;
@@ -180,6 +183,9 @@ export default function FileDetailsPage() {
   // Date filter state
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>("");
   const [selectedMonthEnd, setSelectedMonthEnd] = useState<string>("");
+  // Review queue sheet state
+  const [isQueueOpen, setIsQueueOpen] = useState(false);
+  const { data: queueCount } = useBkmvReviewQueueCount();
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -208,7 +214,10 @@ export default function FileDetailsPage() {
     enabled: !isPending && !!session,
   });
 
-  const suppliers: Supplier[] = suppliersData?.suppliers || [];
+  const suppliers: Supplier[] = useMemo(
+    () => suppliersData?.suppliers || [],
+    [suppliersData?.suppliers]
+  );
   const sortedSuppliers = useMemo(() => {
     return [...suppliers].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [suppliers]);
@@ -570,32 +579,54 @@ export default function FileDetailsPage() {
           </div>
           <p className="text-sm text-muted-foreground">{file.fileName}</p>
         </div>
-        {!isReviewed && (
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="bg-green-600 hover:bg-green-700"
-              onClick={() => setIsApproveDialogOpen(true)}
-            >
-              <Check className="h-3.5 w-3.5 ms-1.5" />
-              אשר קובץ
-            </Button>
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => setIsRejectDialogOpen(true)}
-            >
-              <X className="h-3.5 w-3.5 ms-1.5" />
-              דחה קובץ
-            </Button>
-          </div>
-        )}
-        {isReviewed && (
-          <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"} className="text-sm px-3 py-1">
-            {file.processingStatus === "approved" ? "אושר" : "נדחה"}
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setIsQueueOpen(true)}
+            title="פתח רשימת קבצים ממתינים לסקירה"
+          >
+            <Inbox className="h-3.5 w-3.5 ms-1.5" />
+            קבצים לסקירה
+            {typeof queueCount === "number" && queueCount > 0 && (
+              <Badge variant="secondary" className="ms-2 h-5 px-1.5">
+                {queueCount}
+              </Badge>
+            )}
+          </Button>
+          {!isReviewed && (
+            <>
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => setIsApproveDialogOpen(true)}
+              >
+                <Check className="h-3.5 w-3.5 ms-1.5" />
+                אשר קובץ
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setIsRejectDialogOpen(true)}
+              >
+                <X className="h-3.5 w-3.5 ms-1.5" />
+                דחה קובץ
+              </Button>
+            </>
+          )}
+          {isReviewed && (
+            <Badge variant={file.processingStatus === "approved" ? "success" : "destructive"} className="text-sm px-3 py-1">
+              {file.processingStatus === "approved" ? "אושר" : "נדחה"}
+            </Badge>
+          )}
+        </div>
       </div>
+
+      <ReviewQueueSheet
+        currentFileId={fileId}
+        open={isQueueOpen}
+        onOpenChange={setIsQueueOpen}
+      />
 
       {/* File Info & Stats */}
       <div className="grid gap-3 md:grid-cols-2 mb-4">
