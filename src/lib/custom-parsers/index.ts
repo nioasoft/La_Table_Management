@@ -38,6 +38,7 @@ export { parseMakatiFile } from "./makati-parser";
 export { parseTnuvaFile } from "./tnuva-parser";
 export { parseYekevLuriaFile } from "./yekev-luria-parser";
 export { parseYevuleiGourmetFile } from "./yevulei-gourmet-parser";
+export { parseSheriChocoFile } from "./sheri-choco-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
@@ -183,6 +184,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   YEVULEI_GOURMET: async (buffer, vatRate) => {
     const { parseYevuleiGourmetFile } = await import("./yevulei-gourmet-parser");
     return parseYevuleiGourmetFile(buffer, vatRate);
+  },
+  SHERI_CHOCO: async (buffer) => {
+    const { parseSheriChocoFile } = await import("./sheri-choco-parser");
+    return parseSheriChocoFile(buffer);
   },
 };
 

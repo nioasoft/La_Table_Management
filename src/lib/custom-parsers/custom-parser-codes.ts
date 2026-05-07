@@ -38,6 +38,7 @@ export const CUSTOM_PARSER_CODES = new Set([
   "TNUVA",
   "לוריא",
   "YEVULEI_GOURMET",
+  "SHERI_CHOCO",
 ]);
 
 /**
