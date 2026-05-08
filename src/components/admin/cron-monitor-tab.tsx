@@ -109,7 +109,7 @@ const CRON_JOBS: CronJob[] = [
     name: "בקשות מבנה אחיד",
     description: "שליחת בקשות BKMV לרואי חשבון של זכיינים",
     endpoint: "/api/cron/bkmv-requests",
-    schedule: "0 8 15 1,4,7,10 *",
+    schedule: "30 6 15-20 1,4,7,10 *",
     icon: <FileText className="h-6 w-6" />,
   },
 ];

@@ -15,6 +15,7 @@ import {
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
+import { markFranchiseeBkmvRequestSubmitted } from "@/data-access/fileRequests";
 import { randomUUID } from "crypto";
 import type { BkmvProcessingResult } from "@/db/schema";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -370,6 +371,14 @@ export async function POST(request: NextRequest) {
       );
     } catch (crossRefError) {
       console.error("Error processing cross-references:", crossRefError);
+    }
+
+    // Close any open BKMV file_request for this franchisee so reminder crons
+    // (upload-reminders) stop nagging accountants/owners after admin upload.
+    try {
+      await markFranchiseeBkmvRequestSubmitted(franchiseeId);
+    } catch (markError) {
+      console.error("Error marking BKMV file_request as submitted:", markError);
     }
 
     return NextResponse.json({

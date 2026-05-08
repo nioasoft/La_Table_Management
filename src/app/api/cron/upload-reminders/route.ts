@@ -50,8 +50,11 @@ interface ReminderResult {
  * disk. Two upload paths exist:
  *  - Public link: uploaded_file.upload_link_id == fileRequest.upload_link_id
  *  - Admin BKMV upload: uploaded_file.franchisee_id == fileRequest.entity_id
- *    (no upload_link), only counts uploads created on/after the file_request
- *    so we don't false-match an upload from a previous cycle.
+ *    (no upload_link). BKMV is a year-to-date snapshot whose period_start_date
+ *    is the FIRST transaction in the file (often a prior year), so we must
+ *    check period_end_date — a file "covers" the cycle iff its period extends
+ *    to or past cycleStart. We also accept uploads created up to 60 days
+ *    before the request, since admins sometimes pre-upload.
  *
  * If a match exists we self-heal by closing the file_request to "submitted"
  * and skipping the reminder. This guards against the historical bug where
@@ -74,15 +77,22 @@ async function findUploadedFileForRequest(
   const isBkmv = req.entityType === "franchisee" && meta?.requestType === "bkmv";
   if (isBkmv && req.entityId && req.createdAt) {
     // Parse the cycle start (stored as "DD/MM/YYYY" in metadata) so we don't
-    // accept an admin upload for a previous fiscal year.
+    // accept a snapshot that ends before this fiscal year began.
     const cycleStart = parseDdMmYyyy(meta?.startDate as string | undefined);
+
+    // Allow uploads up to 60 days before the request was created, so admin
+    // pre-uploads (e.g., file uploaded a few weeks before the quarterly cron)
+    // still satisfy the request.
+    const earliestCreatedAt = new Date(req.createdAt);
+    earliestCreatedAt.setDate(earliestCreatedAt.getDate() - 60);
 
     const conditions = [
       eq(uploadedFile.franchiseeId, req.entityId),
-      gte(uploadedFile.createdAt, req.createdAt),
+      gte(uploadedFile.createdAt, earliestCreatedAt),
+      eq(uploadedFile.processingStatus, "approved"),
     ];
     if (cycleStart) {
-      conditions.push(gte(uploadedFile.periodStartDate, cycleStart));
+      conditions.push(gte(uploadedFile.periodEndDate, cycleStart));
     }
 
     const adminMatches = await database
