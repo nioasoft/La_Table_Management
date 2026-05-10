@@ -234,6 +234,7 @@ export default function BkmvDataPage() {
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
   const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
+  const [historyFranchiseeSearch, setHistoryFranchiseeSearch] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; autoApproved: boolean } | null>(null);
   const [duplicateDialog, setDuplicateDialog] = useState<{
@@ -405,6 +406,14 @@ export default function BkmvDataPage() {
   const sortedFranchisees = useMemo(() => {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [franchisees]);
+
+  const filteredFranchiseesForHistory = useMemo(() => {
+    const q = historyFranchiseeSearch.trim().toLowerCase();
+    if (!q) return sortedFranchisees;
+    return sortedFranchisees.filter(
+      (f) => f.name.toLowerCase().includes(q) || (f.code ?? "").toLowerCase().includes(q),
+    );
+  }, [sortedFranchisees, historyFranchiseeSearch]);
 
   // Category counts from classified accounts
   const categoryCounts = useMemo(() => {
@@ -2475,12 +2484,28 @@ export default function BkmvDataPage() {
                       <SelectValue placeholder="כל הזכיינים" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px]">
+                      <div className="p-2 sticky top-0 bg-popover z-10 border-b">
+                        <Input
+                          type="search"
+                          placeholder="חיפוש לפי שם זכיין או קוד..."
+                          value={historyFranchiseeSearch}
+                          onChange={(e) => setHistoryFranchiseeSearch(e.target.value)}
+                          onKeyDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-8"
+                        />
+                      </div>
                       <SelectItem value="all">כל הזכיינים</SelectItem>
-                      {sortedFranchisees.map((f) => (
+                      {filteredFranchiseesForHistory.map((f) => (
                         <SelectItem key={f.id} value={f.id}>
                           {f.name} ({f.code})
                         </SelectItem>
                       ))}
+                      {filteredFranchiseesForHistory.length === 0 && historyFranchiseeSearch && (
+                        <div className="p-2 text-sm text-muted-foreground text-center">
+                          לא נמצאו זכיינים
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
