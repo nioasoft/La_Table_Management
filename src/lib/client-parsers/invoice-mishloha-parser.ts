@@ -346,6 +346,18 @@ export async function parseMishlohaFile(
         periodYear = parseInt(dateRevMatch[3]);
       }
     }
+    // Display-order RTL (label after value, Hebrew NOT char-reversed):
+    // "DD/MM/YYYY :תאריך". Seen on ezcount-issued HAAT income invoices
+    // where pdf-parse keeps Hebrew logical but emits the line value-first.
+    if (!periodMonth) {
+      const dateRtlMatch = text.match(
+        /(\d{2})\/(\d{2})\/(\d{4})\s+:?\s*תאריך/
+      );
+      if (dateRtlMatch) {
+        periodMonth = parseInt(dateRtlMatch[2]);
+        periodYear = parseInt(dateRtlMatch[3]);
+      }
+    }
 
     // ---------------------------------------------------------------
     // Totals extraction
