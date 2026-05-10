@@ -199,6 +199,29 @@ export async function parseTenbisFile(
       return { success: false, data: null, errors, warnings };
     }
 
+    // 10bis emails carry two PDF shapes that share the same `from`/folder:
+    //  1. Monthly transaction reports (Mandrill, contains "סה\"כ עסקאות"
+    //     and "עמלת תן ביס") — what this parser is built for.
+    //  2. Payment notifications ("הודעת תשלום") — list invoice references
+    //     and a payment date, no transaction totals at all.
+    // The notification has none of the regex anchors below, so it would
+    // otherwise fall through to "לא נמצאו סכומים" and be saved as
+    // needs_review. Worse, the dedup-replace in client-document-processor
+    // would OVERWRITE a real monthly report for the same franchisee+period
+    // if the notification happened to arrive after it. Reject upstream.
+    if (text.includes("הודעת תשלום")) {
+      warnings.push(
+        'מסמך "הודעת תשלום" של תן ביס — לא דוח עסקאות, דולג ולא נשמר'
+      );
+      return {
+        success: false,
+        data: null,
+        errors,
+        warnings,
+        skipPersist: true,
+      };
+    }
+
     // Extract franchisee name from the PDF text
     // pdf-parse outputs RTL Hebrew in visual order. The pattern is:
     //   Line N: "XXX למסעדת עסקאות פירוט" (company)

@@ -183,6 +183,22 @@ export async function processClientDocument(
       };
     }
 
+    // Parser-level rejection: e.g. 10bis "הודעת תשלום" PDFs that share an
+    // inbound channel with real monthly reports. Skipping here prevents
+    // both the spurious needs_review row AND the dedup-replace from
+    // overwriting a valid prior report for the same franchisee+period.
+    if (processingResult.skipPersist) {
+      console.log(
+        `[client-document-processor] skipping persist for "${fileName}": ${processingResult.warnings.join(" | ") || processingResult.errors.join(" | ")}`
+      );
+      return {
+        success: true,
+        document: null,
+        processingResult,
+        skippedDuplicate: false,
+      };
+    }
+
     // Step 4b: Use parser-extracted period if available (same pattern as Tabit handler).
     // Client documents arrive ~1 month after the period they cover, so the parser's
     // extracted period is more accurate than the user-selected input period.

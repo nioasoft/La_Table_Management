@@ -50,6 +50,8 @@ import {
   useDocumentPeriodSummary,
   useUploadClientDocument,
   useClientDocuments,
+  useUpdateDocumentStatus,
+  useDeleteClientDocument,
 } from "@/queries/client-documents";
 import { toast } from "sonner";
 
@@ -123,6 +125,16 @@ export default function ClientDocumentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterClientId, setFilterClientId] = useState<string>("all");
+  // Cell-action dialog: opened when admin clicks a non-empty matrix cell
+  const [cellAction, setCellAction] = useState<{
+    documentId: string;
+    franchiseeName: string;
+    clientName: string;
+    status: string;
+    totalAmount: string | null;
+  } | null>(null);
+  const updateStatusMutation = useUpdateDocumentStatus();
+  const deleteDocMutation = useDeleteClientDocument();
 
   const { data: clients } = useClients({ active: true });
   const { data: allFranchisees } = useFranchisees();
@@ -612,13 +624,27 @@ export default function ClientDocumentsPage() {
                         </div>
                       </td>
                       {visibleClients.map(
-                        (c: { id: string }) => {
+                        (c: { id: string; name: string }) => {
                           const cell = row.clients[c.id];
                           const status = cell?.status ?? "missing";
+                          const clickable = !!cell?.documentId;
                           return (
                             <td
                               key={c.id}
-                              className={`text-center py-1.5 px-1 border border-border ${getStatusColor(status)}`}
+                              className={`text-center py-1.5 px-1 border border-border ${getStatusColor(status)} ${clickable ? "cursor-pointer hover:brightness-95" : ""}`}
+                              onClick={
+                                clickable && cell?.documentId
+                                  ? () =>
+                                      setCellAction({
+                                        documentId: cell.documentId!,
+                                        franchiseeName: row.franchiseeName,
+                                        clientName: c.name,
+                                        status,
+                                        totalAmount: cell.totalAmount,
+                                      })
+                                  : undefined
+                              }
+                              title={clickable ? "צפייה ופעולות" : undefined}
                             >
                               <div className="flex items-center justify-center gap-1">
                                 {getStatusIcon(status)}
@@ -916,6 +942,143 @@ export default function ClientDocumentsPage() {
                   העלה
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Cell Action Dialog — opens on matrix cell click for any non-empty cell.
+          Lets admin download the file, manually approve a needs_review row,
+          or delete a wrong/garbage row (e.g. legacy תן-ביס payment notifications). */}
+      <Dialog
+        open={cellAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setCellAction(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md" dir="rtl">
+          <DialogHeader>
+            <DialogTitle>פעולות על מסמך</DialogTitle>
+            <DialogDescription>
+              {cellAction
+                ? `${cellAction.clientName} · ${cellAction.franchiseeName}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {cellAction && (
+            <div className="space-y-3 py-2">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-muted-foreground">סטטוס:</span>
+                {getStatusIcon(cellAction.status)}
+                <span>
+                  {cellAction.status === "needs_review"
+                    ? "לבדיקה"
+                    : cellAction.status === "auto_approved"
+                      ? "אושר אוטומטית"
+                      : cellAction.status === "approved"
+                        ? "אושר"
+                        : cellAction.status === "rejected"
+                          ? "נדחה"
+                          : cellAction.status}
+                </span>
+              </div>
+              {cellAction.totalAmount && (
+                <div className="text-sm">
+                  <span className="text-muted-foreground">סכום: </span>
+                  <span className="tabular-nums font-medium">
+                    {formatAmount(cellAction.totalAmount)}
+                  </span>
+                </div>
+              )}
+              <div className="flex flex-col gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  asChild
+                  className="justify-start"
+                >
+                  <a
+                    href={`/api/clients/documents/${cellAction.documentId}/download`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="me-2 h-4 w-4" />
+                    הורדת הקובץ
+                  </a>
+                </Button>
+                {cellAction.status === "needs_review" && (
+                  <Button
+                    variant="default"
+                    disabled={updateStatusMutation.isPending}
+                    onClick={() => {
+                      const id = cellAction.documentId;
+                      updateStatusMutation.mutate(
+                        { id, processingStatus: "approved" },
+                        {
+                          onSuccess: () => {
+                            toast.success("המסמך אושר ידנית");
+                            refetchMatrix();
+                            setCellAction(null);
+                          },
+                          onError: (err: unknown) => {
+                            toast.error(
+                              err instanceof Error
+                                ? err.message
+                                : "שגיאה באישור"
+                            );
+                          },
+                        }
+                      );
+                    }}
+                  >
+                    {updateStatusMutation.isPending ? (
+                      <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="me-2 h-4 w-4" />
+                    )}
+                    אשר ידנית
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  disabled={deleteDocMutation.isPending}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        "למחוק את המסמך? פעולה זו אינה הפיכה."
+                      )
+                    ) {
+                      return;
+                    }
+                    const id = cellAction.documentId;
+                    deleteDocMutation.mutate(id, {
+                      onSuccess: () => {
+                        toast.success("המסמך נמחק");
+                        refetchMatrix();
+                        setCellAction(null);
+                      },
+                      onError: (err: unknown) => {
+                        toast.error(
+                          err instanceof Error
+                            ? err.message
+                            : "שגיאה במחיקה"
+                        );
+                      },
+                    });
+                  }}
+                >
+                  {deleteDocMutation.isPending ? (
+                    <Loader2 className="me-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="me-2 h-4 w-4" />
+                  )}
+                  מחיקה
+                </Button>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCellAction(null)}>
+              סגור
             </Button>
           </DialogFooter>
         </DialogContent>

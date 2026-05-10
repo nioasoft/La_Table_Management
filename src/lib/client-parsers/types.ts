@@ -51,6 +51,15 @@ export interface ClientDocumentProcessingResult {
   data: ClientParsedData | null;
   errors: string[];
   warnings: string[];
+  /**
+   * When true, the processor MUST NOT create or update a client_document
+   * row. Set by parsers that recognise an auxiliary document arriving on
+   * the same email channel as real reports (e.g. 10bis "הודעת תשלום"
+   * payment notifications). Without this flag the processor would create
+   * a needs_review row AND overwrite any valid prior report for the same
+   * franchisee+period via the dedup-replace step.
+   */
+  skipPersist?: boolean;
 }
 
 /** Parser function signature - takes a file buffer and mime type, returns parsed data */
