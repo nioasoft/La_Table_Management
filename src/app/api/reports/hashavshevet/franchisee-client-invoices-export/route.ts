@@ -12,7 +12,10 @@
  * Layout (per Reut's sample "לקוחות.xlsx"):
  *   1. מפתח חשבון           — hashavshevetCode / hashavshevetName / name fallback
  *   2. שם                    — empty
- *   3. מפתח פריט             — "ארוחות" (constant)
+ *   3. מפתח פריט             — "ארוחות" by default;
+ *                                LATABLEMARK client → "ארוחותש" (per-client override);
+ *                                otherwise honours `franchisee.hashavshevet_revenue_account`
+ *                                when set (e.g. Natanzon → "הכנסותנ" — typo intentional).
  *   4. שם פריט                — empty
  *   5. כמות                   — 1
  *   6. מחיר                   — approved amount (incl. VAT), rounded
@@ -59,7 +62,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const [fr] = await database
-      .select({ name: franchisee.name })
+      .select({
+        name: franchisee.name,
+        hashavshevetRevenueAccount: franchisee.hashavshevetRevenueAccount,
+      })
       .from(franchisee)
       .where(eq(franchisee.id, franchiseeId))
       .limit(1);
@@ -67,6 +73,11 @@ export async function GET(request: NextRequest) {
     if (!fr) {
       return NextResponse.json({ error: "זכיין לא נמצא" }, { status: 404 });
     }
+
+    // Per-franchisee override for column C (מפתח פריט). Reuses the same column
+    // that drives the journal-entries export's revenue account (e.g. Natanzon
+    // → "הכנסותנ"). LATABLEMARK still wins on its own row — see below.
+    const itemKeyOverride = fr.hashavshevetRevenueAccount?.trim() || "";
 
     const approved = await getApprovedForExport({
       franchiseeId,
@@ -111,10 +122,13 @@ export async function GET(request: NextRequest) {
         } else {
           price = Math.round(a.clientAmount);
         }
-        // LATABLEMARK gets a custom item key ("ארוחותש"); everyone else uses
-        // the default ITEM_KEY ("ארוחות").
+        // LATABLEMARK gets a custom item key ("ארוחותש") that overrides
+        // everything. For every other client, the franchisee-level override
+        // wins when set (Natanzon → "הכנסותנ"); otherwise default ITEM_KEY.
         const itemKey =
-          a.clientCode === "LATABLEMARK" ? "ארוחותש" : ITEM_KEY;
+          a.clientCode === "LATABLEMARK"
+            ? "ארוחותש"
+            : itemKeyOverride || ITEM_KEY;
         // GIFTCARD uses a 19.25% discount column instead of the default 15.25%.
         const discountPct =
           a.clientCode === "GIFTCARD"
@@ -135,7 +149,7 @@ export async function GET(request: NextRequest) {
     const occasionalEntries = occasionalRows
       .map((o) => ({
         accountKey: o.hashavshevetName,
-        itemKey: ITEM_KEY,
+        itemKey: itemKeyOverride || ITEM_KEY,
         discountPct: DISCOUNT_PCT_DEFAULT,
         price: Math.round(o.totalAmount),
       }))
