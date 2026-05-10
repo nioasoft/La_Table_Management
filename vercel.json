@@ -27,6 +27,14 @@
     {
       "path": "/api/cron/email-pipeline-health",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/inbound-review-summary",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/franchisee-alias-collision",
+      "schedule": "0 5 * * 1"
     }
   ]
 }
