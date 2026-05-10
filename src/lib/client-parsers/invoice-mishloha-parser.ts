@@ -218,17 +218,63 @@ export async function parseMishlohaFile(
     const searchLines =
       lekavodIdx > 0 ? lines.slice(0, lekavodIdx) : lines.slice(0, 10);
 
-    if (lekavodIdx >= 0) {
+    // Detect document direction by inspecting the issuer block (lines
+    // BEFORE "לכבוד"). When the issuer is a KNOWN CLIENT (HAAT Delivery,
+    // Mishlocha, Wolt Enterprises, ...), this is a commission_invoice
+    // (client → franchisee) and the franchisee lives in the "לכבוד"
+    // recipient block. Otherwise it's an income invoice (franchisee →
+    // client) and the franchisee is the issuer at the top — recipient
+    // extraction must be skipped to avoid pulling the client name.
+    const KNOWN_CLIENT_TOKENS = [
+      "haat delivery",
+      "wolt enterprises",
+      "wolt",
+      "משלוחה",
+      "האאט דילברי",
+      "האאט",
+      "סיבוס",
+      "פלאקסי",
+      "תן ביס",
+    ];
+    const issuerBlobLower = searchLines.join(" ").toLowerCase();
+    const issuerIsKnownClient = KNOWN_CLIENT_TOKENS.some((tok) =>
+      issuerBlobLower.includes(tok.toLowerCase())
+    );
+
+    if (lekavodIdx >= 0 && issuerIsKnownClient) {
       // Commission invoice: franchisee is on the "לכבוד:" line itself
       // (NOT before it — that's the issuer = Mishloha).
+      // Two layouts seen in production:
+      //   A. Same-line:  "לכבוד: פאט ויני עזריאלי בע\"מ"
+      //   B. Multi-line: "לכבוד:" on its own line, recipient on the next.
+      //                   HAAT central commission invoices SI* use this
+      //                   layout (incident 2026-05-10: SI266010419 was
+      //                   mis-attributed to ויני רגבה because the parser
+      //                   stripped "לכבוד:" off an empty-after-strip line
+      //                   and fell through to the legacy issuer-side
+      //                   extraction, returning "האאט דילברי בע\"מ").
       const lekavodLine = lines[lekavodIdx];
-      // Normalize escaped double quotes: בע""מ -> בע"מ
-      const normalized = lekavodLine.replace(/""/g, '"');
-      // Strip the leading "לכבוד:" label and surrounding quotes
-      const afterLabel = normalized
-        .replace(/^.*?לכבוד[:\s]*/, "")
-        .replace(/^"+|"+$/g, "")
-        .trim();
+      const stripLabel = (s: string) =>
+        s
+          .replace(/""/g, '"')
+          .replace(/^.*?לכבוד[:\s]*/, "")
+          .replace(/^"+|"+$/g, "")
+          .trim();
+      const sameLineAfterLabel = stripLabel(lekavodLine);
+      // If layout A produced a non-empty value, use it as-is.
+      // If layout B (label-on-own-line), pull from the next non-empty line.
+      let afterLabel = sameLineAfterLabel;
+      if (!afterLabel) {
+        for (let off = 1; off <= 3 && lekavodIdx + off < lines.length; off++) {
+          const nextLine = lines[lekavodIdx + off];
+          if (!nextLine || /^[\d\s./:]+$/.test(nextLine)) continue;
+          afterLabel = nextLine.replace(/""/g, '"').trim();
+          if (afterLabel.length > 0) break;
+        }
+      }
+      // (Redundant client-token guard removed — outer `issuerIsKnownClient`
+      // gate already ensures we only enter this block for commission
+      // invoices, where the recipient is always the franchisee.)
 
       // 1. Prefer a legal-entity name ending in בע"מ
       const bizMatch = afterLabel.match(
