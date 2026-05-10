@@ -55,6 +55,14 @@ interface ReviewDialogProps {
       | Array<{ id: string; name: string; confidence: number }>
       | null;
     failureReason: string | null;
+    /**
+     * Distinguishes the two review modes:
+     *   "failed"        – no document yet; confirm CREATES a client_document
+     *   "needs_review"  – document already exists; confirm VERIFIES (or
+     *                      updates franchisee/doc-type on an existing row)
+     */
+    status: "failed" | "needs_review";
+    franchiseeConfidence: string | null;
   };
 }
 
@@ -179,9 +187,16 @@ export function ReviewDialog({
     },
   });
 
+  // Failed rows need a stored file for recovery; needs_review rows already
+  // have a committed client_document so file presence isn't required.
+  const requiresFile = entry.status === "failed";
   const canConfirm =
     !!franchiseeId &&
-    !!entry.fileUrl &&
+    (!requiresFile || !!entry.fileUrl) &&
+    !confirmMutation.isPending &&
+    !rejectMutation.isPending;
+  const canReject =
+    entry.status === "failed" &&
     !confirmMutation.isPending &&
     !rejectMutation.isPending;
 
@@ -189,13 +204,27 @@ export function ReviewDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl" dir="rtl">
         <DialogHeader>
-          <DialogTitle>סקירת מייל נכנס</DialogTitle>
+          <DialogTitle>
+            {entry.status === "needs_review"
+              ? "אימות שיוך אוטומטי"
+              : "שחזור מייל נכשל"}
+          </DialogTitle>
           <DialogDescription className="text-sm">
             {entry.emailSubject ?? "—"}
           </DialogDescription>
         </DialogHeader>
 
-        {entry.failureReason && (
+        {entry.status === "needs_review" && (
+          <div className="rounded-md border border-yellow-200 bg-yellow-50 p-2 text-sm text-yellow-900">
+            המסמך נוצר אוטומטית עם רמת ביטחון גבולית
+            {entry.franchiseeConfidence
+              ? ` (${parseFloat(entry.franchiseeConfidence).toFixed(2)})`
+              : ""}
+            . אם השיוך נכון — אשר. אחרת, בחר זכיין/סוג חלופי לפני האישור.
+          </div>
+        )}
+
+        {entry.failureReason && entry.status === "failed" && (
           <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">
             <span className="font-medium">סיבת כשל:</span> {entry.failureReason}
           </div>
@@ -290,18 +319,24 @@ export function ReviewDialog({
           >
             ביטול
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => rejectMutation.mutate()}
-            disabled={rejectMutation.isPending || confirmMutation.isPending}
-          >
-            {rejectMutation.isPending ? "דוחה..." : "דחה"}
-          </Button>
+          {canReject && (
+            <Button
+              variant="destructive"
+              onClick={() => rejectMutation.mutate()}
+              disabled={rejectMutation.isPending || confirmMutation.isPending}
+            >
+              {rejectMutation.isPending ? "דוחה..." : "דחה"}
+            </Button>
+          )}
           <Button
             onClick={() => confirmMutation.mutate()}
             disabled={!canConfirm}
           >
-            {confirmMutation.isPending ? "מאשר..." : "אשר ויצור מסמך"}
+            {confirmMutation.isPending
+              ? "מאשר..."
+              : entry.status === "needs_review"
+                ? "אשר שיוך"
+                : "אשר ויצור מסמך"}
           </Button>
         </DialogFooter>
       </DialogContent>

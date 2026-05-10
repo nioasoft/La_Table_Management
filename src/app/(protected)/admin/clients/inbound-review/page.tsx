@@ -375,8 +375,7 @@ export default function InboundReviewPage() {
                     {e.failureReason ?? "—"}
                   </TableCell>
                   <TableCell>
-                    {(e.status === "failed" || e.status === "needs_review") &&
-                    e.fileUrl ? (
+                    {e.status === "failed" || e.status === "needs_review" ? (
                       <Button
                         size="sm"
                         variant="outline"
@@ -400,22 +399,26 @@ export default function InboundReviewPage() {
         ניתן לבחור זכיין, לאשר ולייצר מסמך — או לדחות אם המייל אינו רלוונטי.
       </p>
 
-      {reviewEntry && (
-        <ReviewDialog
-          open={!!reviewEntry}
-          onOpenChange={(open) => !open && setReviewEntry(null)}
-          entry={{
-            id: reviewEntry.id,
-            emailSubject: reviewEntry.emailSubject,
-            fileUrl: reviewEntry.fileUrl,
-            fileName: reviewEntry.fileName,
-            proposedFranchiseeId: reviewEntry.proposedFranchiseeId,
-            proposedDocumentType: reviewEntry.proposedDocumentType,
-            franchiseeAlternatives: reviewEntry.franchiseeAlternatives,
-            failureReason: reviewEntry.failureReason,
-          }}
-        />
-      )}
+      {reviewEntry &&
+        (reviewEntry.status === "failed" ||
+          reviewEntry.status === "needs_review") && (
+          <ReviewDialog
+            open={!!reviewEntry}
+            onOpenChange={(open) => !open && setReviewEntry(null)}
+            entry={{
+              id: reviewEntry.id,
+              emailSubject: reviewEntry.emailSubject,
+              fileUrl: reviewEntry.fileUrl,
+              fileName: reviewEntry.fileName,
+              proposedFranchiseeId: reviewEntry.proposedFranchiseeId,
+              proposedDocumentType: reviewEntry.proposedDocumentType,
+              franchiseeAlternatives: reviewEntry.franchiseeAlternatives,
+              failureReason: reviewEntry.failureReason,
+              status: reviewEntry.status,
+              franchiseeConfidence: reviewEntry.franchiseeConfidence,
+            }}
+          />
+        )}
     </div>
   );
 }

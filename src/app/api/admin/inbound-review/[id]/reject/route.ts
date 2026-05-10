@@ -44,6 +44,7 @@ export async function POST(
     .select({
       id: inboundReviewQueue.id,
       status: inboundReviewQueue.status,
+      committedClientDocumentId: inboundReviewQueue.committedClientDocumentId,
     })
     .from(inboundReviewQueue)
     .where(eq(inboundReviewQueue.id, id))
@@ -56,6 +57,18 @@ export async function POST(
     return NextResponse.json(
       { error: "לא ניתן לדחות רשומה שכבר אושרה" },
       { status: 409 },
+    );
+  }
+  if (
+    queueRow.status === "needs_review" &&
+    queueRow.committedClientDocumentId
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          'לא ניתן לדחות רשומה ב-needs_review (המסמך כבר נוצר). השתמש ב"אשר" כדי לתקן את הזכיין, או מחק את המסמך ידנית מ-/admin/clients/documents.',
+      },
+      { status: 422 },
     );
   }
 

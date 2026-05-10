@@ -150,6 +150,49 @@ describe("decideFranchiseeAcceptance", () => {
     });
   });
 
+  describe("borderline (needs_review)", () => {
+    // Phase 3: matches in [minAcceptableConfidence, borderlineConfidenceThreshold)
+    // accept (commit happens) but carry `needsReview: true` so the inbox
+    // surfaces them with a yellow badge for admin verification. Default
+    // borderline threshold is 0.95 — anything below is "auto-committed but
+    // please double-check".
+    it("flags 0.85-0.94 confidence as needsReview when no close runner-up", () => {
+      const result = buildResult({ confidence: 0.9 });
+      const verdict = decideFranchiseeAcceptance(result);
+      expect(verdict.accept).toBe(true);
+      if (verdict.accept) {
+        expect(verdict.needsReview).toBe(true);
+        expect(verdict.franchiseeId).toBe("f1");
+      }
+    });
+
+    it("does NOT flag confidence ≥0.95 as needsReview", () => {
+      const result = buildResult({ confidence: 0.95 });
+      const verdict = decideFranchiseeAcceptance(result);
+      expect(verdict.accept).toBe(true);
+      if (verdict.accept) {
+        expect(verdict.needsReview).toBe(false);
+      }
+    });
+
+    it("respects a custom borderlineConfidenceThreshold", () => {
+      const result = buildResult({ confidence: 0.92 });
+      // With threshold 0.9, the 0.92 match should auto-accept cleanly.
+      const v1 = decideFranchiseeAcceptance(result, {
+        borderlineConfidenceThreshold: 0.9,
+      });
+      expect(v1.accept).toBe(true);
+      if (v1.accept) expect(v1.needsReview).toBe(false);
+
+      // With threshold 0.99, the 0.92 match should be flagged for review.
+      const v2 = decideFranchiseeAcceptance(result, {
+        borderlineConfidenceThreshold: 0.99,
+      });
+      expect(v2.accept).toBe(true);
+      if (v2.accept) expect(v2.needsReview).toBe(true);
+    });
+  });
+
   describe("formatVerdictForLog", () => {
     it("formats accepted verdicts concisely", () => {
       const result = buildResult({ confidence: 0.93 });

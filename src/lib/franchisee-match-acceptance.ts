@@ -22,6 +22,13 @@ export type AcceptanceVerdict =
       franchiseeId: string;
       franchiseeName: string;
       confidence: number;
+      /**
+       * True when confidence is above the auto-commit floor but below the
+       * "fully trusted" threshold (default 0.85 ≤ x < 0.95). The webhook
+       * still creates the client_document, but flags the row as
+       * `needs_review` in the inbox so an admin double-checks the match.
+       */
+      needsReview: boolean;
     }
   | {
       accept: false;
@@ -47,11 +54,18 @@ export interface AcceptanceOptions {
    * Default 0.05 — i.e. if best=0.90 and runner-up=0.86, that's ambiguous.
    */
   ambiguityGap: number;
+  /**
+   * Confidence above which the match is "fully trusted" and committed
+   * silently. Below this (but at/above minAcceptableConfidence) the
+   * match commits but is flagged `needsReview`. Default 0.95.
+   */
+  borderlineConfidenceThreshold: number;
 }
 
 const DEFAULTS: AcceptanceOptions = {
   minAcceptableConfidence: 0.85,
   ambiguityGap: 0.05,
+  borderlineConfidenceThreshold: 0.95,
 };
 
 /**
@@ -109,6 +123,7 @@ export function decideFranchiseeAcceptance(
     franchiseeId: result.matchedFranchisee.id,
     franchiseeName: result.matchedFranchisee.name,
     confidence: result.confidence,
+    needsReview: result.confidence < cfg.borderlineConfidenceThreshold,
   };
 }
 

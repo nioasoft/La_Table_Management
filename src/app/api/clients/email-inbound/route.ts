@@ -716,7 +716,19 @@ const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
  * 3. Email subject matching
  */
 type ResolveFranchiseeResult =
-  | { ok: true; franchiseeId: string; franchiseeName: string; confidence: number }
+  | {
+      ok: true;
+      franchiseeId: string;
+      franchiseeName: string;
+      confidence: number;
+      /**
+       * Layer 3 borderline flag. True when confidence is in the
+       * [0.85, 0.95) band: the document still commits, but the inbox
+       * row is marked `needs_review` so an admin double-checks the
+       * franchisee assignment.
+       */
+      needsReview?: boolean;
+    }
   | {
       ok: false;
       // Diagnostics: what was tried and why it failed. Surfaced into
@@ -816,13 +828,14 @@ async function resolveFranchisee(
         const verdict = decideFranchiseeAcceptance(match);
         if (verdict.accept) {
           console.log(
-            `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${verdict.franchiseeName}" @${verdict.confidence.toFixed(2)}`
+            `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${verdict.franchiseeName}" @${verdict.confidence.toFixed(2)}${verdict.needsReview ? " [needs_review]" : ""}`
           );
           return {
             ok: true,
             franchiseeId: verdict.franchiseeId,
             franchiseeName: verdict.franchiseeName,
             confidence: verdict.confidence,
+            needsReview: verdict.needsReview,
           };
         }
         recordRejection(verdict);
@@ -968,7 +981,13 @@ async function recordInboundReviewOutcome(args: {
         return;
       }
       if (args.processResult?.success && args.processResult.document) {
-        status = "auto_committed";
+        // Borderline matches (0.85 ≤ confidence < 0.95 or filename/subject
+        // strategies that fall in the same band) commit normally but get
+        // flagged needs_review so the inbox surfaces them for verification.
+        // High-confidence matches and parent-map overrides skip the flag.
+        status = args.franchiseeMatch.needsReview
+          ? "needs_review"
+          : "auto_committed";
         committedClientDocumentId = args.processResult.document.id;
       } else {
         status = "failed";
@@ -1082,6 +1101,7 @@ function matchFranchiseeFromFilename(
   franchiseeId: string;
   franchiseeName: string;
   confidence: number;
+  needsReview: boolean;
 } | null {
   if (!filename || franchisees.length === 0) return null;
 
@@ -1094,6 +1114,7 @@ function matchFranchiseeFromFilename(
     franchiseeId: string;
     franchiseeName: string;
     confidence: number;
+    needsReview: boolean;
   } | null => {
     if (candidate.length < 3) return null;
     const result = matchFranchiseeName(candidate, franchisees, {
@@ -1105,6 +1126,7 @@ function matchFranchiseeFromFilename(
         franchiseeId: verdict.franchiseeId,
         franchiseeName: verdict.franchiseeName,
         confidence: verdict.confidence,
+        needsReview: verdict.needsReview,
       };
     }
     if (verdict.reason !== "no_match") {
@@ -1158,6 +1180,7 @@ function matchFranchiseeFromSubject(
   franchiseeId: string;
   franchiseeName: string;
   confidence: number;
+  needsReview: boolean;
 } | null {
   if (!subject || franchisees.length === 0) return null;
 
@@ -1194,6 +1217,7 @@ function matchFranchiseeFromSubject(
         franchiseeId: verdict.franchiseeId,
         franchiseeName: verdict.franchiseeName,
         confidence: verdict.confidence,
+        needsReview: verdict.needsReview,
       };
     }
     if (verdict.reason !== "no_match") {

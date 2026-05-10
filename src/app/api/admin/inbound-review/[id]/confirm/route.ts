@@ -60,6 +60,52 @@ export async function POST(
       { status: 409 },
     );
   }
+
+  // Borderline rows (status=needs_review) ALREADY have a committed
+  // client_document — the admin is just verifying the franchisee/doc-type
+  // assignment. If they confirm without changing anything, we just close
+  // the review. If they pick a DIFFERENT franchisee/doc-type, we update
+  // the existing client_document instead of creating a new one.
+  if (queueRow.status === "needs_review" && queueRow.committedClientDocumentId) {
+    const noChange =
+      queueRow.proposedFranchiseeId === franchiseeId &&
+      queueRow.proposedDocumentType === documentType;
+
+    if (!noChange) {
+      // Update the linked client_document with the admin's choice.
+      const { clientDocument } = await import("@/db/schema");
+      await database
+        .update(clientDocument)
+        .set({
+          franchiseeId,
+          documentType,
+          updatedAt: new Date(),
+        })
+        .where(eq(clientDocument.id, queueRow.committedClientDocumentId));
+    }
+
+    await database
+      .update(inboundReviewQueue)
+      .set({
+        status: "auto_committed",
+        proposedFranchiseeId: franchiseeId,
+        proposedDocumentType: documentType,
+        reviewedBy: user.id,
+        reviewedAt: new Date(),
+        reviewNotes: reviewNotes ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(inboundReviewQueue.id, id));
+
+    return NextResponse.json({
+      ok: true,
+      clientDocumentId: queueRow.committedClientDocumentId,
+      mode: noChange ? "verified" : "updated",
+    });
+  }
+
+  // Below: status === "failed" (no client_document yet) — we need to
+  // upload + run processClientDocument from scratch.
   if (!queueRow.fileUrl) {
     return NextResponse.json(
       { error: "אין קובץ מאוחסן לרשומה זו — לא ניתן לאשר" },
