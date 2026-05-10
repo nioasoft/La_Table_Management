@@ -24,6 +24,28 @@ export interface ParentBrandPair {
   operatingFranchiseeId: string;
   /** Operating-brand franchisee.name for logging */
   operatingFranchiseeName: string;
+  /**
+   * Content marker that MUST appear in line-item text / raw text for the
+   * override to fire. Required to prevent the rule from kidnapping
+   * documents that legitimately belong to the parent legal entity.
+   *
+   * Example: an HAAT income invoice issued by "פאט ויני עזריאלי בע\"מ"
+   * to "Haat Delivery" with only a single generic line item
+   * ("סה\"כ אשראי חיוב במע\"מ") has no "נתנזון בורגר" reference, so the
+   * override should NOT fire — that document belongs to Pat Vini, not
+   * Natanzon, and must fall through to normal fuzzy matching.
+   */
+  requiredOperatingKeyword: string;
+  /**
+   * Content markers that BLOCK the override even when the operating
+   * keyword is present. Used for mixed invoices where two brands share
+   * the same legal entity issuer — a single document can list both
+   * "ויני חיפה" and "נתנזון בורגר" line items, and the right home for
+   * the row is determined by which side dominates. Anything in this
+   * list signals that the parent (Vini) operates here in its OWN name,
+   * so we must not silently route to Natanzon.
+   */
+  blockingContentKeywords?: readonly string[];
   /** Why this pair exists (audit trail). */
   rationale: string;
 }
@@ -40,12 +62,15 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
     ],
     operatingFranchiseeId: "ab020323-fefe-4543-9a69-16d14dd54b99",
     operatingFranchiseeName: "נתנזון עזריאלי חיפה",
+    requiredOperatingKeyword: "נתנזון בורגר",
+    blockingContentKeywords: ["ויני חיפה", "VINNI חיפה", "VINNI ויני חיפה"],
     rationale:
-      "Mishlocha invoice 157159 (2026-04-30): legal entity Pat Vini Azrieli " +
-      "but every line item references נתנזון בורגר חיפה. Same pattern observed " +
-      "for Wolt May 2026 emails — File A (Wolt commission invoice) was " +
-      "addressed to Pat Vini Azrieli while File B (ezcount sales invoice) was " +
-      "issued by Natanzon. Route both files to the operating brand.",
+      'Mishlocha invoice 157159 (2026-04-30): legal entity Pat Vini Azrieli ' +
+      'but every line item references נתנזון בורגר חיפה. Override fires ' +
+      'only when "נתנזון בורגר" appears in line items AND no "ויני חיפה" ' +
+      'reference is present. Reut 2026-05-10 incident: HAAT/Mishlocha/Wolt ' +
+      'documents that legitimately belong to Pat Vini Azrieli were being ' +
+      'kidnapped to Natanzon by the older content-blind rule.',
   },
 ];
 
@@ -63,18 +88,44 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
  * where generic substrings like `"ויני עזריאלי"` or `"ויני"` falsely fired
  * the Pat-Vini-Azrieli → Netanzon override. To match a shorter form, add
  * it explicitly to `parentAliases`.
+ *
+ * Content gate (added 2026-05-10): when `contentText` is supplied, the
+ * pair's `requiredOperatingKeyword` MUST appear in the text and none of
+ * `blockingContentKeywords` may appear. Callers that don't have line-item
+ * text yet may pass `undefined`, in which case the gate is skipped — but
+ * those call sites are now considered legacy; new code should always
+ * supply the rawText/lineItems.
  */
 export function findOperatingBrand(
   candidateName: string | undefined | null,
+  contentText?: string | null,
 ): ParentBrandPair | null {
   if (!candidateName) return null;
   const normalised = candidateName.trim();
   if (!normalised) return null;
   for (const pair of PARENT_BRAND_MAP) {
     const haystack = [pair.parentName, ...(pair.parentAliases ?? [])];
-    if (haystack.some((name) => matchesAlias(normalised, name))) {
-      return pair;
+    if (!haystack.some((name) => matchesAlias(normalised, name))) continue;
+
+    // Content gate — only enforced when the caller supplies content.
+    if (contentText && contentText.length > 0) {
+      if (!contentText.includes(pair.requiredOperatingKeyword)) {
+        // Operating-brand keyword absent → this document belongs to
+        // the parent legal entity in its own name, not the operating
+        // brand. Skip the override.
+        return null;
+      }
+      if (
+        pair.blockingContentKeywords?.some((kw) => contentText.includes(kw))
+      ) {
+        // A conflicting brand keyword is present → the document is
+        // mixed (or belongs to the parent) and the override would
+        // misattribute it. Skip; caller will fall through to fuzzy
+        // matching.
+        return null;
+      }
     }
+    return pair;
   }
   return null;
 }

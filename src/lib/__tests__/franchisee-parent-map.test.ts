@@ -57,4 +57,46 @@ describe("findOperatingBrand", () => {
     // Unrelated brand that happens to share the "ויני" token:
     expect(findOperatingBrand("ויני רגבה")).toBeNull();
   });
+
+  describe("content gate (2026-05-10)", () => {
+    const PAT_VINI = 'פאט ויני עזריאלי בע"מ';
+
+    it("fires when content text mentions the operating-brand keyword", () => {
+      const pair = findOperatingBrand(
+        PAT_VINI,
+        "הזמנות אונליין נתנזון בורגר חיפה 1155 ש\"ח"
+      );
+      expect(pair?.operatingFranchiseeName).toBe("נתנזון עזריאלי חיפה");
+    });
+
+    it("blocks override when content mentions a conflicting brand keyword (mixed invoice)", () => {
+      // Real-world Mishlocha 10075: line items reference both VINNI ויני חיפה
+      // and נתנזון בורגר חיפה. The override would mis-attribute the whole
+      // invoice to Natanzon when the dominant brand is Vini Azrieli.
+      const mixed =
+        "VINNI ויני חיפה — הזמנות אונליין 4778\n" +
+        "נתנזון בורגר חיפה — הזמנות אונליין 1155";
+      expect(findOperatingBrand(PAT_VINI, mixed)).toBeNull();
+    });
+
+    it("blocks override when no operating-brand keyword is present at all", () => {
+      // Real-world HAAT income invoice 10074: only a generic
+      // "סה\"כ אשראי חיוב במע\"מ" line item, no Natanzon mention.
+      // Must fall through to fuzzy match → Pat Vini Azrieli Haifa.
+      const haatGeneric = 'סה"כ אשראי חיוב במע"מ 2667.80';
+      expect(findOperatingBrand(PAT_VINI, haatGeneric)).toBeNull();
+    });
+
+    it("preserves legacy callers that pass no content text", () => {
+      // Backward-compatible: when contentText is undefined/null, the gate
+      // is skipped and the override fires as before. Used so the same
+      // helper can be invoked from older code paths during migration.
+      expect(findOperatingBrand(PAT_VINI)?.operatingFranchiseeName).toBe(
+        "נתנזון עזריאלי חיפה"
+      );
+      expect(findOperatingBrand(PAT_VINI, null)?.operatingFranchiseeName).toBe(
+        "נתנזון עזריאלי חיפה"
+      );
+    });
+  });
 });

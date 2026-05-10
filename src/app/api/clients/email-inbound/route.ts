@@ -796,7 +796,17 @@ async function resolveFranchisee(
         // matching the legal entity. Confirmed by Asaf 2026-04-30 for
         // Mishlocha invoice 157159 and applies here for the May 2026 Wolt
         // outage (memory: feedback-franchisee-resolution-rules).
-        const parentOverride = findOperatingBrand(extractedName);
+        //
+        // Content gate (2026-05-10): we now also require the operating-
+        // brand keyword to appear in the parsed line items / rawText, so
+        // documents that genuinely belong to the parent legal entity (no
+        // mention of the operating brand) fall through to the fuzzy match
+        // instead of being kidnapped to the operating-brand franchisee.
+        const contentText = [
+          parseResult.data.rawText ?? "",
+          ...(parseResult.data.lineItems ?? []).map((li) => li.description ?? ""),
+        ].join("\n");
+        const parentOverride = findOperatingBrand(extractedName, contentText);
         if (parentOverride) {
           const operatingFranchisee = franchisees.find(
             (f) => f.id === parentOverride.operatingFranchiseeId

@@ -167,8 +167,12 @@ async function reResolveOne(
       ) {
         extractedName = result.data.franchiseeName;
 
-        // Parent-map (now word-boundary, forward-only) override.
-        const parentOverride = findOperatingBrand(extractedName);
+        // Parent-map (word-boundary forward + content-gated) override.
+        const contentText = [
+          result.data.rawText ?? "",
+          ...(result.data.lineItems ?? []).map((li) => li.description ?? ""),
+        ].join("\n");
+        const parentOverride = findOperatingBrand(extractedName, contentText);
         if (parentOverride) {
           const operating = franchisees.find(
             (f) => f.id === parentOverride.operatingFranchiseeId,
