@@ -30,6 +30,11 @@ import {
 } from "@/data-access/gmail-sync";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import {
+  decideFranchiseeAcceptance,
+  formatVerdictForLog,
+  type AcceptanceVerdict,
+} from "@/lib/franchisee-match-acceptance";
+import {
   classifyWoltEzcountAttachment,
   isWoltEzcountFileB,
 } from "@/lib/client-parsers/wolt-parser";
@@ -303,8 +308,15 @@ export async function POST(request: NextRequest) {
     // ─── Step 5: Resolve period ────────────────────────────────────────
     const period = resolvePeriod(subject, email.createdAt);
 
-    // ─── Step 5b: Detect document type from subject ─────────────────────
-    const documentType = detectDocumentType(subject);
+    // ─── Step 5b: Detect document type from subject (+ body fallback) ─
+    // Body fallback handles ambiguous subjects like "FW: invoice" where
+    // the actual income-vs-commission distinction only appears in the
+    // email body. Required to prevent the 2026-05-10 misclassification of
+    // a Hatt-Netanzon income invoice as a Vini-Azrieli commission invoice.
+    const documentType = detectDocumentType(
+      subject,
+      email.text || email.html || undefined,
+    );
     if (documentType === "commission_invoice") {
       console.log(`[email-inbound] Detected commission invoice from subject: "${subject}"`);
     }
@@ -638,7 +650,7 @@ const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
  * 3. Email subject matching
  */
 type ResolveFranchiseeResult =
-  | { ok: true; franchiseeId: string; franchiseeName: string }
+  | { ok: true; franchiseeId: string; franchiseeName: string; confidence: number }
   | {
       ok: false;
       // Diagnostics: what was tried and why it failed. Surfaced into
@@ -647,6 +659,13 @@ type ResolveFranchiseeResult =
       extractedName?: string;
       filenameAttempt?: string;
       reason: string;
+      /**
+       * Best rejected verdict across all strategies (if any). Captures the
+       * top candidates so an admin can see "we considered these franchisees
+       * but the confidence was too low or ambiguous". Populated when
+       * `decideFranchiseeAcceptance` returns a non-accepting verdict.
+       */
+      rejectedVerdict?: Extract<AcceptanceVerdict, { accept: false }>;
     };
 
 async function resolveFranchisee(
@@ -658,6 +677,21 @@ async function resolveFranchisee(
   attachmentFilename?: string,
   documentType: "client_report" | "commission_invoice" = "client_report"
 ): Promise<ResolveFranchiseeResult> {
+  // Track the best rejected verdict across all strategies so the final
+  // failure message can surface "we considered these candidates" instead
+  // of just "no match found".
+  let bestRejectedVerdict: Extract<AcceptanceVerdict, { accept: false }> | undefined;
+  const recordRejection = (
+    verdict: Extract<AcceptanceVerdict, { accept: false }>,
+  ) => {
+    if (
+      !bestRejectedVerdict ||
+      verdict.bestConfidence > bestRejectedVerdict.bestConfidence
+    ) {
+      bestRejectedVerdict = verdict;
+    }
+  };
+
   // Strategy 1: Parse document and use extracted franchisee name.
   // Critical: commission invoices (Mishloha, Wolt, etc.) have a SEPARATE
   // parser registered under getInvoiceParser — the sales/report parser has
@@ -697,6 +731,7 @@ async function resolveFranchisee(
               ok: true,
               franchiseeId: parentOverride.operatingFranchiseeId,
               franchiseeName: parentOverride.operatingFranchiseeName,
+              confidence: 1,
             };
           }
           // Operating-brand franchisee not active — fall through to fuzzy match.
@@ -705,21 +740,29 @@ async function resolveFranchisee(
           );
         }
 
-        const match = matchFranchiseeName(
-          extractedName,
-          franchisees,
-          { minConfidence: 0.6 }
-        );
-        if (match.matchedFranchisee) {
+        // Strict acceptance gate (replaces 2026-pre `minConfidence: 0.6`
+        // first-match-wins behaviour). Anything < 0.85 or with a close
+        // runner-up is rejected here; the email is held back instead of
+        // being committed to the wrong franchisee.
+        const match = matchFranchiseeName(extractedName, franchisees, {
+          minConfidence: 0.7,
+        });
+        const verdict = decideFranchiseeAcceptance(match);
+        if (verdict.accept) {
           console.log(
-            `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${match.matchedFranchisee.name}"`
+            `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${verdict.franchiseeName}" @${verdict.confidence.toFixed(2)}`
           );
           return {
             ok: true,
-            franchiseeId: match.matchedFranchisee.id,
-            franchiseeName: match.matchedFranchisee.name,
+            franchiseeId: verdict.franchiseeId,
+            franchiseeName: verdict.franchiseeName,
+            confidence: verdict.confidence,
           };
         }
+        recordRejection(verdict);
+        console.warn(
+          `[email-inbound] Document-content match rejected: ${formatVerdictForLog(verdict)} (extracted="${extractedName}")`
+        );
       }
     } catch (err) {
       console.warn("[email-inbound] Pre-parse for franchisee extraction failed:", err);
@@ -729,17 +772,25 @@ async function resolveFranchisee(
   // Strategy 2: Extract branch name from attachment filename
   // Wolt filenames: "{branch}__sales_report__monthly__{start}__{end}.pdf"
   if (attachmentFilename) {
-    const filenameMatch = matchFranchiseeFromFilename(attachmentFilename, franchisees);
+    const filenameMatch = matchFranchiseeFromFilename(
+      attachmentFilename,
+      franchisees,
+      recordRejection,
+    );
     if (filenameMatch) {
       console.log(
-        `[email-inbound] Matched franchisee from filename: "${attachmentFilename}" → "${filenameMatch.franchiseeName}"`
+        `[email-inbound] Matched franchisee from filename: "${attachmentFilename}" → "${filenameMatch.franchiseeName}" @${filenameMatch.confidence.toFixed(2)}`
       );
       return { ok: true, ...filenameMatch };
     }
   }
 
   // Strategy 3: Fall back to subject matching
-  const subjectMatch = matchFranchiseeFromSubject(subject, franchisees);
+  const subjectMatch = matchFranchiseeFromSubject(
+    subject,
+    franchisees,
+    recordRejection,
+  );
   if (subjectMatch) {
     return { ok: true, ...subjectMatch };
   }
@@ -749,8 +800,9 @@ async function resolveFranchisee(
     extractedName,
     filenameAttempt: attachmentFilename,
     reason: extractedName
-      ? `Extracted "${extractedName}" but no franchisee alias matched (≥0.6 confidence)`
-      : "Parser did not extract a franchisee name; filename and subject also did not match",
+      ? `Extracted "${extractedName}" but no franchisee match passed the acceptance gate (≥0.85 confidence, no ambiguity)`
+      : "Parser did not extract a franchisee name; filename and subject also did not pass the acceptance gate",
+    rejectedVerdict: bestRejectedVerdict,
   };
 }
 
@@ -768,6 +820,12 @@ function formatResolveFailure(
     parts.push(`filename="${failure.filenameAttempt}"`);
   }
   parts.push(`reason=${failure.reason}`);
+  if (failure.rejectedVerdict) {
+    // Surface top candidates so the admin can see what was considered
+    // and pick a franchisee manually (or update aliases) rather than
+    // having to re-fetch and re-parse the email from scratch.
+    parts.push(formatVerdictForLog(failure.rejectedVerdict));
+  }
   return parts.join(" | ");
 }
 
@@ -779,28 +837,50 @@ function formatResolveFailure(
  */
 function matchFranchiseeFromFilename(
   filename: string,
-  franchisees: Franchisee[]
-): { franchiseeId: string; franchiseeName: string } | null {
+  franchisees: Franchisee[],
+  recordRejection?: (
+    verdict: Extract<AcceptanceVerdict, { accept: false }>,
+  ) => void,
+): {
+  franchiseeId: string;
+  franchiseeName: string;
+  confidence: number;
+} | null {
   if (!filename || franchisees.length === 0) return null;
 
   // Strip extension
   const withoutExt = filename.replace(/\.[^.]+$/, "");
 
+  const tryCandidate = (
+    candidate: string,
+  ): {
+    franchiseeId: string;
+    franchiseeName: string;
+    confidence: number;
+  } | null => {
+    if (candidate.length < 3) return null;
+    const result = matchFranchiseeName(candidate, franchisees, {
+      minConfidence: 0.7,
+    });
+    const verdict = decideFranchiseeAcceptance(result);
+    if (verdict.accept) {
+      return {
+        franchiseeId: verdict.franchiseeId,
+        franchiseeName: verdict.franchiseeName,
+        confidence: verdict.confidence,
+      };
+    }
+    if (verdict.reason !== "no_match") {
+      recordRejection?.(verdict);
+    }
+    return null;
+  };
+
   // Split on double underscore — Wolt legacy: "{branch}__sales_report__..."
   const doubleUnderscoreParts = withoutExt.split("__");
   if (doubleUnderscoreParts.length > 1) {
-    const branchPart = doubleUnderscoreParts[0].trim();
-    if (branchPart.length >= 3) {
-      const result = matchFranchiseeName(branchPart, franchisees, {
-        minConfidence: 0.6,
-      });
-      if (result.matchedFranchisee) {
-        return {
-          franchiseeId: result.matchedFranchisee.id,
-          franchiseeName: result.matchedFranchisee.name,
-        };
-      }
-    }
+    const found = tryCandidate(doubleUnderscoreParts[0].trim());
+    if (found) return found;
   }
 
   // Wolt ezcount (File B): "<heb...>_<...>_<hebCity>_<date>_<time>_<hash>.pdf"
@@ -812,18 +892,8 @@ function matchFranchiseeFromFilename(
     /^[\u0590-\u05FF][\u0590-\u05FF ]*$/.test(p)
   );
   if (hebrewTokens.length >= 1) {
-    const candidate = hebrewTokens.join(" ").trim();
-    if (candidate.length >= 3) {
-      const result = matchFranchiseeName(candidate, franchisees, {
-        minConfidence: 0.6,
-      });
-      if (result.matchedFranchisee) {
-        return {
-          franchiseeId: result.matchedFranchisee.id,
-          franchiseeName: result.matchedFranchisee.name,
-        };
-      }
-    }
+    const found = tryCandidate(hebrewTokens.join(" ").trim());
+    if (found) return found;
   }
 
   // Also try the full filename (minus extension) for less structured names
@@ -834,19 +904,7 @@ function matchFranchiseeFromFilename(
     .replace(/\s+/g, " ")
     .trim();
 
-  if (cleaned.length >= 3) {
-    const result = matchFranchiseeName(cleaned, franchisees, {
-      minConfidence: 0.7,
-    });
-    if (result.matchedFranchisee) {
-      return {
-        franchiseeId: result.matchedFranchisee.id,
-        franchiseeName: result.matchedFranchisee.name,
-      };
-    }
-  }
-
-  return null;
+  return tryCandidate(cleaned);
 }
 
 /**
@@ -855,8 +913,15 @@ function matchFranchiseeFromFilename(
  */
 function matchFranchiseeFromSubject(
   subject: string,
-  franchisees: Franchisee[]
-): { franchiseeId: string; franchiseeName: string } | null {
+  franchisees: Franchisee[],
+  recordRejection?: (
+    verdict: Extract<AcceptanceVerdict, { accept: false }>,
+  ) => void,
+): {
+  franchiseeId: string;
+  franchiseeName: string;
+  confidence: number;
+} | null {
   if (!subject || franchisees.length === 0) return null;
 
   // Try the full subject first (after removing common prefixes)
@@ -886,11 +951,16 @@ function matchFranchiseeFromSubject(
     const result = matchFranchiseeName(trimmed, franchisees, {
       minConfidence: 0.75,
     });
-    if (result.matchedFranchisee) {
+    const verdict = decideFranchiseeAcceptance(result);
+    if (verdict.accept) {
       return {
-        franchiseeId: result.matchedFranchisee.id,
-        franchiseeName: result.matchedFranchisee.name,
+        franchiseeId: verdict.franchiseeId,
+        franchiseeName: verdict.franchiseeName,
+        confidence: verdict.confidence,
       };
+    }
+    if (verdict.reason !== "no_match") {
+      recordRejection?.(verdict);
     }
   }
 

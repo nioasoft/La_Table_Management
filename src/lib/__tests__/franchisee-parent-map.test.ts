@@ -36,4 +36,25 @@ describe("findOperatingBrand", () => {
     expect(findOperatingBrand(undefined)).toBeNull();
     expect(findOperatingBrand(null)).toBeNull();
   });
+
+  // Regression: bidirectional .includes() previously fired parent override on
+  // generic substrings of aliases (e.g., "ויני" alone matched alias
+  // "פט ויני עזריאלי" via reverse-includes), hijacking legitimate franchisee
+  // matches. After fix: only forward containment (candidate ⊇ alias) and
+  // exact match are allowed.
+  it("does not trigger parent override on generic substrings of aliases", () => {
+    expect(findOperatingBrand("ויני עזריאלי")).toBeNull();
+    expect(findOperatingBrand("ויני")).toBeNull();
+    expect(findOperatingBrand("עזריאלי")).toBeNull();
+    expect(findOperatingBrand("פט ויני")).toBeNull();
+    expect(findOperatingBrand("פט")).toBeNull();
+  });
+
+  it("does not trigger parent override on unrelated franchisee names that share a token", () => {
+    // "האט נתנזון" should NOT route to Netanzon-Azrieli via parent map —
+    // it should reach the regular fuzzy matcher with no override.
+    expect(findOperatingBrand("האט נתנזון")).toBeNull();
+    // Unrelated brand that happens to share the "ויני" token:
+    expect(findOperatingBrand("ויני רגבה")).toBeNull();
+  });
 });

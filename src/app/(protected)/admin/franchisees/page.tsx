@@ -160,6 +160,7 @@ interface FranchiseeFormData {
   status: FranchiseeStatus;
   notes: string;
   hashavshevetItemKey: string;
+  hashavshevetRevenueAccount: string;
   isActive: boolean;
   isKosher: boolean;
 }
@@ -182,6 +183,7 @@ const initialFormData: FranchiseeFormData = {
   status: "pending",
   notes: "",
   hashavshevetItemKey: "",
+  hashavshevetRevenueAccount: "",
   isActive: true,
   isKosher: true,
 };
@@ -517,6 +519,7 @@ export default function AdminFranchiseesPage() {
       status: franchisee.status,
       notes: franchisee.notes || "",
       hashavshevetItemKey: franchisee.hashavshevetItemKey || "",
+      hashavshevetRevenueAccount: franchisee.hashavshevetRevenueAccount || "",
       isActive: franchisee.isActive,
       isKosher: franchisee.isKosher ?? true,
     });
@@ -990,6 +993,26 @@ export default function AdminFranchiseesPage() {
                         setFormData({ ...formData, hashavshevetItemKey: e.target.value })
                       }
                       placeholder={he.admin.franchisees.form.fields.hashavshevetItemKeyPlaceholder}
+                      disabled={isSubmitting}
+                      dir="rtl"
+                      className="h-8"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <Label htmlFor="hashavshevetRevenueAccount" className="text-xs">
+                      חשבון הכנסה (חן זכות 1) — חשבשבת
+                    </Label>
+                    <Input
+                      id="hashavshevetRevenueAccount"
+                      value={formData.hashavshevetRevenueAccount}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          hashavshevetRevenueAccount: e.target.value,
+                        })
+                      }
+                      placeholder="ברירת מחדל: הכנסות"
                       disabled={isSubmitting}
                       dir="rtl"
                       className="h-8"

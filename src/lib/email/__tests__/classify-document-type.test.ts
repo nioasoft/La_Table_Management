@@ -58,4 +58,49 @@ describe("detectDocumentType", () => {
   it("empty/missing subject defaults to client_report", () => {
     expect(detectDocumentType("")).toBe("client_report");
   });
+
+  // Regression: 2026-05-10 — Reut reported a חשבונית הכנסה (franchisee
+  // income invoice) was committed as a חשבונית עמלה (commission invoice)
+  // because the subject contained "חשבונית מס" and the classifier had no
+  // rule for income invoices. Income invoices belong to the client_report
+  // bucket: the franchisee is the issuer, the client is the recipient,
+  // and it is revenue evidence — not a commission charge to us.
+  describe("income-invoice classification (חשבונית הכנסה)", () => {
+    it.each([
+      ["חשבונית הכנסה 12345", "Plain Hebrew income invoice"],
+      ['FW: חשבונית הכנסה מאת קינג קונג בע"מ', "Forwarded income invoice"],
+      ["Income Invoice from HAAT", "English income invoice"],
+      ["FW: חשבונית הכנסה מס 10049", "Income invoice with מס token"],
+    ])("classifies %j as client_report (%s)", (subject) => {
+      expect(detectDocumentType(subject)).toBe("client_report");
+    });
+
+    it("income-invoice keyword wins over commission-invoice keyword", () => {
+      // Subject technically contains both "חשבונית הכנסה" and "חשבונית מס"
+      // (because "חשבונית הכנסה מס" is a real Hebrew form). The income
+      // rule must be checked first, otherwise the commission rule wins.
+      const subject = "חשבונית הכנסה מס 10049";
+      expect(detectDocumentType(subject)).toBe("client_report");
+    });
+
+    it("body fallback: ambiguous subject + body containing 'חשבונית הכנסה' classifies as client_report", () => {
+      const subject = "FW: invoice"; // ambiguous, no clear keyword
+      const body = "שלום, מצורפת חשבונית הכנסה עבור התקופה.";
+      expect(detectDocumentType(subject, body)).toBe("client_report");
+    });
+
+    it("body fallback: ambiguous subject + body containing commission keyword stays as commission_invoice", () => {
+      const subject = "FW: invoice"; // ambiguous
+      const body = "מצורפת חשבונית עמלה עבור החודש שעבר.";
+      expect(detectDocumentType(subject, body)).toBe("commission_invoice");
+    });
+
+    it("body has no effect when subject is unambiguous", () => {
+      // Subject already says commission_invoice — body should not override
+      // (otherwise we re-introduce ambiguity for the legitimate case).
+      const subject = "FW: חשבונית מס מאת Wolt Enterprises";
+      const body = "אזכור של חשבונית הכנסה (לא קשור)";
+      expect(detectDocumentType(subject, body)).toBe("commission_invoice");
+    });
+  });
 });

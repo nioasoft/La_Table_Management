@@ -76,11 +76,12 @@ const HEVER_ASMACHTA_PLACEHOLDER = "9999";
 // Anything outside this set (CIBUS, TENBIS, …) leaves אסמכתא 2 empty per Reut.
 const INVOICE_BEARING_CLIENT_CODES = new Set(["MISHLOCHA", "HAAT", "WOLT"]);
 
-// Franchisee-specific revenue-account overrides. Matched by Hebrew substring
-// on franchisee.name. Add new entries here when the accountant requests them.
-const FRANCHISEE_REVENUE_OVERRIDES: ReadonlyArray<readonly [string, string]> = [
-  ["נתנזון", "הכנסותנ"],
-];
+// Franchisee-specific revenue-account overrides now live on
+// `franchisee.hashavshevet_revenue_account` (added migration 0063).
+// When the column is null we fall back to REVENUE_ACCOUNT.
+//
+// Migrated from a hardcoded substring-match array on 2026-05-10 so Reut
+// can change overrides via the admin UI instead of a code deploy.
 
 type RowCell = string | number | Date;
 
@@ -107,7 +108,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const [fr] = await database
-      .select({ name: franchisee.name })
+      .select({
+        name: franchisee.name,
+        hashavshevetRevenueAccount: franchisee.hashavshevetRevenueAccount,
+      })
       .from(franchisee)
       .where(eq(franchisee.id, franchiseeId))
       .limit(1);
@@ -137,10 +141,9 @@ export async function GET(request: NextRequest) {
     const lastDay = new Date(periodYear, periodMonth, 0);
 
     // Resolve the per-franchisee revenue account once — same for every row.
+    // Per-franchisee column wins; falls back to the global default.
     const revenueAccount =
-      FRANCHISEE_REVENUE_OVERRIDES.find(([marker]) =>
-        fr.name.includes(marker)
-      )?.[1] ?? REVENUE_ACCOUNT;
+      fr.hashavshevetRevenueAccount?.trim() || REVENUE_ACCOUNT;
 
     const rows: JournalRow[] = journalRows
       .map((a) => {

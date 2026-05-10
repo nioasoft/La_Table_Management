@@ -75,6 +75,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       status,
       notes,
       hashavshevetItemKey,
+      hashavshevetRevenueAccount,
       isActive,
       isKosher,
       // Status change logging fields
@@ -132,6 +133,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (notes !== undefined) updateData.notes = notes;
     if (hashavshevetItemKey !== undefined) updateData.hashavshevetItemKey = hashavshevetItemKey;
+    if (hashavshevetRevenueAccount !== undefined) {
+      updateData.hashavshevetRevenueAccount =
+        hashavshevetRevenueAccount === "" ? null : hashavshevetRevenueAccount;
+    }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (isKosher !== undefined) updateData.isKosher = isKosher;
 

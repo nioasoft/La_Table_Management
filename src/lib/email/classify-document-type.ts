@@ -42,23 +42,65 @@ export const CLIENT_REPORT_OVERRIDE_PATTERNS: readonly RegExp[] = [
 ];
 
 /**
- * Detect document type from email subject.
+ * Subject keywords that flag a franchisee-issued income invoice (חשבונית
+ * הכנסה). These are revenue evidence, not commission charges, so they
+ * belong in the client_report bucket. Checked BEFORE the commission
+ * keywords because "חשבונית הכנסה מס" subjects also match the looser
+ * "חשבונית מס" commission keyword if it ever appears as a substring.
  *
- * Override patterns are checked first so franchisee→client invoices
- * with subjects containing "חשבונית מס" are correctly classified as
- * client_report, not commission_invoice.
+ * Added 2026-05-10 after Reut reported a Hatt-Netanzon income invoice
+ * was misclassified as a Vini-Azrieli commission invoice.
  */
-export function detectDocumentType(subject: string): ClientDocumentType {
+export const INCOME_INVOICE_KEYWORDS: readonly string[] = [
+  "חשבונית הכנסה",
+  "income invoice",
+];
+
+/**
+ * Detect document type from email subject (and optionally body content).
+ *
+ * Resolution order:
+ *  1. Subject override patterns (e.g. `[העתק] ... חשבונית ... מאת`).
+ *  2. Subject income-invoice keywords (חשבונית הכנסה / income invoice).
+ *  3. Subject commission-invoice keywords (חשבונית מס, tax invoice, ...).
+ *  4. Body fallback (when provided): scan first 2000 chars for the same
+ *     two keyword families. Income wins over commission on tie.
+ *  5. Default `client_report`.
+ *
+ * The body fallback handles ambiguous subjects ("FW: invoice") where the
+ * actual document type is only stated in the email body. It is OFF-PATH
+ * for confident-subject cases — we never let the body override an
+ * unambiguous subject keyword, otherwise we re-introduce the same false
+ * positives the override patterns were added to suppress.
+ */
+export function detectDocumentType(
+  subject: string,
+  body?: string,
+): ClientDocumentType {
   for (const pattern of CLIENT_REPORT_OVERRIDE_PATTERNS) {
     if (pattern.test(subject)) {
       return "client_report";
     }
   }
-  const lower = subject.toLowerCase();
-  for (const keyword of INVOICE_SUBJECT_KEYWORDS) {
-    if (lower.includes(keyword.toLowerCase())) {
+  const subjectLower = subject.toLowerCase();
+  if (containsAny(subjectLower, INCOME_INVOICE_KEYWORDS)) {
+    return "client_report";
+  }
+  if (containsAny(subjectLower, INVOICE_SUBJECT_KEYWORDS)) {
+    return "commission_invoice";
+  }
+  if (body) {
+    const bodyLower = body.slice(0, 2000).toLowerCase();
+    if (containsAny(bodyLower, INCOME_INVOICE_KEYWORDS)) {
+      return "client_report";
+    }
+    if (containsAny(bodyLower, INVOICE_SUBJECT_KEYWORDS)) {
       return "commission_invoice";
     }
   }
   return "client_report";
+}
+
+function containsAny(haystackLower: string, keywords: readonly string[]): boolean {
+  return keywords.some((kw) => haystackLower.includes(kw.toLowerCase()));
 }

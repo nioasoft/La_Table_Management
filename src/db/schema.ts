@@ -773,6 +773,12 @@ export const franchisee = pgTable(
     hashavshevetItemKey: text("hashavshevet_item_key"),
     // Revenue account code from BKMVDATA - for auto-matching revenue accounts in future uploads
     revenueAccountCode: text("revenue_account_code"),
+    // Per-franchisee override for the journal-entries `חן זכות 1` column
+    // (replaces the old hardcoded FRANCHISEE_REVENUE_OVERRIDES array in
+    // /api/reports/hashavshevet/franchisee-journal-entries-export). When
+    // null the export falls back to the global default `הכנסות`.
+    // Set to e.g. `הכנסותנ` for נתנזון.
+    hashavshevetRevenueAccount: text("hashavshevet_revenue_account"),
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),
