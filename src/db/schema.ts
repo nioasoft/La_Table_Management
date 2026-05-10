@@ -3406,6 +3406,99 @@ export const gmailSyncLogRelations = relations(gmailSyncLog, ({ one }) => ({
   }),
 }));
 
+// ============================================================================
+// INBOUND REVIEW QUEUE (Layer 2 of inbound-pipeline overhaul, 2026-05-10)
+// ============================================================================
+//
+// One row per inbound email processed by /api/clients/email-inbound.
+// Captures the resolver's proposal (franchisee + doc-type + confidence +
+// alternatives) and the outcome (auto_committed | failed | needs_review)
+// so the admin UI can render every inbound event without scraping
+// gmail_sync_log.error_details. See drizzle/0064_inbound_review_queue.sql
+// for the SQL definition.
+//
+// Status taxonomy (currently used):
+//   - auto_committed : Layer 1 acceptance gate passed; client_document was
+//                      created. Normal happy path.
+//   - failed         : resolver rejected (no_match / low_confidence /
+//                      ambiguous) — no client_document created.
+//   - needs_review   : reserved for Layer 2b. Will replace `failed` once the
+//                      review modal is wired.
+
+export const inboundReviewQueue = pgTable(
+  "inbound_review_queue",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+
+    gmailSyncLogId: text("gmail_sync_log_id").references(() => gmailSyncLog.id, {
+      onDelete: "set null",
+    }),
+    gmailMessageId: text("gmail_message_id"),
+    emailSubject: text("email_subject"),
+    emailFrom: text("email_from"),
+    emailReceivedAt: timestamp("email_received_at"),
+
+    clientId: text("client_id").references(() => client.id, {
+      onDelete: "set null",
+    }),
+    clientCode: text("client_code"),
+
+    proposedFranchiseeId: text("proposed_franchisee_id").references(
+      () => franchisee.id,
+      { onDelete: "set null" },
+    ),
+    proposedFranchiseeName: text("proposed_franchisee_name"),
+    franchiseeConfidence: decimal("franchisee_confidence", {
+      precision: 4,
+      scale: 3,
+    }),
+    franchiseeAlternatives: jsonb("franchisee_alternatives").$type<
+      Array<{ id: string; name: string; confidence: number }>
+    >(),
+    resolutionStrategy: text("resolution_strategy"),
+
+    proposedDocumentType: text("proposed_document_type"),
+    docTypeSource: text("doc_type_source"),
+
+    status: text("status").notNull(),
+    failureReason: text("failure_reason"),
+    committedClientDocumentId: text("committed_client_document_id").references(
+      () => clientDocument.id,
+      { onDelete: "set null" },
+    ),
+
+    reviewedBy: text("reviewed_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewNotes: text("review_notes"),
+
+    createdAt: timestamp("created_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .$defaultFn(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("inbound_review_queue_created_at_idx").on(table.createdAt),
+    index("inbound_review_queue_status_idx").on(table.status),
+    index("inbound_review_queue_client_code_idx").on(table.clientCode),
+    index("inbound_review_queue_committed_client_document_id_idx").on(
+      table.committedClientDocumentId,
+    ),
+  ],
+);
+
+export type InboundReviewQueue = typeof inboundReviewQueue.$inferSelect;
+export type CreateInboundReviewQueueData = typeof inboundReviewQueue.$inferInsert;
+export type InboundReviewStatus =
+  | "auto_committed"
+  | "failed"
+  | "needs_review";
+
 // ---- Client Document & Reconciliation Types ----
 
 export type ClientDocument = typeof clientDocument.$inferSelect;

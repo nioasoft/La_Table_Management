@@ -28,6 +28,9 @@ import {
   createSyncLogEntry,
   updateSyncLogEntry,
 } from "@/data-access/gmail-sync";
+import { createInboundReviewEntry } from "@/data-access/inbound-review-queue";
+import type { InboundReviewStatus } from "@/db/schema";
+import type { ProcessClientDocumentResult } from "@/lib/client-document-processor";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import {
   decideFranchiseeAcceptance,
@@ -374,11 +377,12 @@ export async function POST(request: NextRequest) {
           documentType
         );
 
+        let bodyResult: ProcessClientDocumentResult | null = null;
         if (!franchiseeMatch.ok) {
           errorCount++;
           errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
         } else {
-          const result = await processClientDocument({
+          bodyResult = await processClientDocument({
             buffer,
             fileName: `email-${email_id}.${email.html ? "html" : "txt"}`,
             mimeType,
@@ -394,15 +398,28 @@ export async function POST(request: NextRequest) {
             gmailMessageId: email_id,
           });
 
-          if (result.skippedDuplicate) {
+          if (bodyResult.skippedDuplicate) {
             duplicatesSkipped++;
-          } else if (result.success) {
+          } else if (bodyResult.success) {
             documentsCreated++;
           } else {
             errorCount++;
-            errorDetails.push(result.error ?? "שגיאה בעיבוד");
+            errorDetails.push(bodyResult.error ?? "שגיאה בעיבוד");
           }
         }
+
+        await recordInboundReviewOutcome({
+          syncLogId: syncLog.id,
+          emailId: email_id,
+          emailSubject: subject,
+          emailFrom: from,
+          emailReceivedAt: email.createdAt ? new Date(email.createdAt) : null,
+          clientId: identifiedClient.clientId,
+          clientCode: identifiedClient.clientCode,
+          documentType,
+          franchiseeMatch,
+          processResult: bodyResult,
+        });
       }
     } else {
       // ── Attachment-based client ──
@@ -461,41 +478,54 @@ export async function POST(request: NextRequest) {
             documentType
           );
 
+          let dlResult: ProcessClientDocumentResult | null = null;
           if (!franchiseeMatch.ok) {
             errorCount++;
             errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
-            continue;
-          }
-
-          const result = await processClientDocument({
-            buffer: file.buffer,
-            fileName: file.fileName,
-            mimeType: "application/pdf",
-            clientId: identifiedClient.clientId,
-            parserCode: identifiedClient.parserCode,
-            franchiseeId: franchiseeMatch.franchiseeId,
-            periodMonth: period.month,
-            periodYear: period.year,
-            documentType,
-            source: "gmail_fetch",
-            // CRITICAL: gmail_message_id has a UNIQUE index. When a single
-            // email yields multiple downloaded files (e.g. multiple ezcount
-            // links), every file must use a DISTINCT key — otherwise the
-            // 2nd+ files are silently rejected as duplicates. Append the
-            // index to keep the prefix `email_id#` stable and searchable.
-            gmailMessageId: `${email_id}#dl${i}`,
-          });
-
-          if (result.skippedDuplicate) {
-            duplicatesSkipped++;
-          } else if (result.success) {
-            documentsCreated++;
           } else {
-            errorCount++;
-            errorDetails.push(
-              `${file.fileName}: ${result.error ?? "שגיאה בעיבוד"}`
-            );
+            dlResult = await processClientDocument({
+              buffer: file.buffer,
+              fileName: file.fileName,
+              mimeType: "application/pdf",
+              clientId: identifiedClient.clientId,
+              parserCode: identifiedClient.parserCode,
+              franchiseeId: franchiseeMatch.franchiseeId,
+              periodMonth: period.month,
+              periodYear: period.year,
+              documentType,
+              source: "gmail_fetch",
+              // CRITICAL: gmail_message_id has a UNIQUE index. When a single
+              // email yields multiple downloaded files (e.g. multiple ezcount
+              // links), every file must use a DISTINCT key — otherwise the
+              // 2nd+ files are silently rejected as duplicates. Append the
+              // index to keep the prefix `email_id#` stable and searchable.
+              gmailMessageId: `${email_id}#dl${i}`,
+            });
+
+            if (dlResult.skippedDuplicate) {
+              duplicatesSkipped++;
+            } else if (dlResult.success) {
+              documentsCreated++;
+            } else {
+              errorCount++;
+              errorDetails.push(
+                `${file.fileName}: ${dlResult.error ?? "שגיאה בעיבוד"}`
+              );
+            }
           }
+
+          await recordInboundReviewOutcome({
+            syncLogId: syncLog.id,
+            emailId: `${email_id}#dl${i}`,
+            emailSubject: subject,
+            emailFrom: from,
+            emailReceivedAt: email.createdAt ? new Date(email.createdAt) : null,
+            clientId: identifiedClient.clientId,
+            clientCode: identifiedClient.clientCode,
+            documentType,
+            franchiseeMatch,
+            processResult: dlResult,
+          });
         }
       }
 
@@ -532,48 +562,62 @@ export async function POST(request: NextRequest) {
           attachmentDocumentType
         );
 
+        const effectiveDocumentType = attachment.documentType ?? documentType;
+        let attResult: ProcessClientDocumentResult | null = null;
         if (!franchiseeMatch.ok) {
           errorCount++;
           errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
-          continue;
-        }
-
-        console.log(
-          `[email-inbound] ${identifiedClient.clientCode}: processing "${attachment.filename}" as ${attachment.documentType ?? documentType}`
-        );
-
-        const result = await processClientDocument({
-          buffer,
-          fileName: attachment.filename,
-          mimeType: attachment.contentType,
-          clientId: identifiedClient.clientId,
-          parserCode: identifiedClient.parserCode,
-          franchiseeId: franchiseeMatch.franchiseeId,
-          periodMonth: period.month,
-          periodYear: period.year,
-          documentType: attachment.documentType ?? documentType,
-          source: "gmail_fetch",
-          // CRITICAL: gmail_message_id has a UNIQUE index. Wolt emails carry
-          // BOTH File A (commission_invoice) AND File B (client_report) as
-          // separate attachments — using just `email_id` made the 2nd one
-          // get rejected as a duplicate, silently dropping File B (the file
-          // needed for the Tabit reconciliation). The Resend attachment id
-          // is a UUID, unique within the email, so this composite key keeps
-          // re-deliveries idempotent while still allowing both attachments
-          // through.
-          gmailMessageId: `${email_id}#${attachment.id}`,
-        });
-
-        if (result.skippedDuplicate) {
-          duplicatesSkipped++;
-        } else if (result.success) {
-          documentsCreated++;
         } else {
-          errorCount++;
-          errorDetails.push(
-            `${attachment.filename}: ${result.error ?? "שגיאה בעיבוד"}`
+          console.log(
+            `[email-inbound] ${identifiedClient.clientCode}: processing "${attachment.filename}" as ${effectiveDocumentType}`
           );
+
+          attResult = await processClientDocument({
+            buffer,
+            fileName: attachment.filename,
+            mimeType: attachment.contentType,
+            clientId: identifiedClient.clientId,
+            parserCode: identifiedClient.parserCode,
+            franchiseeId: franchiseeMatch.franchiseeId,
+            periodMonth: period.month,
+            periodYear: period.year,
+            documentType: effectiveDocumentType,
+            source: "gmail_fetch",
+            // CRITICAL: gmail_message_id has a UNIQUE index. Wolt emails carry
+            // BOTH File A (commission_invoice) AND File B (client_report) as
+            // separate attachments — using just `email_id` made the 2nd one
+            // get rejected as a duplicate, silently dropping File B (the file
+            // needed for the Tabit reconciliation). The Resend attachment id
+            // is a UUID, unique within the email, so this composite key keeps
+            // re-deliveries idempotent while still allowing both attachments
+            // through.
+            gmailMessageId: `${email_id}#${attachment.id}`,
+          });
+
+          if (attResult.skippedDuplicate) {
+            duplicatesSkipped++;
+          } else if (attResult.success) {
+            documentsCreated++;
+          } else {
+            errorCount++;
+            errorDetails.push(
+              `${attachment.filename}: ${attResult.error ?? "שגיאה בעיבוד"}`
+            );
+          }
         }
+
+        await recordInboundReviewOutcome({
+          syncLogId: syncLog.id,
+          emailId: `${email_id}#${attachment.id}`,
+          emailSubject: subject,
+          emailFrom: from,
+          emailReceivedAt: email.createdAt ? new Date(email.createdAt) : null,
+          clientId: identifiedClient.clientId,
+          clientCode: identifiedClient.clientCode,
+          documentType: effectiveDocumentType,
+          franchiseeMatch,
+          processResult: attResult,
+        });
       }
     }
 
@@ -804,6 +848,95 @@ async function resolveFranchisee(
       : "Parser did not extract a franchisee name; filename and subject also did not pass the acceptance gate",
     rejectedVerdict: bestRejectedVerdict,
   };
+}
+
+/**
+ * Layer 2 visibility hook — record every inbound email's outcome to
+ * `inbound_review_queue` so the admin UI can show what arrived without
+ * scraping `gmail_sync_log.error_details`.
+ *
+ * Failures here MUST NOT propagate. The webhook already returned 200 to
+ * Resend in the success path; we log and continue.
+ */
+async function recordInboundReviewOutcome(args: {
+  syncLogId: string;
+  emailId: string;
+  emailSubject: string;
+  emailFrom: string | null;
+  emailReceivedAt: Date | null;
+  clientId: string | null;
+  clientCode: string | null;
+  documentType: "client_report" | "commission_invoice" | "tabit_report";
+  franchiseeMatch: ResolveFranchiseeResult;
+  processResult: ProcessClientDocumentResult | null;
+}): Promise<void> {
+  try {
+    let status: InboundReviewStatus;
+    let failureReason: string | null = null;
+    let committedClientDocumentId: string | null = null;
+    let proposedFranchiseeId: string | null = null;
+    let proposedFranchiseeName: string | null = null;
+    let franchiseeConfidence: string | null = null;
+    let franchiseeAlternatives:
+      | Array<{ id: string; name: string; confidence: number }>
+      | null = null;
+
+    if (!args.franchiseeMatch.ok) {
+      status = "failed";
+      failureReason = args.franchiseeMatch.reason;
+      const verdict = args.franchiseeMatch.rejectedVerdict;
+      if (verdict) {
+        franchiseeConfidence = verdict.bestConfidence.toFixed(3);
+        franchiseeAlternatives = verdict.candidates;
+        if (verdict.candidates.length > 0) {
+          proposedFranchiseeId = verdict.candidates[0].id;
+          proposedFranchiseeName = verdict.candidates[0].name;
+        }
+      }
+    } else {
+      proposedFranchiseeId = args.franchiseeMatch.franchiseeId;
+      proposedFranchiseeName = args.franchiseeMatch.franchiseeName;
+      franchiseeConfidence = args.franchiseeMatch.confidence.toFixed(3);
+      if (args.processResult?.skippedDuplicate) {
+        // Don't pollute the queue with re-deliveries — gmail_sync_log
+        // already counts them via duplicates_skipped.
+        return;
+      }
+      if (args.processResult?.success && args.processResult.document) {
+        status = "auto_committed";
+        committedClientDocumentId = args.processResult.document.id;
+      } else {
+        status = "failed";
+        failureReason = args.processResult?.error ?? "processing failed";
+      }
+    }
+
+    await createInboundReviewEntry({
+      gmailSyncLogId: args.syncLogId,
+      gmailMessageId: args.emailId,
+      emailSubject: args.emailSubject,
+      emailFrom: args.emailFrom,
+      emailReceivedAt: args.emailReceivedAt,
+      clientId: args.clientId,
+      clientCode: args.clientCode,
+      proposedFranchiseeId,
+      proposedFranchiseeName,
+      franchiseeConfidence,
+      franchiseeAlternatives,
+      resolutionStrategy: null,
+      proposedDocumentType: args.documentType,
+      docTypeSource: null,
+      status,
+      failureReason,
+      committedClientDocumentId,
+    });
+  } catch (err) {
+    // Non-fatal — webhook continues even if visibility insert fails.
+    console.warn(
+      "[email-inbound] failed to record inbound_review_queue entry:",
+      err,
+    );
+  }
 }
 
 function formatResolveFailure(
