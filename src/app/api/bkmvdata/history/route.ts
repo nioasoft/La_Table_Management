@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
     const periodEndDate = searchParams.get("periodEndDate") || undefined;
     const statusParam = searchParams.get("status");
     const status = statusParam ? statusParam.split(",") : undefined;
+    const search = searchParams.get("search") || undefined;
     const limit = parseInt(searchParams.get("limit") || "50", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
 
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
       periodStartDate,
       periodEndDate,
       status,
+      search,
       limit,
       offset,
     });

@@ -14,7 +14,7 @@ import {
   type UploadLinkStatus,
   type BkmvProcessingResult,
 } from "@/db/schema";
-import { eq, and, desc, lt, or, sql, isNotNull, gte, lte, inArray, ne } from "drizzle-orm";
+import { eq, and, desc, lt, or, sql, isNotNull, gte, lte, inArray, ne, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 // Entity types that can have upload links
@@ -1134,6 +1134,7 @@ export async function getBkmvUploadHistory(options: {
   periodStartDate?: string;
   periodEndDate?: string;
   status?: string[];
+  search?: string;
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -1167,6 +1168,13 @@ export async function getBkmvUploadHistory(options: {
         options.status as ("pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected")[]
       )
     );
+  }
+
+  const searchTerm = options.search?.trim();
+  if (searchTerm) {
+    // Case-insensitive substring match on file name (escape LIKE meta-chars)
+    const pattern = `%${searchTerm.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    conditions.push(ilike(uploadedFile.originalFileName, pattern));
   }
 
   // Get total count

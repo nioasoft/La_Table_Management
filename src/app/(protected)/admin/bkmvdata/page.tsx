@@ -234,6 +234,7 @@ export default function BkmvDataPage() {
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
   const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
+  const [debouncedHistorySearch, setDebouncedHistorySearch] = useState<string>("");
   const [historyFranchiseeSearch, setHistoryFranchiseeSearch] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; autoApproved: boolean } | null>(null);
@@ -367,9 +368,15 @@ export default function BkmvDataPage() {
 
   const franchisees: FranchiseeWithBrand[] = franchiseesData?.franchisees || [];
 
-  // Fetch upload history
+  // Debounce the file-name search so we don't fire a request on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedHistorySearch(historySearchQuery.trim()), 300);
+    return () => clearTimeout(t);
+  }, [historySearchQuery]);
+
+  // Fetch upload history (search applied server-side so we're not capped by limit=50)
   const { data: historyData, isLoading: isLoadingHistory, refetch: refetchHistory } = useQuery({
-    queryKey: ["bkmvdata", "history", historyFilterFranchisee, historyFilterStatus],
+    queryKey: ["bkmvdata", "history", historyFilterFranchisee, historyFilterStatus, debouncedHistorySearch],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (historyFilterFranchisee && historyFilterFranchisee !== "all") {
@@ -377,6 +384,9 @@ export default function BkmvDataPage() {
       }
       if (historyFilterStatus && historyFilterStatus !== "all") {
         params.set("status", historyFilterStatus);
+      }
+      if (debouncedHistorySearch) {
+        params.set("search", debouncedHistorySearch);
       }
       params.set("limit", "50");
       const response = await fetchWithTimeout(`/api/bkmvdata/history?${params.toString()}`);
@@ -388,14 +398,8 @@ export default function BkmvDataPage() {
 
   const historyItems: BkmvHistoryItem[] = historyData?.files || [];
 
-  // Client-side filter by file name (server already filtered by franchisee/status)
-  const filteredHistoryItems = useMemo(() => {
-    const q = historySearchQuery.trim().toLowerCase();
-    if (!q) return historyItems;
-    return historyItems.filter((item) =>
-      (item.fileName || "").toLowerCase().includes(q)
-    );
-  }, [historyItems, historySearchQuery]);
+  // Server already filtered by franchisee/status/search — no client-side filter needed
+  const filteredHistoryItems = historyItems;
 
   // Sorted suppliers for dropdown (alphabetically by name)
   const sortedSuppliers = useMemo(() => {
