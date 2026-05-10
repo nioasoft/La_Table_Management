@@ -56,14 +56,19 @@ export function EmailComposerDialog({
       try {
         const res = await fetchWithTimeout(`/api/suppliers/${supplierId}`);
         if (!res.ok) throw new Error("failed to fetch supplier");
-        const data = await res.json();
+        const payload = await res.json();
         if (cancelled) return;
+        // GET /api/suppliers/[id] wraps the supplier under `supplier`. Older shapes
+        // are also tolerated so we don't break if the endpoint normalizes later.
+        const supplierData = payload?.supplier ?? payload ?? {};
+        const primaryEmail: string =
+          supplierData.contactEmail ?? supplierData.secondaryContactEmail ?? "";
         setContact({
-          contactName: data.contactName ?? null,
-          contactEmail: data.contactEmail ?? null,
-          secondaryContactEmail: data.secondaryContactEmail ?? null,
+          contactName: supplierData.contactName ?? null,
+          contactEmail: supplierData.contactEmail ?? null,
+          secondaryContactEmail: supplierData.secondaryContactEmail ?? null,
         });
-        if (!to && data.contactEmail) setTo(data.contactEmail);
+        if (primaryEmail) setTo(primaryEmail);
       } catch (err) {
         console.error("[EmailComposerDialog] supplier fetch failed:", err);
         if (!cancelled) setContact({ contactName: null, contactEmail: null, secondaryContactEmail: null });
@@ -74,7 +79,7 @@ export function EmailComposerDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, supplierId, to]);
+  }, [open, supplierId]);
 
   // Reset on close so a stale draft doesn't show next time.
   useEffect(() => {
@@ -127,9 +132,19 @@ export function EmailComposerDialog({
               dir="ltr"
               className="text-left"
             />
-            {contact?.secondaryContactEmail && (
-              <p className="text-xs text-muted-foreground">
-                איש קשר משני: {contact.secondaryContactEmail}
+            {contact?.secondaryContactEmail && contact.secondaryContactEmail !== to && (
+              <p className="text-xs text-muted-foreground flex items-center gap-2">
+                <span>איש קשר משני: {contact.secondaryContactEmail}</span>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => setTo(contact.secondaryContactEmail!)}
+                  disabled={sendEmail.isPending || loadingContact}
+                >
+                  שלח לכתובת זו
+                </Button>
               </p>
             )}
           </div>

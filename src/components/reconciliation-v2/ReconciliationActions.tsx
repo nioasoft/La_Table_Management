@@ -14,9 +14,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCheck, Download, Mail, Loader2 } from "lucide-react";
+import { CheckCheck, Download, Mail, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { useMatchAllSession } from "@/queries/reconciliation-v2";
+import {
+  useMatchAllSession,
+  useDeleteReconciliationSession,
+  useCreateReconciliationSession,
+} from "@/queries/reconciliation-v2";
 import { EmailComposerDialog } from "./EmailComposerDialog";
 import type { ReconciliationComparisonWithDetails } from "@/types/reconciliation-v2";
 
@@ -27,6 +31,9 @@ interface ReconciliationActionsProps {
   supplierId: string;
   supplierName: string;
   supplierFileId: string | null;
+  /** Needed to recreate the session when admin chooses "delete and restart". */
+  periodStartDate: string;
+  periodEndDate: string;
   comparisons: ReconciliationComparisonWithDetails[];
   isArchived: boolean;
 }
@@ -44,14 +51,20 @@ export function ReconciliationActions({
   supplierId,
   supplierName,
   supplierFileId,
+  periodStartDate,
+  periodEndDate,
   comparisons,
   isArchived,
 }: ReconciliationActionsProps) {
   const router = useRouter();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [restartOpen, setRestartOpen] = useState(false);
 
   const matchAll = useMatchAllSession();
+  const deleteSession = useDeleteReconciliationSession();
+  const createSession = useCreateReconciliationSession();
+  const isRestartPending = deleteSession.isPending || createSession.isPending;
 
   const eligibleCount = comparisons.filter(
     (c) =>
@@ -81,6 +94,33 @@ export function ReconciliationActions({
   const downloadHref = supplierFileId
     ? `/api/reports/files/${supplierFileId}/download?source=supplier`
     : null;
+
+  const handleRestart = async () => {
+    if (!supplierFileId) {
+      toast.error("חסר קובץ ספק לסשן זה — לא ניתן לאתחל מחדש");
+      return;
+    }
+    try {
+      await deleteSession.mutateAsync(sessionId);
+      const newSession = await createSession.mutateAsync({
+        supplierId,
+        supplierFileId,
+        supplierFileIds: [supplierFileId],
+        periodStartDate,
+        periodEndDate,
+      });
+      toast.success("סשן חדש נוצר");
+      setRestartOpen(false);
+      // Replace the URL so the page re-mounts on the new session id.
+      const params = new URLSearchParams(window.location.search);
+      params.set("sessionId", newSession.id);
+      router.replace(`${window.location.pathname}?${params.toString()}`);
+      router.refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "שגיאה באיתחול הסשן";
+      toast.error(message);
+    }
+  };
 
   return (
     <>
@@ -128,6 +168,21 @@ export function ReconciliationActions({
           שלח מייל לספק
         </Button>
 
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setRestartOpen(true)}
+          disabled={isArchived || isRestartPending || !supplierFileId}
+          className="text-destructive hover:text-destructive"
+        >
+          {isRestartPending ? (
+            <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="ms-2 h-4 w-4" />
+          )}
+          התחל סשן חדש
+        </Button>
+
         {isArchived && (
           <span className="text-xs text-muted-foreground">
             הסשן הנוכחי מאורכב — פעולות זמינות רק בסשן הפעיל.
@@ -164,6 +219,35 @@ export function ReconciliationActions({
                 <Loader2 className="ms-2 h-4 w-4 animate-spin" />
               ) : null}
               אישור והרץ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={restartOpen} onOpenChange={setRestartOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>התחלת סשן חדש</AlertDialogTitle>
+            <AlertDialogDescription>
+              הסשן הנוכחי יימחק לצמיתות, כולל כל ההערות, הסטטוסים הידניים ופריטי
+              תור הבדיקה. סשן חדש ייווצר בהרצה נקייה על אותו קובץ ספק ותקופה.
+              להמשיך?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRestartPending}>ביטול</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleRestart();
+              }}
+              disabled={isRestartPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isRestartPending ? (
+                <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+              ) : null}
+              מחק והתחל מחדש
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -630,6 +630,36 @@ export function useSendSupplierEmail(sessionId: string) {
 }
 
 /**
+ * Refresh a single comparison's franchisee amount from BKMV.
+ * Supplier amount, notes, and manual status are preserved.
+ */
+export function useRefreshComparison(sessionId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (comparisonId: string) => {
+      const res = await fetchWithTimeout(
+        `/api/reconciliation-v2/comparisons/${comparisonId}/refresh`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "שגיאה ברענון נתוני הזכיין");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.sessionWithComparisons(sessionId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: reconciliationV2Keys.session(sessionId),
+      });
+    },
+  });
+}
+
+/**
  * Delete a reconciliation session
  */
 export function useDeleteReconciliationSession() {

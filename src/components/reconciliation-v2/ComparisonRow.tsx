@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "./StatusBadge";
 import { ComparisonNotes } from "./ComparisonNotes";
 import { cn } from "@/lib/utils";
-import { Check, AlertTriangle } from "lucide-react";
+import { Check, AlertTriangle, RefreshCw } from "lucide-react";
 import type { ReconciliationComparisonWithDetails } from "@/types/reconciliation-v2";
 import { RECONCILIATION_THRESHOLD } from "@/types/reconciliation-v2";
 
@@ -12,7 +12,9 @@ interface ComparisonRowProps {
   comparison: ReconciliationComparisonWithDetails;
   onApprove?: (comparisonId: string) => void;
   onSendToReview?: (comparisonId: string) => void;
+  onRefresh?: (comparisonId: string) => void;
   isUpdating?: boolean;
+  isRefreshing?: boolean;
 }
 
 function formatCurrency(amount: string | number | null): string {
@@ -30,7 +32,9 @@ export function ComparisonRow({
   comparison,
   onApprove,
   onSendToReview,
+  onRefresh,
   isUpdating,
+  isRefreshing,
 }: ComparisonRowProps) {
   const absoluteDiff = parseFloat(comparison.absoluteDifference || "0");
   const supplierAmt = parseFloat(String(comparison.supplierAmount || "0"));
@@ -129,6 +133,21 @@ export function ComparisonRow({
           )}
           {inQueue && (
             <span className="text-sm text-blue-600">בתור בדיקה</span>
+          )}
+          {onRefresh && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onRefresh(comparison.id)}
+              disabled={isRefreshing || isUpdating}
+              className="h-8 w-8 p-0"
+              title="רענן נתוני זכיין מקבצי BKMV"
+              aria-label="רענן נתוני זכיין"
+            >
+              <RefreshCw
+                className={cn("h-4 w-4", isRefreshing && "animate-spin")}
+              />
+            </Button>
           )}
           <ComparisonNotes
             comparisonId={comparison.id}

@@ -14,14 +14,19 @@ interface ComparisonTableProps {
   comparisons: ReconciliationComparisonWithDetails[];
   onApprove?: (comparisonId: string) => void;
   onSendToReview?: (comparisonId: string) => void;
+  onRefresh?: (comparisonId: string) => void;
   isUpdating?: boolean;
+  /** Comparison id currently being refreshed, so only that row spins. */
+  refreshingComparisonId?: string | null;
 }
 
 export function ComparisonTable({
   comparisons,
   onApprove,
   onSendToReview,
+  onRefresh,
   isUpdating,
+  refreshingComparisonId,
 }: ComparisonTableProps) {
   if (comparisons.length === 0) {
     return (
@@ -51,7 +56,9 @@ export function ComparisonTable({
               comparison={comparison}
               onApprove={onApprove}
               onSendToReview={onSendToReview}
+              onRefresh={onRefresh}
               isUpdating={isUpdating}
+              isRefreshing={refreshingComparisonId === comparison.id}
             />
           ))}
         </TableBody>

@@ -816,6 +816,122 @@ export async function updateComparisonStatus(
 }
 
 /**
+ * Refresh a single comparison's franchisee-side amount by re-aggregating the
+ * latest BKMV data for that franchisee + period. Supplier-side data is left
+ * untouched. Manual statuses are preserved (manually_approved,
+ * sent_to_review_queue) — only auto_approved/needs_review get re-evaluated
+ * against the threshold. Notes and review trail survive.
+ */
+export async function refreshFranchiseeAmount(
+  comparisonId: string
+): Promise<ReconciliationComparison | null> {
+  const rows = await database
+    .select({
+      comparison: reconciliationComparison,
+      session: reconciliationSession,
+    })
+    .from(reconciliationComparison)
+    .innerJoin(
+      reconciliationSession,
+      eq(reconciliationComparison.sessionId, reconciliationSession.id)
+    )
+    .where(eq(reconciliationComparison.id, comparisonId))
+    .limit(1);
+  if (rows.length === 0) return null;
+  const { comparison: comp, session: sess } = rows[0];
+
+  // Refusing to mutate archived sessions keeps history truthful.
+  if (sess.archivedAt) return null;
+
+  const supplierData = await database
+    .select({ vatExempt: supplier.vatExempt })
+    .from(supplier)
+    .where(eq(supplier.id, sess.supplierId))
+    .limit(1);
+  if (supplierData.length === 0) return null;
+  const isVatExempt = supplierData[0].vatExempt;
+
+  const vatRate = await getVatRateForDate(new Date(sess.periodStartDate));
+
+  // Pull the franchisee's BKMV total for this supplier in this period.
+  const { getAllFranchiseeAmountsFromYearTable } = await import(
+    "@/data-access/franchisee-bkmv-year"
+  );
+  const yearAmounts = await getAllFranchiseeAmountsFromYearTable(
+    sess.supplierId,
+    sess.periodStartDate,
+    sess.periodEndDate
+  );
+  const bkmvData = yearAmounts.get(comp.franchiseeId) ?? {
+    amount: 0,
+    fileId: comp.franchiseeFileId,
+  };
+
+  // BKMV stores gross. Supplier reports net. Convert per supplier's VAT mode.
+  const bkmvNet = isVatExempt
+    ? roundAmount(bkmvData.amount)
+    : roundAmount(calculateNetFromGross(bkmvData.amount, vatRate));
+
+  // For VAT-exempt suppliers (e.g. ale-ale), BKMV still includes VAT on
+  // vat_applicable items but the supplier reports net — subtract the partial
+  // VAT contribution that we can derive from the supplier file's match rows.
+  let partialVat = 0;
+  if (isVatExempt && sess.supplierFileId) {
+    const fileRes = await database
+      .select({ processingResult: supplierFileUpload.processingResult })
+      .from(supplierFileUpload)
+      .where(eq(supplierFileUpload.id, sess.supplierFileId))
+      .limit(1);
+    const result = fileRes[0]?.processingResult as SupplierFileProcessingResult | null;
+    if (result?.franchiseeMatches) {
+      for (const match of result.franchiseeMatches) {
+        if (
+          match.matchedFranchiseeId === comp.franchiseeId &&
+          match.matchType !== "blacklisted" &&
+          match.matchType !== "fuzzy" &&
+          match.matchType !== "none"
+        ) {
+          const pv = match.grossAmount - match.netAmount;
+          if (pv > 0) partialVat += pv;
+        }
+      }
+    }
+  }
+
+  const newFranchiseeAmount = bkmvNet - partialVat;
+  const supplierAmount = Number(comp.supplierAmount);
+  const difference = supplierAmount - newFranchiseeAmount;
+  const absoluteDifference = Math.abs(difference);
+
+  // Manual decisions stick; only auto rows re-evaluate vs the threshold.
+  let newStatus: ReconciliationComparisonStatus = comp.status;
+  if (comp.status === "auto_approved" || comp.status === "needs_review") {
+    newStatus =
+      absoluteDifference <= RECONCILIATION_THRESHOLD
+        ? "auto_approved"
+        : "needs_review";
+  }
+
+  const [updated] = await database
+    .update(reconciliationComparison)
+    .set({
+      franchiseeAmount: newFranchiseeAmount.toString(),
+      difference: difference.toString(),
+      absoluteDifference: absoluteDifference.toString(),
+      franchiseeFileId: bkmvData.fileId ?? comp.franchiseeFileId,
+      status: newStatus,
+    })
+    .where(eq(reconciliationComparison.id, comparisonId))
+    .returning();
+
+  if (updated && newStatus !== comp.status) {
+    await recalculateSessionStats(updated.sessionId);
+  }
+
+  return updated ?? null;
+}
+
+/**
  * Update comparison free-form notes (separate from review workflow)
  */
 export async function updateComparisonNotes(

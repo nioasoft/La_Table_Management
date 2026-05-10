@@ -23,6 +23,7 @@ import {
   useApproveSessionFile,
   useRejectSessionFile,
   useBackToProcessing,
+  useRefreshComparison,
   reconciliationV2Keys,
 } from "@/queries/reconciliation-v2";
 
@@ -121,6 +122,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   const approveFile = useApproveSessionFile();
   const rejectFile = useRejectSessionFile();
   const backToProcessing = useBackToProcessing();
+  const refreshComparison = useRefreshComparison(sessionId || "");
 
   // Get supplier data with notes
   const { data: suppliers } = useReconciliationSuppliersWithFiles();
@@ -154,6 +156,16 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       toast.success("נוסף לתור בדיקה");
     } catch (error) {
       toast.error("שגיאה בהוספה לתור בדיקה");
+    }
+  };
+
+  const handleRefreshComparison = async (comparisonId: string) => {
+    try {
+      await refreshComparison.mutateAsync(comparisonId);
+      toast.success("נתוני הזכיין רועננו");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "שגיאה ברענון נתוני הזכיין";
+      toast.error(message);
     }
   };
 
@@ -351,12 +363,14 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
         </div>
       )}
 
-      {/* Action toolbar: Match-All, Download, Send Email */}
+      {/* Action toolbar: Match-All, Download, Send Email, Restart */}
       <ReconciliationActions
         sessionId={session.id}
         supplierId={session.supplierId}
         supplierName={session.supplierName}
         supplierFileId={session.supplierFileId}
+        periodStartDate={session.periodStartDate}
+        periodEndDate={session.periodEndDate}
         comparisons={comparisons}
         isArchived={isArchived}
       />
@@ -382,7 +396,13 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
             comparisons={comparisons}
             onApprove={handleApprove}
             onSendToReview={handleSendToReview}
+            onRefresh={isArchived ? undefined : handleRefreshComparison}
             isUpdating={updateStatus.isPending || addToQueue.isPending}
+            refreshingComparisonId={
+              refreshComparison.isPending
+                ? (refreshComparison.variables as string | undefined) ?? null
+                : null
+            }
           />
         </CardContent>
       </Card>

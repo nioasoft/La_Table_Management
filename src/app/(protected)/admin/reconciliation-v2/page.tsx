@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, Scale, ArrowLeft, History, AlertCircle, Trash2, RefreshCw, List } from "lucide-react";
+import { Loader2, Scale, History, AlertCircle, List } from "lucide-react";
 import { SupplierSelector, PeriodSelector } from "@/components/reconciliation-v2";
-import { useCreateReconciliationSession, useReviewQueueCount, useDeleteReconciliationSession, reconciliationV2Keys } from "@/queries/reconciliation-v2";
+import { useCreateReconciliationSession, useReviewQueueCount, reconciliationV2Keys } from "@/queries/reconciliation-v2";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -28,7 +28,6 @@ export default function ReconciliationV2Page() {
 
   const queryClient = useQueryClient();
   const createSession = useCreateReconciliationSession();
-  const deleteSession = useDeleteReconciliationSession();
   const { data: reviewQueueCount } = useReviewQueueCount();
 
   const handlePeriodChange = (
@@ -46,18 +45,26 @@ export default function ReconciliationV2Page() {
     setPeriodData(data);
   };
 
+  // Auto-navigate to an existing session as soon as it's known.
+  // The user already chose the supplier+period; making them click "המשך"
+  // is a wasted click. Restart-with-new-session lives inside the session view.
+  useEffect(() => {
+    if (
+      supplierId &&
+      periodKey &&
+      periodData?.hasExistingSession &&
+      periodData.existingSessionId
+    ) {
+      router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
+    }
+  }, [supplierId, periodKey, periodData?.hasExistingSession, periodData?.existingSessionId, router]);
+
   const handleStartReconciliation = async () => {
     if (!supplierId || !periodData) return;
+    if (periodData.hasExistingSession) return; // useEffect above handles redirect
 
-    // If session exists, navigate to it
-    if (periodData.hasExistingSession && periodData.existingSessionId) {
-      router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
-      return;
-    }
-
-    // Create new session
     try {
-      const session = await createSession.mutateAsync({
+      await createSession.mutateAsync({
         supplierId,
         supplierFileId: periodData.supplierFileId,
         supplierFileIds: periodData.supplierFileIds,
@@ -70,31 +77,6 @@ export default function ReconciliationV2Page() {
     } catch (error) {
       console.error("Failed to create session:", error);
       toast.error(error instanceof Error ? error.message : "שגיאה ביצירת סשן התאמה");
-    }
-  };
-
-  const handleDeleteAndRestart = async () => {
-    if (!supplierId || !periodData?.existingSessionId) return;
-
-    try {
-      // Delete the existing session
-      await deleteSession.mutateAsync(periodData.existingSessionId);
-      toast.success("הסשן הקיים נמחק");
-
-      // Create new session
-      const session = await createSession.mutateAsync({
-        supplierId,
-        supplierFileId: periodData.supplierFileId,
-        supplierFileIds: periodData.supplierFileIds,
-        periodStartDate: periodData.periodStartDate,
-        periodEndDate: periodData.periodEndDate,
-      });
-
-      toast.success("סשן התאמה חדש נוצר בהצלחה");
-      router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
-    } catch (error) {
-      console.error("Failed to delete and restart session:", error);
-      toast.error(error instanceof Error ? error.message : "שגיאה באיפוס הסשן");
     }
   };
 
@@ -174,32 +156,27 @@ export default function ReconciliationV2Page() {
             />
           </div>
 
-          {/* Existing Session Warning */}
+          {/* Existing-session note: redirect happens automatically via useEffect.
+              Show a brief loader so the page doesn't look frozen during the push. */}
           {periodData?.hasExistingSession && (
-            <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg text-amber-800 dark:text-amber-200">
-              <AlertCircle className="h-5 w-5 shrink-0" />
-              <span>קיים כבר סשן התאמה לתקופה זו. ניתן להמשיך לעבוד עליו או למחוק ולהתחיל מחדש.</span>
+            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+              <span>סשן קיים נמצא — מעביר אותך אליו...</span>
             </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex gap-3">
-            {/* Start/Continue Button */}
+          {/* Start button — only shown when no session exists yet */}
+          {!periodData?.hasExistingSession && (
             <Button
               onClick={handleStartReconciliation}
-              disabled={!supplierId || !periodData || createSession.isPending || deleteSession.isPending}
-              className="flex-1"
+              disabled={!supplierId || !periodData || createSession.isPending}
+              className="w-full"
               size="lg"
             >
               {createSession.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 me-2 animate-spin" />
                   יוצר סשן...
-                </>
-              ) : periodData?.hasExistingSession ? (
-                <>
-                  <ArrowLeft className="h-4 w-4 me-2" />
-                  המשך עבודה על סשן קיים
                 </>
               ) : (
                 <>
@@ -208,30 +185,7 @@ export default function ReconciliationV2Page() {
                 </>
               )}
             </Button>
-
-            {/* Delete and Restart Button (only shows when session exists) */}
-            {periodData?.hasExistingSession && (
-              <Button
-                onClick={handleDeleteAndRestart}
-                disabled={!supplierId || !periodData || createSession.isPending || deleteSession.isPending}
-                variant="outline"
-                size="lg"
-                className="text-destructive hover:text-destructive"
-              >
-                {deleteSession.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                    מוחק...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4 me-2" />
-                    מחק והתחל מחדש
-                  </>
-                )}
-              </Button>
-            )}
-          </div>
+          )}
         </CardContent>
       </Card>
 
