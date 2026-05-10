@@ -10,7 +10,10 @@ import { processSupplierFile } from "@/lib/file-processor";
 import { getCurrentVatRate } from "@/data-access/vatRates";
 import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { getVatProductNames } from "@/data-access/supplier-products";
-import type { Anomaly } from "@/types/file-anomalies";
+import {
+  type Anomaly,
+  filterFileLevelAnomalies,
+} from "@/types/file-anomalies";
 
 /**
  * Merge acknowledgements from a previous anomaly set onto a fresh one,
@@ -291,9 +294,15 @@ export async function reprocessFileRow(
         };
       }),
       processedAt: new Date().toISOString(),
+      // Match-level anomalies are filtered out — they're shown per-row in the
+      // review UI and were the cause of stale "low confidence match" warnings
+      // persisting after a manual match.
       anomalies: mergeAnomalyAcknowledgements(
         existingResult?.anomalies ?? [],
-        [...(processResult.anomalies ?? []), ...matchAnomalies]
+        filterFileLevelAnomalies([
+          ...(processResult.anomalies ?? []),
+          ...matchAnomalies,
+        ])
       ),
     };
 

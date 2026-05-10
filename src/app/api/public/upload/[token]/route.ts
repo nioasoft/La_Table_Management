@@ -45,6 +45,7 @@ import {
 } from "@/data-access/supplier-file-processing-diagnostics";
 import { deleteCommissionsBySourceFile } from "@/data-access/commissions";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
+import { filterFileLevelAnomalies } from "@/types/file-anomalies";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -740,12 +741,14 @@ export async function POST(
                 preCalculatedCommission: r.preCalculatedCommission,
               })),
               processedAt: new Date().toISOString(),
-              // Persist anomalies so the admin pre-save modal can replay them
-              // when the file is reviewed later (parser-level + match-level).
-              anomalies: [
+              // Persist anomalies for the admin pre-save modal. Match-level
+              // anomalies are filtered out — they're already shown per-row in
+              // the review screen and produced false-alarm warnings that
+              // didn't refresh after a manual match.
+              anomalies: filterFileLevelAnomalies([
                 ...(processResult.anomalies ?? []),
                 ...matchAnomalies,
-              ],
+              ]),
             };
 
             // Check for duplicate files (same supplier + period + franchisee)

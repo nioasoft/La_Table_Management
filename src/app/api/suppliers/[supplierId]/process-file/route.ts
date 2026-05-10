@@ -10,6 +10,7 @@ import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
 import type { SupplierFileMapping, SettlementPeriodType } from "@/db/schema";
 import type { MatcherConfig, FranchiseeMatchResult } from "@/lib/franchisee-matcher";
+import { filterFileLevelAnomalies } from "@/types/file-anomalies";
 import {
   createFileProcessingError,
   determineProcessingStatus,
@@ -596,10 +597,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       legacyWarnings: result.legacyWarnings,
       // Unmatched franchisee summary
       unmatchedFranchiseeSummary,
-      // Anomalies surfaced for the pre-save admin review modal — combined
-      // from parser-level (e.g. FILTERED_ROWS_BY_DOCTYPE, DATES_NOT_EXTRACTED)
-      // and match-level (UNKNOWN_BUSINESS_ID, BIZ_ID_MISMATCH, ...).
-      anomalies: [...(result.anomalies ?? []), ...matchAnomalies],
+      // Anomalies surfaced for the pre-save admin review modal. Match-level
+      // anomalies (LOW_CONFIDENCE_MATCH, UNKNOWN_BUSINESS_ID, BIZ_ID_MISMATCH,
+      // AMBIGUOUS_MATCH, INACTIVE_FRANCHISEE_MATCHED) are intentionally
+      // filtered out — they're already visible per-row in the next screen
+      // where the admin can fix them via manual match. The modal focuses on
+      // file-level issues that genuinely block save (EMPTY_FILE,
+      // ALL_ROWS_FILTERED, MIXED_PERIODS, DUPLICATE_FILE, etc.).
+      anomalies: filterFileLevelAnomalies([
+        ...(result.anomalies ?? []),
+        ...matchAnomalies,
+      ]),
       processingDurationMs,
       // File URL from Blob Storage (if upload succeeded)
       fileUrl,

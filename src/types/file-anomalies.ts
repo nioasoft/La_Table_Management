@@ -77,3 +77,31 @@ export interface Anomaly {
   acknowledgedAt?: string;
   acknowledgedBy?: string;
 }
+
+/**
+ * Match-level anomaly codes — issues surfaced by the franchisee matcher rather
+ * than by the file parser. These are intentionally NOT shown in the pre-save
+ * review modal because the same information is already presented in the
+ * per-row review table on the next screen, where the admin can fix each row
+ * individually (manual match, blacklist, update company_id, etc.).
+ *
+ * Keeping them in the modal generated noise and false alarms (warnings would
+ * persist after a manual fix because the cached anomalies array wasn't
+ * recomputed). The modal now focuses on file-level issues that genuinely
+ * block save and aren't visible in the per-row UI.
+ */
+const MATCH_LEVEL_ANOMALY_CODES = new Set<AnomalyCode>([
+  "UNKNOWN_BUSINESS_ID",
+  "BIZ_ID_MISMATCH",
+  "LOW_CONFIDENCE_MATCH",
+  "AMBIGUOUS_MATCH",
+  "INACTIVE_FRANCHISEE_MATCHED",
+]);
+
+export function isFileLevelAnomaly(a: Anomaly): boolean {
+  return !MATCH_LEVEL_ANOMALY_CODES.has(a.code);
+}
+
+export function filterFileLevelAnomalies(anomalies: Anomaly[]): Anomaly[] {
+  return anomalies.filter(isFileLevelAnomaly);
+}
