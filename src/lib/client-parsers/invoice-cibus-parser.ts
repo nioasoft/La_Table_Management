@@ -436,6 +436,9 @@ export async function parseCibusInvoice(
         transactionCount: lineItems.length,
         periodMonth,
         periodYear,
+        // Mirror the mishloha-parser fix: surface invoiceNumber so the
+        // Hashavshevet "אסמכתא 2" column populates for Cibus exports too.
+        invoiceNumber: invoiceNumber || undefined,
         allocationNumber,
         lineItems,
         rawText: text,

@@ -561,6 +561,12 @@ export async function parseMishlohaFile(
         netAmount: preVatTotal || grandTotal,
         periodMonth,
         periodYear,
+        // Surface the extracted invoice number so it propagates to
+        // client_document.invoice_number → Hashavshevet "אסמכתא 2"
+        // column. Was previously embedded only in the line-item
+        // description, which left the column blank for HAAT/Mishlocha
+        // exports (Reut 2026-05-10).
+        invoiceNumber: invoiceNumber || undefined,
         allocationNumber,
         lineItems:
           lineItems.length > 0
