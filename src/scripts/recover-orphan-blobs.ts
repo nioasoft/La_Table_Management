@@ -97,14 +97,24 @@ async function downloadBuffer(url: string): Promise<Buffer> {
 }
 
 function inferDocumentType(filename: string): DocumentTypeStr {
-  // ezcount-* files in our pipeline are franchisee→client income invoices.
-  // Files matching tax-invoice / SI<digits> patterns are client→franchisee
-  // commission invoices we receive from the client (HAAT central etc.).
-  if (/(?:^|[_-])SI\d|^Tax[_-]?Invoice/i.test(filename)) {
+  // commission_invoice (client → franchisee charge):
+  //   - SI<digits>            HAAT central commission invoices
+  //   - Tax_Invoice_<digits>  Mishlocha/Wolt commission invoices
+  //   - ezcount-invoice*      Mishlocha commission invoices via ezcount
+  //   - 8093_he_<ts>.pdf      HAAT central commission (numeric prefix)
+  if (
+    /(?:^|[_-])SI\d|^Tax[_-]?Invoice/i.test(filename) ||
+    /^ezcount-invoice/i.test(filename) ||
+    /^\d{4,}_he_\d/i.test(filename)
+  ) {
     return "commission_invoice";
   }
+  // client_report (franchisee → client income invoice or report):
+  //   - email-<uuid>.html     CIBUS / TENBIS HTML body reports
+  //   - ezcount-<uuid>        ezcount-issued income invoices from franchisee
+  //   - <id>_YYYYMMDD_*       TENBIS Mandrill / WOLT direct PDFs
   if (/^email-/.test(filename)) return "client_report";
-  if (/^ezcount-/.test(filename)) return "client_report";
+  if (/^ezcount-[0-9a-f]/i.test(filename)) return "client_report";
   // Default: report (most common).
   return "client_report";
 }
@@ -433,11 +443,13 @@ async function main() {
 
   // Insert ready rows
   let inserted = 0;
+  let skipped = 0;
   for (const d of ready) {
     if (!d.parseResult.data) continue;
     const data = d.parseResult.data;
     const docId = randomUUID();
-    await database.insert(clientDocument).values({
+    try {
+      await database.insert(clientDocument).values({
       id: docId,
       clientId: d.clientId,
       franchiseeId: d.franchiseeId,
@@ -461,10 +473,26 @@ async function main() {
       reviewNotes:
         "שוחזר אוטומטית 2026-05-10 ע\"י recover-orphan-blobs.ts — קובץ הגיע לאחסון אבל אין שורת DB מתאימה. ייתכן שנדרס בעבר על ידי מסמך אחר באמצעות dedup-replace.",
       updatedAt: new Date(),
-    });
-    inserted++;
+      });
+      inserted++;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Unique-constraint hit means another orphan covering the same
+      // (client × franchisee × period × commission_invoice) tuple was
+      // inserted earlier in this run. The remaining duplicate gets
+      // skipped — this is correct: only one commission_invoice can
+      // exist per tuple and the first wins.
+      if (msg.includes("idx_client_doc_unique_invoice")) {
+        skipped++;
+        console.log(
+          `  ↳ skipped ${d.clientCode} ${d.franchiseeName} (commission_invoice unique constraint — another orphan already covered this tuple)`
+        );
+        continue;
+      }
+      throw err;
+    }
   }
-  console.log(`\nInserted ${inserted} rows.`);
+  console.log(`\nInserted ${inserted} rows; skipped ${skipped} unique-constraint duplicates.`);
 }
 
 main().catch((e) => {
