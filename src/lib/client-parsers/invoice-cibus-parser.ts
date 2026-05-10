@@ -25,8 +25,10 @@ import { extractAllocationNumber } from "./extract-allocation-number";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
+// ESM-safe loader (works in both Next.js CJS bundles and tsx ESM scripts).
+import { createRequire } from "node:module";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
 
 /** Hebrew number pattern: digits with optional commas and decimal */
 const NUM_PATTERN = "[\\d,]+\\.?\\d*";

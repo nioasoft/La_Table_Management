@@ -16,8 +16,11 @@
 import type { ClientDocumentProcessingResult } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
 
+// ESM-safe loader (works in both Next.js CJS bundles and tsx ESM scripts).
+import { createRequire } from "node:module";
+const ecmRequire = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const sharp = require("sharp");
+const sharp = ecmRequire("sharp");
 
 /**
  * Dynamic imports that bypass Turbopack static analysis.
@@ -102,7 +105,7 @@ export async function parseMishlohaFile(
     // debug file-read at module load when `module.parent` is null (which
     // happens with bundlers like Turbopack), breaking the build.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require("pdf-parse/lib/pdf-parse.js");
+    const pdfParse = ecmRequire("pdf-parse/lib/pdf-parse.js");
     const pdfData = await pdfParse(buffer);
     let text = (pdfData.text as string).trim();
 
