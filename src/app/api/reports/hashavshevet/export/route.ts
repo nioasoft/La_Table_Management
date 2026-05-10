@@ -9,9 +9,10 @@ import {
   supplier,
   franchisee,
   brand,
+  reconciliationComparison,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, isNotNull, or } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import * as XLSX from "xlsx";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -87,6 +88,9 @@ export async function GET(request: NextRequest) {
     const brandIdsParam = searchParams.get("brandIds");
     const supplierIdsParam = searchParams.get("supplierIds");
     const startDocNumber = parseInt(searchParams.get("startDocNumber") || "5001", 10);
+    // Mirror /api/reports/hashavshevet: default ON. Filters out rows whose
+    // latest non-archived reconciliation comparison wasn't approved.
+    const onlyApproved = searchParams.get("onlyApproved") !== "false";
 
     // Validate required parameters
     if (!startDate || !endDate) {
@@ -157,6 +161,66 @@ export async function GET(request: NextRequest) {
     const franchiseeMap = new Map(allFranchisees.map((f) => [f.id, f]));
     const brandMap = new Map(allBrands.map((b) => [b.id, b]));
 
+    // Same approval gate as /api/reports/hashavshevet — keeps preview and
+    // Excel in sync. Empty when the flag is off.
+    const approvedSet = new Set<string>();
+    if (onlyApproved) {
+      const freshSessions = await database.execute<{
+        id: string;
+        supplier_id: string;
+        period_start_date: string;
+        period_end_date: string;
+      }>(sql`
+        SELECT DISTINCT ON (supplier_id, period_start_date, period_end_date)
+          id, supplier_id, period_start_date, period_end_date
+        FROM reconciliation_session
+        WHERE archived_at IS NULL
+          AND period_start_date <= ${endDate}
+          AND period_end_date >= ${startDate}
+        ORDER BY supplier_id, period_start_date, period_end_date, created_at DESC
+      `);
+
+      const sessionContext = new Map<
+        string,
+        { supplierId: string; periodStart: string; periodEnd: string }
+      >();
+      for (const row of freshSessions.rows) {
+        sessionContext.set(row.id, {
+          supplierId: row.supplier_id,
+          periodStart: row.period_start_date,
+          periodEnd: row.period_end_date,
+        });
+      }
+
+      if (sessionContext.size > 0) {
+        const approvedRows = await database
+          .select({
+            sessionId: reconciliationComparison.sessionId,
+            franchiseeId: reconciliationComparison.franchiseeId,
+          })
+          .from(reconciliationComparison)
+          .where(
+            and(
+              inArray(reconciliationComparison.sessionId, [
+                ...sessionContext.keys(),
+              ]),
+              inArray(reconciliationComparison.status, [
+                "auto_approved",
+                "manually_approved",
+              ])
+            )
+          );
+
+        for (const r of approvedRows) {
+          const ctx = sessionContext.get(r.sessionId);
+          if (!ctx) continue;
+          approvedSet.add(
+            `${ctx.supplierId}|${r.franchiseeId}|${ctx.periodStart}|${ctx.periodEnd}`
+          );
+        }
+      }
+    }
+
     // Build rows for Hashavshevet format
     const rows: HashavshevetRow[] = [];
     let currentDocNumber = startDocNumber;
@@ -190,6 +254,12 @@ export async function GET(request: NextRequest) {
         );
 
         if (commissionAmount === 0) continue;
+
+        // Reconciliation gate (same key shape as /api/reports/hashavshevet)
+        if (onlyApproved) {
+          const key = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
+          if (!approvedSet.has(key)) continue;
+        }
 
         rows.push({
           accountKey: file.hashavshevetCode,

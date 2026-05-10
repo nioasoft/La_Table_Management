@@ -216,6 +216,9 @@ export default function HashavshevetExportPage() {
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
   const [startDocNumber, setStartDocNumber] = useState("5001");
+  // Default ON: only export rows whose latest reconciliation comparison is
+  // approved. Unchecking falls back to legacy behavior (file-level approval).
+  const [onlyApproved, setOnlyApproved] = useState(true);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -266,8 +269,10 @@ export default function HashavshevetExportPage() {
     if (endDate) params.set("endDate", endDate);
     if (selectedBrandId) params.set("brandIds", selectedBrandId);
     if (selectedSupplierIds.length > 0) params.set("supplierIds", selectedSupplierIds.join(","));
+    // Send the flag only when the user opts out — keeps the default URL clean.
+    if (!onlyApproved) params.set("onlyApproved", "false");
     return params.toString();
-  }, [startDate, endDate, selectedBrandId, selectedSupplierIds]);
+  }, [startDate, endDate, selectedBrandId, selectedSupplierIds, onlyApproved]);
 
   // Fetch report data
   const fetchReport = useCallback(async () => {
@@ -428,6 +433,7 @@ export default function HashavshevetExportPage() {
     setSelectedBrandId("");
     setSelectedSupplierIds([]);
     setStartDocNumber("5001");
+    setOnlyApproved(true);
     setReport(null);
     setDuplicateWarning(null);
   };
@@ -634,6 +640,25 @@ export default function HashavshevetExportPage() {
                 })}
               </div>
             )}
+          </div>
+
+          {/* Reconciliation approval gate */}
+          <div className="flex items-start gap-2 p-3 bg-muted/30 rounded-lg">
+            <Checkbox
+              id="only-approved"
+              checked={onlyApproved}
+              onCheckedChange={(v) => setOnlyApproved(v === true)}
+              className="mt-0.5"
+            />
+            <div className="grid gap-1">
+              <Label htmlFor="only-approved" className="cursor-pointer text-sm font-medium">
+                ייצא רק התאמות מאושרות
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                כשהאפשרות מסומנת — שורות (ספק × זכיין) שלא אושרו ב-Reconciliation V2,
+                או שאין להן סשן, לא ייצאו לחשבשבת. הסר סימון כדי לייצא הכל.
+              </p>
+            </div>
           </div>
 
           {/* Action Buttons */}

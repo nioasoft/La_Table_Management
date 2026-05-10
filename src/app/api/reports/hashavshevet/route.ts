@@ -9,9 +9,10 @@ import {
   supplier,
   franchisee,
   brand,
+  reconciliationComparison,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, isNotNull, or } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 
 // ============================================================================
@@ -99,6 +100,11 @@ export async function GET(request: NextRequest) {
     const endDate = searchParams.get("endDate");
     const brandIdsParam = searchParams.get("brandIds");
     const supplierIdsParam = searchParams.get("supplierIds");
+    // Default ON: only export (supplier × franchisee) rows whose latest
+    // non-archived reconciliation-v2 comparison is approved. Pass
+    // ?onlyApproved=false to bypass and include everything that has an
+    // approved supplier file (legacy behavior).
+    const onlyApproved = searchParams.get("onlyApproved") !== "false";
 
     // Validate required parameters
     if (!startDate || !endDate) {
@@ -174,6 +180,67 @@ export async function GET(request: NextRequest) {
     const franchiseeMap = new Map(allFranchisees.map((f) => [f.id, f]));
     const brandMap = new Map(allBrands.map((b) => [b.id, b]));
 
+    // Build approvedSet — keys are "supplierId|franchiseeId|periodStart|periodEnd"
+    // pulled from the freshest non-archived reconciliation session per
+    // (supplier, period). Empty when the flag is off.
+    const approvedSet = new Set<string>();
+    if (onlyApproved) {
+      const freshSessions = await database.execute<{
+        id: string;
+        supplier_id: string;
+        period_start_date: string;
+        period_end_date: string;
+      }>(sql`
+        SELECT DISTINCT ON (supplier_id, period_start_date, period_end_date)
+          id, supplier_id, period_start_date, period_end_date
+        FROM reconciliation_session
+        WHERE archived_at IS NULL
+          AND period_start_date <= ${endDate}
+          AND period_end_date >= ${startDate}
+        ORDER BY supplier_id, period_start_date, period_end_date, created_at DESC
+      `);
+
+      const sessionContext = new Map<
+        string,
+        { supplierId: string; periodStart: string; periodEnd: string }
+      >();
+      for (const row of freshSessions.rows) {
+        sessionContext.set(row.id, {
+          supplierId: row.supplier_id,
+          periodStart: row.period_start_date,
+          periodEnd: row.period_end_date,
+        });
+      }
+
+      if (sessionContext.size > 0) {
+        const approvedRows = await database
+          .select({
+            sessionId: reconciliationComparison.sessionId,
+            franchiseeId: reconciliationComparison.franchiseeId,
+          })
+          .from(reconciliationComparison)
+          .where(
+            and(
+              inArray(reconciliationComparison.sessionId, [
+                ...sessionContext.keys(),
+              ]),
+              inArray(reconciliationComparison.status, [
+                "auto_approved",
+                "manually_approved",
+              ])
+            )
+          );
+
+        for (const r of approvedRows) {
+          const ctx = sessionContext.get(r.sessionId);
+          if (!ctx) continue;
+          approvedSet.add(
+            `${ctx.supplierId}|${r.franchiseeId}|${ctx.periodStart}|${ctx.periodEnd}`
+          );
+        }
+      }
+    }
+
     // Build entries from processing results
     const entries: HashavshevetEntry[] = [];
     const supplierSet = new Set<string>();
@@ -214,6 +281,13 @@ export async function GET(request: NextRequest) {
 
         // Skip zero commissions
         if (commissionAmount === 0) continue;
+
+        // Reconciliation gate: drop rows whose latest comparison wasn't approved
+        // (or has no session at all). Bypassed when the user unchecks the box.
+        if (onlyApproved) {
+          const key = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
+          if (!approvedSet.has(key)) continue;
+        }
 
         entries.push({
           hashavshevetCode: file.hashavshevetCode,
