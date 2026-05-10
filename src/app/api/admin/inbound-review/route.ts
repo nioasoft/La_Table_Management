@@ -24,6 +24,7 @@ const VALID_STATUSES: ReadonlyArray<InboundReviewStatus> = [
   "auto_committed",
   "failed",
   "needs_review",
+  "rejected",
 ];
 
 export async function GET(request: NextRequest) {

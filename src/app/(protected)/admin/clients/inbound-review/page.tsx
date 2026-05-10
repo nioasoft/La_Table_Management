@@ -30,8 +30,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { RefreshCw } from "lucide-react";
+import { ReviewDialog } from "./review-dialog";
 
-type InboundReviewStatus = "auto_committed" | "failed" | "needs_review";
+type InboundReviewStatus =
+  | "auto_committed"
+  | "failed"
+  | "needs_review"
+  | "rejected";
 
 interface InboundReviewEntry {
   id: string;
@@ -51,6 +56,10 @@ interface InboundReviewEntry {
   resolutionStrategy: string | null;
   proposedDocumentType: string | null;
   docTypeSource: string | null;
+  fileUrl: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  fileSize: number | null;
   status: InboundReviewStatus;
   failureReason: string | null;
   committedClientDocumentId: string | null;
@@ -83,12 +92,14 @@ const STATUS_LABELS: Record<InboundReviewStatus | "ALL", string> = {
   auto_committed: "אושר אוטומטית",
   failed: "נכשל",
   needs_review: "ממתין לסקירה",
+  rejected: "נדחה",
 };
 
 const STATUS_BADGE: Record<InboundReviewStatus, string> = {
   auto_committed: "bg-green-100 text-green-800 hover:bg-green-100",
   failed: "bg-red-100 text-red-800 hover:bg-red-100",
   needs_review: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
+  rejected: "bg-gray-200 text-gray-700 hover:bg-gray-200",
 };
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -147,6 +158,10 @@ export default function InboundReviewPage() {
 
   const entries = data?.entries ?? [];
   const counts = data?.statusCounts ?? {};
+
+  const [reviewEntry, setReviewEntry] = useState<InboundReviewEntry | null>(
+    null,
+  );
 
   return (
     <div className="space-y-4 p-4" dir="rtl">
@@ -298,12 +313,13 @@ export default function InboundReviewPage() {
                 <TableHead className="text-right">זכיין מוצע</TableHead>
                 <TableHead className="text-right">ביטחון</TableHead>
                 <TableHead className="text-right">סיבת כשל</TableHead>
+                <TableHead className="text-right w-[100px]">פעולה</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     טוען...
                   </TableCell>
                 </TableRow>
@@ -311,7 +327,7 @@ export default function InboundReviewPage() {
               {!isLoading && entries.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="text-center py-8 text-muted-foreground"
                   >
                     אין מיילים בטווח שנבחר
@@ -358,6 +374,20 @@ export default function InboundReviewPage() {
                   >
                     {e.failureReason ?? "—"}
                   </TableCell>
+                  <TableCell>
+                    {(e.status === "failed" || e.status === "needs_review") &&
+                    e.fileUrl ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setReviewEntry(e)}
+                      >
+                        סקור
+                      </Button>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -366,10 +396,26 @@ export default function InboundReviewPage() {
       </Card>
 
       <p className="text-xs text-muted-foreground">
-        הטבלה מתעדכנת אוטומטית כל דקה. שורות עם סטטוס &quot;נכשל&quot; או
-        &quot;ממתין לסקירה&quot; דורשות התערבות ידנית — Layer 2b יוסיף כפתורי
-        אישור/דחייה ישירות מכאן.
+        הטבלה מתעדכנת אוטומטית כל דקה. כפתור &quot;סקור&quot; פותח חלונית בה
+        ניתן לבחור זכיין, לאשר ולייצר מסמך — או לדחות אם המייל אינו רלוונטי.
       </p>
+
+      {reviewEntry && (
+        <ReviewDialog
+          open={!!reviewEntry}
+          onOpenChange={(open) => !open && setReviewEntry(null)}
+          entry={{
+            id: reviewEntry.id,
+            emailSubject: reviewEntry.emailSubject,
+            fileUrl: reviewEntry.fileUrl,
+            fileName: reviewEntry.fileName,
+            proposedFranchiseeId: reviewEntry.proposedFranchiseeId,
+            proposedDocumentType: reviewEntry.proposedDocumentType,
+            franchiseeAlternatives: reviewEntry.franchiseeAlternatives,
+            failureReason: reviewEntry.failureReason,
+          }}
+        />
+      )}
     </div>
   );
 }

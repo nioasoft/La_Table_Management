@@ -29,6 +29,7 @@ import {
   updateSyncLogEntry,
 } from "@/data-access/gmail-sync";
 import { createInboundReviewEntry } from "@/data-access/inbound-review-queue";
+import { uploadDocument } from "@/lib/storage";
 import type { InboundReviewStatus } from "@/db/schema";
 import type { ProcessClientDocumentResult } from "@/lib/client-document-processor";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
@@ -419,6 +420,13 @@ export async function POST(request: NextRequest) {
           documentType,
           franchiseeMatch,
           processResult: bodyResult,
+          // Body-based: skip pre-upload — body is already in
+          // gmail_sync_log.body_excerpt and re-running the parser on a
+          // saved body adds no recoverability the admin doesn't already
+          // have.
+          fileContext: null,
+          periodMonth: period.month,
+          periodYear: period.year,
         });
       }
     } else {
@@ -525,6 +533,13 @@ export async function POST(request: NextRequest) {
             documentType,
             franchiseeMatch,
             processResult: dlResult,
+            fileContext: {
+              buffer: file.buffer,
+              fileName: file.fileName,
+              mimeType: "application/pdf",
+            },
+            periodMonth: period.month,
+            periodYear: period.year,
           });
         }
       }
@@ -617,6 +632,13 @@ export async function POST(request: NextRequest) {
           documentType: effectiveDocumentType,
           franchiseeMatch,
           processResult: attResult,
+          fileContext: {
+            buffer,
+            fileName: attachment.filename,
+            mimeType: attachment.contentType,
+          },
+          periodMonth: period.month,
+          periodYear: period.year,
         });
       }
     }
@@ -858,6 +880,37 @@ async function resolveFranchisee(
  * Failures here MUST NOT propagate. The webhook already returned 200 to
  * Resend in the success path; we log and continue.
  */
+/**
+ * Layer 2b file-context provider. When the franchisee resolver fails,
+ * we still upload the file so the admin can later confirm with a
+ * manually-picked franchisee from the inbox UI. Best-effort — failures
+ * are non-fatal.
+ */
+async function uploadForReviewQueue(args: {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  clientId: string | null;
+}): Promise<{ url: string; size: number } | null> {
+  try {
+    const entityId = args.clientId ?? "inbound-review";
+    const result = await uploadDocument(
+      args.buffer,
+      args.fileName,
+      args.mimeType,
+      "inbound-review",
+      entityId,
+    );
+    return { url: result.url, size: result.fileSize };
+  } catch (err) {
+    console.warn(
+      "[email-inbound] failed to pre-upload file for review queue:",
+      err,
+    );
+    return null;
+  }
+}
+
 async function recordInboundReviewOutcome(args: {
   syncLogId: string;
   emailId: string;
@@ -869,6 +922,18 @@ async function recordInboundReviewOutcome(args: {
   documentType: "client_report" | "commission_invoice" | "tabit_report";
   franchiseeMatch: ResolveFranchiseeResult;
   processResult: ProcessClientDocumentResult | null;
+  /**
+   * File context — populated when the file is available (always for
+   * attachments and downloaded links; null for body-based emails where
+   * a full upload would just be a copy of the email body).
+   */
+  fileContext?: {
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+  } | null;
+  periodMonth?: number;
+  periodYear?: number;
 }): Promise<void> {
   try {
     let status: InboundReviewStatus;
@@ -911,6 +976,38 @@ async function recordInboundReviewOutcome(args: {
       }
     }
 
+    // File-context capture rules:
+    //  - Auto-committed rows: take the URL from the created client_document
+    //    (already uploaded by processClientDocument). No separate upload.
+    //  - Failed rows with attachments: upload now so admin can recover via
+    //    the review dialog without re-fetching the email from Resend.
+    //  - Body-based emails on failure: skip — the body is in
+    //    gmail_sync_log.body_excerpt; an extra blob copy adds no value.
+    let fileUrl: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
+    let mimeType: string | null = null;
+    if (args.processResult?.document) {
+      const doc = args.processResult.document;
+      fileUrl = doc.fileUrl;
+      fileName = doc.originalFileName;
+      fileSize = doc.fileSize;
+      mimeType = doc.mimeType;
+    } else if (args.fileContext && status === "failed") {
+      const uploaded = await uploadForReviewQueue({
+        buffer: args.fileContext.buffer,
+        fileName: args.fileContext.fileName,
+        mimeType: args.fileContext.mimeType,
+        clientId: args.clientId,
+      });
+      if (uploaded) {
+        fileUrl = uploaded.url;
+        fileSize = uploaded.size;
+        fileName = args.fileContext.fileName;
+        mimeType = args.fileContext.mimeType;
+      }
+    }
+
     await createInboundReviewEntry({
       gmailSyncLogId: args.syncLogId,
       gmailMessageId: args.emailId,
@@ -926,6 +1023,13 @@ async function recordInboundReviewOutcome(args: {
       resolutionStrategy: null,
       proposedDocumentType: args.documentType,
       docTypeSource: null,
+      fileUrl,
+      fileName,
+      mimeType,
+      fileSize,
+      parsedData: null,
+      periodMonth: args.periodMonth ?? null,
+      periodYear: args.periodYear ?? null,
       status,
       failureReason,
       committedClientDocumentId,

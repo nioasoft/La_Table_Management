@@ -3462,6 +3462,18 @@ export const inboundReviewQueue = pgTable(
     proposedDocumentType: text("proposed_document_type"),
     docTypeSource: text("doc_type_source"),
 
+    // Layer 2b: file context for failed-row recovery. Upload happens
+    // ALWAYS (success or failure) so an admin can confirm with a different
+    // franchisee from the inbox UI without re-fetching the email from
+    // Resend (whose attachment retention is ~7 days).
+    fileUrl: text("file_url"),
+    fileName: text("file_name"),
+    mimeType: text("mime_type"),
+    fileSize: integer("file_size"),
+    parsedData: jsonb("parsed_data"),
+    periodMonth: integer("period_month"),
+    periodYear: integer("period_year"),
+
     status: text("status").notNull(),
     failureReason: text("failure_reason"),
     committedClientDocumentId: text("committed_client_document_id").references(
@@ -3497,7 +3509,8 @@ export type CreateInboundReviewQueueData = typeof inboundReviewQueue.$inferInser
 export type InboundReviewStatus =
   | "auto_committed"
   | "failed"
-  | "needs_review";
+  | "needs_review"
+  | "rejected";
 
 // ---- Client Document & Reconciliation Types ----
 
