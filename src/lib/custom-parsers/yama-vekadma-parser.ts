@@ -1,20 +1,34 @@
 /**
  * Custom parser for ימה וקדמה (YAMA_VEKADMA) supplier files
  *
- * File structure:
- *   This is an account ledger (כרטסת) format with transactions grouped by franchisee.
+ * File structure (Sheilta per-customer ledger export, format updated May 2026):
+ *   The file contains one block per franchisee. Each block looks like:
  *
- *   - Row 0: Headers (שנה, ת מסמך, ת פרעון, סוג, מסמך, פרטים, אסמכתה, חובה, זכות, יתרה)
- *   - Franchisee names appear as standalone rows (e.g., "קינג קונג חורב בע\"מ")
- *   - Transaction rows follow each franchisee with amounts in column H (חובה)
- *   - Each franchisee section may end with "סך הכל" row
- *   - File ends with "סך הכל כל הסניפים" row
+ *     row N+0:  Title row — "ימה וקדמה י.א. בע"מ (1) // שנת 2026"
+ *     row N+1:  "ספר לחשבון:<FRANCHISEE_NAME> ( <CUSTOMER_ID>)"
+ *     row N+2:  "מועד הדפסה:DD/MM/YYYY HH:MM:SS"
+ *     row N+3,N+4: blank
+ *     row N+5:  Header — "תאריך מסמך","סוג","מסמך","ש.","תאריך פרעון",
+ *                        "ח-ן נגדי","אסמכתא","פרטים","סכומים בשקלים"
+ *     row N+6:  Sub-header — null × 8, "חובה","זכות","יתרה"
+ *     row N+7+: Data rows (col 0 = M/D/YY date)
+ *     row N+k:  Subtotal — col 7 = "סהכ"
  *
- * Solution:
- *   - Identify franchisee header rows (rows that contain a franchisee name pattern)
- *   - Sum the "חובה" (debit) column for each franchisee's transactions
- *   - Skip negative amounts (returns/credits)
- *   - Extract the franchisee name from the header row
+ *   File ends with a commission summary line:
+ *     "סהכל 12% מתוך 6,719.33 = 806.3"
+ *
+ * Amount semantics:
+ *   - Amounts include VAT (supplier config has vatIncluded=true).
+ *   - Per transaction: amount = debit (col 8) − credit (col 9).
+ *     Credit memos (doc type 651) usually appear as a negative debit; netting
+ *     against the credit column covers the rare case where it's split.
+ *
+ * Output:
+ *   - One ParsedRowData per franchisee with aggregated gross/net amounts.
+ *   - `date` = latest document date in that franchisee's block (used downstream
+ *     to verify the admin-selected settlement period).
+ *   - Validation warning if sum across franchisees doesn't match the file's
+ *     own footer total (tolerance ≤ 1 ₪).
  */
 
 import * as XLSX from "xlsx";
@@ -23,143 +37,100 @@ import {
   type ParsedRowData,
   roundAmount,
 } from "../file-processor";
-import { createFileProcessingError } from "../file-processing-errors";
+import {
+  type FileProcessingError,
+  createFileProcessingError,
+} from "../file-processing-errors";
 
-// Column indices (0-based)
-const YEAR_COL = 0; // Column A - שנה
-const DEBIT_COL = 7; // Column H - חובה
-const TOTAL_COL = 6; // Column G - אסמכתה (where "סך הכל" appears)
+// Column indices (0-based) within data rows
+const DATE_COL = 0; // תאריך מסמך
+const DEBIT_COL = 8; // חובה
+const CREDIT_COL = 9; // זכות
+const SUBTOTAL_LABEL_COL = 7; // "סהכ" appears in col 7 on subtotal rows
 
-// VAT rate in Israel
+// VAT rate in Israel — amounts in this file include VAT
 const VAT_RATE = 0.18;
 
-// Patterns to skip (total rows, sub-headers, etc.)
-const SKIP_PATTERNS = [
-  /סך הכל/i,
-  /סה"כ/i,
-  /יתרה/i,
-  /^שנה\s*$/i,
-];
+// "ספר לחשבון:<name> ( <customer_id>)"
+const FRANCHISEE_ROW_RE =
+  /^ספר\s+לחשבון\s*:\s*(.+?)\s*\(\s*\d+\s*\)\s*$/;
 
-interface FranchiseeData {
+// Data row date format: M/D/YY (US locale — Sheilta export)
+const DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/;
+
+// Footer line: "סהכל 12% מתוך 6,719.33 = 806.3"
+const FOOTER_TOTAL_RE =
+  /^סהכל\s+\d+(?:\.\d+)?\s*%\s*מתוך\s+([\d,]+(?:\.\d+)?)\s*=/;
+
+// Subtotal labels that may appear in col 7
+const SUBTOTAL_LABELS = ["סהכ", 'סה"כ', "סך הכל"];
+
+interface FranchiseeAccumulator {
   name: string;
-  totalDebit: number;
-  rowCount: number;
+  totalAmount: number;
+  latestDate: Date | null;
+  txCount: number;
   firstRow: number;
 }
 
 /**
- * Parse a numeric value from cell content
+ * Parse a numeric value from a cell. Handles currency symbols, thousands
+ * separators, parentheses-as-negative, and stray whitespace.
  */
 function parseNumericValue(value: unknown): number {
   if (value === null || value === undefined) return 0;
-  if (typeof value === "number") return isNaN(value) ? 0 : value;
+  if (typeof value === "number") return Number.isNaN(value) ? 0 : value;
 
-  let strValue = String(value).trim();
+  let s = String(value).trim();
+  s = s.replace(/[₪$€£¥]/g, "").replace(/,/g, "").replace(/\s/g, "").trim();
 
-  // Remove currency symbols, commas, spaces
-  strValue = strValue
-    .replace(/[₪$€£¥]/g, "")
-    .replace(/,/g, "")
-    .replace(/\s/g, "")
-    .trim();
-
-  // Handle negative numbers in parentheses: (1,234) -> -1234
-  if (strValue.startsWith("(") && strValue.endsWith(")")) {
-    strValue = "-" + strValue.slice(1, -1);
+  if (s.startsWith("(") && s.endsWith(")")) {
+    s = "-" + s.slice(1, -1);
   }
 
-  // Handle dash for zero
-  if (strValue === "-" || strValue === "") return 0;
+  if (s === "" || s === "-") return 0;
 
-  const parsed = parseFloat(strValue);
-  return isNaN(parsed) ? 0 : parsed;
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? 0 : n;
 }
 
 /**
- * Check if a row is a franchisee header row
- * A franchisee header row is any non-empty row that is NOT:
- * - A data row (starts with year like 2025)
- * - A skip pattern (totals, headers)
+ * Parse a Sheilta-format date string (M/D/YY or M/D/YYYY) into a local Date.
+ * Returns null on parse failure. Local TZ avoids the UTC-shift bug documented
+ * in CLAUDE.md (toISOString shifts Israel dates by one day).
  */
-function isFranchiseeHeaderRow(row: unknown[]): boolean {
-  const firstCell = String(row[0] || "").trim();
+function parseMDY(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  const m = s.match(DATE_RE);
+  if (!m) return null;
 
-  // Must have content
-  if (!firstCell) return false;
+  const month = parseInt(m[1], 10);
+  const day = parseInt(m[2], 10);
+  let year = parseInt(m[3], 10);
+  if (year < 100) year += 2000;
 
-  // Skip if it's a data row (starts with year)
-  if (/^\d{4}$/.test(firstCell)) return false;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
-  // Skip if it's a skip pattern
-  for (const pattern of SKIP_PATTERNS) {
-    if (pattern.test(firstCell)) return false;
-  }
-
-  // Any other non-empty row is a franchisee header
-  return true;
+  const d = new Date(year, month - 1, day);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
 }
 
-/**
- * Check if a row is a data row (has transaction data)
- */
-function isDataRow(row: unknown[]): boolean {
-  const firstCell = String(row[0] || "").trim();
-
-  // Data rows have a year in column A (e.g., "2025")
-  if (/^\d{4}$/.test(firstCell)) {
-    return true;
-  }
-
-  return false;
+function isSubtotalRow(row: unknown[]): boolean {
+  const label = String(row[SUBTOTAL_LABEL_COL] ?? "").trim();
+  return SUBTOTAL_LABELS.some((l) => label.includes(l));
 }
 
-/**
- * Check if a row is a section total row
- */
-function isTotalRow(row: unknown[]): boolean {
-  // Check if any cell contains "סך הכל"
-  for (const cell of row) {
-    const cellStr = String(cell || "").trim();
-    if (cellStr.includes("סך הכל") || cellStr.includes("סה\"כ")) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Extract clean franchisee name from a row
- */
-function extractFranchiseeName(row: unknown[]): string {
-  const firstCell = String(row[0] || "").trim();
-
-  // Remove customer ID prefix if present (e.g., "428654 - קינג קונג חורב בע\"מ")
-  let name = firstCell.replace(/^\d+\s*-\s*/, "");
-
-  // Clean up extra spaces
-  name = name.replace(/\s+/g, " ").trim();
-
-  return name;
-}
-
-/**
- * Parse ימה וקדמה supplier file (account ledger format)
- */
 export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
-  const errors: import("../file-processing-errors").FileProcessingError[] = [];
-  const warnings: import("../file-processing-errors").FileProcessingError[] = [];
+  const errors: FileProcessingError[] = [];
+  const warnings: FileProcessingError[] = [];
   const legacyErrors: string[] = [];
   const legacyWarnings: string[] = [];
   const data: ParsedRowData[] = [];
 
   try {
-    // Read the workbook
-    const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
-
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
       errors.push(createFileProcessingError("NO_WORKSHEETS"));
@@ -167,8 +138,7 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    const sheet = workbook.Sheets[sheetName];
-    const rawData: unknown[][] = XLSX.utils.sheet_to_json(sheet, {
+    const rawData: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
       header: 1,
       raw: false,
       defval: "",
@@ -180,94 +150,93 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Process the file to find franchisee sections
-    const franchisees: FranchiseeData[] = [];
-    let currentFranchisee: FranchiseeData | null = null;
-    let skippedRows = 0;
+    const franchisees: FranchiseeAccumulator[] = [];
+    let current: FranchiseeAccumulator | null = null;
+    let fileTotalGross: number | null = null;
 
-    for (let rowIdx = 1; rowIdx < rawData.length; rowIdx++) {
-      const row = rawData[rowIdx];
-      if (!row || row.every(cell => cell === "" || cell === null || cell === undefined)) {
+    for (let rowIdx = 0; rowIdx < rawData.length; rowIdx++) {
+      const row = rawData[rowIdx] ?? [];
+      const firstCell = String(row[0] ?? "").trim();
+
+      if (!firstCell && row.every((c) => c === "" || c === null || c === undefined)) {
         continue;
       }
 
-      // Check if this is a franchisee header row
-      if (isFranchiseeHeaderRow(row)) {
-        // Save previous franchisee if exists (even with zero/negative - we'll filter later)
-        if (currentFranchisee) {
-          franchisees.push(currentFranchisee);
-        }
-
-        // Start new franchisee
-        currentFranchisee = {
-          name: extractFranchiseeName(row),
-          totalDebit: 0,
-          rowCount: 0,
+      const franchiseeMatch = firstCell.match(FRANCHISEE_ROW_RE);
+      if (franchiseeMatch) {
+        if (current) franchisees.push(current);
+        current = {
+          name: franchiseeMatch[1].trim(),
+          totalAmount: 0,
+          latestDate: null,
+          txCount: 0,
           firstRow: rowIdx + 1,
         };
         continue;
       }
 
-      // Check if this is a total row (end of section)
-      if (isTotalRow(row)) {
-        // We can optionally verify the total here
+      const footerMatch = firstCell.match(FOOTER_TOTAL_RE);
+      if (footerMatch) {
+        fileTotalGross = parseNumericValue(footerMatch[1]);
         continue;
       }
 
-      // Check if this is a data row
-      if (isDataRow(row) && currentFranchisee) {
-        const debitAmount = parseNumericValue(row[DEBIT_COL]);
+      if (isSubtotalRow(row)) continue;
 
-        // Include all amounts (positive for debits, negative for credits/returns)
-        currentFranchisee.totalDebit += debitAmount;
-        currentFranchisee.rowCount++;
+      if (current) {
+        const txDate = parseMDY(row[DATE_COL]);
+        if (!txDate) continue;
+
+        const debit = parseNumericValue(row[DEBIT_COL]);
+        const credit = parseNumericValue(row[CREDIT_COL]);
+        const txAmount = debit - credit;
+
+        current.totalAmount += txAmount;
+        current.txCount++;
+        if (!current.latestDate || txDate > current.latestDate) {
+          current.latestDate = txDate;
+        }
       }
     }
 
-    // Don't forget the last franchisee
-    if (currentFranchisee) {
-      franchisees.push(currentFranchisee);
-    }
+    if (current) franchisees.push(current);
 
-    // Convert franchisee data to ParsedRowData
-    let totalNetAmount = 0;
     let totalGrossAmount = 0;
+    let totalNetAmount = 0;
     let processedRows = 0;
+    let skippedRows = 0;
     let rowNumber = 1;
 
-    for (const franchisee of franchisees) {
-      // Skip franchisees with zero total (no activity)
-      if (franchisee.totalDebit === 0) {
+    for (const f of franchisees) {
+      if (f.totalAmount === 0) {
         skippedRows++;
         continue;
       }
 
-      // Warn about negative amounts but still include them
-      if (franchisee.totalDebit < 0) {
+      if (f.totalAmount < 0) {
         warnings.push(
           createFileProcessingError("NEGATIVE_AMOUNT", {
-            rowNumber: franchisee.firstRow,
-            details: `זכיין "${franchisee.name}" עם סכום שלילי: ${franchisee.totalDebit}`,
-            value: String(franchisee.totalDebit),
+            rowNumber: f.firstRow,
+            details: `זכיין "${f.name}" עם סכום שלילי: ${f.totalAmount}`,
+            value: String(f.totalAmount),
           })
         );
       }
 
-      // Amounts appear to include VAT based on the file structure
-      const grossAmount = roundAmount(franchisee.totalDebit);
+      const grossAmount = roundAmount(f.totalAmount);
       const netAmount = roundAmount(grossAmount / (1 + VAT_RATE));
 
       data.push({
-        franchisee: franchisee.name,
-        date: null,
+        franchisee: f.name,
+        date: f.latestDate,
         grossAmount,
         netAmount,
         originalAmount: grossAmount,
         rowNumber: rowNumber++,
       });
 
-      totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
+      totalNetAmount += netAmount;
       processedRows++;
     }
 
@@ -279,6 +248,18 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
       );
       legacyErrors.push("Could not extract any franchisee data from the file");
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
+    }
+
+    if (fileTotalGross !== null) {
+      const delta = Math.abs(roundAmount(totalGrossAmount) - roundAmount(fileTotalGross));
+      if (delta > 1) {
+        warnings.push(
+          createFileProcessingError("PARSE_ERROR", {
+            details: `סך הסכום המחושב מהזכיינים (${roundAmount(totalGrossAmount)}) אינו תואם לסיכום שבקובץ (${roundAmount(fileTotalGross)})`,
+            value: String(delta),
+          })
+        );
+      }
     }
 
     return createResult(
@@ -308,8 +289,8 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
 function createResult(
   success: boolean,
   data: ParsedRowData[],
-  errors: import("../file-processing-errors").FileProcessingError[],
-  warnings: import("../file-processing-errors").FileProcessingError[],
+  errors: FileProcessingError[],
+  warnings: FileProcessingError[],
   legacyErrors: string[],
   legacyWarnings: string[],
   totalRows: number,
