@@ -12,7 +12,7 @@ import {
   reconciliationComparison,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 
 // ============================================================================
@@ -33,6 +33,12 @@ interface HashavshevetEntry {
   itemKey: string;
 }
 
+interface MissingHashavshevetSupplier {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface HashavshevetReport {
   summary: {
     totalEntries: number;
@@ -40,6 +46,7 @@ interface HashavshevetReport {
     supplierCount: number;
     franchiseeCount: number;
     generatedAt: string;
+    missingHashavshevet: MissingHashavshevetSupplier[];
   };
   entries: HashavshevetEntry[];
 }
@@ -126,8 +133,6 @@ export async function GET(request: NextRequest) {
         eq(supplierFileUpload.processingStatus, "approved"),
         eq(supplierFileUpload.processingStatus, "auto_approved")
       ),
-      // Only suppliers with hashavshevet code
-      isNotNull(supplier.hashavshevetCode),
       // Period filter — overlap semantics so annual files appear in sub-period exports.
       // file.start <= requested.end AND file.end >= requested.start
       lte(supplierFileUpload.periodStartDate, endDate),
@@ -255,9 +260,13 @@ export async function GET(request: NextRequest) {
     const aggregated = new Map<string, HashavshevetEntry>();
     const supplierSet = new Set<string>();
     const franchiseeSet = new Set<string>();
+    // Suppliers that have approved commissions in this period but no
+    // hashavshevetCode configured — surfaced as a warning so Reut doesn't
+    // silently lose suppliers from the export.
+    const missingHashavshevetMap = new Map<string, MissingHashavshevetSupplier>();
 
     for (const file of files) {
-      if (!file.processingResult || !file.hashavshevetCode) continue;
+      if (!file.processingResult) continue;
 
       const processingResult = file.processingResult as SupplierFileProcessingResult;
       if (!processingResult.franchiseeMatches) continue;
@@ -299,6 +308,20 @@ export async function GET(request: NextRequest) {
           if (!approvedSet.has(key)) continue;
         }
 
+        // Supplier has commissions in this period but no hashavshevetCode —
+        // record once and skip the entry. Export route blocks the XLSX
+        // download until this is resolved.
+        if (!file.hashavshevetCode) {
+          if (!missingHashavshevetMap.has(file.supplierId)) {
+            missingHashavshevetMap.set(file.supplierId, {
+              id: file.supplierId,
+              name: file.supplierName,
+              code: file.supplierCode,
+            });
+          }
+          continue;
+        }
+
         const aggKey = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
         const existing = aggregated.get(aggKey);
         if (existing) {
@@ -336,6 +359,9 @@ export async function GET(request: NextRequest) {
         supplierCount: supplierSet.size,
         franchiseeCount: franchiseeSet.size,
         generatedAt: new Date().toISOString(),
+        missingHashavshevet: Array.from(missingHashavshevetMap.values()).sort(
+          (a, b) => a.name.localeCompare(b.name, "he")
+        ),
       },
       entries,
     };

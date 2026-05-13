@@ -73,6 +73,12 @@ interface SupplierOption {
   hashavshevetCode: string | null;
 }
 
+interface MissingHashavshevetSupplier {
+  id: string;
+  name: string;
+  code: string | null;
+}
+
 interface HashavshevetReport {
   summary: {
     totalEntries: number;
@@ -80,6 +86,7 @@ interface HashavshevetReport {
     supplierCount: number;
     franchiseeCount: number;
     generatedAt: string;
+    missingHashavshevet?: MissingHashavshevetSupplier[];
   };
   entries: HashavshevetEntry[];
 }
@@ -206,6 +213,11 @@ export default function HashavshevetExportPage() {
   const [suppliers, setSuppliers] = useState<SupplierOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<ExportHistoryEntry | null>(null);
+  // Populated when the export endpoint returns 400 with a missing-suppliers
+  // list. Cleared when the user opens the suppliers page or re-runs the report.
+  const [exportBlockedSuppliers, setExportBlockedSuppliers] = useState<
+    MissingHashavshevetSupplier[] | null
+  >(null);
 
   // Filters
   const [startDate, setStartDate] = useState("");
@@ -284,6 +296,7 @@ export default function HashavshevetExportPage() {
     setIsLoading(true);
     setError(null);
     setDuplicateWarning(null);
+    setExportBlockedSuppliers(null);
 
     try {
       const queryString = buildQueryString();
@@ -324,12 +337,31 @@ export default function HashavshevetExportPage() {
     }
 
     setIsExporting(true);
+    setExportBlockedSuppliers(null);
     try {
       const queryString = buildQueryString();
       const docNumParam = startDocNumber ? `&startDocNumber=${startDocNumber}` : "";
       const response = await fetchWithTimeout(`/api/reports/hashavshevet/export?${queryString}${docNumParam}`);
 
       if (!response.ok) {
+        // 400 with a missingSuppliers payload means the server blocked the
+        // download because some supplier in the result has no hashavshevetCode.
+        // Surface the list to the user instead of a generic toast.
+        if (response.status === 400) {
+          try {
+            const payload = await response.json();
+            if (Array.isArray(payload?.missingSuppliers) && payload.missingSuppliers.length > 0) {
+              setExportBlockedSuppliers(payload.missingSuppliers);
+              return;
+            }
+            if (typeof payload?.error === "string") {
+              toast.error(payload.error);
+              return;
+            }
+          } catch {
+            // fall through to generic error below
+          }
+        }
         throw new Error("Failed to export");
       }
 
@@ -687,6 +719,51 @@ export default function HashavshevetExportPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* Missing Hashavshevet code — surfaced from preview response so user
+          sees the issue before attempting export. Doubles as the export-blocked
+          panel when exportBlockedSuppliers is set. */}
+      {(() => {
+        const missing =
+          exportBlockedSuppliers ??
+          (report?.summary.missingHashavshevet?.length
+            ? report.summary.missingHashavshevet
+            : null);
+        if (!missing || missing.length === 0) return null;
+        const isBlocking = exportBlockedSuppliers !== null;
+        return (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>
+              {isBlocking
+                ? "לא ניתן לייצא — חסר כרטיס חשבשבת"
+                : "אזהרה: ספקים ללא כרטיס חשבשבת"}
+            </AlertTitle>
+            <AlertDescription>
+              <p className="mb-2">
+                {isBlocking
+                  ? "ספקים הבאים בתקופה זו אינם מוגדרים עם קוד חשבשבת. סדרי אותם לפני ההורדה:"
+                  : "ספקים הבאים בתקופה זו לא ייכללו ביצוא עד שתגדירי להם קוד חשבשבת:"}
+              </p>
+              <ul className="list-disc list-inside space-y-1">
+                {missing.map((s) => (
+                  <li key={s.id}>
+                    <a
+                      href={`/admin/suppliers/${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:no-underline"
+                    >
+                      {s.name}
+                      {s.code ? ` (${s.code})` : ""}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        );
+      })()}
 
       {/* Duplicate Warning */}
       {duplicateWarning && (

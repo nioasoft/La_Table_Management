@@ -12,7 +12,7 @@ import {
   reconciliationComparison,
   type SupplierFileProcessingResult,
 } from "@/db/schema";
-import { eq, and, gte, lte, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { eq, and, gte, lte, inArray, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import * as XLSX from "xlsx";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -111,7 +111,6 @@ export async function GET(request: NextRequest) {
         eq(supplierFileUpload.processingStatus, "approved"),
         eq(supplierFileUpload.processingStatus, "auto_approved")
       ),
-      isNotNull(supplier.hashavshevetCode),
       // Period overlap (mirrors /api/reports/hashavshevet)
       lte(supplierFileUpload.periodStartDate, endDate),
       gte(supplierFileUpload.periodEndDate, startDate),
@@ -231,9 +230,16 @@ export async function GET(request: NextRequest) {
       string,
       Omit<HashavshevetRow, "documentNumber"> & { price: number }
     >();
+    // Suppliers that have commissions in this period but no hashavshevetCode.
+    // We block the XLSX download until Reut configures them, instead of
+    // silently dropping the supplier from the export.
+    const missingHashavshevetMap = new Map<
+      string,
+      { id: string; name: string; code: string | null }
+    >();
 
     for (const file of files) {
-      if (!file.processingResult || !file.hashavshevetCode) continue;
+      if (!file.processingResult) continue;
 
       const processingResult = file.processingResult as SupplierFileProcessingResult;
       if (!processingResult.franchiseeMatches) continue;
@@ -268,6 +274,19 @@ export async function GET(request: NextRequest) {
           if (!approvedSet.has(key)) continue;
         }
 
+        // Supplier has commissions in this period but no hashavshevetCode —
+        // record and skip; we block the export below until Reut fixes it.
+        if (!file.hashavshevetCode) {
+          if (!missingHashavshevetMap.has(file.supplierId)) {
+            missingHashavshevetMap.set(file.supplierId, {
+              id: file.supplierId,
+              name: file.supplierName,
+              code: file.supplierCode,
+            });
+          }
+          continue;
+        }
+
         const aggKey = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
         const existing = aggregated.get(aggKey);
         if (existing) {
@@ -284,6 +303,22 @@ export async function GET(request: NextRequest) {
           });
         }
       }
+    }
+
+    // Block the XLSX download if any supplier in the result is missing its
+    // hashavshevetCode. Reut must configure them via /admin/suppliers/[id]
+    // before the export can produce a complete file. UI parses this 400
+    // response and renders the list to the user.
+    if (missingHashavshevetMap.size > 0) {
+      return NextResponse.json(
+        {
+          error: "לא ניתן לייצא — יש ספקים ללא כרטיס חשבשבת",
+          missingSuppliers: Array.from(missingHashavshevetMap.values()).sort(
+            (a, b) => a.name.localeCompare(b.name, "he")
+          ),
+        },
+        { status: 400 }
+      );
     }
 
     // Assign running document numbers after aggregation so identical-supplier
