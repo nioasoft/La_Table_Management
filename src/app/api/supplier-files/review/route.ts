@@ -8,6 +8,7 @@ import {
   reviewSupplierFile,
   getSupplierFileById,
   getSupplierFileReviewStats,
+  addFranchiseeAlias,
 } from "@/data-access/supplier-file-uploads";
 import { logAuditEvent, createAuditContext } from "@/data-access/auditLog";
 
@@ -110,6 +111,25 @@ export async function POST(request: NextRequest) {
 
     const previousStatus = file.processingStatus;
 
+    // Learn aliases from accepted fuzzy matches when approving. The admin's
+    // implicit confirmation of every amber row should make future uploads of
+    // the same supplier names auto-match via franchisee.aliases (exact_alias
+    // branch in franchisee-matcher.ts), so they don't have to re-approve.
+    // Excludes exact / exact_code / manual / blacklisted — see plan for rationale.
+    let learnedAliasCount = 0;
+    if (action === "approve" && file.processingResult?.franchiseeMatches) {
+      for (const match of file.processingResult.franchiseeMatches) {
+        if (match.matchType !== "fuzzy") continue;
+        if (!match.matchedFranchiseeId) continue;
+        if (!match.originalName || !match.originalName.trim()) continue;
+        const result = await addFranchiseeAlias(
+          match.matchedFranchiseeId,
+          match.originalName
+        );
+        if (result === "added") learnedAliasCount++;
+      }
+    }
+
     // Update the file status
     const updatedFile = await reviewSupplierFile(
       fileId,
@@ -139,6 +159,7 @@ export async function POST(request: NextRequest) {
           fileSize: file.fileSize,
           supplierId: file.supplierId,
           supplierName: file.supplierName,
+          learnedAliasCount,
         },
       }
     );
@@ -147,6 +168,7 @@ export async function POST(request: NextRequest) {
       success: true,
       file: updatedFile,
       message: action === "approve" ? "הקובץ אושר בהצלחה" : "הקובץ נדחה",
+      learnedAliasCount,
     });
   } catch (error) {
     console.error("Error processing supplier file review action:", error);

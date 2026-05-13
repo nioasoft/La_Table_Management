@@ -192,10 +192,19 @@ export default function SupplierFileDetailPage() {
         body: JSON.stringify({ fileId, action, notes }),
       });
       if (!response.ok) throw new Error("Failed to process review");
-      return response.json();
+      return response.json() as Promise<{
+        success: boolean;
+        message: string;
+        learnedAliasCount?: number;
+      }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["supplier-files", "review"] });
+      if (data?.learnedAliasCount && data.learnedAliasCount > 0) {
+        toast.success(
+          `${data.learnedAliasCount} כינויים נשמרו לזיהוי אוטומטי בקבצים הבאים`
+        );
+      }
       router.push("/admin/supplier-files/review");
     },
   });

@@ -505,13 +505,14 @@ export async function updateSupplierFileUpload(
 }
 
 /**
- * Add an alias to a franchisee when manually matching
- * This is a helper that updates the franchisee's aliases array
+ * Add an alias to a franchisee when manually matching.
+ * Returns `"added"` if newly inserted, `"existed"` if already present
+ * (case-insensitive dedup), `"missing"` if the franchisee was not found.
  */
 export async function addFranchiseeAlias(
   franchiseeId: string,
   alias: string
-): Promise<boolean> {
+): Promise<"added" | "existed" | "missing"> {
   // Get current franchisee
   const [current] = await database
     .select({ aliases: franchisee.aliases })
@@ -519,15 +520,16 @@ export async function addFranchiseeAlias(
     .where(eq(franchisee.id, franchiseeId))
     .limit(1);
 
-  if (!current) return false;
+  if (!current) return "missing";
 
-  // Add alias if not already present
   const normalizedAlias = alias.trim();
-  const currentAliases = (current.aliases as string[] | null) || [];
+  if (!normalizedAlias) return "existed";
 
-  if (currentAliases.includes(normalizedAlias)) {
-    // Already exists
-    return true;
+  const currentAliases = (current.aliases as string[] | null) || [];
+  const aliasLower = normalizedAlias.toLowerCase();
+
+  if (currentAliases.some((a) => a.trim().toLowerCase() === aliasLower)) {
+    return "existed";
   }
 
   const updatedAliases = [...currentAliases, normalizedAlias];
@@ -540,7 +542,7 @@ export async function addFranchiseeAlias(
     })
     .where(eq(franchisee.id, franchiseeId));
 
-  return true;
+  return "added";
 }
 
 /**
