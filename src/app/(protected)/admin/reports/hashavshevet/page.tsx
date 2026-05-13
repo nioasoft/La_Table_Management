@@ -251,7 +251,7 @@ export default function HashavshevetExportPage() {
     try {
       const [brandsRes, suppliersRes] = await Promise.all([
         fetch("/api/brands?filter=active&includeSystem=true"),
-        fetch("/api/suppliers?filter=active&hasHashavshevet=true"),
+        fetch("/api/suppliers?filter=active"),
       ]);
 
       if (brandsRes.ok) {
@@ -261,13 +261,11 @@ export default function HashavshevetExportPage() {
 
       if (suppliersRes.ok) {
         const suppliersData = await suppliersRes.json();
-        // Filter to only show suppliers with hashavshevet code, sorted alphabetically (Hebrew)
-        const suppliersWithCode = (suppliersData.suppliers || [])
-          .filter((s: SupplierOption) => s.hashavshevetCode)
+        const sorted = (suppliersData.suppliers || [])
           .sort((a: SupplierOption, b: SupplierOption) =>
             a.name.localeCompare(b.name, "he")
           );
-        setSuppliers(suppliersWithCode);
+        setSuppliers(sorted);
       }
     } catch (err) {
       console.error("Error fetching filter options:", err);
@@ -470,6 +468,14 @@ export default function HashavshevetExportPage() {
     setDuplicateWarning(null);
   };
 
+  // Suppliers missing a Hashavshevet code — surfaced as an upfront banner
+  // and as a red badge in the picker so the user can fix the data before
+  // running a preview/export.
+  const suppliersMissingCode = useMemo(
+    () => suppliers.filter((s) => !s.hashavshevetCode),
+    [suppliers]
+  );
+
   // Compute entries with document numbers
   const entriesWithDocNumbers = useMemo(() => {
     if (!report?.entries) return [];
@@ -532,12 +538,46 @@ export default function HashavshevetExportPage() {
       ]}
       isLoading={isLoading}
     >
+      {/* Upfront warning: all suppliers missing a Hashavshevet code, regardless
+          of period or whether they have commissions. Shown the moment the page
+          loads so the user can fix supplier records before running a preview. */}
+      {suppliersMissingCode.length > 0 && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>
+            ספקים ללא קוד חשבשבת ({suppliersMissingCode.length})
+          </AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">
+              הספקים הבאים אינם מוגדרים עם קוד חשבשבת ולא ייכללו ביצוא. סדרי
+              אותם בעמוד הספק:
+            </p>
+            <ul className="list-disc list-inside space-y-1">
+              {suppliersMissingCode.map((s) => (
+                <li key={s.id}>
+                  <a
+                    href={`/admin/suppliers/${s.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:no-underline"
+                  >
+                    {s.name}
+                    {s.code ? ` (${s.code})` : ""}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Filters Card */}
       <Card>
         <CardHeader className="pb-3 pt-4 px-4">
           <CardTitle className="text-base">בחירת נתונים לייצוא</CardTitle>
           <CardDescription>
-            בחר תקופה, רשתות וספקים לייצוא. רק ספקים עם קוד חשבשבת מוגדר יוצגו.
+            בחר תקופה, רשתות וספקים לייצוא. ספקים ללא קוד חשבשבת מסומנים בתג
+            אדום ולא ייכללו ביצוא.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-4 space-y-4">
@@ -622,11 +662,13 @@ export default function HashavshevetExportPage() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium">
-                ספקים עם קוד חשבשבת
+                ספקים
                 <span className="ms-2 text-xs text-muted-foreground font-normal">
                   {selectedSupplierIds.length > 0
                     ? `${selectedSupplierIds.length} מתוך ${suppliers.length} נבחרו`
                     : `${suppliers.length} ספקים זמינים`}
+                  {suppliersMissingCode.length > 0 &&
+                    ` (${suppliersMissingCode.length} ללא קוד חשבשבת)`}
                 </span>
               </Label>
               <Button
@@ -641,9 +683,7 @@ export default function HashavshevetExportPage() {
             {suppliers.length === 0 ? (
               <Alert>
                 <Info className="h-4 w-4" />
-                <AlertDescription>
-                  אין ספקים עם קוד חשבשבת מוגדר. יש להגדיר קוד חשבשבת בעמוד עריכת הספק.
-                </AlertDescription>
+                <AlertDescription>אין ספקים פעילים במערכת.</AlertDescription>
               </Alert>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 max-h-64 overflow-y-auto p-2 border rounded-md bg-muted/20">
@@ -667,6 +707,14 @@ export default function HashavshevetExportPage() {
                         aria-hidden
                       />
                       <span className="truncate flex-1">{supplier.name}</span>
+                      {!supplier.hashavshevetCode && (
+                        <Badge
+                          variant="destructive"
+                          className="text-[10px] px-1.5 py-0 h-4 shrink-0"
+                        >
+                          חסר קוד
+                        </Badge>
+                      )}
                     </button>
                   );
                 })}
