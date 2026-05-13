@@ -241,8 +241,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build entries from processing results
-    const entries: HashavshevetEntry[] = [];
+    // Build entries from processing results.
+    //
+    // Aggregation: some parsers (e.g. שרי שוקו) emit one row per invoice rather
+    // than one row per franchisee — the per-invoice granularity is needed by
+    // reconciliation-v2, but for the Hashavshevet export Reut wants a single
+    // line per (supplier × franchisee × period). We aggregate here, NOT in the
+    // parser, so reconciliation keeps its detail.
+    //
+    // Key intentionally includes periodStart/End: if the same supplier has
+    // both a monthly and an overlapping quarterly file, those stay as
+    // separate Hashavshevet rows (different bookkeeping periods).
+    const aggregated = new Map<string, HashavshevetEntry>();
     const supplierSet = new Set<string>();
     const franchiseeSet = new Set<string>();
 
@@ -289,24 +299,32 @@ export async function GET(request: NextRequest) {
           if (!approvedSet.has(key)) continue;
         }
 
-        entries.push({
-          hashavshevetCode: file.hashavshevetCode,
-          supplierName: file.supplierName,
-          supplierId: file.supplierId,
-          franchiseeId: match.matchedFranchiseeId,
-          franchiseeName: franchiseeInfo.name,
-          brandId: franchiseeInfo.brandId,
-          brandName: brandInfo.nameHe,
-          commissionAmount,
-          periodStartDate: file.periodStartDate || "",
-          periodEndDate: file.periodEndDate || "",
-          itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
-        });
+        const aggKey = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
+        const existing = aggregated.get(aggKey);
+        if (existing) {
+          existing.commissionAmount += commissionAmount;
+        } else {
+          aggregated.set(aggKey, {
+            hashavshevetCode: file.hashavshevetCode,
+            supplierName: file.supplierName,
+            supplierId: file.supplierId,
+            franchiseeId: match.matchedFranchiseeId,
+            franchiseeName: franchiseeInfo.name,
+            brandId: franchiseeInfo.brandId,
+            brandName: brandInfo.nameHe,
+            commissionAmount,
+            periodStartDate: file.periodStartDate || "",
+            periodEndDate: file.periodEndDate || "",
+            itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
+          });
+        }
 
         supplierSet.add(file.supplierId);
         franchiseeSet.add(match.matchedFranchiseeId);
       }
     }
+
+    const entries: HashavshevetEntry[] = Array.from(aggregated.values());
 
     // Calculate summary
     const totalCommission = entries.reduce((sum, e) => sum + e.commissionAmount, 0);

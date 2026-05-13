@@ -221,9 +221,16 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Build rows for Hashavshevet format
-    const rows: HashavshevetRow[] = [];
-    let currentDocNumber = startDocNumber;
+    // Build rows for Hashavshevet format.
+    //
+    // Aggregation: per-invoice parsers (e.g. שרי שוקו) produce one franchisee
+    // match per invoice. The Hashavshevet sheet should hold one line per
+    // (supplier × franchisee × period) — same logic as /api/reports/hashavshevet
+    // for the on-screen report. Reconciliation-v2 keeps the underlying detail.
+    const aggregated = new Map<
+      string,
+      Omit<HashavshevetRow, "documentNumber"> & { price: number }
+    >();
 
     for (const file of files) {
       if (!file.processingResult || !file.hashavshevetCode) continue;
@@ -261,19 +268,32 @@ export async function GET(request: NextRequest) {
           if (!approvedSet.has(key)) continue;
         }
 
-        rows.push({
-          accountKey: file.hashavshevetCode,
-          accountName: "", // Empty as per spec
-          itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
-          itemName: "", // Empty as per spec
-          quantity: 1,
-          price: commissionAmount,
-          documentType: 11,
-          documentNumber: String(currentDocNumber),
-        });
-        currentDocNumber++;
+        const aggKey = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
+        const existing = aggregated.get(aggKey);
+        if (existing) {
+          existing.price += commissionAmount;
+        } else {
+          aggregated.set(aggKey, {
+            accountKey: file.hashavshevetCode,
+            accountName: "",
+            itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
+            itemName: "",
+            quantity: 1,
+            price: commissionAmount,
+            documentType: 11,
+          });
+        }
       }
     }
+
+    // Assign running document numbers after aggregation so identical-supplier
+    // lines get consecutive numbers (Reut prefers this; matches the on-screen
+    // preview at /admin/reports/hashavshevet).
+    let currentDocNumber = startDocNumber;
+    const rows: HashavshevetRow[] = Array.from(aggregated.values()).map((r) => ({
+      ...r,
+      documentNumber: String(currentDocNumber++),
+    }));
 
     if (rows.length === 0) {
       return NextResponse.json(
