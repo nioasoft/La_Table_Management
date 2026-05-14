@@ -804,3 +804,62 @@ export async function markFranchiseeBkmvRequestSubmitted(
 
   return updateFileRequestStatus(results[0].id, "submitted", { submittedAt });
 }
+
+/**
+ * Mark open supplier settlement_report file_requests as submitted once the
+ * supplier file is saved via the admin upload flow (POST /api/supplier-files).
+ *
+ * Why: the admin path writes to supplier_file_upload, NOT uploaded_file, so
+ * the upload-reminders cron's self-heal (which only inspects uploaded_file)
+ * could not detect the submission and kept sending reminders + escalations.
+ *
+ * Matches by (supplierId, periodKey) when metadata.periodKey is present, and
+ * falls back to (periodStartDate, periodEndDate) for legacy rows. Returns the
+ * count of file_requests transitioned to "submitted".
+ */
+export async function markSupplierSettlementRequestSubmitted(
+  supplierId: string,
+  periodStartDate: string,
+  periodEndDate: string,
+  periodKey: string | null,
+  submittedAt: Date = new Date()
+): Promise<number> {
+  const candidates = await database
+    .select()
+    .from(fileRequest)
+    .where(
+      and(
+        eq(fileRequest.entityType, "supplier"),
+        eq(fileRequest.entityId, supplierId),
+        eq(fileRequest.documentType, "settlement_report"),
+        or(
+          eq(fileRequest.status, "sent"),
+          eq(fileRequest.status, "in_progress")
+        )
+      )
+    );
+
+  let updated = 0;
+  for (const req of candidates) {
+    const meta = req.metadata as Record<string, unknown> | null;
+    const metaKey = meta?.periodKey as string | undefined;
+    const metaEnd = meta?.periodEndDate as string | undefined;
+
+    // Match strategy: prefer periodKey equality; fall back to periodEndDate
+    // (stored as DD/MM/YYYY in metadata) matching the supplied period end.
+    let match = false;
+    if (periodKey && metaKey) {
+      match = periodKey === metaKey;
+    } else if (metaEnd) {
+      const [endYear, endMonth, endDay] = periodEndDate.split("-");
+      const ddmmyyyy = `${endDay}/${endMonth}/${endYear}`;
+      match = metaEnd === ddmmyyyy;
+    }
+    if (!match) continue;
+
+    await updateFileRequestStatus(req.id, "submitted", { submittedAt });
+    updated++;
+  }
+
+  return updated;
+}

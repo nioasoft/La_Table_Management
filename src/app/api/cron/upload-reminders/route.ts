@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/db";
-import { fileRequest, uploadedFile, contact, type FileRequest } from "@/db/schema";
-import { eq, and, gte } from "drizzle-orm";
+import {
+  fileRequest,
+  uploadedFile,
+  supplierFileUpload,
+  contact,
+  type FileRequest,
+} from "@/db/schema";
+import { eq, and, gte, inArray } from "drizzle-orm";
+import { getPeriodByKey } from "@/lib/settlement-periods";
 import {
   sendFileRequestReminder,
   updateFileRequest,
@@ -74,6 +81,55 @@ async function findUploadedFileForRequest(
   }
 
   const meta = req.metadata as Record<string, unknown> | null;
+
+  // Supplier admin-upload path. The /admin/supplier-files save endpoint writes
+  // to supplier_file_upload, NOT uploaded_file, so the uploadLinkId branch
+  // above never matches. Without this check, every supplier whose file Reut
+  // uploaded out-of-band keeps receiving 7-day reminders + escalations on a
+  // permanent loop. Match by supplier_id + the file_request's intended period
+  // (derived from metadata.periodKey), and only accept approved uploads.
+  if (
+    req.entityType === "supplier" &&
+    req.entityId &&
+    req.documentType === "settlement_report" &&
+    req.createdAt
+  ) {
+    const periodKey = meta?.periodKey as string | undefined;
+    let periodStart: string | null = null;
+    let periodEnd: string | null = null;
+    if (periodKey) {
+      const periodInfo = getPeriodByKey(periodKey);
+      if (periodInfo) {
+        periodStart = formatDateAsLocal(periodInfo.startDate);
+        periodEnd = formatDateAsLocal(periodInfo.endDate);
+      }
+    }
+
+    // Allow uploads up to 60 days before the request was created (admin
+    // pre-uploads). Without this we'd miss files Reut uploaded before the
+    // quarterly request cron fired.
+    const earliestCreatedAt = new Date(req.createdAt);
+    earliestCreatedAt.setDate(earliestCreatedAt.getDate() - 60);
+
+    const conditions = [
+      eq(supplierFileUpload.supplierId, req.entityId),
+      gte(supplierFileUpload.createdAt, earliestCreatedAt),
+      inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"]),
+    ];
+    if (periodStart && periodEnd) {
+      conditions.push(eq(supplierFileUpload.periodStartDate, periodStart));
+      conditions.push(eq(supplierFileUpload.periodEndDate, periodEnd));
+    }
+
+    const supplierUploads = await database
+      .select({ createdAt: supplierFileUpload.createdAt })
+      .from(supplierFileUpload)
+      .where(and(...conditions))
+      .orderBy(supplierFileUpload.createdAt)
+      .limit(1);
+    if (supplierUploads.length > 0) return supplierUploads[0].createdAt;
+  }
+
   const isBkmv = req.entityType === "franchisee" && meta?.requestType === "bkmv";
   if (isBkmv && req.entityId && req.createdAt) {
     // Parse the cycle start (stored as "DD/MM/YYYY" in metadata) so we don't

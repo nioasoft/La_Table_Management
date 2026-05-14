@@ -15,6 +15,7 @@ import { randomUUID } from "crypto";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { calculateBatchCommissions } from "./commissions";
 import { getOrCreateSettlementPeriodByPeriodKey } from "./settlements";
+import { derivePeriodKey } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 
 // Extended type with supplier info
@@ -910,41 +911,6 @@ export async function getAllSupplierFileUploadsForYear(
 // COMMISSION SYNC FROM UPLOAD
 // ============================================================================
 
-// Derive a settlement-period key from a YYYY-MM-DD start date + supplier
-// frequency. Matches getPeriodByKey's parse-format so the resulting key
-// round-trips into getOrCreateSettlementPeriodByPeriodKey.
-function periodKeyFromStartDate(
-  startDateStr: string,
-  frequency: SettlementPeriodType,
-  fiscalYearStartMonth: number
-): string | null {
-  const [yearStr, monthStr, dayStr] = startDateStr.split("-");
-  const year = parseInt(yearStr, 10);
-  const month0 = parseInt(monthStr, 10) - 1;
-  if (isNaN(year) || isNaN(month0)) return null;
-
-  switch (frequency) {
-    case "quarterly": {
-      const q = Math.floor(month0 / 3) + 1;
-      return `${year}-Q${q}`;
-    }
-    case "monthly": {
-      return `${year}-${String(month0 + 1).padStart(2, "0")}`;
-    }
-    case "semi_annual": {
-      const h = month0 < 6 ? 1 : 2;
-      return `${year}-H${h}`;
-    }
-    case "annual": {
-      if (fiscalYearStartMonth === 1) return `${year}`;
-      const endYearSuffix = String((year + 1) % 100).padStart(2, "0");
-      return `${year}/${endYearSuffix}`;
-    }
-    default:
-      return null;
-  }
-}
-
 export type SyncCommissionsResult = {
   created: number;
   failed: number;
@@ -1053,7 +1019,7 @@ export async function syncCommissionsFromUpload(
   const periodEndDate = formatDateAsLocal(new Date(file.periodEndDate));
   const frequency = (supplierRow.settlementFrequency ?? "quarterly") as SettlementPeriodType;
   const fiscalYearStartMonth = supplierRow.fiscalYearStartMonth ?? 1;
-  const periodKey = periodKeyFromStartDate(periodStartDate, frequency, fiscalYearStartMonth);
+  const periodKey = derivePeriodKey(periodStartDate, frequency, fiscalYearStartMonth);
 
   let settlementPeriodId: string | undefined;
   if (periodKey) {

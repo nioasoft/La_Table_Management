@@ -632,3 +632,44 @@ export function getPeriodTypeLabel(type: SettlementPeriodType): string {
   };
   return labels[type] || type;
 }
+
+/**
+ * Derive the period key (e.g. "2026-Q1", "2026-04", "2025-H2", "2025") from a
+ * YYYY-MM-DD start date + settlement frequency. Inverse of getPeriodByKey.
+ *
+ * Used by the supplier-files save endpoint to find matching open file_requests
+ * (which store metadata.periodKey) so they can be closed when the admin
+ * uploads the file out-of-band of the public link flow.
+ */
+export function derivePeriodKey(
+  startDateStr: string,
+  frequency: SettlementPeriodType | undefined,
+  fiscalYearStartMonth: number = 1
+): string | null {
+  if (!frequency) return null;
+  const [yearStr, monthStr] = startDateStr.split("-");
+  const year = parseInt(yearStr, 10);
+  const month0 = parseInt(monthStr, 10) - 1;
+  if (isNaN(year) || isNaN(month0)) return null;
+
+  switch (frequency) {
+    case "quarterly": {
+      const q = Math.floor(month0 / 3) + 1;
+      return `${year}-Q${q}`;
+    }
+    case "monthly": {
+      return `${year}-${String(month0 + 1).padStart(2, "0")}`;
+    }
+    case "semi_annual": {
+      const h = month0 < 6 ? 1 : 2;
+      return `${year}-H${h}`;
+    }
+    case "annual": {
+      if (fiscalYearStartMonth === 1) return `${year}`;
+      const endYearSuffix = String((year + 1) % 100).padStart(2, "0");
+      return `${year}/${endYearSuffix}`;
+    }
+    default:
+      return null;
+  }
+}

@@ -13,8 +13,9 @@ import {
   type SyncCommissionsResult,
 } from "@/data-access/supplier-file-uploads";
 import { getSupplierById } from "@/data-access/suppliers";
-import { snapPeriodToFrequency } from "@/lib/settlement-periods";
-import type { SupplierFileProcessingResult } from "@/db/schema";
+import { snapPeriodToFrequency, derivePeriodKey } from "@/lib/settlement-periods";
+import type { SupplierFileProcessingResult, SettlementPeriodType } from "@/db/schema";
+import { markSupplierSettlementRequestSubmitted } from "@/data-access/fileRequests";
 
 /**
  * GET /api/supplier-files - Get list of supplier file uploads
@@ -333,6 +334,29 @@ export async function POST(request: NextRequest) {
       console.error("Failed to sync commissions after upload save:", syncError);
     }
 
+    // Close any open settlement_report file_request matching this supplier+period.
+    // Without this, the admin-upload path leaves the file_request in status=sent
+    // and the upload-reminders cron sends reminders + escalations on a 7-day cycle
+    // even though Reut has already uploaded the file. The cron's self-heal only
+    // checks uploaded_file (public link path) so it never learns about admin uploads.
+    let fileRequestsClosed = 0;
+    try {
+      const periodKey = derivePeriodKey(
+        effectivePeriodStart,
+        supplier.settlementFrequency as SettlementPeriodType | undefined,
+        supplier.fiscalYearStartMonth ?? 1
+      );
+      fileRequestsClosed = await markSupplierSettlementRequestSubmitted(
+        supplierId,
+        effectivePeriodStart,
+        effectivePeriodEnd,
+        periodKey,
+        new Date()
+      );
+    } catch (markErr) {
+      console.error("Failed to mark settlement file_request as submitted:", markErr);
+    }
+
     return NextResponse.json({
       success: true,
       file: {
@@ -351,6 +375,7 @@ export async function POST(request: NextRequest) {
       effectivePeriodStart,
       effectivePeriodEnd,
       commissionsSync,
+      fileRequestsClosed,
     });
   } catch (error) {
     console.error("Error creating supplier file upload:", error);
