@@ -1246,6 +1246,11 @@ export interface CommissionCalculationInput {
   notes?: string;
   metadata?: Record<string, unknown>;
   createdBy?: string;
+  // Commission amount pre-calculated by a custom parser (e.g. מזרח ומערב has
+  // mixed 17% + 10% sections in one file). When provided this overrides the
+  // supplier.defaultCommissionRate calculation. The displayed commissionRate
+  // is derived as preCalculatedCommission / netAmount * 100 for UI consistency.
+  preCalculatedCommission?: number;
 }
 
 /**
@@ -1288,15 +1293,28 @@ export async function calculateAndCreateCommission(
       return { success: false, error: "Supplier does not have a commission rate configured" };
     }
 
-    const commissionRate = parseFloat(supplierData.defaultCommissionRate);
+    const defaultRate = parseFloat(supplierData.defaultCommissionRate);
     const commissionType = supplierData.commissionType || "percentage";
 
-    // Calculate commission based on net amount (before VAT)
-    const commissionAmount = calculateCommission(
-      input.netAmount,
-      commissionRate,
-      commissionType
-    );
+    // When the parser supplies a pre-calculated commission (mixed-rate suppliers
+    // like מזרח ומערב), honor it as the source of truth. The displayed
+    // commissionRate becomes an effective blended rate for UI clarity.
+    let commissionAmount: number;
+    let commissionRate: number;
+    if (input.preCalculatedCommission !== undefined) {
+      commissionAmount = roundAmount(input.preCalculatedCommission);
+      commissionRate =
+        input.netAmount > 0
+          ? roundPercent((commissionAmount / input.netAmount) * 100)
+          : defaultRate;
+    } else {
+      commissionAmount = calculateCommission(
+        input.netAmount,
+        defaultRate,
+        commissionType
+      );
+      commissionRate = defaultRate;
+    }
 
     // Create the commission record with status "calculated"
     const commissionData: CreateCommissionData = {
@@ -1361,6 +1379,8 @@ export interface BatchCommissionInput {
     vatAdjusted: boolean;
     notes?: string;
     metadata?: Record<string, unknown>;
+    // See CommissionCalculationInput.preCalculatedCommission
+    preCalculatedCommission?: number;
   }>;
   createdBy?: string;
 }
@@ -1440,6 +1460,7 @@ export async function calculateBatchCommissions(
         notes: transaction.notes,
         metadata: transaction.metadata,
         createdBy: input.createdBy,
+        preCalculatedCommission: transaction.preCalculatedCommission,
       },
       auditContext
     );

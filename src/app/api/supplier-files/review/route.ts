@@ -9,6 +9,8 @@ import {
   getSupplierFileById,
   getSupplierFileReviewStats,
   addFranchiseeAlias,
+  syncCommissionsFromUpload,
+  type SyncCommissionsResult,
 } from "@/data-access/supplier-file-uploads";
 import { logAuditEvent, createAuditContext } from "@/data-access/auditLog";
 
@@ -138,6 +140,19 @@ export async function POST(request: NextRequest) {
       notes || undefined
     );
 
+    // On approve, re-sync commissions so any matches the admin acknowledged
+    // (fuzzy/manual) during review become commission rows. calculateBatchCommissions
+    // deletes existing calculated/pending commissions for this (supplier, period)
+    // and replaces them — safe to call even when the initial save already synced.
+    let commissionsSync: SyncCommissionsResult | undefined;
+    if (action === "approve") {
+      try {
+        commissionsSync = await syncCommissionsFromUpload(fileId, user.id);
+      } catch (syncError) {
+        console.error("Failed to sync commissions on approve:", syncError);
+      }
+    }
+
     // Create audit log entry
     const auditContext = createAuditContext({ user }, request);
     await logAuditEvent(
@@ -160,6 +175,7 @@ export async function POST(request: NextRequest) {
           supplierId: file.supplierId,
           supplierName: file.supplierName,
           learnedAliasCount,
+          commissionsSync,
         },
       }
     );
@@ -169,6 +185,7 @@ export async function POST(request: NextRequest) {
       file: updatedFile,
       message: action === "approve" ? "הקובץ אושר בהצלחה" : "הקובץ נדחה",
       learnedAliasCount,
+      commissionsSync,
     });
   } catch (error) {
     console.error("Error processing supplier file review action:", error);

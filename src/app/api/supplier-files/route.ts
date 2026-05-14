@@ -9,6 +9,8 @@ import {
   getSupplierFileByPeriod,
   findDuplicateSupplierFiles,
   reviewSupplierFile,
+  syncCommissionsFromUpload,
+  type SyncCommissionsResult,
 } from "@/data-access/supplier-file-uploads";
 import { getSupplierById } from "@/data-access/suppliers";
 import { snapPeriodToFrequency } from "@/lib/settlement-periods";
@@ -319,6 +321,18 @@ export async function POST(request: NextRequest) {
       createdBy: user.id,
     });
 
+    // Sync commissions from this upload. This replaces any stale commissions
+    // the process-file preview endpoint may have created without a sourceFileId
+    // and ensures aggregation across rows that mapped to the same franchisee.
+    // Files in `needs_review` get commissions for already-confirmed matches —
+    // fuzzy/manual rows acquired later trigger another sync via the review API.
+    let commissionsSync: SyncCommissionsResult | undefined;
+    try {
+      commissionsSync = await syncCommissionsFromUpload(newFile.id, user.id);
+    } catch (syncError) {
+      console.error("Failed to sync commissions after upload save:", syncError);
+    }
+
     return NextResponse.json({
       success: true,
       file: {
@@ -336,6 +350,7 @@ export async function POST(request: NextRequest) {
       periodSnapped,
       effectivePeriodStart,
       effectivePeriodEnd,
+      commissionsSync,
     });
   } catch (error) {
     console.error("Error creating supplier file upload:", error);

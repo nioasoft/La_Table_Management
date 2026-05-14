@@ -13,6 +13,9 @@ import {
 import { eq, and, desc, sql, count, gte, lte, ne, or, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { calculateBatchCommissions } from "./commissions";
+import { getOrCreateSettlementPeriodByPeriodKey } from "./settlements";
+import type { SettlementPeriodType } from "@/db/schema";
 
 // Extended type with supplier info
 export type SupplierFileUploadWithSupplier = SupplierFileUpload & {
@@ -901,4 +904,184 @@ export async function getAllSupplierFileUploadsForYear(
     .orderBy(desc(supplierFileUpload.periodStartDate));
 
   return results;
+}
+
+// ============================================================================
+// COMMISSION SYNC FROM UPLOAD
+// ============================================================================
+
+// Derive a settlement-period key from a YYYY-MM-DD start date + supplier
+// frequency. Matches getPeriodByKey's parse-format so the resulting key
+// round-trips into getOrCreateSettlementPeriodByPeriodKey.
+function periodKeyFromStartDate(
+  startDateStr: string,
+  frequency: SettlementPeriodType,
+  fiscalYearStartMonth: number
+): string | null {
+  const [yearStr, monthStr, dayStr] = startDateStr.split("-");
+  const year = parseInt(yearStr, 10);
+  const month0 = parseInt(monthStr, 10) - 1;
+  if (isNaN(year) || isNaN(month0)) return null;
+
+  switch (frequency) {
+    case "quarterly": {
+      const q = Math.floor(month0 / 3) + 1;
+      return `${year}-Q${q}`;
+    }
+    case "monthly": {
+      return `${year}-${String(month0 + 1).padStart(2, "0")}`;
+    }
+    case "semi_annual": {
+      const h = month0 < 6 ? 1 : 2;
+      return `${year}-H${h}`;
+    }
+    case "annual": {
+      if (fiscalYearStartMonth === 1) return `${year}`;
+      const endYearSuffix = String((year + 1) % 100).padStart(2, "0");
+      return `${year}/${endYearSuffix}`;
+    }
+    default:
+      return null;
+  }
+}
+
+export type SyncCommissionsResult = {
+  created: number;
+  failed: number;
+  skipped: boolean;
+  reason?: string;
+};
+
+/**
+ * Recreate commissions for a supplier_file_upload from its current
+ * processing_result.franchiseeMatches.
+ *
+ * Why this exists: the upload lifecycle has several touch points (initial save,
+ * manual review match, approve via review queue) that all need to reflect the
+ * latest matches in the commission table. calculateBatchCommissions handles the
+ * delete-and-replace of existing calculated/pending commissions for the same
+ * (supplier, period), so calling this is idempotent.
+ *
+ * Includes every match with a non-null matchedFranchiseeId and a non-terminal
+ * matchType — by the time the file is saved or approved the admin has decided
+ * what to do with each row, so blacklisted/none are the only exclusions.
+ * Multiple file rows mapping to the same franchisee (e.g. עפולה under two
+ * supplier-side names) get aggregated into one commission row.
+ *
+ * Returns skipped=true when there's nothing to do (rejected file, no matches,
+ * missing processing_result) so callers can decide whether to surface anything.
+ */
+export async function syncCommissionsFromUpload(
+  fileId: string,
+  userId: string
+): Promise<SyncCommissionsResult> {
+  const file = await getSupplierFileById(fileId);
+  if (!file) {
+    return { created: 0, failed: 0, skipped: true, reason: "file_not_found" };
+  }
+  if (file.processingStatus === "rejected") {
+    return { created: 0, failed: 0, skipped: true, reason: "file_rejected" };
+  }
+  if (!file.processingResult || !file.processingResult.franchiseeMatches) {
+    return { created: 0, failed: 0, skipped: true, reason: "no_processing_result" };
+  }
+  if (!file.periodStartDate || !file.periodEndDate) {
+    return { created: 0, failed: 0, skipped: true, reason: "no_period" };
+  }
+
+  // Load supplier settings needed for commission rate fallback + period derivation
+  const [supplierRow] = await database
+    .select({
+      vatIncluded: supplier.vatIncluded,
+      settlementFrequency: supplier.settlementFrequency,
+      fiscalYearStartMonth: supplier.fiscalYearStartMonth,
+    })
+    .from(supplier)
+    .where(eq(supplier.id, file.supplierId))
+    .limit(1);
+
+  if (!supplierRow) {
+    return { created: 0, failed: 0, skipped: true, reason: "supplier_not_found" };
+  }
+
+  const matches = file.processingResult.franchiseeMatches.filter(
+    (m) =>
+      m.matchedFranchiseeId !== null &&
+      m.matchType !== "blacklisted" &&
+      m.matchType !== "none"
+  );
+
+  if (matches.length === 0) {
+    return { created: 0, failed: 0, skipped: true, reason: "no_eligible_matches" };
+  }
+
+  // Aggregate by franchiseeId: multiple file rows can map to the same franchisee
+  // (e.g. מזרח ומערב Q1 2026 has both "אס.אף.אס" and "ויליג'" rows mapping to קינג קונג עפולה).
+  const byFranchisee = new Map<
+    string,
+    {
+      grossAmount: number;
+      netAmount: number;
+      preCalculatedCommission: number | undefined;
+      sourceRowNumbers: number[];
+    }
+  >();
+
+  for (const m of matches) {
+    const id = m.matchedFranchiseeId!;
+    const existing = byFranchisee.get(id);
+    if (existing) {
+      existing.grossAmount += m.grossAmount;
+      existing.netAmount += m.netAmount;
+      if (m.preCalculatedCommission !== undefined) {
+        existing.preCalculatedCommission =
+          (existing.preCalculatedCommission ?? 0) + m.preCalculatedCommission;
+      }
+      existing.sourceRowNumbers.push(m.rowNumber);
+    } else {
+      byFranchisee.set(id, {
+        grossAmount: m.grossAmount,
+        netAmount: m.netAmount,
+        preCalculatedCommission: m.preCalculatedCommission,
+        sourceRowNumbers: [m.rowNumber],
+      });
+    }
+  }
+
+  // Derive settlement period from file period + supplier frequency
+  const periodStartDate = formatDateAsLocal(new Date(file.periodStartDate));
+  const periodEndDate = formatDateAsLocal(new Date(file.periodEndDate));
+  const frequency = (supplierRow.settlementFrequency ?? "quarterly") as SettlementPeriodType;
+  const fiscalYearStartMonth = supplierRow.fiscalYearStartMonth ?? 1;
+  const periodKey = periodKeyFromStartDate(periodStartDate, frequency, fiscalYearStartMonth);
+
+  let settlementPeriodId: string | undefined;
+  if (periodKey) {
+    const periodResult = await getOrCreateSettlementPeriodByPeriodKey(periodKey, userId);
+    settlementPeriodId = periodResult?.settlementPeriod.id;
+  }
+
+  const transactions = Array.from(byFranchisee.entries()).map(([franchiseeId, agg]) => ({
+    franchiseeId,
+    grossAmount: agg.grossAmount,
+    netAmount: agg.netAmount,
+    vatAdjusted: supplierRow.vatIncluded ?? false,
+    preCalculatedCommission: agg.preCalculatedCommission,
+  }));
+
+  const result = await calculateBatchCommissions({
+    supplierId: file.supplierId,
+    periodStartDate,
+    periodEndDate,
+    settlementPeriodId,
+    sourceFileId: fileId,
+    transactions,
+    createdBy: userId,
+  });
+
+  return {
+    created: result.totalCreated,
+    failed: result.totalFailed,
+    skipped: false,
+  };
 }

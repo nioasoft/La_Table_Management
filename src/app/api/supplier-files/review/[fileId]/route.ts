@@ -9,6 +9,7 @@ import {
   addFranchiseeAlias,
   markSupplierFileMatchAsBlacklisted,
   sweepRematchUnmatchedRows,
+  syncCommissionsFromUpload,
 } from "@/data-access/supplier-file-uploads";
 import {
   addToBlacklist,
@@ -243,6 +244,14 @@ export async function PATCH(
         sweepNewlyMatched = sweepResult.newlyMatchedCount;
         finalStats = sweepResult.file.processingResult?.matchStats;
       }
+    }
+
+    // Re-sync commissions so the newly-matched row (and any swept rows) become
+    // commission rows with the file as source_file_id.
+    try {
+      await syncCommissionsFromUpload(fileId, user.id);
+    } catch (syncError) {
+      console.error("Failed to sync commissions after manual match:", syncError);
     }
 
     let message: string;

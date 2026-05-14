@@ -523,6 +523,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
                   grossAmount: item.grossAmount,
                   netAmount: item.netAmount,
                   vatAdjusted: supplier.vatIncluded ?? false,
+                  preCalculatedCommission: item.preCalculatedCommission,
                 };
               });
 
