@@ -5,9 +5,10 @@ import {
   franchisee,
   contact,
   fileRequest,
+  uploadedFile,
   type Franchisee,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
 import { sendDirectEmail } from "@/lib/email/service";
 import { getEmailTemplateByCode } from "@/data-access/emailTemplates";
@@ -122,6 +123,29 @@ async function getAccountantEmail(franchiseeId: string): Promise<string | null> 
   return results[0]?.email || null;
 }
 
+// Has the franchisee already uploaded an approved BKMV file covering this
+// cycle? A BKMV file is a year-to-date snapshot, so any approved upload from
+// the current fiscal year whose periodEndDate >= the cycle's start counts.
+// Without this, the cron sends "אנא העלה BKMV" emails to franchisees who
+// uploaded in late January (production showed 20+ cases at the April 15 cron).
+async function hasUploadedBkmvForCycle(
+  franchiseeId: string,
+  cycleStartIso: string
+): Promise<boolean> {
+  const matches = await database
+    .select({ id: uploadedFile.id })
+    .from(uploadedFile)
+    .where(
+      and(
+        eq(uploadedFile.franchiseeId, franchiseeId),
+        eq(uploadedFile.processingStatus, "approved"),
+        gte(uploadedFile.periodEndDate, cycleStartIso)
+      )
+    )
+    .limit(1);
+  return matches.length > 0;
+}
+
 // Check if a BKMV request already exists for this franchisee and cycle.
 // Falls back to startDate match for legacy requests created before cycleKey
 // was tracked in metadata.
@@ -221,6 +245,15 @@ async function processBkmvRequests(
       if (!dryRun) {
         const alreadySent = await hasExistingBkmvRequest(f.id, cycle.cycleKey, startDate);
         if (alreadySent) {
+          results.skipped++;
+          continue;
+        }
+
+        // Don't ask for a BKMV that's already on disk for this fiscal year.
+        // cycle.startDate is "01/01/YYYY"; convert to ISO for the date column.
+        const cycleStartIso = `${cycle.year}-01-01`;
+        const alreadyUploaded = await hasUploadedBkmvForCycle(f.id, cycleStartIso);
+        if (alreadyUploaded) {
           results.skipped++;
           continue;
         }

@@ -5,11 +5,12 @@ import {
   supplierBrand,
   brand,
   fileRequest,
+  supplierFileUpload,
   type Supplier,
   type SettlementFrequency,
   type SettlementPeriodType,
 } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { createFileRequest } from "@/data-access/fileRequests";
 import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -120,6 +121,31 @@ async function hasExistingFileRequest(
   return false;
 }
 
+// Has the supplier already uploaded an approved file covering this period?
+// Without this, suppliers who proactively upload via /admin/supplier-files
+// receive an "אנא העלה" email when the cron later fires for their period —
+// production showed 18 such cases (one supplier 65 days early). Match by
+// exact period dates that the admin attributed to the upload.
+async function hasUploadedFileForPeriod(
+  supplierId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<boolean> {
+  const matches = await database
+    .select({ id: supplierFileUpload.id })
+    .from(supplierFileUpload)
+    .where(
+      and(
+        eq(supplierFileUpload.supplierId, supplierId),
+        eq(supplierFileUpload.periodStartDate, periodStartDate),
+        eq(supplierFileUpload.periodEndDate, periodEndDate),
+        inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"])
+      )
+    )
+    .limit(1);
+  return matches.length > 0;
+}
+
 // Calculate due date based on settlement frequency
 function calculateDueDate(frequency: SettlementFrequency): string {
   const now = new Date();
@@ -225,6 +251,8 @@ async function processFrequency(
   let periodKey: string | null = null;
   let periodEndDateStr: string | null = null;
   let periodDueDateStr: string | null = null;
+  let periodStartIso: string | null = null;
+  let periodEndIso: string | null = null;
 
   if (periodType) {
     // Pick the most recently CLOSED period: prefer "current" if its endDate
@@ -243,6 +271,8 @@ async function processFrequency(
     periodKey = closedPeriod.key;
     periodEndDateStr = formatDateForDisplay(closedPeriod.endDate);
     periodDueDateStr = formatDateAsLocal(closedPeriod.dueDate);
+    periodStartIso = formatDateAsLocal(closedPeriod.startDate);
+    periodEndIso = formatDateAsLocal(closedPeriod.endDate);
 
     if (!dryRun) {
       try {
@@ -290,6 +320,21 @@ async function processFrequency(
         if (alreadySent) {
           results.skipped++;
           continue;
+        }
+
+        // Don't ask for a file the supplier already proactively uploaded.
+        // Production saw 18 cases of this — including suppliers who uploaded
+        // 65 days before the cron next fired. See [[gotcha-supplier-reminder-self-heal-blindspot]].
+        if (periodStartIso && periodEndIso) {
+          const alreadyUploaded = await hasUploadedFileForPeriod(
+            supplierData.id,
+            periodStartIso,
+            periodEndIso
+          );
+          if (alreadyUploaded) {
+            results.skipped++;
+            continue;
+          }
         }
       }
 
