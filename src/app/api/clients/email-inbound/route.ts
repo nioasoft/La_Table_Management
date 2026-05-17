@@ -42,7 +42,10 @@ import {
   classifyWoltEzcountAttachment,
   isWoltEzcountFileB,
 } from "@/lib/client-parsers/wolt-parser";
-import { detectDocumentType } from "@/lib/email/classify-document-type";
+import {
+  detectDocumentType,
+  isPromotionalSubject,
+} from "@/lib/email/classify-document-type";
 import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
@@ -186,6 +189,30 @@ export async function POST(request: NextRequest) {
       `[email-inbound] Received email from ${from} to ${to.join(",")} subject: "${subject}"`
     );
 
+    // ─── Step 2a: Auto-skip promotional / non-data emails ──────────────
+    // Wolt Benefits announcements, Cibus "הסכם התקשרות", etc. have nothing
+    // to extract and used to clog the daily failure digest. Treated as a
+    // silent skip: log row stays for auditability, but status=completed and
+    // no errors so downstream alerting ignores it.
+    if (isPromotionalSubject(subject)) {
+      console.log(
+        `[email-inbound] Skipping promotional email: "${subject}"`
+      );
+      await finalizeSyncLog(syncLog.id, "completed", {
+        messagesScanned: 1,
+        documentsCreated: 0,
+        duplicatesSkipped: 1,
+        errorCount: 0,
+        errorDetails: [`דולג: מייל שיווקי / לא-נתונים (${subject})`],
+        ...diagnostics,
+      });
+      return NextResponse.json({
+        received: true,
+        skipped: true,
+        reason: "promotional",
+      });
+    }
+
     // ─── Step 2b: Backup forward to Hadas ──────────────────────────────
     // Every inbound email is forwarded to Hadas as a safety net so nothing
     // can be silently dropped by parser/extractor gaps. Resend SDK v6 does
@@ -326,10 +353,18 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Step 6: Load franchisees for matching ─────────────────────────
+    // We load active + inactive separately. Active is used for the live
+    // matching strategies; inactive is consulted as a final "is this for a
+    // closed branch?" pass so we can silent-skip those (e.g. Pluxee still
+    // reporting on קינג קונג מוצקין long after the branch was closed).
     const allFranchisees = await database
       .select()
       .from(franchisee)
       .where(eq(franchisee.isActive, true));
+    const inactiveFranchisees = await database
+      .select()
+      .from(franchisee)
+      .where(eq(franchisee.isActive, false));
 
     // ─── Step 7: Process — body-based or attachment-based ──────────────
     // BODY_BASED_CLIENTS only applies to client_report emails. Commission
@@ -375,8 +410,32 @@ export async function POST(request: NextRequest) {
           subject,
           allFranchisees as Franchisee[],
           undefined,
-          documentType
+          documentType,
+          inactiveFranchisees as Franchisee[],
         );
+
+        // Inactive-franchisee skip: drop silently — do NOT log a failure,
+        // do NOT create an inbox row. The branch is closed; the vendor is
+        // still sending reports for it.
+        if (isInactiveFranchiseeSkip(franchiseeMatch)) {
+          duplicatesSkipped++;
+          errorDetails.push(
+            `דולג: מייל לזכיין סגור "${franchiseeMatch.inactiveFranchiseeName}" (confidence ${franchiseeMatch.confidence.toFixed(2)})`,
+          );
+          await finalizeSyncLog(syncLog.id, "completed", {
+            messagesScanned,
+            documentsCreated,
+            duplicatesSkipped,
+            errorCount: 0,
+            errorDetails,
+            ...diagnostics,
+          });
+          return NextResponse.json({
+            received: true,
+            skipped: true,
+            reason: "inactive_franchisee",
+          });
+        }
 
         let bodyResult: ProcessClientDocumentResult | null = null;
         if (!franchiseeMatch.ok) {
@@ -483,8 +542,17 @@ export async function POST(request: NextRequest) {
             subject,
             allFranchisees as Franchisee[],
             file.fileName,
-            documentType
+            documentType,
+            inactiveFranchisees as Franchisee[],
           );
+
+          if (isInactiveFranchiseeSkip(franchiseeMatch)) {
+            duplicatesSkipped++;
+            errorDetails.push(
+              `דולג: לינק לזכיין סגור "${franchiseeMatch.inactiveFranchiseeName}" (${file.fileName})`,
+            );
+            continue;
+          }
 
           let dlResult: ProcessClientDocumentResult | null = null;
           if (!franchiseeMatch.ok) {
@@ -574,8 +642,17 @@ export async function POST(request: NextRequest) {
           subject,
           allFranchisees as Franchisee[],
           attachment.filename,
-          attachmentDocumentType
+          attachmentDocumentType,
+          inactiveFranchisees as Franchisee[],
         );
+
+        if (isInactiveFranchiseeSkip(franchiseeMatch)) {
+          duplicatesSkipped++;
+          errorDetails.push(
+            `דולג: קובץ לזכיין סגור "${franchiseeMatch.inactiveFranchiseeName}" (${attachment.filename})`,
+          );
+          continue;
+        }
 
         const effectiveDocumentType = attachment.documentType ?? documentType;
         let attResult: ProcessClientDocumentResult | null = null;
@@ -709,6 +786,21 @@ export async function GET() {
 const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
 
 /**
+ * Narrow a failure result to the "skip silently because the franchisee is
+ * closed" variant. Used by every resolveFranchisee call site so the daily
+ * Pluxee/Mishloha/etc. emails for closed branches don't pile up as
+ * gmail_sync_log failures.
+ */
+function isInactiveFranchiseeSkip(
+  match: ResolveFranchiseeResult,
+): match is Extract<
+  ResolveFranchiseeResult,
+  { ok: false; skipReason: "inactive_franchisee" }
+> {
+  return !match.ok && "skipReason" in match && match.skipReason === "inactive_franchisee";
+}
+
+/**
  * Resolve franchisee using multiple strategies, in order:
  *
  * 1. Parse document → extract franchiseeName → fuzzy match
@@ -728,6 +820,17 @@ type ResolveFranchiseeResult =
        * franchisee assignment.
        */
       needsReview?: boolean;
+    }
+  | {
+      ok: false;
+      skipReason: "inactive_franchisee";
+      /**
+       * Name of the matched inactive franchisee, surfaced into the sync
+       * log so an admin can confirm "yes, this branch is closed — Pluxee
+       * is still sending us reports for it" without re-opening the email.
+       */
+      inactiveFranchiseeName: string;
+      confidence: number;
     }
   | {
       ok: false;
@@ -753,7 +856,15 @@ async function resolveFranchisee(
   subject: string,
   franchisees: Franchisee[],
   attachmentFilename?: string,
-  documentType: "client_report" | "commission_invoice" = "client_report"
+  documentType: "client_report" | "commission_invoice" = "client_report",
+  /**
+   * Full franchisee list (active + inactive). When provided, a final
+   * pass tries matching the extracted name against inactive entries; a
+   * high-confidence hit returns the `inactive_franchisee` skip reason so
+   * the caller can drop the email silently instead of failing daily for
+   * a closed branch (e.g. Pluxee → קינג קונג מוצקין).
+   */
+  inactiveFranchisees?: Franchisee[]
 ): Promise<ResolveFranchiseeResult> {
   // Track the best rejected verdict across all strategies so the final
   // failure message can surface "we considered these candidates" instead
@@ -884,6 +995,39 @@ async function resolveFranchisee(
     return { ok: true, ...subjectMatch };
   }
 
+  // Strategy 4: Inactive-franchisee detection (silent-skip path).
+  // When the active strategies failed but the extracted name (or filename,
+  // or subject) high-confidence matches a CLOSED branch, we don't want to
+  // keep failing daily for it. Drop the email silently and tell the admin
+  // via the sync log that an inactive franchisee was matched.
+  if (inactiveFranchisees && inactiveFranchisees.length > 0) {
+    const allCandidates = [...franchisees, ...inactiveFranchisees];
+    const inactiveAttempts = [
+      extractedName,
+      attachmentFilename,
+      subject,
+    ].filter((v): v is string => !!v && v.trim().length >= 3);
+
+    for (const attempt of inactiveAttempts) {
+      const result = matchFranchiseeName(attempt, allCandidates, {
+        minConfidence: 0.7,
+        includeInactive: true,
+      });
+      if (
+        result.matchedFranchisee &&
+        !result.matchedFranchisee.isActive &&
+        result.confidence >= 0.85
+      ) {
+        return {
+          ok: false,
+          skipReason: "inactive_franchisee",
+          inactiveFranchiseeName: result.matchedFranchisee.name,
+          confidence: result.confidence,
+        };
+      }
+    }
+  }
+
   return {
     ok: false,
     extractedName,
@@ -943,7 +1087,13 @@ async function recordInboundReviewOutcome(args: {
   clientId: string | null;
   clientCode: string | null;
   documentType: "client_report" | "commission_invoice" | "tabit_report";
-  franchiseeMatch: ResolveFranchiseeResult;
+  // Skip variant ({ skipReason: "inactive_franchisee" }) never reaches
+  // this function — all call sites early-return before invoking it. So
+  // the type is narrowed to either success or a regular failure.
+  franchiseeMatch: Exclude<
+    ResolveFranchiseeResult,
+    { skipReason: "inactive_franchisee" }
+  >;
   processResult: ProcessClientDocumentResult | null;
   /**
    * File context — populated when the file is available (always for
@@ -1073,7 +1223,10 @@ async function recordInboundReviewOutcome(args: {
 }
 
 function formatResolveFailure(
-  failure: Extract<ResolveFranchiseeResult, { ok: false }>,
+  failure: Extract<
+    ResolveFranchiseeResult,
+    { ok: false; reason: string }
+  >,
   subject: string
 ): string {
   // Single-line, Hebrew-fronted, with English diagnostics tail. Stored in

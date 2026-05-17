@@ -57,6 +57,34 @@ export const INCOME_INVOICE_KEYWORDS: readonly string[] = [
 ];
 
 /**
+ * Subject patterns for promotional / non-data emails that should be auto-
+ * skipped (not processed, not failed). Anything matching here is treated
+ * as a "drop on the floor silently" — the sync log still records the
+ * email for auditability but with status=completed and no errors.
+ *
+ * Added 2026-05-17 after Reut reported daily failure emails dominated by
+ * Wolt Benefits announcements, Cibus "הסכם התקשרות" contracts, and other
+ * marketing notifications that have no data to extract.
+ *
+ * IMPORTANT: keep patterns conservative — false positives here drop real
+ * data silently. Prefer literal product/announcement names over generic
+ * promotional words ("מבצע", "הטבה") which could appear in legitimate
+ * report subjects.
+ */
+export const PROMOTIONAL_SUBJECT_PATTERNS: readonly RegExp[] = [
+  /Wolt\s*Benefits/i,
+  /תגידו\s*שלום\s*למוצר/,
+  /הסכם\s*התקשרות/,
+];
+
+export function isPromotionalSubject(
+  subject: string | null | undefined,
+): boolean {
+  if (!subject) return false;
+  return PROMOTIONAL_SUBJECT_PATTERNS.some((p) => p.test(subject));
+}
+
+/**
  * Detect document type from email subject (and optionally body content).
  *
  * Resolution order:

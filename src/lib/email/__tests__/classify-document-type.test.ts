@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { detectDocumentType } from "../classify-document-type";
+import {
+  detectDocumentType,
+  isPromotionalSubject,
+} from "../classify-document-type";
 
 describe("detectDocumentType", () => {
   describe("commission_invoice classification", () => {
@@ -102,5 +105,30 @@ describe("detectDocumentType", () => {
       const body = "אזכור של חשבונית הכנסה (לא קשור)";
       expect(detectDocumentType(subject, body)).toBe("commission_invoice");
     });
+  });
+});
+
+describe("isPromotionalSubject", () => {
+  it.each([
+    ["תגידו שלום למוצר החדש שלנו: Wolt Benefits!", "Wolt Benefits launch"],
+    ["Wolt Benefits עכשיו זמין", "Wolt Benefits variant"],
+    ["הסכם התקשרות סיבוס", "Cibus contract"],
+    ["הסכם  התקשרות  פלאקסי", "contract with extra spaces"],
+  ])("flags %j as promotional (%s)", (subject) => {
+    expect(isPromotionalSubject(subject)).toBe(true);
+  });
+
+  it.each([
+    ["Pluxee דוח", "Cibus monthly report"],
+    ["דו''ח חודשי למסעדה", "10bis monthly report"],
+    ["FW: חשבונית מס מאת Wolt Enterprises", "Wolt tax invoice"],
+    ["", "empty subject"],
+  ])("does NOT flag %j as promotional (%s)", (subject) => {
+    expect(isPromotionalSubject(subject)).toBe(false);
+  });
+
+  it("handles null/undefined safely", () => {
+    expect(isPromotionalSubject(null)).toBe(false);
+    expect(isPromotionalSubject(undefined)).toBe(false);
   });
 });
