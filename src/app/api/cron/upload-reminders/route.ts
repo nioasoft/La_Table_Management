@@ -60,8 +60,7 @@ interface ReminderResult {
  *    (no upload_link). BKMV is a year-to-date snapshot whose period_start_date
  *    is the FIRST transaction in the file (often a prior year), so we must
  *    check period_end_date — a file "covers" the cycle iff its period extends
- *    to or past cycleStart. We also accept uploads created up to 60 days
- *    before the request, since admins sometimes pre-upload.
+ *    to or past cycleStart.
  *
  * If a match exists we self-heal by closing the file_request to "submitted"
  * and skipping the reminder. This guards against the historical bug where
@@ -105,20 +104,24 @@ async function findUploadedFileForRequest(
       }
     }
 
-    // Allow uploads up to 60 days before the request was created (admin
-    // pre-uploads). Without this we'd miss files Reut uploaded before the
-    // quarterly request cron fired.
-    const earliestCreatedAt = new Date(req.createdAt);
-    earliestCreatedAt.setDate(earliestCreatedAt.getDate() - 60);
-
     const conditions = [
       eq(supplierFileUpload.supplierId, req.entityId),
-      gte(supplierFileUpload.createdAt, earliestCreatedAt),
       inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"]),
     ];
     if (periodStart && periodEnd) {
+      // Exact period match — (supplierId, periodStart, periodEnd) uniquely
+      // identifies the right file. Don't filter by createdAt: pre-uploads can
+      // land months before the settlement-requests cron creates the request
+      // (e.g. semi-annual suppliers uploading right after H2 closes, while
+      // catch-up creates the request 60+ days later).
       conditions.push(eq(supplierFileUpload.periodStartDate, periodStart));
       conditions.push(eq(supplierFileUpload.periodEndDate, periodEnd));
+    } else {
+      // No periodKey — can't uniquely identify the right file, so fall back to
+      // a wide time window relative to the request.
+      const earliestCreatedAt = new Date(req.createdAt);
+      earliestCreatedAt.setDate(earliestCreatedAt.getDate() - 180);
+      conditions.push(gte(supplierFileUpload.createdAt, earliestCreatedAt));
     }
 
     const supplierUploads = await database
