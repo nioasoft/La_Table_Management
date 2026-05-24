@@ -27,7 +27,7 @@ export const CUSTOM_PARSER_CODES = new Set([
   "GREEN_TEA",
   "OREN_JUICES",
   "SOBER_LERNER",
-  "WONG\u05B9_SHU",
+  "WONG_SHU",
   "SUPER_NOVA",
   "NESPRESSO",
   "TEMPO",
@@ -40,6 +40,18 @@ export const CUSTOM_PARSER_CODES = new Set([
   "YEVULEI_GOURMET",
   "SHERI_CHOCO",
 ]);
+
+// Hebrew points/diacritics (U+0591–U+05C7) and zero-width chars are invisible
+// next to Latin letters and have silently broken parser dispatch in the past
+// (e.g. WONGֹ_SHU mismatch with DB code WONG_SHU). Reject at module load.
+for (const code of CUSTOM_PARSER_CODES) {
+  if (/[֑-ׇ​-‏﻿]/.test(code)) {
+    throw new Error(
+      `Invalid supplier code in CUSTOM_PARSER_CODES: ${JSON.stringify(code)} ` +
+        `contains a Hebrew diacritic or zero-width char. Use ASCII or unpointed Hebrew.`
+    );
+  }
+}
 
 /**
  * Check if a supplier code has a custom parser (client-safe)

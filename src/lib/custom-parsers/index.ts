@@ -139,8 +139,7 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
     const { parseSoberLernerFile } = await import("./sober-lerner-parser");
     return parseSoberLernerFile(buffer);
   },
-  // Note: WONGֹ_SHU has a Hebrew diacritical mark (U+05B9) after G
-  "WONG\u05B9_SHU": async (buffer, vatRate) => {
+  WONG_SHU: async (buffer, vatRate) => {
     const { parseWongShuFile } = await import("./wong-shu-parser");
     return parseWongShuFile(buffer);
   },
