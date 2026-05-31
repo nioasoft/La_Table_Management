@@ -366,7 +366,26 @@ export function parseSupplierFile(
     // Calculate data end row (accounting for rows to skip at the end)
     const dataEndRowIndex = rawData.length - rowsToSkip;
 
-    // Get column mappings
+    // Get column mappings.
+    // Guard against a fileMapping that exists but has no columnMappings — this
+    // happens for custom-parser suppliers (e.g. WONG_SHU has customParser:true
+    // and no columnMappings) when parser dispatch silently misses (a Hebrew
+    // diacritic / zero-width char in the supplier code vs. the registry key).
+    // Without this guard the destructure throws a cryptic raw runtime error
+    // ("Cannot destructure property 'franchiseeColumn'…") instead of a
+    // readable, logged business error.
+    if (!fileMapping.columnMappings) {
+      addError(createFileProcessingError('NO_FILE_MAPPING', {
+        details:
+          'fileMapping has no columnMappings. This supplier likely requires a ' +
+          'custom parser that was not dispatched (check supplier.code matches a ' +
+          'CUSTOM_PARSERS key exactly — no Hebrew diacritics / zero-width chars).',
+        suggestion:
+          'הספק דורש פרסר מותאם שלא זוהה, או שחסר מיפוי עמודות. יש לבדוק את הגדרת הספק בעמוד עריכת הספק.',
+      }));
+      return createFailedResult(rawData.length);
+    }
+
     const { franchiseeColumn, amountColumn, dateColumn } = fileMapping.columnMappings;
 
     // Validate column mappings exist
