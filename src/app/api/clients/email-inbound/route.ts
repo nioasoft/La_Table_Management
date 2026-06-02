@@ -45,6 +45,7 @@ import {
 import {
   detectDocumentType,
   isPromotionalSubject,
+  isCibusDailyReport,
 } from "@/lib/email/classify-document-type";
 import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { database } from "@/db";
@@ -296,6 +297,35 @@ export async function POST(request: NextRequest) {
     console.log(
       `[email-inbound] Identified client: ${identifiedClient.clientCode} (by ${identifiedClient.identifiedBy})`
     );
+
+    // ─── Step 3b: Drop Cibus daily snapshots ───────────────────────────
+    // Pluxee sends a DAILY "Pluxee דוח" (single-day period) in addition to
+    // the authoritative month-end "ריכוז חיוב חודשי" report. The daily
+    // snapshot overwrites the franchisee+month document with single-day
+    // (usually zero) figures and corrupts the monthly total — it zeroed the
+    // entire May 2026 Cibus dataset. Per Reut (2026-06-02) the daily
+    // snapshots have no business use, so we drop them silently here. The
+    // month-end report is matched by a different subject and is unaffected.
+    if (isCibusDailyReport(identifiedClient.clientCode, subject)) {
+      console.log(
+        `[email-inbound] Skipping Cibus daily snapshot: "${subject}"`
+      );
+      await finalizeSyncLog(syncLog.id, "completed", {
+        messagesScanned: 1,
+        documentsCreated: 0,
+        duplicatesSkipped: 1,
+        errorCount: 0,
+        errorDetails: [
+          `דולג: דוח יומי של פלאקסי (${subject}) — נקלט רק הריכוז החודשי`,
+        ],
+        ...diagnostics,
+      });
+      return NextResponse.json({
+        received: true,
+        skipped: true,
+        reason: "cibus_daily_snapshot",
+      });
+    }
 
     // ─── Step 4: Fetch full email from Resend ──────────────────────────
     const email = await fetchInboundEmail(email_id);

@@ -39,6 +39,16 @@ export const INVOICE_SUBJECT_KEYWORDS: readonly string[] = [
  */
 export const CLIENT_REPORT_OVERRIDE_PATTERNS: readonly RegExp[] = [
   /\[העתק\][\s\S]*חשבונית[\s\S]*מאת/,
+  // Cibus/Pluxee authoritative month-end report ("ריכוז חיוב חודשי - <זכיין>").
+  // Its body carries the instruction "יש לשלוח חשבונית מס לפלאקסי על סכום כולל
+  // מע\"מ ..." — which the body fallback (detectDocumentType, below) would
+  // otherwise read as a commission_invoice keyword, forcing the attachment
+  // path and failing the (attachment-less) email. The subject is unambiguous,
+  // so pin it to client_report. Added 2026-06-02 after the body fallback (from
+  // 2026-05-10) silently zeroed the entire May 2026 Cibus dataset: every
+  // month-end report failed to ingest while daily snapshots overwrote the
+  // franchisee+month docs with zero-movement figures.
+  /ריכוז\s*חיוב\s*חודשי/,
 ];
 
 /**
@@ -75,7 +85,40 @@ export const PROMOTIONAL_SUBJECT_PATTERNS: readonly RegExp[] = [
   /Wolt\s*Benefits/i,
   /תגידו\s*שלום\s*למוצר/,
   /הסכם\s*התקשרות/,
+  // Wolt account/system notifications + marketing (no data to extract).
+  // Added 2026-06-02 — these were the bulk of the daily failure digest.
+  /תוקף\s*הגישה/, //  "...בע\"מ - תוקף הגישה הנדרשת ..."
+  /verify\s*your\s*email/i,
+  /ניוזז/, // Wolt newsletter ("מאי ניוזזז! הרבה דברים קורים ב-Wolt")
+  /הצטרפו\s*לקמפיין/, // Wolt campaign invites ("הצטרפו לקמפיין המונדיאל ...")
+  // Cibus/Pluxee account notification (no data).
+  /שינוי\s*סיסמה/,
 ];
+
+/**
+ * Pluxee/Cibus started sending a DAILY "Pluxee דוח" snapshot (single-day
+ * billing period) on 2026-05-03, IN ADDITION to the authoritative month-end
+ * "ריכוז חיוב חודשי - <זכיין>" report. The daily snapshot overwrites the
+ * franchisee+month client_document with single-day (usually zero-movement)
+ * figures, corrupting the monthly total — it zeroed the entire May 2026 Cibus
+ * dataset. Per Reut (2026-06-02) the daily snapshots have no business use;
+ * only the month-end report is reconciled. So we drop the daily snapshots on
+ * arrival. The month-end report is matched by its own subject
+ * ("ריכוז חיוב חודשי ...") and is unaffected.
+ *
+ * Matched conservatively: the exact daily subject is literally "Pluxee דוח"
+ * with no franchisee suffix (the month-end report always carries " - <זכיין>").
+ */
+const CIBUS_DAILY_REPORT_PATTERN = /^pluxee\s+דוח$/;
+
+export function isCibusDailyReport(
+  clientCode: string | null | undefined,
+  subject: string | null | undefined,
+): boolean {
+  if (!clientCode || clientCode.toUpperCase() !== "CIBUS") return false;
+  if (!subject) return false;
+  return CIBUS_DAILY_REPORT_PATTERN.test(subject.trim().toLowerCase());
+}
 
 export function isPromotionalSubject(
   subject: string | null | undefined,
