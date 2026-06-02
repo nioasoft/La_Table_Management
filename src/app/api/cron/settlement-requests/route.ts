@@ -227,6 +227,8 @@ async function processFrequency(
   processed: number;
   skipped: number;
   failed: number;
+  skippedNoEmail: number;
+  noEmailSuppliers: string[];
   errors: string[];
   suppliers: string[];
   settlementPeriodCreated?: { periodKey: string; created: boolean };
@@ -235,6 +237,12 @@ async function processFrequency(
     processed: 0,
     skipped: 0,
     failed: 0,
+    // A supplier with no contact email is a CONFIG GAP, not a send failure.
+    // Counting it as `failed` (with an error string) marked the whole daily
+    // run "failed" forever for 3 permanently email-less suppliers, masking
+    // real breakage. Tracked separately so the run stays green. (2026-06-02)
+    skippedNoEmail: 0,
+    noEmailSuppliers: [] as string[],
     errors: [] as string[],
     suppliers: [] as string[],
     settlementPeriodCreated: undefined as { periodKey: string; created: boolean } | undefined,
@@ -303,9 +311,10 @@ async function processFrequency(
       const recipientEmail = supplierData.contactEmail || supplierData.secondaryContactEmail;
 
       if (!recipientEmail) {
-        results.failed++;
-        results.errors.push(
-          `Supplier ${supplierData.name} (${supplierData.id}): No email configured`
+        // Config gap, not a failure — see results.skippedNoEmail note above.
+        results.skippedNoEmail++;
+        results.noEmailSuppliers.push(
+          `${supplierData.name} (${supplierData.id})`
         );
         continue;
       }
@@ -418,18 +427,27 @@ export async function POST(request: NextRequest) {
         processed: number;
         skipped: number;
         failed: number;
+        skippedNoEmail: number;
+        noEmailSuppliers: string[];
         errors: string[];
         suppliers: string[];
         settlementPeriodCreated?: { periodKey: string; created: boolean };
       }>;
-      totals: { processed: number; skipped: number; failed: number; errors: string[] };
+      totals: {
+        processed: number;
+        skipped: number;
+        failed: number;
+        skippedNoEmail: number;
+        noEmailSuppliers: string[];
+        errors: string[];
+      };
       settlementPeriodsCreated: { frequency: string; periodKey: string; created: boolean }[];
     } = {
       timestamp: formatDateAsLocal(new Date()),
       dryRun,
       activeFrequencies: [],
       byFrequency: {},
-      totals: { processed: 0, skipped: 0, failed: 0, errors: [] },
+      totals: { processed: 0, skipped: 0, failed: 0, skippedNoEmail: 0, noEmailSuppliers: [], errors: [] },
       settlementPeriodsCreated: [],
     };
 
@@ -458,6 +476,8 @@ export async function POST(request: NextRequest) {
       results.totals.processed += frequencyResults.processed;
       results.totals.skipped += frequencyResults.skipped;
       results.totals.failed += frequencyResults.failed;
+      results.totals.skippedNoEmail += frequencyResults.skippedNoEmail;
+      results.totals.noEmailSuppliers.push(...frequencyResults.noEmailSuppliers);
       results.totals.errors.push(...frequencyResults.errors);
 
       if (frequencyResults.settlementPeriodCreated) {
@@ -472,9 +492,15 @@ export async function POST(request: NextRequest) {
       emailsSent: results.totals.processed,
       emailsFailed: results.totals.failed,
       totalProcessed: results.totals.processed,
-      totalSkipped: results.totals.skipped,
+      totalSkipped: results.totals.skipped + results.totals.skippedNoEmail,
       totalFailed: results.totals.failed,
-      summary: { activeFrequencies: results.activeFrequencies, byFrequency: results.byFrequency },
+      summary: {
+        activeFrequencies: results.activeFrequencies,
+        byFrequency: results.byFrequency,
+        // Surfaced (not failed): suppliers active for auto-requests but with
+        // no contact email — a config gap to resolve, not a send failure.
+        suppliersWithoutEmail: results.totals.noEmailSuppliers,
+      },
     }, results.totals.errors.length > 0 ? results.totals.errors.join("; ") : undefined);
 
     return NextResponse.json({ success: true, ...results });
