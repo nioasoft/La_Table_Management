@@ -39,6 +39,7 @@ export const CUSTOM_PARSER_CODES = new Set([
   "לוריא",
   "YEVULEI_GOURMET",
   "SHERI_CHOCO",
+  "LEUMI_CARD",
 ]);
 
 // Hebrew points/diacritics (U+0591–U+05C7) and zero-width chars are invisible
