@@ -44,6 +44,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import {
   ALLOCATION_NUMBER_THRESHOLD,
   isAllocationNumberMissing,
@@ -406,10 +407,11 @@ export default function CommissionInvoicesPage() {
             <ChevronLeft className="h-4 w-4" />
           </Button>
         </div>
-        <FranchiseeFilterCombobox
+        <FranchiseeCombobox
           franchisees={filterFranchisees ?? []}
           selectedId={selectedFranchiseeId}
           onChange={setSelectedFranchiseeId}
+          allLabel="כל הזכיינים"
         />
       </div>
 
@@ -1445,86 +1447,3 @@ function FranchiseePicker({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Franchisee filter combobox (page-level filter)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function FranchiseeFilterCombobox({
-  franchisees,
-  selectedId,
-  onChange,
-}: {
-  franchisees: Array<{ id: string; name: string }>;
-  selectedId: string | null;
-  onChange: (id: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selected = selectedId
-    ? franchisees.find((f) => f.id === selectedId)
-    : null;
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          className="min-w-[200px] justify-between font-normal"
-          dir="rtl"
-        >
-          <span className={cn(!selected && "text-muted-foreground")}>
-            {selected?.name ?? "כל הזכיינים"}
-          </span>
-          <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0" align="start" dir="rtl">
-        <Command>
-          <CommandInput placeholder="חפש זכיין..." className="h-9" />
-          <CommandList>
-            <CommandEmpty>לא נמצאו זכיינים</CommandEmpty>
-            <CommandGroup>
-              <CommandItem
-                value="__all__"
-                onSelect={() => {
-                  onChange(null);
-                  setOpen(false);
-                }}
-              >
-                <Check
-                  className={cn(
-                    "me-2 h-4 w-4",
-                    !selectedId ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                כל הזכיינים
-              </CommandItem>
-              {franchisees
-                .filter((f) => f.id)
-                .map((f) => (
-                  <CommandItem
-                    key={f.id}
-                    value={`${f.name} ${f.id}`}
-                    onSelect={() => {
-                      onChange(f.id);
-                      setOpen(false);
-                    }}
-                  >
-                    <Check
-                      className={cn(
-                        "me-2 h-4 w-4",
-                        selectedId === f.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                    {f.name}
-                  </CommandItem>
-                ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}

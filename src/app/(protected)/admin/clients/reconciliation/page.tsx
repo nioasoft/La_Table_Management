@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import Link from "next/link";
 import {
   Scale,
@@ -866,23 +867,13 @@ export default function ClientReconciliationPage() {
         </div>
 
         {viewTab === "by-franchisee" && (
-          <Select
-            value={selectedFranchiseeId}
-            onValueChange={setSelectedFranchiseeId}
-          >
-            <SelectTrigger className="w-[200px]">
-              <SelectValue placeholder="בחר זכיין..." />
-            </SelectTrigger>
-            <SelectContent>
-              {(allFranchisees ?? []).map(
-                (f: { id: string; name: string }) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name}
-                  </SelectItem>
-                )
-              )}
-            </SelectContent>
-          </Select>
+          <FranchiseeCombobox
+            franchisees={allFranchisees ?? []}
+            selectedId={selectedFranchiseeId || null}
+            onChange={(id) => setSelectedFranchiseeId(id ?? "")}
+            placeholder="בחר זכיין..."
+            triggerClassName="w-[200px]"
+          />
         )}
 
         <Select
