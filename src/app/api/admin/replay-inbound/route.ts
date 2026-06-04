@@ -149,6 +149,32 @@ async function extractAndDownloadLinks(
   htmlBody: string
 ): Promise<Array<{ buffer: Buffer; fileName: string }>> {
   const out: Array<{ buffer: Buffer; fileName: string }> = [];
+
+  // Pattern 1: TENBIS month-end report — Mandrill tracking link whose base64
+  // `p` param decodes to the real cdn.10bis.co.il PDF (mirrors Pattern 1 in
+  // email-inbound/route.ts). Only the main report (skip refund_ annex).
+  const mandrillLinks =
+    htmlBody.match(/https?:\/\/mandrillapp\.com\/track\/click\/[^"'\s<>]+/g) ||
+    [];
+  for (const trackingLink of mandrillLinks) {
+    try {
+      const url = new URL(trackingLink.replace(/&amp;/g, "&"));
+      const pParam = url.searchParams.get("p");
+      if (!pParam) continue;
+      const decoded = JSON.parse(Buffer.from(pParam, "base64").toString());
+      const innerData = JSON.parse(decoded.p);
+      const pdfUrl: string = innerData.url;
+      if (!pdfUrl.includes("cdn.10bis.co.il") || !pdfUrl.endsWith(".pdf"))
+        continue;
+      if (pdfUrl.includes("refund_")) continue;
+      const res = await fetch(pdfUrl);
+      if (!res.ok) continue;
+      const buf = Buffer.from(await res.arrayBuffer());
+      out.push({ buffer: buf, fileName: pdfUrl.split("/").pop() ?? "tenbis-report.pdf" });
+    } catch {}
+  }
+  if (out.length > 0) return out;
+
   const ezLinks =
     htmlBody.match(
       /https?:\/\/files\.ezcount\.co\.il\/front\/documents\/get\/[^"'\s<>]+/g
@@ -264,15 +290,15 @@ export async function POST(request: NextRequest) {
       let documentsCreated = 0;
       let duplicatesSkipped = 0;
 
-      // TENBIS sends monthly reports inline in the email HTML body (no
-      // attachments, no download links) — mirror the body-based path in
-      // src/app/api/clients/email-inbound/route.ts so replay can recover them
-      // (e.g. the 7 April-2026 reports that failed before that path existed).
+      // TENBIS inline monthly report — body carries "פירוט עסקאות למסעדת".
+      // Mirror the main route: the month-end *cover* email (report behind a
+      // Mandrill→cdn.10bis.co.il PDF link) must NOT match here, so it falls to
+      // the link-download path below. See email-inbound/route.ts for context.
       const tenbisInlineHtmlReport =
         identifiedClient.clientCode.toUpperCase() === "TENBIS" &&
         documentType === "client_report" &&
         email.attachments.length === 0 &&
-        /למסעדת|פירוט\s+עסקאות|תן\s+ביס/.test(email.html || email.text || "");
+        /פירוט\s+עסקאות\s+למסעדת/.test(email.html || email.text || "");
 
       const isBodyBased =
         (BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&

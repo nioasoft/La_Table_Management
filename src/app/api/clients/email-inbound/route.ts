@@ -410,11 +410,19 @@ export async function POST(request: NextRequest) {
     // though TENBIS is not in BODY_BASED_CLIENTS. Forwarded variants
     // ("FW: דוח חודשי מתן ביס לויני רגבה ...") still arrive with PDFs
     // attached and continue through the attachment-based path.
+    // Match ONLY the true inline report — its body carries the transaction
+    // detail header "פירוט עסקאות למסעדת <name>". The month-end *cover* email
+    // (no-reply@10bis, subject "דוח חודשי מתן ביס ל<name>") also mentions
+    // "תן ביס" but keeps the actual report behind a Mandrill→cdn.10bis.co.il
+    // PDF link — it must fall through to the link-download path
+    // (extractAndDownloadLinks Pattern 1), not be parsed inline as a zero-row
+    // "no activity" report. A loose /תן ביס/ here misrouted every May 2026
+    // cover email to ₪0 (fixed 2026-06-04).
     const tenbisInlineHtmlReport =
       identifiedClient.clientCode.toUpperCase() === "TENBIS" &&
       documentType === "client_report" &&
       email.attachments.length === 0 &&
-      /למסעדת|פירוט\s+עסקאות|תן\s+ביס/.test(email.html || email.text || "");
+      /פירוט\s+עסקאות\s+למסעדת/.test(email.html || email.text || "");
 
     const isBodyBased =
       (BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
