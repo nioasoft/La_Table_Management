@@ -17,10 +17,12 @@
  * decision we set netAmount = grossAmount = originalAmount = refund, so the
  * refund shows consistently across the UI and reports without any 1.18 gross-up.
  *
- * The file carries no per-row dates (it's an annual aggregate), so the parser
- * emits a DATES_NOT_EXTRACTED anomaly — the admin must confirm that the period
- * tagged on the upload page matches the report (Leumi Card runs an Apr–Mar
- * fiscal year). This mirrors the אראל אריזות parser.
+ * The file carries no per-row dates (it's an annual aggregate). We intentionally
+ * do NOT emit a pre-save anomaly for this: the missing dates are inherent to the
+ * Leumi Card report and the warning only confused users (Reut, 2026-06-04). The
+ * admin still selects the period on the upload page (Leumi Card runs an Apr–Mar
+ * fiscal year). (Contrast אראל אריזות, which keeps its DATES_NOT_EXTRACTED
+ * safeguard after a real period-mistag incident.)
  */
 
 import * as XLSX from "xlsx";
@@ -42,26 +44,6 @@ const AMOUNT_HEADER = "תחשיב החזר";
 
 // Labels that mark the trailing totals row (never a real franchisee).
 const TOTALS_LABELS = ["grand total", "total", 'סה"כ', "סה״כ", "סהכ"];
-
-/**
- * Annual aggregate — no per-row dates, so the admin must verify the period.
- */
-const DATES_NOT_EXTRACTED_ANOMALY: Anomaly = {
-  code: "DATES_NOT_EXTRACTED",
-  severity: "warning",
-  messageHe:
-    "ה-parser של לאומי קארד אינו חולץ תאריכים מהקובץ — ודאי שהתקופה שתויגה בעמוד ההעלאה תואמת לתוכן הדוח.",
-  details: {
-    explanationHe:
-      "הדוח של לאומי קארד הוא סיכום שנתי מצטבר (תחשיב החזר לפי מספר עוסק) ללא תאריכי שורה, ולכן המערכת אינה יכולה לאמת אוטומטית שהתקופה שנבחרה זהה לתקופת הדוח. לאומי קארד מתנהל לפי שנת כספים אפריל–מרץ. אם התקופה שגויה, יווצרו עמלות בתקופה הלא נכונה (וניקוי דורש מחיקה ידנית של ה-commissions).",
-  },
-  suggestedActions: [
-    {
-      type: "acknowledge_only",
-      labelHe: "אישרתי שהתקופה נכונה",
-    },
-  ],
-};
 
 function isTotalsLabel(value: string): boolean {
   const normalized = value.trim().toLowerCase();
@@ -219,8 +201,7 @@ export function parseLeumiCardFile(buffer: Buffer): FileProcessingResult {
       processedRows,
       skippedRows,
       roundAmount(totalAmount),
-      roundAmount(totalAmount),
-      [DATES_NOT_EXTRACTED_ANOMALY]
+      roundAmount(totalAmount)
     );
   } catch (error) {
     errors.push(
