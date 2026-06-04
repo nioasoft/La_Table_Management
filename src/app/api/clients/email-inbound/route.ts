@@ -1586,12 +1586,28 @@ async function extractAndDownloadLinks(
         const innerData = JSON.parse(decoded.p);
         const pdfUrl: string = innerData.url;
 
+        // SSRF guard: pdfUrl is decoded from attacker-influenceable email body.
+        // Validate with an exact-host allowlist (not a substring match) over
+        // https, and disable redirects so a 302 can't bounce us off-host.
+        let parsedUrl: URL;
+        try {
+          parsedUrl = new URL(pdfUrl);
+        } catch {
+          continue;
+        }
+        const host = parsedUrl.hostname.toLowerCase().replace(/\.$/, "");
+        if (
+          parsedUrl.protocol !== "https:" ||
+          (host !== "cdn.10bis.co.il" && !host.endsWith(".cdn.10bis.co.il")) ||
+          !parsedUrl.pathname.toLowerCase().endsWith(".pdf")
+        )
+          continue;
         // Only download report PDFs (skip refund reports)
-        if (!pdfUrl.includes("cdn.10bis.co.il") || !pdfUrl.endsWith(".pdf")) continue;
         if (pdfUrl.includes("refund_")) continue;
 
         console.log(`[email-inbound] Tenbis: downloading PDF from ${pdfUrl}`);
-        const response = await fetch(pdfUrl);
+        const response = await fetch(pdfUrl, { redirect: "manual" });
+        // 3xx (redirect) has response.ok === false → treated as failure below
         if (!response.ok) {
           console.warn(`[email-inbound] Failed to download ${pdfUrl}: ${response.status}`);
           continue;

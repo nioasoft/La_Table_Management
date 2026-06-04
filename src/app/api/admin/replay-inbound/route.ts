@@ -164,11 +164,24 @@ async function extractAndDownloadLinks(
       const decoded = JSON.parse(Buffer.from(pParam, "base64").toString());
       const innerData = JSON.parse(decoded.p);
       const pdfUrl: string = innerData.url;
-      if (!pdfUrl.includes("cdn.10bis.co.il") || !pdfUrl.endsWith(".pdf"))
+      // SSRF guard: the URL comes from attacker-influenceable email body.
+      // Exact-host allowlist (not substring) + https + no redirects.
+      let parsed: URL;
+      try {
+        parsed = new URL(pdfUrl);
+      } catch {
+        continue;
+      }
+      const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
+      if (
+        parsed.protocol !== "https:" ||
+        (host !== "cdn.10bis.co.il" && !host.endsWith(".cdn.10bis.co.il")) ||
+        !parsed.pathname.toLowerCase().endsWith(".pdf")
+      )
         continue;
       if (pdfUrl.includes("refund_")) continue;
-      const res = await fetch(pdfUrl);
-      if (!res.ok) continue;
+      const res = await fetch(pdfUrl, { redirect: "manual" });
+      if (!res.ok) continue; // 3xx (redirect) has res.ok === false → skipped
       const buf = Buffer.from(await res.arrayBuffer());
       out.push({ buffer: buf, fileName: pdfUrl.split("/").pop() ?? "tenbis-report.pdf" });
     } catch {}
