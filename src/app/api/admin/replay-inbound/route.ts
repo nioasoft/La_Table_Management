@@ -264,9 +264,20 @@ export async function POST(request: NextRequest) {
       let documentsCreated = 0;
       let duplicatesSkipped = 0;
 
+      // TENBIS sends monthly reports inline in the email HTML body (no
+      // attachments, no download links) — mirror the body-based path in
+      // src/app/api/clients/email-inbound/route.ts so replay can recover them
+      // (e.g. the 7 April-2026 reports that failed before that path existed).
+      const tenbisInlineHtmlReport =
+        identifiedClient.clientCode.toUpperCase() === "TENBIS" &&
+        documentType === "client_report" &&
+        email.attachments.length === 0 &&
+        /למסעדת|פירוט\s+עסקאות|תן\s+ביס/.test(email.html || email.text || "");
+
       const isBodyBased =
-        BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
-        documentType !== "commission_invoice";
+        (BODY_BASED_CLIENTS.has(identifiedClient.clientCode.toUpperCase()) &&
+          documentType !== "commission_invoice") ||
+        tenbisInlineHtmlReport;
 
       if (isBodyBased) {
         const content = email.html || email.text;
