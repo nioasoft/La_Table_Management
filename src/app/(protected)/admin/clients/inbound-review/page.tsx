@@ -106,6 +106,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   client_report: "דוח",
   commission_invoice: "חשבונית עמלה",
   tabit_report: "דוח Tabit",
+  income_invoice: "חשבונית הכנסה (זכיין)",
 };
 
 function formatDateTime(iso: string | null): string {
