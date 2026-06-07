@@ -40,6 +40,9 @@ export interface ReconciliationSession {
   runNumber: number;
   parentSessionId: string | null;
   archivedAt: Date | null;
+  // Set when a newer supplier file or BKMV upload landed for this period after
+  // the session was built — the UI prompts a rebuild.
+  staleAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;

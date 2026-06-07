@@ -3586,6 +3586,10 @@ export const reconciliationSession = pgTable(
     runNumber: integer("run_number").$default(() => 1).notNull(),
     parentSessionId: text("parent_session_id"),
     archivedAt: timestamp("archived_at"),
+    // Set when a newer supplier file or BKMV upload landed for this supplier+period
+    // AFTER the session was built, so its stored amounts are out of date. The UI
+    // surfaces a "rebuild" prompt; rebuilding archives this run and creates a fresh one.
+    staleAt: timestamp("stale_at"),
     // Audit
     createdAt: timestamp("created_at")
       .$defaultFn(() => new Date())

@@ -189,6 +189,27 @@ export async function upsertFromFullBreakdown(
     }
   }
 
+  // A franchisee's BKMV data just changed — any active reconciliation session
+  // that includes this franchisee and overlaps the uploaded months now has a
+  // stale franchisee-side amount. Flag those sessions so the UI prompts a
+  // rebuild. Best-effort; dynamic import avoids a circular dependency with
+  // reconciliation-v2 (which imports from this module).
+  try {
+    const months = Object.keys(monthlyBreakdown)
+      .filter((k) => /^\d{4}-\d{2}$/.test(k))
+      .sort();
+    if (months.length > 0) {
+      const periodStart = `${months[0]}-01`;
+      const [ey, em] = months[months.length - 1].split("-").map(Number);
+      // new Date(year, month, 0).getDate() → last day of that 1-indexed month
+      const periodEnd = `${months[months.length - 1]}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`;
+      const { markFranchiseeSessionsStale } = await import("@/data-access/reconciliation-v2");
+      await markFranchiseeSessionsStale(franchiseeId, periodStart, periodEnd);
+    }
+  } catch (staleErr) {
+    console.error("Failed to flag reconciliation sessions stale after BKMV upsert:", staleErr);
+  }
+
   return { updated, skipped, merged };
 }
 

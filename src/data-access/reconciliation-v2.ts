@@ -260,7 +260,8 @@ export async function createReconciliationSession(
   periodStartDate: string,
   periodEndDate: string,
   createdBy: string,
-  supplierFileIds?: string[]
+  supplierFileIds?: string[],
+  opts?: { runNumber?: number; parentSessionId?: string }
 ): Promise<ReconciliationSessionWithDetails | null> {
   // Get supplier info
   const supplierData = await database
@@ -631,6 +632,10 @@ export async function createReconciliationSession(
           periodEndDate,
           status: "in_progress",
           createdBy,
+          // Rebuild path: a fresh run replacing an archived stale session
+          // (runNumber+1 avoids the (supplier, period, run_number) unique index).
+          ...(opts?.runNumber ? { runNumber: opts.runNumber } : {}),
+          ...(opts?.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         })
         .returning();
 
@@ -701,6 +706,134 @@ export async function createReconciliationSession(
 }
 
 /**
+ * Rebuild a reconciliation session from the CURRENT data for its period:
+ * picks up the latest supplier file(s) and the latest BKMV year amounts,
+ * archives the stale source session, and creates a fresh run (runNumber+1).
+ *
+ * Unlike cloneSessionAndMatchAll (which copies the source's stored amounts),
+ * this recomputes BOTH the supplier and franchisee sides from scratch — use it
+ * when a newer supplier file or BKMV upload landed after the session was built
+ * (the `stale_at` case).
+ */
+export async function rebuildReconciliationSession(
+  sourceSessionId: string,
+  userId: string
+): Promise<ReconciliationSessionWithDetails | null> {
+  const [source] = await database
+    .select()
+    .from(reconciliationSession)
+    .where(eq(reconciliationSession.id, sourceSessionId))
+    .limit(1);
+
+  if (!source) throw new Error(`Source session ${sourceSessionId} not found`);
+  if (source.archivedAt) throw new Error("Cannot rebuild an archived session");
+
+  // Resolve the latest supplier file(s) for this exact period — handles
+  // multi-file suppliers and picks up any upload newer than the source's.
+  const periods = await getSupplierPeriods(source.supplierId);
+  const match = periods.find(
+    (p) =>
+      p.periodStartDate === source.periodStartDate &&
+      p.periodEndDate === source.periodEndDate
+  );
+  const fileIds =
+    match?.supplierFileIds ?? (source.supplierFileId ? [source.supplierFileId] : []);
+  const primaryFileId = match?.supplierFileId ?? source.supplierFileId;
+  if (!primaryFileId) {
+    throw new Error("No supplier file available to rebuild this period");
+  }
+
+  // Build the fresh run first (runNumber+1 → no clash with the still-active
+  // source on the (supplier, period, run_number) unique index), then archive
+  // the source so a failure leaves the original session intact.
+  const newSession = await createReconciliationSession(
+    source.supplierId,
+    primaryFileId,
+    source.periodStartDate,
+    source.periodEndDate,
+    userId,
+    fileIds,
+    { runNumber: source.runNumber + 1, parentSessionId: source.id }
+  );
+
+  if (!newSession) {
+    throw new Error("Failed to build rebuilt reconciliation session");
+  }
+
+  await database
+    .update(reconciliationSession)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(eq(reconciliationSession.id, source.id));
+
+  return newSession;
+}
+
+/**
+ * Flag active (non-archived, not-yet-stale) reconciliation sessions whose period
+ * overlaps [periodStart, periodEnd] for this supplier as stale, so the UI prompts
+ * a rebuild. Called when a newer supplier file is saved for the supplier+period.
+ * Returns how many sessions were flagged.
+ */
+export async function markSupplierSessionsStale(
+  supplierId: string,
+  periodStart: string,
+  periodEnd: string
+): Promise<number> {
+  const updated = await database
+    .update(reconciliationSession)
+    .set({ staleAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(reconciliationSession.supplierId, supplierId),
+        isNull(reconciliationSession.archivedAt),
+        isNull(reconciliationSession.staleAt),
+        lte(reconciliationSession.periodStartDate, periodEnd),
+        gte(reconciliationSession.periodEndDate, periodStart)
+      )
+    )
+    .returning({ id: reconciliationSession.id });
+  return updated.length;
+}
+
+/**
+ * Flag active reconciliation sessions stale because a franchisee's BKMV data
+ * changed — limited to sessions whose period overlaps AND that actually contain
+ * a comparison row for this franchisee. Called after a BKMV upsert/approve.
+ * Returns how many sessions were flagged.
+ */
+export async function markFranchiseeSessionsStale(
+  franchiseeId: string,
+  periodStart: string,
+  periodEnd: string
+): Promise<number> {
+  const sessions = await database
+    .select({ id: reconciliationSession.id })
+    .from(reconciliationSession)
+    .innerJoin(
+      reconciliationComparison,
+      eq(reconciliationComparison.sessionId, reconciliationSession.id)
+    )
+    .where(
+      and(
+        isNull(reconciliationSession.archivedAt),
+        isNull(reconciliationSession.staleAt),
+        eq(reconciliationComparison.franchiseeId, franchiseeId),
+        lte(reconciliationSession.periodStartDate, periodEnd),
+        gte(reconciliationSession.periodEndDate, periodStart)
+      )
+    );
+
+  const ids = [...new Set(sessions.map((s) => s.id))];
+  if (ids.length === 0) return 0;
+
+  await database
+    .update(reconciliationSession)
+    .set({ staleAt: new Date(), updatedAt: new Date() })
+    .where(inArray(reconciliationSession.id, ids));
+  return ids.length;
+}
+
+/**
  * Get session by ID with details
  */
 export async function getSessionById(
@@ -728,6 +861,7 @@ export async function getSessionById(
       runNumber: reconciliationSession.runNumber,
       parentSessionId: reconciliationSession.parentSessionId,
       archivedAt: reconciliationSession.archivedAt,
+      staleAt: reconciliationSession.staleAt,
       createdAt: reconciliationSession.createdAt,
       updatedAt: reconciliationSession.updatedAt,
       createdBy: reconciliationSession.createdBy,
@@ -1558,6 +1692,7 @@ export async function getAllSessions(filters?: {
       runNumber: reconciliationSession.runNumber,
       parentSessionId: reconciliationSession.parentSessionId,
       archivedAt: reconciliationSession.archivedAt,
+      staleAt: reconciliationSession.staleAt,
       createdAt: reconciliationSession.createdAt,
       updatedAt: reconciliationSession.updatedAt,
       createdBy: reconciliationSession.createdBy,
