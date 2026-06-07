@@ -8,8 +8,8 @@ import { getSupplierById } from "@/data-access/suppliers";
 import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
-import type { SupplierFileMapping, SettlementPeriodType } from "@/db/schema";
-import type { MatcherConfig, FranchiseeMatchResult } from "@/lib/franchisee-matcher";
+import type { SupplierFileMapping } from "@/db/schema";
+import type { MatcherConfig } from "@/lib/franchisee-matcher";
 import { filterFileLevelAnomalies } from "@/types/file-anomalies";
 import {
   createFileProcessingError,
@@ -30,9 +30,6 @@ import {
 import { createAuditContext } from "@/data-access/auditLog";
 import { uploadDocument, generateEntityFileName } from "@/lib/storage";
 import { formatDateAsLocal } from "@/lib/date-utils";
-import { calculateBatchCommissions } from "@/data-access/commissions";
-import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
-import { getPeriodsForFrequency } from "@/lib/settlement-periods";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 
 interface RouteContext {
@@ -486,90 +483,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }));
     }
 
-    // Auto-create commissions for matched franchisees
-    let commissionsCreated: {
-      success: boolean;
-      totalCreated: number;
-      totalFailed: number;
-    } | undefined;
-
-    if (matchSummary && matchSummary.matched > 0) {
-      try {
-        // Get or create settlement period based on supplier's settlement frequency
-        const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
-        const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
-        const periods = getPeriodsForFrequency(frequency, new Date(), 1, fiscalYearStartMonth);
-        const currentPeriod = periods[0];
-
-        if (currentPeriod) {
-          const periodResult = await getOrCreateSettlementPeriodByPeriodKey(
-            currentPeriod.key,
-            user.id
-          );
-
-          if (periodResult) {
-            // Build transactions list from matched data (only confirmed matches, not review-needed)
-            // Type assertion needed because matchedData can be augmented with matchResult
-            type MatchedDataItem = typeof matchedData[number] & { matchResult?: FranchiseeMatchResult };
-            const transactionsToSave = (matchedData as MatchedDataItem[])
-              .filter(item => {
-                const matchResult = item.matchResult;
-                return matchResult?.matchedFranchisee && !matchResult.requiresReview;
-              })
-              .map(item => {
-                const matchResult = item.matchResult!;
-                return {
-                  franchiseeId: matchResult.matchedFranchisee!.id,
-                  grossAmount: item.grossAmount,
-                  netAmount: item.netAmount,
-                  vatAdjusted: supplier.vatIncluded ?? false,
-                  preCalculatedCommission: item.preCalculatedCommission,
-                };
-              });
-
-            if (transactionsToSave.length > 0) {
-              const auditContext = createAuditContext(
-                { user: { id: user.id, name: user.name, email: user.email } },
-                request
-              );
-
-              const commissionsResult = await calculateBatchCommissions(
-                {
-                  supplierId,
-                  periodStartDate: formatDateAsLocal(currentPeriod.startDate),
-                  periodEndDate: formatDateAsLocal(currentPeriod.endDate),
-                  settlementPeriodId: periodResult.settlementPeriod.id,
-                  transactions: transactionsToSave,
-                  createdBy: user.id,
-                },
-                auditContext
-              );
-
-              commissionsCreated = {
-                success: commissionsResult.success,
-                totalCreated: commissionsResult.totalCreated,
-                totalFailed: commissionsResult.totalFailed,
-              };
-
-              // Add warning if some commissions failed
-              if (commissionsResult.totalFailed > 0) {
-                result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
-                  message: `נוצרו ${commissionsResult.totalCreated} עמלות, ${commissionsResult.totalFailed} נכשלו`,
-                  details: `נוצרו ${commissionsResult.totalCreated} עמלות, ${commissionsResult.totalFailed} נכשלו`,
-                }));
-              }
-            }
-          }
-        }
-      } catch (commissionError) {
-        console.error("Failed to auto-create commissions:", commissionError);
-        const errorDetail = commissionError instanceof Error ? commissionError.message : String(commissionError);
-        result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
-          message: 'הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה',
-          details: `הקובץ עובד בהצלחה אך יצירת העמלות האוטומטית נכשלה: ${errorDetail}`,
-        }));
-      }
-    }
+    // NOTE: This endpoint is a READ-ONLY PREVIEW. It does NOT create commissions.
+    // Commissions are created only when the admin saves the file via
+    // POST /api/supplier-files → syncCommissionsFromUpload, which links them to
+    // the persisted supplier_file_upload (source_file_id). Previously this
+    // endpoint auto-created commissions here without a sourceFileId; if the admin
+    // never completed the save (e.g. a file flagged with blocking anomalies),
+    // those commissions were orphaned — present in totals but invisible in the
+    // supplier-files report (which reads supplier_file_upload). See לאומי קארד
+    // 2026-06-07.
 
     // Return processing results
     return NextResponse.json({
@@ -615,8 +537,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
       storedFileName,
       // Flag to indicate if storage upload failed (processing succeeded but file not saved)
       storageUploadFailed,
-      // Auto-created commissions info
-      commissionsCreated,
     });
   } catch (error) {
     console.error("Error processing supplier file:", error);
