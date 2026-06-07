@@ -24,6 +24,7 @@ import {
   useRejectSessionFile,
   useBackToProcessing,
   useRefreshComparison,
+  useRebuildSession,
   reconciliationV2Keys,
 } from "@/queries/reconciliation-v2";
 
@@ -123,6 +124,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   const rejectFile = useRejectSessionFile();
   const backToProcessing = useBackToProcessing();
   const refreshComparison = useRefreshComparison(sessionId || "");
+  const rebuildSession = useRebuildSession();
 
   // Get supplier data with notes
   const { data: suppliers } = useReconciliationSuppliersWithFiles();
@@ -199,6 +201,20 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
     }
   };
 
+  const handleRebuildSession = async () => {
+    if (!sessionId) return;
+    try {
+      const result = await rebuildSession.mutateAsync(sessionId);
+      // The rebuild archives this run and creates a fresh one — switch to it.
+      setSessionId(result.session.id);
+      toast.success("הסשן נבנה מחדש מהנתונים העדכניים");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "שגיאה בבניית הסשן מחדש";
+      toast.error(message);
+    }
+  };
+
   const handleBackToProcessing = async () => {
     if (!sessionId) return;
     try {
@@ -255,6 +271,7 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
   const { session, comparisons } = sessionQuery.data;
   const canApproveFile = session.needsReviewCount === 0 && session.toReviewQueueCount === 0;
   const isArchived = !!session.archivedAt;
+  const isStale = !isArchived && !!session.staleAt;
 
   return (
     <div className="container max-w-6xl py-8 space-y-6">
@@ -360,6 +377,30 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
             סשן זה הוא Run #{session.runNumber} ונארכב — לתצוגת היסטוריה בלבד.
             הפעולות מושבתות.
           </span>
+        </div>
+      )}
+
+      {/* Stale banner — a newer supplier file or BKMV upload landed for this
+          period after the session was built, so its amounts are out of date. */}
+      {isStale && (
+        <div className="flex items-center justify-between gap-3 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900 rounded-lg text-sm">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-orange-600" />
+            <span className="text-orange-900 dark:text-orange-100">
+              הסשן אינו מעודכן — התקבל קובץ ספק או דוח זכיין (מבנה אחיד) חדש לתקופה זו.
+              יש לבנות מחדש כדי לראות את הנתונים העדכניים.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            onClick={handleRebuildSession}
+            disabled={rebuildSession.isPending}
+          >
+            {rebuildSession.isPending && (
+              <Loader2 className="h-4 w-4 me-2 animate-spin" />
+            )}
+            בנה מחדש
+          </Button>
         </div>
       )}
 

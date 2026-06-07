@@ -16,6 +16,7 @@ import { getSupplierById } from "@/data-access/suppliers";
 import { snapPeriodToFrequency, derivePeriodKey } from "@/lib/settlement-periods";
 import type { SupplierFileProcessingResult, SettlementPeriodType } from "@/db/schema";
 import { markSupplierSettlementRequestSubmitted } from "@/data-access/fileRequests";
+import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
 
 /**
  * GET /api/supplier-files - Get list of supplier file uploads
@@ -332,6 +333,15 @@ export async function POST(request: NextRequest) {
       commissionsSync = await syncCommissionsFromUpload(newFile.id, user.id);
     } catch (syncError) {
       console.error("Failed to sync commissions after upload save:", syncError);
+    }
+
+    // A newer supplier file for this period makes any existing reconciliation
+    // session's stored amounts out of date — flag them so the UI prompts a
+    // rebuild instead of silently showing stale numbers.
+    try {
+      await markSupplierSessionsStale(supplierId, effectivePeriodStart, effectivePeriodEnd);
+    } catch (staleErr) {
+      console.error("Failed to flag reconciliation sessions stale:", staleErr);
     }
 
     // Close any open settlement_report file_request matching this supplier+period.

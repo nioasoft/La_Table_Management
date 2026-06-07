@@ -601,6 +601,39 @@ export function useMatchAllSession() {
 }
 
 /**
+ * Rebuild a stale session from current data (latest supplier file + latest
+ * BKMV amounts). Archives the source and returns the fresh run's session.
+ */
+export function useRebuildSession() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (
+      sessionId: string
+    ): Promise<{ success: boolean; session: { id: string } }> => {
+      const res = await fetchWithTimeout(
+        `/api/reconciliation-v2/sessions/${sessionId}/rebuild`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to rebuild session");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reconciliationV2Keys.sessions() });
+      queryClient.invalidateQueries({ queryKey: reconciliationV2Keys.suppliers() });
+      queryClient.invalidateQueries({
+        predicate: (query) =>
+          query.queryKey[0] === "reconciliation-v2" &&
+          query.queryKey[1] === "periods",
+      });
+    },
+  });
+}
+
+/**
  * Send a free-form email to the supplier from inside the reconciliation page.
  * Logged in `email_logs` with entityType="reconciliation_session".
  */
