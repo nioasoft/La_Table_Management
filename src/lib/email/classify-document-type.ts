@@ -91,6 +91,11 @@ export const PROMOTIONAL_SUBJECT_PATTERNS: readonly RegExp[] = [
   /verify\s*your\s*email/i,
   /ניוזז/, // Wolt newsletter ("מאי ניוזזז! הרבה דברים קורים ב-Wolt")
   /הצטרפו\s*לקמפיין/, // Wolt campaign invites ("הצטרפו לקמפיין המונדיאל ...")
+  // Wolt campaign-terms-update announcement (no data to extract).
+  // Added 2026-06-07 — "ביקשתם, קיבלתם! עדכנו את תנאי הקמפיין" slipped past
+  // the skip list and tripped the daily failure digest. Pinned to the
+  // distinctive campaign-terms phrase to avoid matching real report subjects.
+  /עדכנו\s*את\s*תנאי\s*הקמפיין/,
   // Cibus/Pluxee account notification (no data).
   /שינוי\s*סיסמה/,
 ];

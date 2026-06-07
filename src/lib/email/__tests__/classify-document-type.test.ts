@@ -114,6 +114,7 @@ describe("isPromotionalSubject", () => {
     ["Wolt Benefits עכשיו זמין", "Wolt Benefits variant"],
     ["הסכם התקשרות סיבוס", "Cibus contract"],
     ["הסכם  התקשרות  פלאקסי", "contract with extra spaces"],
+    ["ביקשתם, קיבלתם! עדכנו את תנאי הקמפיין", "Wolt campaign-terms update"],
   ])("flags %j as promotional (%s)", (subject) => {
     expect(isPromotionalSubject(subject)).toBe(true);
   });
