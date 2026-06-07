@@ -63,11 +63,12 @@ describe("parseLeumiCardFile", () => {
     expect(kkCarmiel?.preCalculatedCommission).toBe(8700);
   });
 
-  it("emits a DATES_NOT_EXTRACTED anomaly so the admin verifies the period", () => {
+  it("does NOT emit a DATES_NOT_EXTRACTED anomaly (annual file, period chosen by admin)", () => {
+    // The Leumi Card report is an annual aggregate with no per-row dates, so the
+    // 'verify the period' prompt was confusing and was intentionally dropped
+    // (commit 29cfa46). The admin selects the annual period at upload time.
     const result = parseLeumiCardFile(buffer);
-    expect(result.anomalies?.some((a) => a.code === "DATES_NOT_EXTRACTED")).toBe(
-      true
-    );
+    expect(result.anomalies?.some((a) => a.code === "DATES_NOT_EXTRACTED")).toBeFalsy();
   });
 
   it("drops the ₪0-rounding pivot noise row (business id 514631043 → 0.0032)", () => {
