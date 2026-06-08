@@ -1088,29 +1088,31 @@ export default function FileDetailsPage() {
                 ) : null}
               </TableCell>
               <TableCell className="py-1.5">
-                {!isReviewed && (
-                  <Button
-                    variant={row.isSavedRevenue ? "outline" : "default"}
-                    size="sm"
-                    className="h-6 text-xs px-2"
-                    disabled={isToggling || revenueToggleMutation.isPending}
-                    onClick={() => handleToggleRevenue(row.accountCode)}
-                  >
-                    {isToggling ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : row.isSavedRevenue ? (
-                      <>
-                        <X className="h-3 w-3 ms-1" />
-                        הסר
-                      </>
-                    ) : (
-                      <>
-                        <Plus className="h-3 w-3 ms-1" />
-                        סמן כהכנסה
-                      </>
-                    )}
-                  </Button>
-                )}
+                {/* Revenue classification stays editable even after the file is
+                    approved — fixing a missed/extra revenue account is a reporting
+                    correction, not a change to the supplier-match approval, and the
+                    PATCH handler is status-agnostic (preserves processingStatus). */}
+                <Button
+                  variant={row.isSavedRevenue ? "outline" : "default"}
+                  size="sm"
+                  className="h-6 text-xs px-2"
+                  disabled={isToggling || revenueToggleMutation.isPending}
+                  onClick={() => handleToggleRevenue(row.accountCode)}
+                >
+                  {isToggling ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : row.isSavedRevenue ? (
+                    <>
+                      <X className="h-3 w-3 ms-1" />
+                      הסר
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3 w-3 ms-1" />
+                      סמן כהכנסה
+                    </>
+                  )}
+                </Button>
               </TableCell>
             </TableRow>
           );
@@ -1135,6 +1137,11 @@ export default function FileDetailsPage() {
               </CardTitle>
               <CardDescription className="text-xs">
                 לחץ &quot;סמן כהכנסה&quot; כדי לשמור חשבון כהכנסות לזכיין. השינוי נשמר מיד.
+                {isReviewed && (
+                  <span className="block mt-0.5 text-amber-600">
+                    ניתן לעדכן סיווג הכנסות גם בקובץ מאושר — שאר ההתאמות נעולות לאחר אישור.
+                  </span>
+                )}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-4 pb-3 pt-0">
