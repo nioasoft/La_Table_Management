@@ -176,6 +176,8 @@ export default function FileDetailsPage() {
   const [editingMatch, setEditingMatch] = useState<SupplierMatch | null>(null);
   const [selectedNewSupplier, setSelectedNewSupplier] = useState<string>("");
   const [addAsAlias, setAddAsAlias] = useState(true);
+  // Unmatch (remove an existing match) confirmation state
+  const [unmatchingMatch, setUnmatchingMatch] = useState<SupplierMatch | null>(null);
   // Blacklist state
   const [blacklistingMatch, setBlacklistingMatch] = useState<SupplierMatch | null>(null);
   const [blacklistNotes, setBlacklistNotes] = useState("");
@@ -429,6 +431,31 @@ export default function FileDetailsPage() {
     },
   });
 
+  // Unmatch mutation — removes an existing match, reverting the row to "לא מותאם"
+  const unmatchMutation = useMutation({
+    mutationFn: async ({ bkmvName }: { bkmvName: string }) => {
+      const response = await fetchWithTimeout(`/api/bkmvdata/review/${fileId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bkmvName, unmatch: true }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "ביטול ההתאמה נכשל" }));
+        throw new Error(err.error || "ביטול ההתאמה נכשל");
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
+      setUnmatchingMatch(null);
+      setEditingMatch(null);
+      toast.success(data?.message || "ההתאמה בוטלה");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "ביטול ההתאמה נכשל");
+    },
+  });
+
   // Blacklist mutation
   const blacklistMutation = useMutation({
     mutationFn: async ({ name, notes }: { name: string; notes?: string }) => {
@@ -520,6 +547,11 @@ export default function FileDetailsPage() {
       addAlias: addAsAlias,
     });
   }, [editingMatch, selectedNewSupplier, addAsAlias, matchMutation]);
+
+  const handleUnmatch = useCallback(() => {
+    if (!unmatchingMatch) return;
+    unmatchMutation.mutate({ bkmvName: unmatchingMatch.bkmvName });
+  }, [unmatchingMatch, unmatchMutation]);
 
   const handleBlacklist = useCallback(() => {
     if (!blacklistingMatch) return;
@@ -1278,6 +1310,19 @@ export default function FileDetailsPage() {
                               <Edit className="h-3.5 w-3.5 ms-1" />
                               עריכה
                             </Button>
+                            {/* Remove an existing match — reverts the row to "לא מותאם" */}
+                            {match.matchedSupplierId && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 px-2 text-xs text-red-600 hover:text-red-800"
+                                onClick={() => setUnmatchingMatch(match)}
+                                title="בטל את ההתאמה (יחזור ללא מותאם)"
+                              >
+                                <XCircle className="h-3.5 w-3.5 ms-1" />
+                                בטל התאמה
+                              </Button>
+                            )}
                             {/* Show blacklist + small supplier buttons for unmatched items */}
                             {!match.matchedSupplierId && match.matchType !== "blacklisted" && match.matchType !== "small_supplier" && (
                               <>
@@ -1452,6 +1497,37 @@ export default function FileDetailsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Unmatch Confirmation Dialog */}
+      <AlertDialog open={!!unmatchingMatch} onOpenChange={(open) => !open && setUnmatchingMatch(null)}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>ביטול התאמה</AlertDialogTitle>
+            <AlertDialogDescription>
+              לבטל את ההתאמה של &quot;{unmatchingMatch?.bkmvName}&quot; לספק{" "}
+              &quot;{unmatchingMatch?.matchedSupplierName}&quot;?
+              <br />
+              השורה תחזור למצב &quot;לא מותאם&quot;, וניתן יהיה לסמן אותה כ&quot;לא מתאים&quot; או להתאים לספק אחר.
+              הכינוי שמור לספק לא יושפע.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ביטול</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnmatch}
+              disabled={unmatchMutation.isPending}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {unmatchMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin ms-2" />
+              ) : (
+                <XCircle className="h-4 w-4 ms-2" />
+              )}
+              בטל התאמה
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Blacklist Dialog */}
       <Dialog open={!!blacklistingMatch} onOpenChange={(open) => !open && setBlacklistingMatch(null)}>
