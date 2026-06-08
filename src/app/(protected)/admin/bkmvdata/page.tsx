@@ -2532,11 +2532,11 @@ export default function BkmvDataPage() {
                   </Select>
                 </div>
                 <div className="space-y-2 flex-1 min-w-[220px]">
-                  <Label htmlFor="historySearch">חיפוש שם קובץ</Label>
+                  <Label htmlFor="historySearch">חיפוש לפי זכיין</Label>
                   <Input
                     id="historySearch"
                     type="search"
-                    placeholder="חיפוש לפי שם קובץ..."
+                    placeholder="חיפוש לפי שם זכיין או קוד..."
                     value={historySearchQuery}
                     onChange={(e) => setHistorySearchQuery(e.target.value)}
                   />

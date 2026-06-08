@@ -1172,15 +1172,24 @@ export async function getBkmvUploadHistory(options: {
 
   const searchTerm = options.search?.trim();
   if (searchTerm) {
-    // Case-insensitive substring match on file name (escape LIKE meta-chars)
+    // Case-insensitive substring match on the FRANCHISEE name/code — BKMV files
+    // are all named "BKMVDATA.txt", so file-name search is useless. Searching by
+    // franchisee is the only meaningful free-text search here.
     const pattern = `%${searchTerm.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    conditions.push(ilike(uploadedFile.originalFileName, pattern));
+    conditions.push(
+      or(
+        ilike(franchisee.name, pattern),
+        ilike(franchisee.code, pattern)
+      )!
+    );
   }
 
-  // Get total count
+  // Get total count.
+  // Join franchisee so the search condition (above) can reference its columns.
   const countResult = await database
     .select({ count: sql<number>`count(*)` })
     .from(uploadedFile)
+    .leftJoin(franchisee, eq(uploadedFile.franchiseeId, franchisee.id))
     .where(and(...conditions));
 
   const total = Number(countResult[0]?.count || 0);
