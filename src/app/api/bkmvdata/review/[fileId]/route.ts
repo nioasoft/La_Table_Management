@@ -142,7 +142,8 @@ export async function GET(
  *
  * Body options:
  * 1. Supplier match update: { bkmvName, newSupplierId, addAsAlias }
- * 2. Revenue confirmation: { revenueAccountCode, saveRevenueToFranchisee }
+ * 2. Remove an existing match: { bkmvName, unmatch: true }  → row reverts to no_match
+ * 3. Revenue confirmation: { revenueAccountCode, saveRevenueToFranchisee }
  */
 export async function PATCH(
   request: NextRequest,
@@ -165,12 +166,19 @@ export async function PATCH(
       return handleSmallSupplierMarking(fileId, body.bkmvName);
     }
 
-    // Otherwise, handle supplier match update
-    const { bkmvName, newSupplierId, addAsAlias } = body;
+    // Otherwise, handle supplier match update (or removal)
+    const { bkmvName, newSupplierId, addAsAlias, unmatch } = body;
 
-    if (!bkmvName || !newSupplierId) {
+    if (!bkmvName) {
       return NextResponse.json(
-        { error: "bkmvName and newSupplierId are required" },
+        { error: "bkmvName is required" },
+        { status: 400 }
+      );
+    }
+    // A match update needs a target supplier; an unmatch request does not.
+    if (!unmatch && !newSupplierId) {
+      return NextResponse.json(
+        { error: "newSupplierId is required (or pass unmatch: true to remove the match)" },
         { status: 400 }
       );
     }
@@ -192,22 +200,34 @@ export async function PATCH(
       );
     }
 
-    // Get the new supplier
-    const newSupplier = await getSupplierById(newSupplierId);
-    if (!newSupplier) {
+    // Get the new supplier (only when (re)matching — not needed to unmatch)
+    const newSupplier = unmatch ? null : await getSupplierById(newSupplierId);
+    if (!unmatch && !newSupplier) {
       return NextResponse.json(
         { error: "Supplier not found" },
         { status: 404 }
       );
     }
 
-    // Update the match in processing result
+    // Update the match in processing result.
+    // unmatch → revert the row to no_match (clears the link for THIS file only;
+    // supplier bkmvAliases are intentionally left untouched).
     const updatedMatches = processingResult.supplierMatches.map((match) => {
       if (match.bkmvName === bkmvName) {
+        if (unmatch) {
+          return {
+            ...match,
+            matchedSupplierId: null,
+            matchedSupplierName: null,
+            confidence: 0,
+            matchType: "no_match",
+            requiresReview: true,
+          };
+        }
         return {
           ...match,
-          matchedSupplierId: newSupplier.id,
-          matchedSupplierName: newSupplier.name,
+          matchedSupplierId: newSupplier!.id,
+          matchedSupplierName: newSupplier!.name,
           confidence: 1, // Manual match = 100%
           matchType: "manual",
           requiresReview: false,
@@ -278,7 +298,7 @@ export async function PATCH(
     // Optionally add as alias to the supplier.
     // Isolated in try/catch so a failure here doesn't roll back the match update above.
     let aliasUpdated = false;
-    if (addAsAlias) {
+    if (addAsAlias && newSupplier) {
       try {
         const existingAliases = newSupplier.bkmvAliases || [];
         if (!existingAliases.includes(bkmvName)) {
@@ -295,11 +315,13 @@ export async function PATCH(
     return NextResponse.json({
       success: true,
       aliasUpdated,
-      message: addAsAlias && aliasUpdated
-        ? `התאמה עודכנה והכינוי "${bkmvName}" נוסף לספק ${newSupplier.name}`
-        : addAsAlias && !aliasUpdated
-          ? `התאמה עודכנה לספק ${newSupplier.name} (הוספת כינוי נכשלה)`
-          : `התאמה עודכנה לספק ${newSupplier.name}`,
+      message: unmatch
+        ? `ההתאמה של "${bkmvName}" בוטלה`
+        : addAsAlias && aliasUpdated
+          ? `התאמה עודכנה והכינוי "${bkmvName}" נוסף לספק ${newSupplier!.name}`
+          : addAsAlias && !aliasUpdated
+            ? `התאמה עודכנה לספק ${newSupplier!.name} (הוספת כינוי נכשלה)`
+            : `התאמה עודכנה לספק ${newSupplier!.name}`,
       updatedStats: updatedResult.matchStats,
     });
   } catch (error) {
