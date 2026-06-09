@@ -6,10 +6,13 @@
  * Deleting the supplier's bkmvAliases does NOT clear it — the review table
  * reads the file's stored match. There was no UI to "unmatch" (now added).
  *
- * This mirrors the new PATCH { unmatch:true } handler, scoped to one file:
- * reverts the supplierMatches row to no_match and nulls the supplierId in
- * monthlyBreakdown. It does NOT re-archive (the year table is already clean
- * for this supplier) and does NOT touch supplier aliases.
+ * This mirrors the PATCH { unmatch:true } handler, scoped to one file:
+ * reverts the supplierMatches row to no_match, nulls the supplierId in
+ * monthlyBreakdown, AND re-archives to the year table. (Earlier this skipped
+ * re-archiving on the false assumption the year table was already clean — it
+ * wasn't: franchisee_bkmv_year derives supplier_matches from monthly_breakdown,
+ * so a stale supplierId there leaves a phantom in the matches report.)
+ * Does not touch supplier aliases.
  *
  * Usage:
  *   npx tsx scripts/unmatch-bkmv-name.ts --file-id <uuid> --name "<bkmvName>" [--dry-run]
@@ -17,6 +20,7 @@
 
 import "dotenv/config";
 import { getUploadedFileById, updateUploadedFileProcessingStatus } from "../src/data-access/uploadLinks";
+import { upsertFromFullBreakdown } from "../src/data-access/franchisee-bkmv-year";
 import type { BkmvProcessingResult } from "../src/db/schema";
 
 function arg(flag: string): string | undefined {
@@ -100,6 +104,17 @@ async function main() {
     file.processingStatus as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected",
     updatedResult
   );
+
+  // Re-archive so the year table (and the matches report it feeds) drops the match.
+  if (file.franchiseeId && updatedMonthly) {
+    await upsertFromFullBreakdown(
+      file.franchiseeId,
+      updatedMonthly,
+      updatedResult.supplierMatches,
+      fileId
+    );
+    console.log("   ↳ re-archived to franchisee_bkmv_year");
+  }
 
   console.log(`✅ Cleared match for "${name}" on file ${fileId}. New matchStats:`, updatedResult.matchStats);
 }

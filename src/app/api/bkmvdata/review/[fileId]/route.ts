@@ -254,7 +254,14 @@ export async function PATCH(
       for (const [month, suppliers] of Object.entries(updatedMonthlyBreakdown)) {
         rebuilt[month] = suppliers.map(entry => ({
           ...entry,
-          supplierId: supplierIdMap.get(entry.supplierName) ?? entry.supplierId,
+          // When this name is in the current matches, use its mapped id — even if it
+          // resolved to null via an unmatch. A plain `?? entry.supplierId` would keep
+          // the OLD supplier id after an unmatch, leaving a phantom in the year archive
+          // (the report reads monthlyBreakdown by supplierId). Only fall back to the
+          // entry's existing id for names not present in the matches at all.
+          supplierId: supplierIdMap.has(entry.supplierName)
+            ? supplierIdMap.get(entry.supplierName) ?? null
+            : entry.supplierId,
         }));
       }
       updatedMonthlyBreakdown = rebuilt;
