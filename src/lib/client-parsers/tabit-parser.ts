@@ -1,11 +1,27 @@
 /**
  * Tabit POS pivot table parser
  *
- * Parses Excel exports from Tabit POS system. The file is a pivot table with:
- * - Row 0: Payment method names as column headers
- * - Row 1: Sub-headers ("שנה וחודש", "סניף", "סה"כ תקבולים" repeated)
+ * Parses Excel exports from Tabit POS system. The file is a pivot table.
+ * TWO layouts exist, depending on whether the export was grouped by period:
+ *
+ * Layout A (with "שנה וחודש" grouping):
+ * - Row 0: Payment method names as column headers (from col C)
+ * - Row 1: Sub-headers: "שנה וחודש" (col A), "סניף" (col B), "סה"כ תקבולים"…
  * - Data rows: period string, branch name, amounts per payment method
- * - Total/summary rows (col B = "Total") — skipped
+ *
+ * Layout B (no period grouping — e.g. Reut's Mina Tomai export 2026-06-11):
+ * - Row 0: Payment method names as column headers (from col B)
+ * - Row 1: Sub-headers: "סניף" (col A), "סה"כ תקבולים"…
+ * - Data rows: branch name, amounts. NO period in the file — the caller's
+ *   input period is used (processTabitUpload fallback).
+ *
+ * The branch column is therefore LOCATED by finding "סניף" in the
+ * sub-header row, not assumed to be col B. Before this fix, Layout B files
+ * were read with col B (the first payment amount) as the "branch name" —
+ * "סניפים לא מזוהים: 118, 1065, 2076, 148" were GIFT CARD amounts.
+ *
+ * Common to both layouts:
+ * - Total/summary rows (branch col = "Total") — skipped
  * - Filter metadata rows at the end — skipped
  */
 
@@ -108,15 +124,42 @@ export async function parseTabitFile(
       return { success: false, data: null, errors, warnings };
     }
 
-    // --- Row 0: Payment method column headers ---
     const headerRow = rows[0] as (string | number)[];
 
-    // Columns A (index 0) and B (index 1) are metadata columns
-    // ("אמצעי תשלום" and empty/"") — payment methods start at index 2
+    // --- Row 1: Sub-headers → LOCATE the branch ("סניף") column ---
+    // Layout A: ["שנה וחודש", "סניף", "סה"כ תקבולים", ...] → branchCol = 1
+    // Layout B: ["סניף", "סה"כ תקבולים", ...]              → branchCol = 0
+    const subHeaderRow = rows[1] as (string | number)[];
+    let branchCol = subHeaderRow.findIndex((c) =>
+      String(c ?? "").includes("סניף")
+    );
+    if (branchCol < 0) {
+      branchCol = 1; // legacy assumption (Layout A)
+      warnings.push(
+        `לא נמצאה עמודת "סניף" בשורת הכותרות — מניח פריסה ישנה (עמודה B)`
+      );
+    }
+
+    // Period column sits immediately LEFT of the branch column when the
+    // export was grouped by period ("שנה וחודש"). Layout B has none.
+    const periodColCandidate = branchCol - 1;
+    const periodCol =
+      periodColCandidate >= 0 &&
+      (String(subHeaderRow[periodColCandidate] ?? "").includes("שנה") ||
+        String(subHeaderRow[periodColCandidate] ?? "").includes("חודש"))
+        ? periodColCandidate
+        : null;
+    if (periodCol === null) {
+      warnings.push(
+        'הקובץ ללא עמודת "שנה וחודש" — התקופה תילקח מבחירת המשתמש'
+      );
+    }
+
+    // --- Row 0: Payment method column headers (start after branch col) ---
     const paymentMethods: string[] = [];
     const paymentMethodIndices: number[] = [];
 
-    for (let col = 2; col < headerRow.length; col++) {
+    for (let col = branchCol + 1; col < headerRow.length; col++) {
       const header = String(headerRow[col] ?? "").trim();
       if (!header) continue;
 
@@ -132,53 +175,42 @@ export async function parseTabitFile(
       return { success: false, data: null, errors, warnings };
     }
 
-    // --- Row 1: Sub-headers (validate structure) ---
-    const subHeaderRow = rows[1] as (string | number)[];
-    const col0Sub = String(subHeaderRow[0] ?? "").trim();
-    const col1Sub = String(subHeaderRow[1] ?? "").trim();
-
-    if (!col0Sub.includes("שנה") && !col0Sub.includes("חודש")) {
-      warnings.push(
-        `עמודה A בשורה 2 צפויה להיות "שנה וחודש" אבל נמצא: "${col0Sub}"`
-      );
-    }
-    if (!col1Sub.includes("סניף")) {
-      warnings.push(
-        `עמודה B בשורה 2 צפויה להיות "סניף" אבל נמצא: "${col1Sub}"`
-      );
-    }
-
     // --- Data rows (row 2+) ---
     let period: { month: number; year: number } | null = null;
     const branches: TabitBranchRow[] = [];
 
     for (let rowIdx = 2; rowIdx < rows.length; rowIdx++) {
       const row = rows[rowIdx] as (string | number)[];
-      if (!row || row.length < 2) continue;
+      if (!row || row.length < 1) continue;
 
       const colA = String(row[0] ?? "").trim();
-      const colB = String(row[1] ?? "").trim();
-
-      // Skip Total/summary rows
-      if (
-        colB.toLowerCase() === "total" ||
-        colB === "" ||
-        colA.toLowerCase() === "total"
-      ) {
-        continue;
-      }
+      const branchCell = String(row[branchCol] ?? "").trim();
 
       // Skip filter metadata rows
       if (colA.includes("מסננים שהוחלו") || colA.includes("fromDate")) {
         continue;
       }
 
-      // Extract period from column A (first data row sets it)
-      if (!period) {
-        period = parseHebrewPeriod(colA);
-        if (!period) {
-          warnings.push(`לא ניתן לחלץ תקופה מ: "${colA}"`);
+      // Extract period BEFORE the Total-row skip: in Layout A the period
+      // string sits on the brand-level Total row ("2026 מאי" | "Total" | …)
+      // and only there.
+      if (periodCol !== null && !period) {
+        const periodCell = String(row[periodCol] ?? "").trim();
+        if (periodCell) {
+          period = parseHebrewPeriod(periodCell);
+          if (!period) {
+            warnings.push(`לא ניתן לחלץ תקופה מ: "${periodCell}"`);
+          }
         }
+      }
+
+      // Skip Total/summary rows
+      if (
+        branchCell === "" ||
+        branchCell.toLowerCase() === "total" ||
+        colA.toLowerCase() === "total"
+      ) {
+        continue;
       }
 
       // Build amounts record
@@ -214,7 +246,7 @@ export async function parseTabitFile(
       }
 
       branches.push({
-        branchName: colB,
+        branchName: branchCell,
         amounts,
         total,
       });
