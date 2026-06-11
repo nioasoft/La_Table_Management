@@ -247,10 +247,47 @@ export async function processClientDocument(
         id: clientDocument.id,
         gmailMessageId: clientDocument.gmailMessageId,
         originalFileName: clientDocument.originalFileName,
+        invoiceNumber: clientDocument.invoiceNumber,
+        totalAmount: clientDocument.totalAmount,
       })
       .from(clientDocument)
       .where(and(...existingConditions))
       .limit(1);
+
+    const resolvedInvoiceNumber = resolveInvoiceNumber(
+      processingResult.data?.invoiceNumber,
+      fileName,
+      processingResult.data?.lineItems
+    );
+
+    // Cross-channel duplicate: the SAME invoice can arrive via two routes
+    // (ezcount "[העתק]" copy on the Mishloha channel AND the platform's own
+    // relay, e.g. "EasyCount Invoice for HAAT"). When the occupying document
+    // carries the same invoice number and the same total, this is not a
+    // conflict — skip silently like a re-delivery.
+    if (
+      existingDoc.length > 0 &&
+      source === "gmail_fetch" &&
+      existingDoc[0].gmailMessageId !== (gmailMessageId ?? null) &&
+      resolvedInvoiceNumber !== null &&
+      existingDoc[0].invoiceNumber === resolvedInvoiceNumber &&
+      existingDoc[0].totalAmount !== null &&
+      processingResult.data?.totalAmount !== undefined &&
+      Math.abs(
+        parseFloat(existingDoc[0].totalAmount) -
+          processingResult.data.totalAmount
+      ) < 0.01
+    ) {
+      console.log(
+        `[client-document-processor] cross-channel duplicate of invoice ${resolvedInvoiceNumber} (existing doc ${existingDoc[0].id}) — skipping`
+      );
+      return {
+        success: true,
+        document: null,
+        processingResult,
+        skippedDuplicate: true,
+      };
+    }
 
     // Overwrite guard: an unattended gmail_fetch must never silently
     // replace a document that came from a DIFFERENT email (or from a
@@ -312,11 +349,7 @@ export async function processClientDocument(
       commissionAmount: processingResult.data?.commissionAmount?.toString() ?? null,
       commissionRate: processingResult.data?.commissionRate?.toString() ?? null,
       netAmount: processingResult.data?.netAmount?.toString() ?? null,
-      invoiceNumber: resolveInvoiceNumber(
-        processingResult.data?.invoiceNumber,
-        fileName,
-        processingResult.data?.lineItems
-      ),
+      invoiceNumber: resolvedInvoiceNumber,
       allocationNumber: processingResult.data?.allocationNumber ?? null,
       gmailMessageId: gmailMessageId ?? null,
       createdBy: userId ?? null,
