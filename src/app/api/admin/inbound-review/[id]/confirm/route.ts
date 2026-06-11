@@ -179,6 +179,10 @@ export async function POST(
     // committed_client_document_id.
     gmailMessageId: queueRow.gmailMessageId ?? `manual-${queueRow.id}`,
     userId: user.id,
+    // Admin explicitly chose the target franchisee/type — replacing an
+    // existing document for the same slot is intentional here, unlike the
+    // unattended webhook path where the overwrite guard refuses it.
+    allowReplace: true,
   });
 
   if (!result.success || !result.document) {

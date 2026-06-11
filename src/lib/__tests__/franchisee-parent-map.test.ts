@@ -87,6 +87,37 @@ describe("findOperatingBrand", () => {
       expect(findOperatingBrand(PAT_VINI, haatGeneric)).toBeNull();
     });
 
+    // Regression 2026-06-11 (May 2026 incident): the recipient header of
+    // EVERY Mishloha invoice to this legal entity reads
+    // 'לכבוד: "פאט ויני חיפה(פט ויני עזריאלי בע"מ)"' — it contains the old
+    // blocking keyword "ויני חיפה" even on pure-Natanzon invoices, so the
+    // override never fired and Natanzon documents overwrote Pat Vini's.
+    // Blocking now keys on the Latin brand marker "VINNI" only.
+    it("does NOT block on the recipient header of a pure-Natanzon invoice (invoice 162041)", () => {
+      const pureNatanzon =
+        'לכבוד: "פאט ויני חיפה(פט ויני עזריאלי בע"מ)"\n' +
+        "נתנזון בורגר חיפה _ הזמנות אונליין אפליקציית משלוחה 1220.70";
+      expect(
+        findOperatingBrand(PAT_VINI, pureNatanzon)?.operatingFranchiseeName
+      ).toBe("נתנזון עזריאלי חיפה");
+    });
+
+    // Regression 2026-06-11: HAAT documents carry the brand in English only
+    // ("Natanzon Burger" on the business-8095 monthly summary). The Hebrew-
+    // only keyword missed them and the document routed to Pat Vini.
+    it("fires on the English brand marker (HAAT 'Natanzon Burger')", () => {
+      const haatRed =
+        'פט ויני עזריאלי בע"מ Natanzon Burger\nמספר העסק: 8095';
+      expect(
+        findOperatingBrand(PAT_VINI, haatRed)?.operatingFranchiseeName
+      ).toBe("נתנזון עזריאלי חיפה");
+    });
+
+    it("still blocks when the VINNI brand marker is present (business 8093 red report)", () => {
+      const haatVini = 'פט ויני עזריאלי בע"מ VINNI\nמספר העסק: 8093';
+      expect(findOperatingBrand(PAT_VINI, haatVini)).toBeNull();
+    });
+
     it("preserves legacy callers that pass no content text", () => {
       // Backward-compatible: when contentText is undefined/null, the gate
       // is skipped and the override fires as before. Used so the same

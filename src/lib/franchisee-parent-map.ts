@@ -25,9 +25,13 @@ export interface ParentBrandPair {
   /** Operating-brand franchisee.name for logging */
   operatingFranchiseeName: string;
   /**
-   * Content marker that MUST appear in line-item text / raw text for the
-   * override to fire. Required to prevent the rule from kidnapping
-   * documents that legitimately belong to the parent legal entity.
+   * Content markers — at least ONE must appear in line-item text / raw
+   * text for the override to fire. Required to prevent the rule from
+   * kidnapping documents that legitimately belong to the parent legal
+   * entity. Include both Hebrew and Latin spellings: HAAT documents carry
+   * the brand in English only ("Natanzon Burger"), Mishloha line items in
+   * Hebrew ("נתנזון בורגר חיפה") — the May 2026 incident slipped through
+   * because only the Hebrew form was checked.
    *
    * Example: an HAAT income invoice issued by "פאט ויני עזריאלי בע\"מ"
    * to "Haat Delivery" with only a single generic line item
@@ -35,7 +39,7 @@ export interface ParentBrandPair {
    * override should NOT fire — that document belongs to Pat Vini, not
    * Natanzon, and must fall through to normal fuzzy matching.
    */
-  requiredOperatingKeyword: string;
+  requiredOperatingKeywords: readonly string[];
   /**
    * Content markers that BLOCK the override even when the operating
    * keyword is present. Used for mixed invoices where two brands share
@@ -62,15 +66,28 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
     ],
     operatingFranchiseeId: "ab020323-fefe-4543-9a69-16d14dd54b99",
     operatingFranchiseeName: "נתנזון עזריאלי חיפה",
-    requiredOperatingKeyword: "נתנזון בורגר",
-    blockingContentKeywords: ["ויני חיפה", "VINNI חיפה", "VINNI ויני חיפה"],
+    requiredOperatingKeywords: ["נתנזון בורגר", "Natanzon Burger"],
+    // BLOCKING — only the Latin brand marker "VINNI". Earlier this list
+    // held "ויני חיפה", which silently killed the override on EVERY
+    // Mishloha invoice to this entity: the recipient header is
+    // 'לכבוד: "פאט ויני חיפה(פט ויני עזריאלי בע"מ)"' and contains
+    // "ויני חיפה" even on pure-Natanzon invoices (May 2026: invoice
+    // 162041 — all line items נתנזון בורגר — routed to Pat Vini and
+    // overwrote Vini's own 160782). "VINNI" appears only where the Vini
+    // brand actually operates: Mishloha Vini line items ("VINNI ויני
+    // חיפה _ הזמנות"), mixed invoices (10075), and HAAT red reports for
+    // business 8093 — never in the לכבוד recipient block.
+    blockingContentKeywords: ["VINNI"],
     rationale:
       'Mishlocha invoice 157159 (2026-04-30): legal entity Pat Vini Azrieli ' +
       'but every line item references נתנזון בורגר חיפה. Override fires ' +
-      'only when "נתנזון בורגר" appears in line items AND no "ויני חיפה" ' +
-      'reference is present. Reut 2026-05-10 incident: HAAT/Mishlocha/Wolt ' +
-      'documents that legitimately belong to Pat Vini Azrieli were being ' +
-      'kidnapped to Natanzon by the older content-blind rule.',
+      'only when a נתנזון בורגר / Natanzon Burger marker appears in the ' +
+      'content AND no "VINNI" brand marker is present. Reut 2026-05-10 ' +
+      'incident: HAAT/Mishlocha/Wolt documents that legitimately belong ' +
+      'to Pat Vini Azrieli were being kidnapped to Natanzon by the older ' +
+      'content-blind rule. Reut 2026-06-11 incident: pure-Natanzon Mishloha ' +
+      'invoices were blocked by the over-broad "ויני חיפה" keyword and ' +
+      'overwrote Pat Vini documents instead of routing to Natanzon.',
   },
 ];
 
@@ -89,12 +106,12 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
  * the Pat-Vini-Azrieli → Netanzon override. To match a shorter form, add
  * it explicitly to `parentAliases`.
  *
- * Content gate (added 2026-05-10): when `contentText` is supplied, the
- * pair's `requiredOperatingKeyword` MUST appear in the text and none of
- * `blockingContentKeywords` may appear. Callers that don't have line-item
- * text yet may pass `undefined`, in which case the gate is skipped — but
- * those call sites are now considered legacy; new code should always
- * supply the rawText/lineItems.
+ * Content gate (added 2026-05-10): when `contentText` is supplied, at
+ * least one of the pair's `requiredOperatingKeywords` MUST appear in the
+ * text and none of `blockingContentKeywords` may appear. Callers that
+ * don't have line-item text yet may pass `undefined`, in which case the
+ * gate is skipped — but those call sites are now considered legacy; new
+ * code should always supply the rawText/lineItems.
  */
 export function findOperatingBrand(
   candidateName: string | undefined | null,
@@ -109,7 +126,7 @@ export function findOperatingBrand(
 
     // Content gate — only enforced when the caller supplies content.
     if (contentText && contentText.length > 0) {
-      if (!contentText.includes(pair.requiredOperatingKeyword)) {
+      if (!pair.requiredOperatingKeywords.some((kw) => contentText.includes(kw))) {
         // Operating-brand keyword absent → this document belongs to
         // the parent legal entity in its own name, not the operating
         // brand. Skip the override.

@@ -46,6 +46,7 @@ import {
   detectDocumentType,
   isPromotionalSubject,
   isCibusDailyReport,
+  isHaatMonthlyReport,
 } from "@/lib/email/classify-document-type";
 import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { database } from "@/db";
@@ -324,6 +325,34 @@ export async function POST(request: NextRequest) {
         received: true,
         skipped: true,
         reason: "cibus_daily_snapshot",
+      });
+    }
+
+    // ─── Step 3c: Drop HAAT monthly summary ("דווח האאט" red PDF) ──────
+    // Per Reut (2026-06-11) the red monthly summary is not used in
+    // reconciliation — the HAAT "report" she reconciles is the franchisee-
+    // issued EasyCount invoice. Ingesting the red PDF also corrupted data:
+    // two HAAT businesses (8093 VINNI / 8095 Natanzon Burger) share one
+    // legal entity, both resolved to פט ויני עזריאלי, and the second
+    // overwrote the first in the client_report slot. Drop on arrival.
+    if (isHaatMonthlyReport(identifiedClient.clientCode, subject)) {
+      console.log(
+        `[email-inbound] Skipping HAAT monthly summary (red report): "${subject}"`
+      );
+      await finalizeSyncLog(syncLog.id, "completed", {
+        messagesScanned: 1,
+        documentsCreated: 0,
+        duplicatesSkipped: 1,
+        errorCount: 0,
+        errorDetails: [
+          `דולג: דוח חודשי מסכם של HAAT ("${subject}") — הדוח שנקלט הוא חשבונית ה-EasyCount של הזכיין`,
+        ],
+        ...diagnostics,
+      });
+      return NextResponse.json({
+        received: true,
+        skipped: true,
+        reason: "haat_monthly_summary",
       });
     }
 

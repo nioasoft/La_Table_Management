@@ -17,9 +17,6 @@ export const INVOICE_SUBJECT_KEYWORDS: readonly string[] = [
   "חשבונית מרכזת",
   "tax invoice",
   "commission invoice",
-  // EasyCount-issued invoices: "FW: EasyCount Invoice for HAAT" / "ezcount Invoice"
-  "easycount invoice",
-  "ezcount invoice",
   // Cibus/Plaxie monthly commission invoice — "FW: החשבונית החודשית מפלאקסי ישראל"
   "החשבונית החודשית",
 ];
@@ -49,6 +46,15 @@ export const CLIENT_REPORT_OVERRIDE_PATTERNS: readonly RegExp[] = [
   // month-end report failed to ingest while daily snapshots overwrote the
   // franchisee+month docs with zero-movement figures.
   /ריכוז\s*חיוב\s*חודשי/,
+  // EasyCount/ezcount-relayed invoices ("EasyCount Invoice for HAAT",
+  // "ezcount Invoice ..."). These are invoices the FRANCHISEE issued to the
+  // platform (e.g. פאט ויני עזריאלי → Haat Delivery, invoice 10078) — i.e.
+  // revenue evidence, the document Reut reconciles as the HAAT "report".
+  // They were previously classified commission_invoice (keyword "easycount
+  // invoice"), which parked them in the commission_invoice slot where HAAT's
+  // real "חשבונית מרכזת SI..." overwrote them a day later — the May 2026
+  // "המערכת קלטה פירוט ולא דוח" incident (Reut 2026-06-11).
+  /easycount\s+invoice|ezcount\s+invoice/i,
 ];
 
 /**
@@ -123,6 +129,30 @@ export function isCibusDailyReport(
   if (!clientCode || clientCode.toUpperCase() !== "CIBUS") return false;
   if (!subject) return false;
   return CIBUS_DAILY_REPORT_PATTERN.test(subject.trim().toLowerCase());
+}
+
+/**
+ * HAAT's own monthly summary PDF ("HAAT Delivery | הדוח החודשי שלך עבור
+ * MM/YYYY מוכן" — the red-branded "דווח האאט"). Per Reut (2026-06-11,
+ * "הדוח האדום לא רלוונטי לי לכלום") this document has no business use:
+ * the reconciled HAAT "report" is the franchisee-issued EasyCount invoice.
+ *
+ * Worse, it actively corrupted data: businesses 8093 (VINNI) and 8095
+ * (Natanzon Burger) share one legal entity, so both red reports resolved
+ * to פט ויני עזריאלי and the second overwrote the first in the
+ * client_report slot. Dropping it on arrival (like the Cibus daily
+ * snapshot) removes the corruption vector entirely. The original PDF is
+ * still recorded in gmail_sync_log diagnostics if it's ever needed.
+ */
+const HAAT_MONTHLY_REPORT_PATTERN = /הדוח\s*החודשי\s*שלך\s*עבור/;
+
+export function isHaatMonthlyReport(
+  clientCode: string | null | undefined,
+  subject: string | null | undefined,
+): boolean {
+  if (!clientCode || clientCode.toUpperCase() !== "HAAT") return false;
+  if (!subject) return false;
+  return HAAT_MONTHLY_REPORT_PATTERN.test(subject);
 }
 
 export function isPromotionalSubject(

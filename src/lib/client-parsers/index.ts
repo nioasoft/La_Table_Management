@@ -40,11 +40,21 @@ const CLIENT_PARSERS: Record<string, ClientParserFn> = {
     return parseMishlohaFile(buffer, mimeType);
   },
   HAAT: async (buffer, mimeType) => {
-    // HAAT's monthly REPORT is a direct Azure Blob PDF in HAAT's own layout
-    // (NOT ezcount). The commission INVOICE for HAAT is ezcount-issued and
-    // routes through INVOICE_PARSERS.HAAT (parseHaatFile / invoice parser).
+    // Two client_report layouts exist for HAAT:
+    //   1. The franchisee-issued EasyCount invoice (subject "EasyCount
+    //      Invoice for HAAT") — THE document Reut reconciles as the HAAT
+    //      report (2026-06-11). ezcount layout, issuer = franchisee.
+    //   2. HAAT's own monthly summary ("דווח האאט", red PDF) — skipped at
+    //      the webhook since 2026-06-11, but can still arrive via manual
+    //      upload or the reprocess scripts.
+    // Try the red-report parser first (it hard-rejects non-matching
+    // files), then fall back to the ezcount invoice parser which handles
+    // franchisee-issued invoices (issuer = franchisee, recipient = Haat).
     const { parseHaatReportFile } = await import("./haat-report-parser");
-    return parseHaatReportFile(buffer, mimeType);
+    const reportResult = await parseHaatReportFile(buffer, mimeType);
+    if (reportResult.success) return reportResult;
+    const { parseMishlohaFile } = await import("./invoice-mishloha-parser");
+    return parseMishlohaFile(buffer, mimeType);
   },
 };
 

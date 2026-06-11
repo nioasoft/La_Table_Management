@@ -93,6 +93,16 @@ export interface ProcessClientDocumentInput {
   gmailMessageId?: string;
   /** User who triggered the processing */
   userId?: string;
+  /**
+   * Allow a gmail_fetch document to REPLACE an existing document that
+   * originated from a different email. Default false: an unattended
+   * webhook must never silently destroy a previously-ingested document
+   * (the May 2026 Vini/Natanzon incident collapsed 4 different HAAT
+   * documents into one slot this way). Set true only on admin-driven
+   * paths (inbound-review confirm) where a human explicitly chose the
+   * target franchisee/type.
+   */
+  allowReplace?: boolean;
 }
 
 /** Result of document processing */
@@ -103,6 +113,20 @@ export interface ProcessClientDocumentResult {
   error?: string;
   /** True if document was skipped because it already exists */
   skippedDuplicate?: boolean;
+  /**
+   * True when the write was refused because a document for the same
+   * (client, franchisee, period, type) slot already exists and came from
+   * a DIFFERENT email. The caller should surface this for manual review —
+   * in practice it usually means the new document belongs to a different
+   * franchisee (two businesses sharing one legal entity).
+   */
+  skippedConflict?: boolean;
+  /** The occupying document, when skippedConflict is true. */
+  conflictWith?: {
+    documentId: string;
+    gmailMessageId: string | null;
+    fileName: string;
+  };
 }
 
 /**
@@ -131,6 +155,7 @@ export async function processClientDocument(
     source,
     gmailMessageId,
     userId,
+    allowReplace = false,
   } = input;
 
   try {
@@ -218,10 +243,49 @@ export async function processClientDocument(
     }
 
     const existingDoc = await database
-      .select({ id: clientDocument.id })
+      .select({
+        id: clientDocument.id,
+        gmailMessageId: clientDocument.gmailMessageId,
+        originalFileName: clientDocument.originalFileName,
+      })
       .from(clientDocument)
       .where(and(...existingConditions))
       .limit(1);
+
+    // Overwrite guard: an unattended gmail_fetch must never silently
+    // replace a document that came from a DIFFERENT email (or from a
+    // manual upload). May 2026 incident: two HAAT businesses (VINNI /
+    // Natanzon Burger) share one legal entity, so 4 different HAAT
+    // documents resolved to the same (client, franchisee, period, type)
+    // slot and each new email destroyed the previous document with no
+    // warning. Refuse the write and let the caller park it in the
+    // inbound review queue — the admin decides whether it replaces the
+    // existing doc or belongs to another franchisee.
+    if (
+      existingDoc.length > 0 &&
+      source === "gmail_fetch" &&
+      !allowReplace &&
+      existingDoc[0].gmailMessageId !== (gmailMessageId ?? null)
+    ) {
+      console.warn(
+        `[client-document-processor] CONFLICT: refusing to overwrite document ${existingDoc[0].id} ("${existingDoc[0].originalFileName}", email=${existingDoc[0].gmailMessageId ?? "manual"}) with "${fileName}" (email=${gmailMessageId ?? "?"}) — same slot, different email`
+      );
+      return {
+        success: false,
+        document: null,
+        processingResult,
+        skippedConflict: true,
+        conflictWith: {
+          documentId: existingDoc[0].id,
+          gmailMessageId: existingDoc[0].gmailMessageId,
+          fileName: existingDoc[0].originalFileName,
+        },
+        error:
+          `קיים כבר מסמך לזכיין/תקופה/סוג זה ממקור אחר ("${existingDoc[0].originalFileName}"). ` +
+          `המסמך החדש ("${fileName}") לא נשמר אוטומטית כדי לא לדרוס נתונים — ` +
+          `ייתכן שהוא שייך לזכיין אחר (למשל שני עסקים תחת אותה ישות משפטית). יש לשייך ידנית.`,
+      };
+    }
 
     // Determine processing status based on result
     const processingStatus = !processingResult.success

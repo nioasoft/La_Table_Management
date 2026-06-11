@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectDocumentType,
   isPromotionalSubject,
+  isHaatMonthlyReport,
 } from "../classify-document-type";
 
 describe("detectDocumentType", () => {
@@ -16,7 +17,6 @@ describe("detectDocumentType", () => {
         "FW: החשבונית החודשית מפלאקסי ישראל",
         "Cibus/Plaxie monthly commission invoice",
       ],
-      ["EasyCount Invoice for HAAT", "Generic ezcount invoice"],
       [
         "FW: חשבונית מס מס' 12345 מאת תן ביס בע\"מ",
         "Tnbis tax invoice (no [העתק])",
@@ -46,6 +46,12 @@ describe("detectDocumentType", () => {
         "Tnbis monthly report",
       ],
       ["FW: דוח חודשי", "Generic monthly report"],
+      // 2026-06-11 (Reut): the EasyCount invoice IS the HAAT "report" —
+      // it's issued BY the franchisee TO Haat (revenue evidence). It was
+      // previously classified commission_invoice, which let HAAT's real
+      // "חשבונית מרכזת SI..." overwrite it a day later.
+      ["EasyCount Invoice for HAAT", "ezcount franchisee→HAAT invoice"],
+      ["FW: EasyCount Invoice for HAAT", "forwarded ezcount invoice"],
     ])('classifies %j as client_report (%s)', (subject) => {
       expect(detectDocumentType(subject)).toBe("client_report");
     });
@@ -131,5 +137,43 @@ describe("isPromotionalSubject", () => {
   it("handles null/undefined safely", () => {
     expect(isPromotionalSubject(null)).toBe(false);
     expect(isPromotionalSubject(undefined)).toBe(false);
+  });
+});
+
+describe("isHaatMonthlyReport", () => {
+  it("flags the HAAT red monthly summary for the HAAT client", () => {
+    expect(
+      isHaatMonthlyReport(
+        "HAAT",
+        "HAAT Delivery | הדוח החודשי שלך עבור 05/2026 מוכן",
+      ),
+    ).toBe(true);
+  });
+
+  it("is case-insensitive on the client code", () => {
+    expect(
+      isHaatMonthlyReport("haat", "הדוח החודשי שלך עבור 04/2026 מוכן"),
+    ).toBe(true);
+  });
+
+  it("does not flag other HAAT emails", () => {
+    expect(isHaatMonthlyReport("HAAT", "EasyCount Invoice for HAAT")).toBe(
+      false,
+    );
+    expect(
+      isHaatMonthlyReport(
+        "HAAT",
+        "(מסמך ממוחשב) הדפסת חשבונית מרכזת - 05.2026 ,SI266013298 חוד",
+      ),
+    ).toBe(false);
+  });
+
+  it("does not flag the same subject for other clients", () => {
+    expect(
+      isHaatMonthlyReport("WOLT", "הדוח החודשי שלך עבור 05/2026 מוכן"),
+    ).toBe(false);
+    expect(isHaatMonthlyReport(null, "הדוח החודשי שלך עבור 05/2026")).toBe(
+      false,
+    );
   });
 });
