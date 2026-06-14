@@ -73,6 +73,65 @@ export const INCOME_INVOICE_KEYWORDS: readonly string[] = [
 ];
 
 /**
+ * Issuer tokens that identify a COMMISSION invoice issued BY a delivery
+ * platform (the "מאת <X>" side of an ezcount/EasyCount tax-invoice subject).
+ * When a "חשבונית מס NNNN מאת <X>" subject names one of these as the issuer,
+ * it is the platform charging us commission — keep it in commission_invoice.
+ *
+ * Anything ELSE after "מאת" is a franchisee issuing a sales invoice TO the
+ * platform (revenue evidence) — see isFranchiseeIssuedInvoice below.
+ *
+ * Keep this list aligned with the active platform clients. A franchisee name
+ * must never appear here (none currently overlap: ויני / נתנזון / קינג קונג /
+ * מינה / קסטרא / סידיוס / ...).
+ */
+export const COMMISSION_ISSUER_TOKENS: readonly string[] = [
+  "משלוחה",
+  "דיב אנד רד", // Mishloha's legal entity — "דיב אנד רד פרוג'קטס בע\"מ"
+  "wolt",
+  "וולט",
+  "haat",
+  "האט",
+  "האאט",
+  "pluxee",
+  "פלאקסי",
+  "cibus",
+  "סיבוס",
+  "תן ביס",
+  "10bis",
+];
+
+/**
+ * A franchisee-issued ezcount/EasyCount sales invoice arrives as a DIRECT
+ * ezcount email (noreply@ezcount.co.il) with a "[מקור]" body and a plain
+ * subject "חשבונית מס NNNN מאת <franchisee> בע\"מ" — no "[העתק]" prefix, so
+ * the copy override (CLIENT_REPORT_OVERRIDE_PATTERNS[0]) does not fire and
+ * the "חשבונית מס" keyword would otherwise mark it commission_invoice.
+ *
+ * It is revenue evidence (the franchisee billing the platform) — the "report"
+ * Reut reconciles — so it belongs in client_report. We tell it apart from a
+ * platform-issued commission invoice ("... מאת משלוחה / מאת Wolt") by the
+ * issuer named after "מאת" (see COMMISSION_ISSUER_TOKENS).
+ *
+ * Real incident 2026-06-11 (Reut): Mishloha's direct ezcount invoice 10076
+ * (פאט ויני עזריאלי → משלוחה, May 2026, ח.פ 516161361) was typed
+ * commission_invoice, collided with Mishloha's real commission invoice
+ * 160782 in the same (franchisee, period, type) slot, and the overwrite
+ * guard parked it in the review queue — Vini Azrieli's May Mishloha report
+ * never ingested. The [העתק] HAAT variant was already handled (2026-05-05);
+ * this covers the un-forwarded [מקור] direct-ezcount form.
+ */
+export function isFranchiseeIssuedInvoice(subject: string): boolean {
+  if (!subject || !subject.includes("חשבונית")) return false;
+  const marker = "מאת";
+  const idx = subject.indexOf(marker);
+  if (idx === -1) return false;
+  const issuer = subject.slice(idx + marker.length).trim().toLowerCase();
+  if (!issuer) return false;
+  return !COMMISSION_ISSUER_TOKENS.some((t) => issuer.includes(t.toLowerCase()));
+}
+
+/**
  * Subject patterns for promotional / non-data emails that should be auto-
  * skipped (not processed, not failed). Anything matching here is treated
  * as a "drop on the floor silently" — the sync log still records the
@@ -190,6 +249,12 @@ export function detectDocumentType(
   }
   const subjectLower = subject.toLowerCase();
   if (containsAny(subjectLower, INCOME_INVOICE_KEYWORDS)) {
+    return "client_report";
+  }
+  // A "חשבונית מס NNNN מאת <franchisee>" issued BY a franchisee (not a
+  // platform) is revenue evidence — must be checked BEFORE the commission
+  // keyword below, which would otherwise swallow it on "חשבונית מס".
+  if (isFranchiseeIssuedInvoice(subject)) {
     return "client_report";
   }
   if (containsAny(subjectLower, INVOICE_SUBJECT_KEYWORDS)) {

@@ -21,6 +21,13 @@ describe("detectDocumentType", () => {
         "FW: חשבונית מס מס' 12345 מאת תן ביס בע\"מ",
         "Tnbis tax invoice (no [העתק])",
       ],
+      // 2026-06-11: a platform-issued direct ezcount invoice ("מאת משלוחה")
+      // must STAY commission_invoice — the franchisee-issued override below
+      // keys on the issuer after "מאת", so Mishloha's own invoice is excluded.
+      [
+        "חשבונית מס 160782 מאת משלוחה (דיב אנד רד פרוג'קטס בע\"מ)",
+        "Mishloha direct ezcount commission invoice",
+      ],
     ])('classifies %j as commission_invoice (%s)', (subject) => {
       expect(detectDocumentType(subject)).toBe("commission_invoice");
     });
@@ -52,6 +59,18 @@ describe("detectDocumentType", () => {
       // "חשבונית מרכזת SI..." overwrite it a day later.
       ["EasyCount Invoice for HAAT", "ezcount franchisee→HAAT invoice"],
       ["FW: EasyCount Invoice for HAAT", "forwarded ezcount invoice"],
+      // 2026-06-11 (Reut): the un-forwarded [מקור] direct-ezcount form of a
+      // franchisee sales invoice. No "[העתק]" prefix, so the copy override
+      // doesn't fire; classified by the franchisee issuer after "מאת". This
+      // is the invoice 10076 (פאט ויני עזריאלי → משלוחה) that never ingested.
+      [
+        'חשבונית מס 10076 מאת פאט ויני עזריאלי בע"מ',
+        "Mishloha direct ezcount franchisee invoice (the missing May report)",
+      ],
+      [
+        'חשבונית מס 10078 מאת נתנזון בורגר חיפה בע"מ',
+        "franchisee invoice, Natanzon operating brand",
+      ],
     ])('classifies %j as client_report (%s)', (subject) => {
       expect(detectDocumentType(subject)).toBe("client_report");
     });
