@@ -937,13 +937,31 @@ export default function ClientReconciliationPage() {
                   <div className="p-4 border-b">
                     <Alert variant="warning" className="pe-4">
                       <UserPlus className="h-4 w-4" />
-                      <AlertDescription className="flex items-center justify-between gap-3">
-                        <span>
-                          בקובץ הטאביט זוהו{" "}
-                          <strong>{occasionalNeedingNames.count}</strong>{" "}
-                          לקוחות מזדמנים שטרם הוזן להם שם בחשבשבת. יש להזין את
-                          השמות כדי שניתן יהיה לייצא לחשבשבת.
-                        </span>
+                      <AlertDescription className="flex items-start justify-between gap-3">
+                        <div className="space-y-1.5">
+                          <span>
+                            בקובץ הטאביט{" "}
+                            {occasionalNeedingNames.count === 1 ? (
+                              <>זוהה לקוח מזדמן אחד שטרם הוזן לו שם בחשבשבת</>
+                            ) : (
+                              <>
+                                זוהו{" "}
+                                <strong>{occasionalNeedingNames.count}</strong>{" "}
+                                לקוחות מזדמנים שטרם הוזן להם שם בחשבשבת
+                              </>
+                            )}
+                            . יש להזין את השמות כדי שניתן יהיה לייצא לחשבשבת:
+                          </span>
+                          <ul className="list-disc space-y-0.5 ps-5">
+                            {occasionalNeedingNames.items.map((it) => (
+                              <li key={it.id}>
+                                <strong>{it.tabitColumnName}</strong>
+                                {" — "}
+                                {formatAmount(String(it.totalAmount))}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                         <Button asChild size="sm" variant="outline">
                           <Link href="/admin/clients?tab=occasional">
                             פתיחת מסך מזדמנים
