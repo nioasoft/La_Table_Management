@@ -122,13 +122,10 @@ export async function GET(request: NextRequest) {
         } else {
           price = Math.round(a.clientAmount);
         }
-        // LATABLEMARK gets a custom item key ("ארוחותש") that overrides
-        // everything. For every other client, the franchisee-level override
-        // wins when set (Natanzon → "הכנסותנ"); otherwise default ITEM_KEY.
-        const itemKey =
-          a.clientCode === "LATABLEMARK"
-            ? "ארוחותש"
-            : itemKeyOverride || ITEM_KEY;
+        // Item key (מפתח פריט) priority: client-level override (per-brand or
+        // global, e.g. LATABLEMARK → "ארוחותש") wins, then the franchisee-level
+        // override (Natanzon → "הכנסותנ"), then the default ITEM_KEY ("ארוחות").
+        const itemKey = a.clientItemKey || itemKeyOverride || ITEM_KEY;
         // GIFTCARD uses a 19.25% discount column instead of the default 15.25%.
         const discountPct =
           a.clientCode === "GIFTCARD"

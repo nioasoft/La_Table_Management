@@ -3412,6 +3412,11 @@ export const he = {
       hashavshevetByBrandTitle: "שם לחשבשבת לפי מותג",
       hashavshevetByBrandHelp:
         "דריסה אופציונלית לפי מותג. אם משאירים ריק — משתמש בשם/מפתח הגלובלי.",
+      hashavshevetItemKey: "מפתח פריט חשבשבת",
+      hashavshevetItemKeyPlaceholder: 'ברירת מחדל: "ארוחות"',
+      hashavshevetItemKeyByBrandTitle: "מפתח פריט לפי מותג",
+      hashavshevetItemKeyByBrandHelp:
+        'דריסה אופציונלית לפי מותג. אם משאירים ריק — משתמש במפתח הפריט הגלובלי, ואם גם הוא ריק — בברירת המחדל "ארוחות".',
       fileFormat: "פורמט קבצים",
       fileFormatPlaceholder: "בחר פורמט",
       fileFormatOptions: {

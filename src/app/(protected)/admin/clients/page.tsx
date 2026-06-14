@@ -90,6 +90,10 @@ interface ClientFormData {
   hashavshevetCode: string;
   /** Per-brand override of the Hashavshevet account name. Keyed by brand.id. */
   hashavshevetByBrand: Record<string, string>;
+  /** Hashavshevet item key (מפתח פריט) override. Empty = default "ארוחות". */
+  hashavshevetItemKey: string;
+  /** Per-brand override of the Hashavshevet item key. Keyed by brand.id. */
+  hashavshevetItemKeyByBrand: Record<string, string>;
   fileFormat: string;
   gmailSearchQuery: string;
   gmailSenderEmail: string;
@@ -116,6 +120,8 @@ const initialFormData: ClientFormData = {
   hashavshevetName: "",
   hashavshevetCode: "",
   hashavshevetByBrand: {},
+  hashavshevetItemKey: "",
+  hashavshevetItemKeyByBrand: {},
   fileFormat: "",
   gmailSearchQuery: "",
   gmailSenderEmail: "",
@@ -282,6 +288,12 @@ export default function ClientsPage() {
         c.hashavshevetByBrand && typeof c.hashavshevetByBrand === "object"
           ? { ...(c.hashavshevetByBrand as Record<string, string>) }
           : {},
+      hashavshevetItemKey: c.hashavshevetItemKey ?? "",
+      hashavshevetItemKeyByBrand:
+        c.hashavshevetItemKeyByBrand &&
+        typeof c.hashavshevetItemKeyByBrand === "object"
+          ? { ...(c.hashavshevetItemKeyByBrand as Record<string, string>) }
+          : {},
       fileFormat: c.fileFormat ?? "",
       gmailSearchQuery: c.gmailSearchQuery ?? "",
       gmailSenderEmail: c.gmailSenderEmail ?? "",
@@ -348,6 +360,13 @@ export default function ClientsPage() {
         .filter(([, value]) => value !== "")
     );
 
+    // Same cleanup for the per-brand item-key overrides.
+    const cleanedHashavshevetItemKeyByBrand = Object.fromEntries(
+      Object.entries(formData.hashavshevetItemKeyByBrand)
+        .map(([brandId, value]) => [brandId, value.trim()] as const)
+        .filter(([, value]) => value !== "")
+    );
+
     const payload = {
       name: formData.name.trim(),
       code: formData.code.trim().toUpperCase() || null,
@@ -359,6 +378,11 @@ export default function ClientsPage() {
       hashavshevetByBrand:
         Object.keys(cleanedHashavshevetByBrand).length > 0
           ? cleanedHashavshevetByBrand
+          : null,
+      hashavshevetItemKey: formData.hashavshevetItemKey.trim() || null,
+      hashavshevetItemKeyByBrand:
+        Object.keys(cleanedHashavshevetItemKeyByBrand).length > 0
+          ? cleanedHashavshevetItemKeyByBrand
           : null,
       fileFormat: formData.fileFormat || null,
       gmailSearchQuery: formData.gmailSearchQuery.trim() || null,
@@ -899,6 +923,82 @@ export default function ClientsPage() {
                               formData.hashavshevetName.trim() ||
                               formData.name.trim() ||
                               he.clients.form.hashavshevetNamePlaceholder
+                            }
+                            disabled={isSubmitting}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Row 3c – Hashavshevet item key (מפתח פריט) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="client-hashavshevetItemKey">
+                  {he.clients.form.hashavshevetItemKey}
+                </Label>
+                <Input
+                  id="client-hashavshevetItemKey"
+                  value={formData.hashavshevetItemKey}
+                  onChange={(e) =>
+                    updateField("hashavshevetItemKey", e.target.value)
+                  }
+                  placeholder={he.clients.form.hashavshevetItemKeyPlaceholder}
+                  disabled={isSubmitting}
+                />
+              </div>
+            </div>
+
+            {/* Row 3d – Per-brand Hashavshevet item-key overrides */}
+            {allBrands && allBrands.length > 0 && (
+              <div className="space-y-2 rounded-lg border bg-muted/30 p-3">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium">
+                    {he.clients.form.hashavshevetItemKeyByBrandTitle}
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {he.clients.form.hashavshevetItemKeyByBrandHelp}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {(
+                    allBrands as Array<{
+                      id: string;
+                      nameHe: string;
+                      isSystemBrand?: boolean;
+                      isActive?: boolean;
+                    }>
+                  )
+                    .filter(
+                      (b) =>
+                        b.isActive !== false && b.isSystemBrand !== true
+                    )
+                    .map((b) => {
+                      const fieldId = `client-hashavshevet-itemkey-brand-${b.id}`;
+                      return (
+                        <div key={b.id} className="space-y-1">
+                          <Label
+                            htmlFor={fieldId}
+                            className="text-xs font-normal text-muted-foreground"
+                          >
+                            {b.nameHe}
+                          </Label>
+                          <Input
+                            id={fieldId}
+                            value={
+                              formData.hashavshevetItemKeyByBrand[b.id] ?? ""
+                            }
+                            onChange={(e) =>
+                              updateField("hashavshevetItemKeyByBrand", {
+                                ...formData.hashavshevetItemKeyByBrand,
+                                [b.id]: e.target.value,
+                              })
+                            }
+                            placeholder={
+                              formData.hashavshevetItemKey.trim() ||
+                              he.clients.form.hashavshevetItemKeyPlaceholder
                             }
                             disabled={isSubmitting}
                           />

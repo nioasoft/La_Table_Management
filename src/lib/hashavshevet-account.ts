@@ -34,3 +34,32 @@ export function resolveClientHashavshevetAccount(
     client.name
   );
 }
+
+/**
+ * Resolve the Hashavshevet "item key" (מפתח פריט) override for a client row.
+ *
+ * Priority (first non-empty wins):
+ *   1. Brand-specific override (`hashavshevetItemKeyByBrand[brandId]`)
+ *   2. Global item key (`hashavshevetItemKey`)
+ *   3. `null` — no client-level override; the export route falls back to the
+ *      franchisee's item key, then the default ("ארוחות").
+ *
+ * Returns `null` (not a display name) when unset, so callers can apply their
+ * own franchisee/default fallback — unlike the account key, which always
+ * resolves to a printable value.
+ */
+export interface ResolvableClientItemKey {
+  hashavshevetItemKeyByBrand?: Record<string, string> | null;
+  hashavshevetItemKey?: string | null;
+}
+
+export function resolveClientHashavshevetItemKey(
+  client: ResolvableClientItemKey,
+  brandId: string | null | undefined
+): string | null {
+  const perBrand =
+    brandId && client.hashavshevetItemKeyByBrand
+      ? client.hashavshevetItemKeyByBrand[brandId]?.trim()
+      : "";
+  return perBrand || client.hashavshevetItemKey?.trim() || null;
+}

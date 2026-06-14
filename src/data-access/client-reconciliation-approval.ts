@@ -18,6 +18,7 @@ import {
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   resolveClientHashavshevetAccount,
+  resolveClientHashavshevetItemKey,
   type ResolvableClientAccount,
 } from "@/lib/hashavshevet-account";
 
@@ -324,6 +325,12 @@ export interface ExportRow {
    * Export routes that want the standard code-first fallback should use this.
    */
   accountKey: string;
+  /**
+   * Pre-resolved Hashavshevet item key (מפתח פריט) override for this client +
+   * brand. `null` when the client has no override, in which case export routes
+   * fall back to the franchisee's item key, then the default ("ארוחות").
+   */
+  clientItemKey: string | null;
   invoiceGeneration: boolean;
   journalEntryGeneration: boolean;
   clientAmount: number;
@@ -468,6 +475,8 @@ export async function getApprovedForExport(input: {
       hashavshevetCode: client.hashavshevetCode,
       hashavshevetName: client.hashavshevetName,
       hashavshevetByBrand: client.hashavshevetByBrand,
+      hashavshevetItemKey: client.hashavshevetItemKey,
+      hashavshevetItemKeyByBrand: client.hashavshevetItemKeyByBrand,
       invoiceGeneration: client.invoiceGeneration,
       journalEntryGeneration: client.journalEntryGeneration,
     })
@@ -519,6 +528,13 @@ export async function getApprovedForExport(input: {
       franchiseeBrandId,
       accountKey: resolveClientHashavshevetAccount(
         resolvable,
+        franchiseeBrandId
+      ),
+      clientItemKey: resolveClientHashavshevetItemKey(
+        {
+          hashavshevetItemKey: c.hashavshevetItemKey,
+          hashavshevetItemKeyByBrand: c.hashavshevetItemKeyByBrand,
+        },
         franchiseeBrandId
       ),
       invoiceGeneration: c.invoiceGeneration,

@@ -55,6 +55,8 @@ export async function PATCH(
       hashavshevetName,
       hashavshevetCode,
       hashavshevetByBrand,
+      hashavshevetItemKey,
+      hashavshevetItemKeyByBrand,
       fileFormat,
       gmailSearchQuery,
       gmailSenderEmail,
@@ -85,6 +87,12 @@ export async function PATCH(
     if (hashavshevetByBrand !== undefined)
       updateData.hashavshevetByBrand =
         sanitizeHashavshevetByBrand(hashavshevetByBrand);
+    if (hashavshevetItemKey !== undefined)
+      updateData.hashavshevetItemKey = hashavshevetItemKey?.trim() || null;
+    if (hashavshevetItemKeyByBrand !== undefined)
+      updateData.hashavshevetItemKeyByBrand = sanitizeHashavshevetByBrand(
+        hashavshevetItemKeyByBrand
+      );
     if (fileFormat !== undefined) updateData.fileFormat = fileFormat || null;
     if (gmailSearchQuery !== undefined)
       updateData.gmailSearchQuery = gmailSearchQuery || null;

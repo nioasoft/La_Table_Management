@@ -77,6 +77,8 @@ export async function POST(request: NextRequest) {
       contactName,
       hashavshevetName,
       hashavshevetByBrand,
+      hashavshevetItemKey,
+      hashavshevetItemKeyByBrand,
       tabitColumnNames,
       posTerminalCommission,
       dineInCommission,
@@ -106,6 +108,10 @@ export async function POST(request: NextRequest) {
       contactName: contactName || null,
       hashavshevetName: hashavshevetName || null,
       hashavshevetByBrand: sanitizeHashavshevetByBrand(hashavshevetByBrand),
+      hashavshevetItemKey: hashavshevetItemKey?.trim() || null,
+      hashavshevetItemKeyByBrand: sanitizeHashavshevetByBrand(
+        hashavshevetItemKeyByBrand
+      ),
       tabitColumnNames: Array.isArray(tabitColumnNames) ? tabitColumnNames : null,
       posTerminalCommission: posTerminalCommission || null,
       dineInCommission: dineInCommission || null,

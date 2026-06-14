@@ -2933,6 +2933,17 @@ export const client = pgTable(
     hashavshevetByBrand: jsonb("hashavshevet_by_brand").$type<
       Record<string, string>
     >(),
+    // Hashavshevet "item key" (מפתח פריט) for the client-invoices export.
+    // Lets a client override the default "ארוחות" (e.g. LATABLEMARK → "ארוחותש").
+    // Resolution: hashavshevetItemKeyByBrand[brandId] → hashavshevetItemKey →
+    // franchisee.hashavshevetRevenueAccount → default "ארוחות".
+    hashavshevetItemKey: text("hashavshevet_item_key"),
+    // Per-brand override for the Hashavshevet item key. Key = brand.id (UUID),
+    // value = item key to use when exporting a row of a franchisee of that brand.
+    // Falls back to hashavshevetItemKey when a brand has no entry.
+    hashavshevetItemKeyByBrand: jsonb("hashavshevet_item_key_by_brand").$type<
+      Record<string, string>
+    >(),
     fileFormat: text("file_format"), // Expected file format: "pdf", "excel", "csv"
     gmailSearchQuery: text("gmail_search_query"), // Gmail API search query for auto-fetch
     gmailSenderEmail: text("gmail_sender_email"), // Sender email for verification
