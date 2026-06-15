@@ -28,5 +28,26 @@ export function extractAllocationNumber(text: string): string | undefined {
     }
   }
 
+  // Fallback for ezcount / Hyp-EasyCount invoices that glue a 17-digit issue
+  // timestamp (YYYYMMDDHHMMSSmmm) directly onto the 9-digit allocation number
+  // with no separator, e.g.
+  //   "20260601224523045152063195הקצאה מספר:"  → allocation 152063195
+  //   "20260401153109051091056762הקצאה מספר:"  → allocation 091056762
+  // The isolated patterns above miss these because their (?<!\d) boundary
+  // fails when a timestamp precedes the allocation. We grab the full digit run
+  // adjacent to the label and take the trailing 9 digits (the allocation — the
+  // leading digits are the timestamp). Anchored to the label so stray ח.פ. /
+  // invoice numbers elsewhere in the document are never picked up.
+  const gluedBeforeLabel = [
+    /(\d{17,})\s*\n?\s*(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)/, // digits then "הקצאה מספר"
+    /(\d{17,})\s*\n?\s*(?:מספר|רפסמ)\s*(?:הקצאה|הצקה)/, // digits then "מספר הקצאה"
+  ];
+  for (const pattern of gluedBeforeLabel) {
+    const match = text.match(pattern);
+    if (match?.[1]) {
+      return match[1].slice(-9);
+    }
+  }
+
   return undefined;
 }
