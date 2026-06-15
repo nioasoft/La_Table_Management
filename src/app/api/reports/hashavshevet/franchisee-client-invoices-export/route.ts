@@ -37,6 +37,8 @@ import { getOccasionalClientsForExport } from "@/data-access/occasional-clients"
 import * as XLSX from "xlsx";
 
 const ITEM_KEY = "ארוחות";
+// Gift cards are a distinct Hashavshevet item, not a meal — Reut 2026-06-15.
+const ITEM_KEY_GIFTCARD = "גיפט";
 // "אחוז הנחה לפריט" — stored as a 4-decimal number (not a fraction).
 // 15.2543 is Reut's precise value for the VAT share (18 / 118 ≈ 15.2542%);
 // GIFTCARD uses its own value per the accounting setup.
@@ -122,10 +124,15 @@ export async function GET(request: NextRequest) {
         } else {
           price = Math.round(a.clientAmount);
         }
-        // Item key (מפתח פריט) priority: client-level override (per-brand or
-        // global, e.g. LATABLEMARK → "ארוחותש") wins, then the franchisee-level
-        // override (Natanzon → "הכנסותנ"), then the default ITEM_KEY ("ארוחות").
-        const itemKey = a.clientItemKey || itemKeyOverride || ITEM_KEY;
+        // Item key (מפתח פריט) priority: GIFTCARD always uses its own item
+        // ("גיפט") — it's a distinct product, not a meal. Otherwise the
+        // client-level override (per-brand or global, e.g. LATABLEMARK →
+        // "ארוחותש") wins, then the franchisee-level override (Natanzon →
+        // "הכנסותנ"), then the default ITEM_KEY ("ארוחות").
+        const itemKey =
+          a.clientCode === "GIFTCARD"
+            ? ITEM_KEY_GIFTCARD
+            : a.clientItemKey || itemKeyOverride || ITEM_KEY;
         // GIFTCARD uses a 19.25% discount column instead of the default 15.25%.
         const discountPct =
           a.clientCode === "GIFTCARD"
