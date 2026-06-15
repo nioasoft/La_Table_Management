@@ -342,6 +342,17 @@ export async function parseMishlohaFile(
         invoiceNumber = invRevMatch[1];
       }
     }
+    // HAAT centralized invoices ("חשבונית מס מרכזת SI266013293") carry an
+    // alphanumeric SI number, glued to the label in visual-RTL output
+    // (e.g. "…SI266013293חשבונית מס מרכז" — digits BEFORE the label), which
+    // the numeric patterns above and the loose fallback below can't reach.
+    // Real MISHLOCHA invoices use numeric numbers, so this is HAAT-only.
+    if (!invoiceNumber) {
+      const siMatch = text.match(/SI\d{6,}/i);
+      if (siMatch) {
+        invoiceNumber = siMatch[0].toUpperCase();
+      }
+    }
     // Fallback: any number near "חשבונית"
     if (!invoiceNumber) {
       const invFallback = text.match(/חשבונית.*?(\d{4,})/);

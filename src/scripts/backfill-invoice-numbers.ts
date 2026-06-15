@@ -36,6 +36,9 @@ function extractInvoiceNumber(c: Candidate): string | null {
   if (c.rawText) {
     const m = c.rawText.match(/חשבונית\s+מס\s+מספר\s+(\d+)/);
     if (m) return m[1];
+    // HAAT "חשבונית מס מרכזת SI266013293" — alphanumeric, glued in visual-RTL.
+    const si = c.rawText.match(/SI\d{6,}/i);
+    if (si) return si[0].toUpperCase();
   }
   // Pattern 2: line item description "חשבונית מס 10049" or "חשבונית מס מרכזת 10049"
   for (const d of c.lineItemDescriptions) {
