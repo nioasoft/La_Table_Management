@@ -497,6 +497,7 @@ export async function parseTenbisInvoice(
       success: true,
       data: {
         franchiseeName: franchiseeName || "לא זוהה",
+        invoiceNumber: invoiceNumber || undefined,
         totalAmount: headlineAmount,
         commissionAmount: headlineAmount,
         commissionRate: 0,
