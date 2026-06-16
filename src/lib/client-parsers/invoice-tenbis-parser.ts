@@ -138,6 +138,45 @@ export async function parseTenbisInvoice(
       }
     }
 
+    // Fallback for the invoice-one.com layout (10bis tax invoices forwarded by
+    // the franchise office): the recipient block is labelled "לידי:" (not
+    // "לכבוד"), and pdf-parse emits the franchisee name on the line BEFORE the
+    // label, e.g.:
+    //   [i-1] קינג קונג חדרה בע"מ
+    //   [i]   לידי:
+    //   [i+1] נאמן למקור        ← decoy watermark, must NOT be picked
+    // So try previous-line first, then same/next, skipping label/watermark
+    // tokens. Real incident 2026-06-15: 3 forwarded March invoices stayed
+    // "לא זוהה" because only "לכבוד" was handled.
+    if (!franchiseeName) {
+      const INVALID_RECIPIENT_TOKENS = [
+        "לידי",
+        "לכבוד",
+        "נאמן למקור",
+        "מסמך ממוחשב",
+        "מסמך",
+        "תאריך",
+        "מספר",
+        "חשבונית",
+        "קוד גישה",
+        "הקצאה",
+      ];
+      const nameRe = /([֐-׿][֐-׿\s"'.]{2,})/;
+      for (let i = 0; i < lines.length; i++) {
+        if (!lines[i].includes("לידי")) continue;
+        for (const cand of [lines[i - 1], lines[i], lines[i + 1]]) {
+          if (!cand) continue;
+          const m = cand.match(nameRe);
+          if (!m) continue;
+          const name = m[1].trim();
+          if (INVALID_RECIPIENT_TOKENS.some((t) => name.includes(t))) continue;
+          franchiseeName = name;
+          break;
+        }
+        if (franchiseeName) break;
+      }
+    }
+
     // ---------------------------------------------------------------
     // 2. Extract invoice number
     // ---------------------------------------------------------------
