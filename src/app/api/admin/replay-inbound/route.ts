@@ -189,6 +189,36 @@ async function extractAndDownloadLinks(
   }
   if (out.length > 0) return out;
 
+  // Pattern 1b: Tenbis tax invoices (חשבונית מס) via the invoice-one.com
+  // viewer (mirrors email-inbound/route.ts Pattern 1b). The viewer URL
+  //   https://invoice-one.com/ViewerNew/pages/Y_GreeViewer_document/<DOCID>
+  // maps to the PDF download
+  //   https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=<DOCID>
+  const viewerLinks = [
+    ...htmlBody.matchAll(
+      /https?:\/\/(?:www\.)?invoice-one\.com\/ViewerNew\/pages\/Y_GreeViewer_document\/(\w+)/gi
+    ),
+  ];
+  const docIds = [...new Set(viewerLinks.map((m) => m[1]))];
+  for (const docId of docIds) {
+    const pdfUrl = `https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=${docId}`;
+    try {
+      const response = await fetch(pdfUrl);
+      if (!response.ok) continue;
+      const contentType = response.headers.get("content-type") ?? "";
+      // octet-stream when the doc exists; text/html (SPA shell) when invalid.
+      if (
+        !contentType.includes("octet-stream") &&
+        !contentType.includes("application/pdf")
+      ) {
+        continue;
+      }
+      const buf = Buffer.from(await response.arrayBuffer());
+      out.push({ buffer: buf, fileName: `tenbis-invoice-${docId}.pdf` });
+    } catch {}
+  }
+  if (out.length > 0) return out;
+
   const ezLinks =
     htmlBody.match(
       /https?:\/\/files\.ezcount\.co\.il\/front\/documents\/get\/[^"'\s<>]+/g
