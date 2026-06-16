@@ -236,6 +236,12 @@ interface ReplayOutcome {
     franchiseeResolveFailures?: string[];
     parseFailures?: string[];
     processFailures?: string[];
+    // message/rfc822 ("forward as attachment") diagnostics.
+    rfc822Count?: number;
+    rfc822Extracted?: number;
+    rfc822InnerSubjects?: string[];
+    rfc822InnerLinks?: string[];
+    rfc822Errors?: string[];
   };
 }
 
@@ -360,10 +366,18 @@ export async function POST(request: NextRequest) {
         const directAtts = email.attachments.filter(
           (a) => !isRfc822Attachment(a),
         );
+        trace.rfc822Count = rfc822Atts.length;
+        trace.rfc822Extracted = 0;
+        trace.rfc822InnerSubjects = [];
+        trace.rfc822InnerLinks = [];
+        trace.rfc822Errors = [];
 
         for (let e = 0; e < rfc822Atts.length; e++) {
           const emlBuffer = await downloadAttachment(rfc822Atts[e].downloadUrl);
-          if (!emlBuffer) continue;
+          if (!emlBuffer) {
+            trace.rfc822Errors!.push(`${rfc822Atts[e].filename}: download failed`);
+            continue;
+          }
           let innerType: "client_report" | "commission_invoice" = documentType;
           let extracted: Array<{ buffer: Buffer; fileName: string }> = [];
           let innerBody = "";
@@ -372,7 +386,16 @@ export async function POST(request: NextRequest) {
             innerType = detectDocumentType(unwrapped.subject);
             extracted = unwrapped.pdfFiles;
             innerBody = `${unwrapped.html}\n${unwrapped.text}`;
-          } catch {
+            trace.rfc822Extracted! += extracted.length;
+            trace.rfc822InnerSubjects!.push(unwrapped.subject || "(blank)");
+            // Capture all https links in the inner body so we can see what the
+            // download path missed (e.g. invoice-one.com viewer URLs).
+            const links = innerBody.match(/https?:\/\/[^\s"'<>]+/gi) || [];
+            for (const l of links.slice(0, 6)) trace.rfc822InnerLinks!.push(l);
+          } catch (err) {
+            trace.rfc822Errors!.push(
+              `${rfc822Atts[e].filename}: ${err instanceof Error ? err.message : String(err)}`,
+            );
             continue;
           }
 
