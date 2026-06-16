@@ -48,6 +48,7 @@ import {
   isCibusDailyReport,
   isHaatMonthlyReport,
 } from "@/lib/email/classify-document-type";
+import { isRfc822Attachment, unwrapRfc822 } from "@/lib/email/unwrap-rfc822";
 import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { detectRecipientClientCodeFromPdf } from "@/lib/email/detect-invoice-recipient";
 import { database } from "@/db";
@@ -568,8 +569,73 @@ export async function POST(request: NextRequest) {
           .join(", ")}`
       );
 
-      // Filter to PDF/Excel attachments only — skip inline images (logo, icons)
-      const documentAttachments = email.attachments.filter(
+      // ── Unwrap "Forward as attachment" emails (message/rfc822) ──
+      // Outlook wraps each forwarded email as a message/rfc822 attachment
+      // instead of carrying the original PDF/link. Those are not PDFs, so the
+      // PDF filter below would drop them all and the email would fail with
+      // "no attachments / no links" (real incident 2026-06-15: 3 March Tenbis
+      // commission invoices forwarded by hadas@latableg.com). We download each
+      // wrapped .eml, extract its inner PDF/Excel documents AND its inner body
+      // (so the link-download path can recover link-based invoices), and
+      // classify each by the INNER subject — the outer forward often has an
+      // empty subject.
+      const rfc822Attachments = email.attachments.filter(isRfc822Attachment);
+      const directAttachments = email.attachments.filter(
+        (a) => !isRfc822Attachment(a),
+      );
+
+      const extractedFiles: Array<{
+        buffer: Buffer;
+        fileName: string;
+        documentType: "client_report" | "commission_invoice";
+      }> = [];
+      // Inner email bodies to scan for download links, each with the document
+      // type inferred from its own subject.
+      const innerLinkSources: Array<{
+        body: string;
+        keyPrefix: string;
+        documentType: "client_report" | "commission_invoice";
+      }> = [];
+
+      for (let e = 0; e < rfc822Attachments.length; e++) {
+        const eml = rfc822Attachments[e];
+        const emlBuffer = await downloadAttachment(eml.downloadUrl);
+        if (!emlBuffer) {
+          errorCount++;
+          errorDetails.push(`לא ניתן להוריד מייל מצורף: ${eml.filename}`);
+          continue;
+        }
+        try {
+          const unwrapped = await unwrapRfc822(emlBuffer);
+          const innerType = detectDocumentType(
+            unwrapped.subject,
+            unwrapped.html || unwrapped.text || undefined,
+          );
+          for (const f of unwrapped.pdfFiles) {
+            extractedFiles.push({ ...f, documentType: innerType });
+          }
+          const innerBody = `${unwrapped.html}\n${unwrapped.text}`;
+          if (innerBody.trim()) {
+            innerLinkSources.push({
+              body: innerBody,
+              keyPrefix: `emldl${e}_`,
+              documentType: innerType,
+            });
+          }
+          console.log(
+            `[email-inbound] ${identifiedClient.clientCode}: unwrapped forwarded email "${eml.filename}" → subject="${unwrapped.subject}" type=${innerType}, ${unwrapped.pdfFiles.length} document(s)`,
+          );
+        } catch (err) {
+          errorCount++;
+          errorDetails.push(
+            `כשל בפענוח מייל מצורף "${eml.filename}": ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+
+      // Filter direct attachments to PDF/Excel only — skip inline images
+      // (logo, icons). rfc822 wrappers are handled above, not here.
+      const documentAttachments = directAttachments.filter(
         (a) =>
           a.contentType === "application/pdf" ||
           a.contentType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
@@ -579,115 +645,104 @@ export async function POST(request: NextRequest) {
           a.filename.endsWith(".xls")
       );
 
-      diagnostics.filteredAttachmentCount = documentAttachments.length;
+      // Honest count: direct documents + PDFs extracted from forwarded emails.
+      diagnostics.filteredAttachmentCount =
+        documentAttachments.length + extractedFiles.length;
 
-      // If no document attachments, try to extract download links from email body
-      if (documentAttachments.length === 0) {
-        const downloadedFiles = await extractAndDownloadLinks(
-          email.html || email.text || "",
-          identifiedClient.clientCode
+      // Shared context + counter merge for buffer-file processing (extracted
+      // PDFs and link downloads both flow through processBufferFile).
+      const bufferCtx: BufferFileContext = {
+        identifiedClient,
+        subject,
+        from,
+        emailReceivedAt: email.createdAt ? new Date(email.createdAt) : null,
+        allFranchisees: allFranchisees as Franchisee[],
+        inactiveFranchisees: inactiveFranchisees as Franchisee[],
+        period,
+        syncLogId: syncLog.id,
+      };
+      const mergeOutcome = (o: BufferFileOutcome) => {
+        documentsCreated += o.created;
+        duplicatesSkipped += o.duplicate;
+        errorCount += o.errorCount;
+        errorDetails.push(...o.errorDetails);
+      };
+
+      // Process PDFs extracted from forwarded (message/rfc822) emails.
+      for (let j = 0; j < extractedFiles.length; j++) {
+        const f = extractedFiles[j];
+        mergeOutcome(
+          await processBufferFile(
+            {
+              buffer: f.buffer,
+              fileName: f.fileName,
+              documentType: f.documentType,
+              dedupKey: `${email_id}#eml${j}`,
+            },
+            bufferCtx,
+          ),
         );
+      }
 
-        if (downloadedFiles.length === 0) {
-          const msg = `מייל ${email_id} ללא קבצים מצורפים ולא נמצאו לינקים להורדה`;
-          errorCount++;
-          errorDetails.push(msg);
+      // Link-download path. Scan the OUTER body only when there are no direct
+      // attachments (existing behavior for Mandrill/inline-link 10bis cover
+      // emails), and ALWAYS scan the inner forwarded bodies when present
+      // (link-based invoices forwarded as attachments).
+      const linkSources: Array<{
+        body: string;
+        keyPrefix: string;
+        documentType: "client_report" | "commission_invoice";
+      }> = [];
+      if (documentAttachments.length === 0) {
+        // Keep the historical `#dl{i}` key prefix so re-deliveries stay
+        // idempotent with already-processed cover emails.
+        linkSources.push({
+          body: email.html || email.text || "",
+          keyPrefix: "dl",
+          documentType,
+        });
+      }
+      linkSources.push(...innerLinkSources);
 
-          // Capture body excerpt so we can see what the email actually
-          // contained without going to Resend or the backup mailbox.
-          const body = email.html || email.text || "";
-          if (body) {
-            diagnostics.bodyExcerpt = body.length > 8000 ? body.slice(0, 8000) : body;
-          }
-        }
-
+      let downloadedLinkCount = 0;
+      for (const src of linkSources) {
+        const downloadedFiles = await extractAndDownloadLinks(
+          src.body,
+          identifiedClient.clientCode,
+        );
+        downloadedLinkCount += downloadedFiles.length;
         for (let i = 0; i < downloadedFiles.length; i++) {
           const file = downloadedFiles[i];
-          // Re-route by the invoice's actual recipient ("לכבוד") — ezcount
-          // "[העתק]" copies arrive on the MISHLOCHA channel even when the
-          // franchisee issued the invoice to Haat (one ezcount sequence
-          // serves both clients).
-          const fileClient = await resolveFileClient(
-            identifiedClient,
-            file.buffer,
-            documentType,
-            file.fileName,
-            errorDetails,
+          mergeOutcome(
+            await processBufferFile(
+              {
+                buffer: file.buffer,
+                fileName: file.fileName,
+                documentType: src.documentType,
+                dedupKey: `${email_id}#${src.keyPrefix}${i}`,
+              },
+              bufferCtx,
+            ),
           );
-          const franchiseeMatch = await resolveFranchisee(
-            file.buffer,
-            "application/pdf",
-            fileClient.parserCode,
-            subject,
-            allFranchisees as Franchisee[],
-            file.fileName,
-            documentType,
-            inactiveFranchisees as Franchisee[],
-          );
+        }
+      }
 
-          if (isInactiveFranchiseeSkip(franchiseeMatch)) {
-            duplicatesSkipped++;
-            errorDetails.push(
-              `דולג: לינק לזכיין סגור "${franchiseeMatch.inactiveFranchiseeName}" (${file.fileName})`,
-            );
-            continue;
-          }
+      // Nothing found across ANY channel (direct docs, extracted forwarded
+      // docs, link downloads) → record the failure + body excerpt.
+      if (
+        documentAttachments.length === 0 &&
+        extractedFiles.length === 0 &&
+        downloadedLinkCount === 0
+      ) {
+        const msg = `מייל ${email_id} ללא קבצים מצורפים ולא נמצאו לינקים להורדה`;
+        errorCount++;
+        errorDetails.push(msg);
 
-          let dlResult: ProcessClientDocumentResult | null = null;
-          if (!franchiseeMatch.ok) {
-            errorCount++;
-            errorDetails.push(formatResolveFailure(franchiseeMatch, subject));
-          } else {
-            dlResult = await processClientDocument({
-              buffer: file.buffer,
-              fileName: file.fileName,
-              mimeType: "application/pdf",
-              clientId: fileClient.clientId,
-              parserCode: fileClient.parserCode,
-              franchiseeId: franchiseeMatch.franchiseeId,
-              periodMonth: period.month,
-              periodYear: period.year,
-              documentType,
-              source: "gmail_fetch",
-              // CRITICAL: gmail_message_id has a UNIQUE index. When a single
-              // email yields multiple downloaded files (e.g. multiple ezcount
-              // links), every file must use a DISTINCT key — otherwise the
-              // 2nd+ files are silently rejected as duplicates. Append the
-              // index to keep the prefix `email_id#` stable and searchable.
-              gmailMessageId: `${email_id}#dl${i}`,
-            });
-
-            if (dlResult.skippedDuplicate) {
-              duplicatesSkipped++;
-            } else if (dlResult.success) {
-              documentsCreated++;
-            } else {
-              errorCount++;
-              errorDetails.push(
-                `${file.fileName}: ${dlResult.error ?? "שגיאה בעיבוד"}`
-              );
-            }
-          }
-
-          await recordInboundReviewOutcome({
-            syncLogId: syncLog.id,
-            emailId: `${email_id}#dl${i}`,
-            emailSubject: subject,
-            emailFrom: from,
-            emailReceivedAt: email.createdAt ? new Date(email.createdAt) : null,
-            clientId: fileClient.clientId,
-            clientCode: fileClient.clientCode,
-            documentType,
-            franchiseeMatch,
-            processResult: dlResult,
-            fileContext: {
-              buffer: file.buffer,
-              fileName: file.fileName,
-              mimeType: "application/pdf",
-            },
-            periodMonth: period.month,
-            periodYear: period.year,
-          });
+        // Capture body excerpt so we can see what the email actually
+        // contained without going to Resend or the backup mailbox.
+        const body = email.html || email.text || "";
+        if (body) {
+          diagnostics.bodyExcerpt = body.length > 8000 ? body.slice(0, 8000) : body;
         }
       }
 
@@ -1380,6 +1435,134 @@ async function recordInboundReviewOutcome(args: {
       err,
     );
   }
+}
+
+/** Per-channel counters returned by processBufferFile, merged by the caller. */
+interface BufferFileOutcome {
+  created: number;
+  duplicate: number;
+  errorCount: number;
+  errorDetails: string[];
+}
+
+/** Shared email-level context for processing already-downloaded PDF buffers. */
+interface BufferFileContext {
+  identifiedClient: FileClientIdentity;
+  subject: string;
+  from: string;
+  emailReceivedAt: Date | null;
+  allFranchisees: Franchisee[];
+  inactiveFranchisees: Franchisee[];
+  period: { month: number; year: number };
+  syncLogId: string;
+}
+
+/**
+ * Process one already-downloaded PDF buffer through the full
+ * resolve→commit→record pipeline. Shared by (a) PDFs extracted from forwarded
+ * message/rfc822 attachments and (b) link-downloaded files.
+ *
+ * Each call MUST pass a DISTINCT `dedupKey`: gmail_message_id has a UNIQUE
+ * index, so reusing a key silently rejects the 2nd+ file as a duplicate.
+ * Returns counter deltas; never throws — failures are folded into the outcome.
+ */
+async function processBufferFile(
+  file: {
+    buffer: Buffer;
+    fileName: string;
+    dedupKey: string;
+    documentType: "client_report" | "commission_invoice";
+  },
+  ctx: BufferFileContext,
+): Promise<BufferFileOutcome> {
+  const outcome: BufferFileOutcome = {
+    created: 0,
+    duplicate: 0,
+    errorCount: 0,
+    errorDetails: [],
+  };
+
+  // Re-route by the invoice's actual recipient ("לכבוד") — ezcount "[העתק]"
+  // copies arrive on the MISHLOCHA channel even when the franchisee issued the
+  // invoice to Haat (one ezcount sequence serves both clients).
+  const fileClient = await resolveFileClient(
+    ctx.identifiedClient,
+    file.buffer,
+    file.documentType,
+    file.fileName,
+    outcome.errorDetails,
+  );
+  const franchiseeMatch = await resolveFranchisee(
+    file.buffer,
+    "application/pdf",
+    fileClient.parserCode,
+    ctx.subject,
+    ctx.allFranchisees,
+    file.fileName,
+    file.documentType,
+    ctx.inactiveFranchisees,
+  );
+
+  if (isInactiveFranchiseeSkip(franchiseeMatch)) {
+    outcome.duplicate++;
+    outcome.errorDetails.push(
+      `דולג: "${file.fileName}" לזכיין סגור "${franchiseeMatch.inactiveFranchiseeName}"`,
+    );
+    return outcome;
+  }
+
+  let result: ProcessClientDocumentResult | null = null;
+  if (!franchiseeMatch.ok) {
+    outcome.errorCount++;
+    outcome.errorDetails.push(formatResolveFailure(franchiseeMatch, ctx.subject));
+  } else {
+    result = await processClientDocument({
+      buffer: file.buffer,
+      fileName: file.fileName,
+      mimeType: "application/pdf",
+      clientId: fileClient.clientId,
+      parserCode: fileClient.parserCode,
+      franchiseeId: franchiseeMatch.franchiseeId,
+      periodMonth: ctx.period.month,
+      periodYear: ctx.period.year,
+      documentType: file.documentType,
+      source: "gmail_fetch",
+      gmailMessageId: file.dedupKey,
+    });
+
+    if (result.skippedDuplicate) {
+      outcome.duplicate++;
+    } else if (result.success) {
+      outcome.created++;
+    } else {
+      outcome.errorCount++;
+      outcome.errorDetails.push(
+        `${file.fileName}: ${result.error ?? "שגיאה בעיבוד"}`,
+      );
+    }
+  }
+
+  await recordInboundReviewOutcome({
+    syncLogId: ctx.syncLogId,
+    emailId: file.dedupKey,
+    emailSubject: ctx.subject,
+    emailFrom: ctx.from,
+    emailReceivedAt: ctx.emailReceivedAt,
+    clientId: fileClient.clientId,
+    clientCode: fileClient.clientCode,
+    documentType: file.documentType,
+    franchiseeMatch,
+    processResult: result,
+    fileContext: {
+      buffer: file.buffer,
+      fileName: file.fileName,
+      mimeType: "application/pdf",
+    },
+    periodMonth: ctx.period.month,
+    periodYear: ctx.period.year,
+  });
+
+  return outcome;
 }
 
 function formatResolveFailure(

@@ -36,6 +36,7 @@ import { processClientDocument } from "@/lib/client-document-processor";
 import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
+import { isRfc822Attachment, unwrapRfc822 } from "@/lib/email/unwrap-rfc822";
 import type { Franchisee } from "@/db/schema";
 
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
@@ -351,7 +352,109 @@ export async function POST(request: NextRequest) {
           }
         }
       } else {
-        const docAtts = email.attachments.filter(
+        // Unwrap "Forward as attachment" emails (message/rfc822) first —
+        // mirrors email-inbound/route.ts. Each wrapped .eml yields inner
+        // PDF/Excel documents and/or an inner body with download links,
+        // classified by the INNER subject (the outer forward may be blank).
+        const rfc822Atts = email.attachments.filter(isRfc822Attachment);
+        const directAtts = email.attachments.filter(
+          (a) => !isRfc822Attachment(a),
+        );
+
+        for (let e = 0; e < rfc822Atts.length; e++) {
+          const emlBuffer = await downloadAttachment(rfc822Atts[e].downloadUrl);
+          if (!emlBuffer) continue;
+          let innerType: "client_report" | "commission_invoice" = documentType;
+          let extracted: Array<{ buffer: Buffer; fileName: string }> = [];
+          let innerBody = "";
+          try {
+            const unwrapped = await unwrapRfc822(emlBuffer);
+            innerType = detectDocumentType(unwrapped.subject);
+            extracted = unwrapped.pdfFiles;
+            innerBody = `${unwrapped.html}\n${unwrapped.text}`;
+          } catch {
+            continue;
+          }
+
+          // Inner PDF/Excel documents.
+          for (let j = 0; j < extracted.length; j++) {
+            const f = extracted[j];
+            const fr = await resolveFranchisee(
+              f.buffer,
+              "application/pdf",
+              identifiedClient.parserCode,
+              email.subject,
+              allFranchisees,
+              f.fileName,
+              innerType,
+            );
+            if (!fr) {
+              trace.franchiseeResolveFailures!.push(f.fileName);
+              continue;
+            }
+            const r = await processClientDocument({
+              buffer: f.buffer,
+              fileName: f.fileName,
+              mimeType: "application/pdf",
+              clientId: identifiedClient.clientId,
+              parserCode: identifiedClient.parserCode,
+              franchiseeId: fr.franchiseeId,
+              periodMonth: period.month,
+              periodYear: period.year,
+              documentType: innerType,
+              source: "gmail_fetch",
+              gmailMessageId: `${emailId}#eml${e}_${j}`,
+            });
+            if (r.skippedDuplicate) duplicatesSkipped++;
+            else if (r.success) documentsCreated++;
+            else
+              trace.processFailures!.push(
+                `${f.fileName}: ${r.error ?? "unknown"}`,
+              );
+          }
+
+          // Inner body download links (link-based invoices).
+          if (innerBody.trim()) {
+            const downloaded = await extractAndDownloadLinks(innerBody);
+            for (let i = 0; i < downloaded.length; i++) {
+              const f = downloaded[i];
+              const fr = await resolveFranchisee(
+                f.buffer,
+                "application/pdf",
+                identifiedClient.parserCode,
+                email.subject,
+                allFranchisees,
+                f.fileName,
+                innerType,
+              );
+              if (!fr) {
+                trace.franchiseeResolveFailures!.push(f.fileName);
+                continue;
+              }
+              const r = await processClientDocument({
+                buffer: f.buffer,
+                fileName: f.fileName,
+                mimeType: "application/pdf",
+                clientId: identifiedClient.clientId,
+                parserCode: identifiedClient.parserCode,
+                franchiseeId: fr.franchiseeId,
+                periodMonth: period.month,
+                periodYear: period.year,
+                documentType: innerType,
+                source: "gmail_fetch",
+                gmailMessageId: `${emailId}#emldl${e}_${i}`,
+              });
+              if (r.skippedDuplicate) duplicatesSkipped++;
+              else if (r.success) documentsCreated++;
+              else
+                trace.processFailures!.push(
+                  `${f.fileName}: ${r.error ?? "unknown"}`,
+                );
+            }
+          }
+        }
+
+        const docAtts = directAtts.filter(
           (a) =>
             a.contentType === "application/pdf" ||
             a.contentType ===
