@@ -748,6 +748,27 @@ async function enrichFileRequest(
 }
 
 /**
+ * Get the file_request that generated a given upload_link.
+ *
+ * Used by the public upload route to recover the period that was actually
+ * REQUESTED (file_request.metadata.periodKey, e.g. "2026-Q2") so a supplier
+ * file with no dates of its own is stamped to the requested period instead
+ * of being guessed from the upload date. Returns null for ad-hoc links with
+ * no backing request.
+ */
+export async function getFileRequestByUploadLinkId(
+  uploadLinkId: string
+): Promise<FileRequest | null> {
+  const results = await database
+    .select()
+    .from(fileRequest)
+    .where(eq(fileRequest.uploadLinkId, uploadLinkId))
+    .limit(1);
+
+  return results[0] ?? null;
+}
+
+/**
  * Mark file request as submitted when files are uploaded
  */
 export async function markFileRequestAsSubmitted(

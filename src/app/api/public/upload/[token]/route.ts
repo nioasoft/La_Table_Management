@@ -9,7 +9,7 @@ import {
   deleteUploadedFile,
 } from "@/data-access/uploadLinks";
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
-import { markFileRequestAsSubmitted } from "@/data-access/fileRequests";
+import { markFileRequestAsSubmitted, getFileRequestByUploadLinkId } from "@/data-access/fileRequests";
 import { matchBkmvSuppliers } from "@/lib/supplier-matcher";
 import {
   getFranchiseeByCompanyId,
@@ -36,7 +36,7 @@ import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
-import { getPeriodsForFrequency } from "@/lib/settlement-periods";
+import { getPeriodsForFrequency, getPeriodByKey } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload, findDuplicateSupplierFiles, reviewSupplierFile } from "@/data-access/supplier-file-uploads";
 import {
@@ -691,13 +691,30 @@ export async function POST(
               periodStartDate = formatDateAsLocal(earliest);
               periodEndDate = formatDateAsLocal(latest);
             } else {
-              // No dates in file (e.g. Nespresso) - calculate from supplier's settlement frequency
-              const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
-              const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
-              const periods = getPeriodsForFrequency(frequency, new Date(), 1, fiscalYearStartMonth);
-              if (periods.length > 0) {
-                periodStartDate = formatDateAsLocal(periods[0].startDate);
-                periodEndDate = formatDateAsLocal(periods[0].endDate);
+              // No dates in file (e.g. Nespresso, Fresco, Erel). Prefer the
+              // period that was actually REQUESTED via this link's
+              // file_request (metadata.periodKey, e.g. "2026-Q2") so the
+              // stamp doesn't drift with the upload date. Without this, a
+              // file uploaded inside the reporting quarter resolves to the
+              // *previous* quarter (includeCurrent=false) and gets rejected
+              // as a duplicate of the prior period's report.
+              const fileReq = await getFileRequestByUploadLinkId(link.id);
+              const requestedKey = (fileReq?.metadata as Record<string, unknown> | null)?.periodKey;
+              const requestedPeriod =
+                typeof requestedKey === "string" ? getPeriodByKey(requestedKey) : null;
+
+              if (requestedPeriod) {
+                periodStartDate = formatDateAsLocal(requestedPeriod.startDate);
+                periodEndDate = formatDateAsLocal(requestedPeriod.endDate);
+              } else {
+                // Fallback: derive from supplier's settlement frequency + upload date.
+                const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
+                const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
+                const periods = getPeriodsForFrequency(frequency, new Date(), 1, fiscalYearStartMonth);
+                if (periods.length > 0) {
+                  periodStartDate = formatDateAsLocal(periods[0].startDate);
+                  periodEndDate = formatDateAsLocal(periods[0].endDate);
+                }
               }
             }
 
