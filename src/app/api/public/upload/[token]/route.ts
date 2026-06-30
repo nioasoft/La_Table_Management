@@ -5,6 +5,7 @@ import {
   createUploadedFile,
   getUploadedFilesCount,
   markUploadLinkAsUsed,
+  markUploadLinkAsActive,
   updateUploadedFileProcessingStatus,
   deleteUploadedFile,
 } from "@/data-access/uploadLinks";
@@ -845,6 +846,14 @@ export async function POST(
                 } catch (cleanupError) {
                   console.error("[Upload Route] Failed to clean up uploaded file:", cleanupError);
                   // Continue with the error response even if cleanup fails
+                }
+
+                // Re-open the link: it may have been marked "used" above (when
+                // maxFiles was reached) before this duplicate check ran. Since
+                // we just deleted the file, the supplier has NOT successfully
+                // submitted and must be able to retry on the same link.
+                if (newFilesCount >= link.maxFiles) {
+                  await markUploadLinkAsActive(link.id);
                 }
 
                 const periodLabel = periodStartDate && periodEndDate

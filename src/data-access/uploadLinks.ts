@@ -243,6 +243,28 @@ export async function markUploadLinkAsUsed(
 }
 
 /**
+ * Re-open an upload link that was optimistically marked "used" but ended up
+ * with no stored file (e.g. the upload was rejected as a duplicate and the
+ * file deleted). Without this the supplier sees "קישור זה כבר נוצל" and can
+ * never retry on the same link.
+ */
+export async function markUploadLinkAsActive(
+  id: string
+): Promise<UploadLink | null> {
+  const results = (await database
+    .update(uploadLink)
+    .set({
+      status: "active",
+      usedAt: null,
+      usedByEmail: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(uploadLink.id, id))
+    .returning()) as unknown as UploadLink[];
+  return results[0] || null;
+}
+
+/**
  * Get all upload links for an entity
  */
 export async function getUploadLinksByEntity(
