@@ -254,7 +254,7 @@ export default function PublicUploadPage({
   const uploadSingleFile = async (
     file: File,
     replaceFileId?: string
-  ): Promise<{ success: boolean; duplicate?: { existingFileId: string; existingFileName: string }; error?: string }> => {
+  ): Promise<{ success: boolean; duplicate?: { existingFileId: string; existingFileName: string }; error?: string; code?: string }> => {
     const formData = new FormData();
     formData.append("file", file);
     if (uploaderEmail) {
@@ -283,7 +283,7 @@ export default function PublicUploadPage({
     }
 
     if (!response.ok) {
-      return { success: false, error: data.error || he.upload.errors.uploadFailed };
+      return { success: false, error: data.error || he.upload.errors.uploadFailed, code: data.code };
     }
 
     // Success
@@ -327,7 +327,9 @@ export default function PublicUploadPage({
         }
 
         if (result.error) {
-          failedFiles.push(`${file.name}: ${result.error}`);
+          failedFiles.push(
+            `${file.name}: ${result.error}${result.code ? ` (קוד: ${result.code})` : ""}`
+          );
         }
       } catch (error) {
         console.error("Error uploading file:", error);
@@ -360,7 +362,9 @@ export default function PublicUploadPage({
     try {
       const result = await uploadSingleFile(file, existingFileId);
       if (result.error) {
-        setErrorMessage(`${file.name}: ${result.error}`);
+        setErrorMessage(
+          `${file.name}: ${result.error}${result.code ? ` (קוד: ${result.code})` : ""}`
+        );
       }
     } catch (error) {
       console.error("Error replacing file:", error);

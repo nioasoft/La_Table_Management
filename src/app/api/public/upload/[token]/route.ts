@@ -126,6 +126,22 @@ function buildErrorProcessingResult(error: string): SupplierFileProcessingResult
 }
 
 /**
+ * Reject an upload with a user-readable Hebrew message AND a structured
+ * server log. Every rejection goes through here so a supplier who says
+ * "it didn't upload" can read back the code, and we can grep the logs by
+ * code/link without digging — no rejection is silent.
+ */
+function rejectUpload(
+  code: string,
+  status: number,
+  messageHe: string,
+  ctx: Record<string, unknown> = {}
+): NextResponse {
+  console.warn("[upload] rejected", { code, status, ...ctx });
+  return NextResponse.json({ error: messageHe, code }, { status });
+}
+
+/**
  * POST /api/public/upload/[token] - Upload file to an upload link (public, no auth required)
  */
 export async function POST(
@@ -157,9 +173,11 @@ export async function POST(
     // Check if max files limit reached
     const currentFilesCount = await getUploadedFilesCount(link.id);
     if (currentFilesCount >= link.maxFiles) {
-      return NextResponse.json(
-        { error: "הגעת למספר הקבצים המקסימלי המותר", code: "MAX_FILES_REACHED" },
-        { status: 400 }
+      return rejectUpload(
+        "MAX_FILES_REACHED",
+        400,
+        `כבר הועלו כל הקבצים המותרים בקישור זה (${link.maxFiles}). אם צריך להחליף קובץ — פני אלינו.`,
+        { linkId: link.id, entityType: link.entityType, entityId: link.entityId }
       );
     }
 
@@ -170,9 +188,11 @@ export async function POST(
     const replaceFileId = formData.get("replaceFileId") as string | null;
 
     if (!file) {
-      return NextResponse.json(
-        { error: "נדרש קובץ", code: "FILE_REQUIRED" },
-        { status: 400 }
+      return rejectUpload(
+        "FILE_REQUIRED",
+        400,
+        "לא נבחר קובץ. בחרי קובץ ולחצי על 'העלה'.",
+        { linkId: link.id, email: uploaderEmail }
       );
     }
 
@@ -217,27 +237,22 @@ export async function POST(
       !allowedTypes.includes(file.type) &&
       !isAllowedFileType(effectiveMimeType)
     ) {
-      return NextResponse.json(
-        {
-          error: "סוג קובץ לא מורשה",
-          code: "INVALID_FILE_TYPE",
-          allowedTypes,
-          claimed: file.type,
-          inferred: effectiveMimeType,
-        },
-        { status: 400 }
+      return rejectUpload(
+        "INVALID_FILE_TYPE",
+        400,
+        "סוג הקובץ אינו נתמך. יש להעלות קובץ Excel (‎.xlsx או ‎.xls) או CSV.",
+        { linkId: link.id, fileName: file.name, claimed: file.type, inferred: effectiveMimeType }
       );
     }
 
     // Early size check BEFORE loading file into memory to prevent memory exhaustion attacks
     const maxSize = link.maxFileSize || getMaxFileSize();
     if (file.size > maxSize) {
-      return NextResponse.json(
-        {
-          error: `גודל הקובץ חורג מהמקסימום המותר (${Math.round(maxSize / 1024 / 1024)}MB)`,
-          code: "FILE_TOO_LARGE",
-        },
-        { status: 400 }
+      return rejectUpload(
+        "FILE_TOO_LARGE",
+        400,
+        `הקובץ גדול מדי (מקסימום ${Math.round(maxSize / 1024 / 1024)}MB). נסי לשמור אותו מחדש או לפצל אותו.`,
+        { linkId: link.id, fileName: file.name, fileSize: file.size }
       );
     }
 
@@ -251,31 +266,29 @@ export async function POST(
     // validator instead of forced down the binary magic-byte path.
     const fileValidation = await validateFileType(buffer, effectiveMimeType);
     if (!fileValidation.valid) {
-      console.warn("File upload rejected - type mismatch:", {
-        claimed: file.type,
-        detected: fileValidation.detectedMimeType,
-        error: fileValidation.error,
-        uploadLinkId: link.id,
-        uploaderEmail,
-      });
-      return NextResponse.json(
+      return rejectUpload(
+        "FILE_TYPE_MISMATCH",
+        400,
+        "הקובץ אינו קובץ Excel תקין או שהוא פגום. פתחי אותו ב-Excel, שמרי שוב כקובץ ‎.xlsx ונסי להעלות מחדש.",
         {
-          error: "תוכן הקובץ אינו תואם לסוג המוצהר",
-          code: "FILE_TYPE_MISMATCH",
-        },
-        { status: 400 }
+          linkId: link.id,
+          fileName: file.name,
+          email: uploaderEmail,
+          claimed: file.type,
+          detected: fileValidation.detectedMimeType,
+          detail: fileValidation.error,
+        }
       );
     }
 
     // Secondary size validation using actual buffer length (defense in depth)
     // This catches cases where file.size was spoofed or inaccurate
     if (buffer.length > maxSize) {
-      return NextResponse.json(
-        {
-          error: `גודל הקובץ חורג מהמקסימום המותר (${Math.round(maxSize / 1024 / 1024)}MB)`,
-          code: "FILE_TOO_LARGE",
-        },
-        { status: 400 }
+      return rejectUpload(
+        "FILE_TOO_LARGE",
+        400,
+        `הקובץ גדול מדי (מקסימום ${Math.round(maxSize / 1024 / 1024)}MB). נסי לשמור אותו מחדש או לפצל אותו.`,
+        { linkId: link.id, fileName: file.name, bufferLength: buffer.length }
       );
     }
 
@@ -834,11 +847,24 @@ export async function POST(
                   // Continue with the error response even if cleanup fails
                 }
 
+                const periodLabel = periodStartDate && periodEndDate
+                  ? ` (${periodStartDate} עד ${periodEndDate})`
+                  : "";
+                console.warn("[upload] rejected", {
+                  code: "DUPLICATE_FILE",
+                  status: 409,
+                  linkId: link.id,
+                  fileName: file.name,
+                  periodStartDate,
+                  periodEndDate,
+                  existingFile: duplicates[0].originalFileName,
+                });
+
                 return NextResponse.json(
                   {
                     error: franchiseeNames.length > 0
-                      ? `קיים כבר קובץ עבור ${franchiseeNames.join(", ")} בתקופה זו`
-                      : "קיים כבר קובץ עבור אותו זכיין ותקופה",
+                      ? `כבר קיים במערכת דוח עבור ${franchiseeNames.join(", ")} בתקופה זו${periodLabel}. אם זה דוח מעודכן — לחצי 'החלף קובץ קיים'.`
+                      : `כבר קיים במערכת דוח לתקופה זו${periodLabel}. אם זה דוח מעודכן — לחצי 'החלף קובץ קיים'.`,
                     code: "DUPLICATE_FILE",
                     duplicate: {
                       existingFileId: duplicates[0].fileId,
@@ -1003,9 +1029,16 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Error uploading file:", error);
+    // Surface a reference the supplier can read back to us; x-vercel-id maps
+    // straight to the Vercel runtime logs so we can find this exact request.
+    const requestId = request.headers.get("x-vercel-id") || randomUUID();
+    console.error("[upload] UPLOAD_ERROR", { requestId, error });
     return NextResponse.json(
-      { error: "שגיאה בהעלאת הקובץ", code: "UPLOAD_ERROR" },
+      {
+        error: `שגיאה זמנית בהעלאת הקובץ. נסי שוב בעוד רגע. אם הבעיה חוזרת — צרי קשר ומסרי את הקוד: ${requestId}`,
+        code: "UPLOAD_ERROR",
+        requestId,
+      },
       { status: 500 }
     );
   }
