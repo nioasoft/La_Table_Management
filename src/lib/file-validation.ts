@@ -2,16 +2,22 @@ import { fileTypeFromBuffer } from "file-type";
 
 /**
  * Mapping of allowed MIME types to file-type library extensions
- * Used for magic byte validation to prevent MIME type spoofing
+ * Used for magic byte validation to prevent MIME type spoofing.
+ *
+ * NOTE: the `file-type` lib reports every OLE2/CFB document (legacy .xls,
+ * .doc, .ppt, .msi) as the generic `{ ext: "cfb" }` — it never returns
+ * "xls"/"doc". So legacy Office formats are matched via the `cfb` alias.
+ * ponytail: file-type can't distinguish CFB subtypes; tighten to per-stream
+ * CFB inspection only if real abuse appears.
  */
 const ALLOWED_FILE_SIGNATURES: Record<string, string[]> = {
   // Documents
   "application/pdf": ["pdf"],
-  "application/msword": ["doc"],
+  "application/msword": ["doc", "cfb"], // legacy .doc is an OLE/CFB container
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
     "docx",
   ],
-  "application/vnd.ms-excel": ["xls"],
+  "application/vnd.ms-excel": ["xls", "cfb"], // legacy .xls is an OLE/CFB container
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ["xlsx"],
 
   // Images
