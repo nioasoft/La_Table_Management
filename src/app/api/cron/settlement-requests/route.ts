@@ -250,10 +250,12 @@ async function processFrequency(
 
   const now = referenceDate || new Date();
 
-  // Resolve the period that is CLOSING today (includeCurrent=true, count=1).
-  // The cron fires on the last day of each settlement period, so "today's
-  // closing period" is the one we want to reference in the email and create
-  // a settlement period for.
+  // Resolve the most recently FULLY-CLOSED period (includeCurrent=false).
+  // The cron runs daily; with includeCurrent=false a period only becomes
+  // "the last closed period" on the 1st of the month AFTER it ends. So a
+  // quarterly request fires on 1/7 (for Q2), 1/10 (Q3)... — never on the
+  // quarter's last day. Earlier-period dedup (by periodKey) keeps the daily
+  // runs from resending once the request has gone out.
   const periodType = frequencyToPeriodType(frequency);
   let periodDescription: string;
   let periodKey: string | null = null;
@@ -263,11 +265,12 @@ async function processFrequency(
   let periodEndIso: string | null = null;
 
   if (periodType) {
-    // Pick the most recently CLOSED period: prefer "current" if its endDate
-    // has passed (or is today), otherwise fall back to the previous period.
-    // This is the catch-up mechanism — running on May 4 still picks April
-    // for monthly suppliers if April's email never went out.
-    const candidates = getPeriodsForFrequency(periodType, now, 1, 1, true);
+    // Pick the most recently fully-closed period (includeCurrent=false): the
+    // period that ended strictly before the current one. On 30/6 this is Q1
+    // (already sent in April → deduped); on 1/7 it becomes Q2 → sent then.
+    // This is also the catch-up mechanism — running on Jul 5 still picks Q2
+    // if the Jul 1 run never fired, until the next period closes.
+    const candidates = getPeriodsForFrequency(periodType, now, 1, 1, false);
     const closedPeriod = candidates.find((p) => p.endDate.getTime() <= now.getTime());
 
     if (!closedPeriod) {
