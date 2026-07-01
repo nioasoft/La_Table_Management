@@ -15,6 +15,7 @@ import {
 import { eq, and, gte, lte, inArray, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import * as XLSX from "xlsx";
+import AdmZip from "adm-zip";
 import { formatDateAsLocal } from "@/lib/date-utils";
 
 // ============================================================================
@@ -66,6 +67,99 @@ function calculateMatchCommission(
   }
 
   return Math.round(commission);
+}
+
+/**
+ * Excel filename for a single brand's Hashavshevet export.
+ * System brand "שונות" drops the "רשת" prefix (matches legacy naming).
+ */
+function brandExcelFileName(brandNameHe: string): string {
+  return brandNameHe === "שונות"
+    ? `עמלות שונות.xlsx`
+    : `עמלות רשת ${brandNameHe}.xlsx`;
+}
+
+/**
+ * Build a Hashavshevet import workbook from already-numbered rows and return it
+ * as an xlsx buffer. Includes the named range "חוזים" that Hashavshevet requires
+ * to recognize the data on import — every file must carry its own range, which
+ * is why "all networks" splits into separate files rather than one multi-sheet
+ * workbook.
+ */
+function buildHashavshevetWorkbookBuffer(rows: HashavshevetRow[]): Buffer {
+  const wb = XLSX.utils.book_new();
+
+  const headers = [
+    "מפתח חשבון",
+    "שם",
+    "מפתח פריט",
+    "שם פריט",
+    "כמות",
+    "מחיר",
+    "סוג המסמך",
+    "מספר מסמך",
+  ];
+
+  const data = [
+    headers,
+    ...rows.map((row) => [
+      row.accountKey,
+      row.accountName,
+      row.itemKey,
+      row.itemName,
+      row.quantity,
+      row.price,
+      row.documentType,
+      row.documentNumber,
+    ]),
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Set numeric columns to number type with explicit number format
+  // E = כמות (quantity), F = מחיר (price), G = סוג המסמך (documentType)
+  const numericColumns: [number, string][] = [
+    [4, "0"], // כמות - integer
+    [5, "#,##0.00"], // מחיר - decimal with 2 places
+    [6, "0"], // סוג המסמך - integer
+  ];
+  const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+
+  for (let row = 1; row <= range.e.r; row++) {
+    for (const [col, format] of numericColumns) {
+      const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
+      const cell = ws[cellAddress];
+      if (cell && cell.v !== undefined && cell.v !== "") {
+        cell.t = "n";
+        cell.z = format;
+      }
+    }
+  }
+
+  ws["!cols"] = [
+    { wch: 15 }, // מפתח חשבון
+    { wch: 10 }, // שם
+    { wch: 35 }, // מפתח פריט
+    { wch: 10 }, // שם פריט
+    { wch: 8 }, // כמות
+    { wch: 12 }, // מחיר
+    { wch: 12 }, // סוג המסמך
+    { wch: 12 }, // מספר מסמך
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
+
+  // Named range "חוזים" covering all data including the header — required for
+  // Hashavshevet to recognize the data during import.
+  if (!wb.Workbook) wb.Workbook = {};
+  if (!wb.Workbook.Names) wb.Workbook.Names = [];
+  const lastRow = rows.length + 1; // +1 for header row
+  wb.Workbook.Names.push({
+    Name: "חוזים",
+    Ref: `'ייבוא חשבשבת'!$A$1:$H$${lastRow}`,
+  });
+
+  return XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
 }
 
 // ============================================================================
@@ -228,7 +322,11 @@ export async function GET(request: NextRequest) {
     // for the on-screen report. Reconciliation-v2 keeps the underlying detail.
     const aggregated = new Map<
       string,
-      Omit<HashavshevetRow, "documentNumber"> & { price: number }
+      Omit<HashavshevetRow, "documentNumber"> & {
+        price: number;
+        brandId: string;
+        brandNameHe: string;
+      }
     >();
     // Suppliers that have commissions in this period but no hashavshevetCode.
     // We block the XLSX download until Reut configures them, instead of
@@ -300,6 +398,8 @@ export async function GET(request: NextRequest) {
             quantity: 1,
             price: commissionAmount,
             documentType: 11,
+            brandId: franchiseeInfo.brandId,
+            brandNameHe: brandInfo.nameHe,
           });
         }
       }
@@ -321,127 +421,82 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Assign running document numbers after aggregation so identical-supplier
-    // lines get consecutive numbers (Reut prefers this; matches the on-screen
-    // preview at /admin/reports/hashavshevet).
-    let currentDocNumber = startDocNumber;
-    const rows: HashavshevetRow[] = Array.from(aggregated.values()).map((r) => ({
-      ...r,
-      documentNumber: String(currentDocNumber++),
-    }));
+    const aggregatedRows = Array.from(aggregated.values());
 
-    if (rows.length === 0) {
+    if (aggregatedRows.length === 0) {
       return NextResponse.json(
         { error: "אין נתונים לייצוא" },
         { status: 400 }
       );
     }
 
-    // Create workbook
-    const wb = XLSX.utils.book_new();
+    // Number a group of aggregated rows from startDocNumber. Each network file
+    // restarts its own numbering (matches Reut's manual per-network exports).
+    const numberRows = (
+      group: typeof aggregatedRows
+    ): HashavshevetRow[] => {
+      let doc = startDocNumber;
+      return group.map((r) => ({
+        accountKey: r.accountKey,
+        accountName: r.accountName,
+        itemKey: r.itemKey,
+        itemName: r.itemName,
+        quantity: r.quantity,
+        price: r.price,
+        documentType: r.documentType,
+        documentNumber: String(doc++),
+      }));
+    };
 
-    // Create data array with headers
-    const headers = [
-      "מפתח חשבון",
-      "שם",
-      "מפתח פריט",
-      "שם פריט",
-      "כמות",
-      "מחיר",
-      "סוג המסמך",
-      "מספר מסמך",
-    ];
-
-    const data = [
-      headers,
-      ...rows.map((row) => [
-        row.accountKey,
-        row.accountName,
-        row.itemKey,
-        row.itemName,
-        row.quantity,
-        row.price,
-        row.documentType,
-        row.documentNumber,
-      ]),
-    ];
-
-    // Create worksheet
-    const ws = XLSX.utils.aoa_to_sheet(data);
-
-    // Set numeric columns to number type with explicit number format
-    // E = כמות (quantity), F = מחיר (price), G = סוג המסמך (documentType)
-    // columns: [index, format] - format is Excel number format string
-    const numericColumns: [number, string][] = [
-      [4, "0"],        // כמות - integer
-      [5, "#,##0.00"], // מחיר - decimal with 2 places
-      [6, "0"],        // סוג המסמך - integer
-    ];
-    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
-
-    for (let row = 1; row <= range.e.r; row++) {
-      // Skip header row (row 0)
-      for (const [col, format] of numericColumns) {
-        const cellAddress = XLSX.utils.encode_cell({ r: row, c: col });
-        const cell = ws[cellAddress];
-        if (cell && cell.v !== undefined && cell.v !== "") {
-          cell.t = "n"; // Set type to number
-          cell.z = format; // Set number format
-        }
+    // "All networks" (no brand filter) → ZIP with a separate Excel per network,
+    // so each file imports into Hashavshevet on its own. A specific brand keeps
+    // the single-file behavior.
+    if (brandIds.length === 0) {
+      const byBrand = new Map<string, typeof aggregatedRows>();
+      const brandNames = new Map<string, string>();
+      for (const r of aggregatedRows) {
+        brandNames.set(r.brandId, r.brandNameHe);
+        const group = byBrand.get(r.brandId);
+        if (group) group.push(r);
+        else byBrand.set(r.brandId, [r]);
       }
+
+      const zip = new AdmZip();
+      for (const [brandId, group] of byBrand) {
+        const buffer = buildHashavshevetWorkbookBuffer(numberRows(group));
+        zip.addFile(
+          brandExcelFileName(brandNames.get(brandId) || "שונות"),
+          buffer
+        );
+      }
+
+      const zipBuffer = zip.toBuffer();
+      const encodedFilename = encodeURIComponent("עמלות לפי רשת.zip");
+      return new NextResponse(new Uint8Array(zipBuffer), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
+        },
+      });
     }
 
-    // Set column widths
-    ws["!cols"] = [
-      { wch: 15 }, // מפתח חשבון
-      { wch: 10 }, // שם
-      { wch: 35 }, // מפתח פריט
-      { wch: 10 }, // שם פריט
-      { wch: 8 }, // כמות
-      { wch: 12 }, // מחיר
-      { wch: 12 }, // סוג המסמך
-      { wch: 12 }, // מספר מסמך
-    ];
+    // Single (or explicit) brand → one Excel file (legacy behavior).
+    const buffer = buildHashavshevetWorkbookBuffer(numberRows(aggregatedRows));
 
-    // Add worksheet to workbook
-    XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
-
-    // Add named range "חוזים" covering all data (including header)
-    // This is required for Hashavshevet to recognize the data during import
-    if (!wb.Workbook) wb.Workbook = {};
-    if (!wb.Workbook.Names) wb.Workbook.Names = [];
-
-    const lastRow = rows.length + 1; // +1 for header row
-    wb.Workbook.Names.push({
-      Name: "חוזים",
-      Ref: `'ייבוא חשבשבת'!$A$1:$H$${lastRow}`,
-    });
-
-    // Generate buffer
-    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "buffer" });
-
-    // Generate filename based on selected brand
     let filename: string;
     if (brandIds.length === 1) {
       const selectedBrand = brandMap.get(brandIds[0]);
-      if (selectedBrand) {
-        // For system brand "שונות", don't add "רשת"
-        if (selectedBrand.nameHe === "שונות") {
-          filename = `עמלות שונות.xlsx`;
-        } else {
-          filename = `עמלות רשת ${selectedBrand.nameHe}.xlsx`;
-        }
-      } else {
-        filename = `hashavshevet_export.xlsx`;
-      }
+      filename = selectedBrand
+        ? brandExcelFileName(selectedBrand.nameHe)
+        : `hashavshevet_export.xlsx`;
     } else {
       filename = `עמלות כל הרשתות.xlsx`;
     }
 
-    // Return Excel file
     // Encode filename for Content-Disposition header (RFC 5987 for non-ASCII)
     const encodedFilename = encodeURIComponent(filename);
-    return new NextResponse(buffer, {
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type":
