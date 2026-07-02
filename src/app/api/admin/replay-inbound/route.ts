@@ -17,6 +17,12 @@
  *      live webhook (without re-verifying signatures, since the message
  *      already passed signature verification when it first arrived).
  *
+ * Parity: classification (`detectDocumentType`), franchisee resolution
+ * (`resolveFranchisee`, incl. parent-brand override + strict acceptance gate
+ * + inactive-branch skip) and link download (`extractAndDownloadLinks`, incl.
+ * the SSRF guard) all import the SAME shared modules as the live webhook, so a
+ * replay routes an email exactly as production would. Do NOT re-fork these.
+ *
  * Idempotent: documents that were already saved are skipped via the
  * `${email_id}#${attachment.id}` UNIQUE key.
  */
@@ -24,8 +30,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperUser, isAuthError } from "@/lib/api-middleware";
 import { database } from "@/db";
-import { franchisee, client } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { franchisee } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   fetchInboundEmail,
   downloadAttachment,
@@ -33,221 +39,17 @@ import {
   resolvePeriod,
 } from "@/lib/email/inbound";
 import { processClientDocument } from "@/lib/client-document-processor";
-import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
-import { matchFranchiseeName } from "@/lib/franchisee-matcher";
 import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
 import { isRfc822Attachment, unwrapRfc822 } from "@/lib/email/unwrap-rfc822";
+import { detectDocumentType } from "@/lib/email/classify-document-type";
+import {
+  resolveFranchisee,
+  isInactiveFranchiseeSkip,
+} from "@/lib/email/resolve-franchisee";
+import { extractAndDownloadLinks } from "@/lib/email/download-links";
 import type { Franchisee } from "@/db/schema";
 
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
-const INVOICE_SUBJECT_KEYWORDS = [
-  "חשבונית מס",
-  "חשבונית עמלה",
-  "חשבונית מס/קבלה",
-  "חשבונית מרכזת",
-  "tax invoice",
-  "commission invoice",
-  "easycount invoice",
-  "ezcount invoice",
-  "החשבונית החודשית",
-];
-
-function detectDocumentType(
-  subject: string
-): "client_report" | "commission_invoice" {
-  const lower = subject.toLowerCase();
-  for (const keyword of INVOICE_SUBJECT_KEYWORDS) {
-    if (lower.includes(keyword.toLowerCase())) {
-      return "commission_invoice";
-    }
-  }
-  return "client_report";
-}
-
-const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
-
-async function resolveFranchisee(
-  buffer: Buffer,
-  mimeType: string,
-  parserCode: string,
-  subject: string,
-  franchisees: Franchisee[],
-  attachmentFilename: string | undefined,
-  documentType: "client_report" | "commission_invoice"
-): Promise<{ franchiseeId: string; franchiseeName: string } | null> {
-  const parser =
-    documentType === "commission_invoice"
-      ? getInvoiceParser(parserCode)
-      : getClientParser(parserCode);
-  if (parser) {
-    try {
-      const parseResult = await parser(buffer, mimeType);
-      if (
-        parseResult.success &&
-        parseResult.data?.franchiseeName &&
-        !UNKNOWN_FRANCHISEE_NAMES.has(parseResult.data.franchiseeName)
-      ) {
-        const match = matchFranchiseeName(
-          parseResult.data.franchiseeName,
-          franchisees,
-          { minConfidence: 0.6 }
-        );
-        if (match.matchedFranchisee) {
-          return {
-            franchiseeId: match.matchedFranchisee.id,
-            franchiseeName: match.matchedFranchisee.name,
-          };
-        }
-      }
-    } catch {
-      // fall through to filename / subject fallbacks
-    }
-  }
-
-  if (attachmentFilename) {
-    const withoutExt = attachmentFilename.replace(/\.[^.]+$/, "");
-    const candidates: string[] = [];
-    const dbl = withoutExt.split("__");
-    if (dbl.length > 1 && dbl[0].trim().length >= 3) candidates.push(dbl[0].trim());
-    const heb = withoutExt
-      .split("_")
-      .filter((p) => /^[֐-׿][֐-׿ ]*$/.test(p));
-    if (heb.length >= 1) candidates.push(heb.join(" ").trim());
-    for (const c of candidates) {
-      if (c.length < 3) continue;
-      const m = matchFranchiseeName(c, franchisees, { minConfidence: 0.6 });
-      if (m.matchedFranchisee) {
-        return {
-          franchiseeId: m.matchedFranchisee.id,
-          franchiseeName: m.matchedFranchisee.name,
-        };
-      }
-    }
-  }
-
-  const cleanedSubject = subject
-    .replace(/^(fwd?|re|fw|subject):\s*/gi, "")
-    .replace(/\[העתק\]\s*|\[העברה\]\s*/g, "")
-    .trim();
-  const parts = cleanedSubject.split(/\s*[-–—|,]\s*/);
-  for (const part of parts) {
-    if (part.trim().length < 3) continue;
-    const m = matchFranchiseeName(part.trim(), franchisees, {
-      minConfidence: 0.75,
-    });
-    if (m.matchedFranchisee) {
-      return {
-        franchiseeId: m.matchedFranchisee.id,
-        franchiseeName: m.matchedFranchisee.name,
-      };
-    }
-  }
-
-  return null;
-}
-
-async function extractAndDownloadLinks(
-  htmlBody: string
-): Promise<Array<{ buffer: Buffer; fileName: string }>> {
-  const out: Array<{ buffer: Buffer; fileName: string }> = [];
-
-  // Pattern 1: TENBIS month-end report — Mandrill tracking link whose base64
-  // `p` param decodes to the real cdn.10bis.co.il PDF (mirrors Pattern 1 in
-  // email-inbound/route.ts). Only the main report (skip refund_ annex).
-  const mandrillLinks =
-    htmlBody.match(/https?:\/\/mandrillapp\.com\/track\/click\/[^"'\s<>]+/g) ||
-    [];
-  for (const trackingLink of mandrillLinks) {
-    try {
-      const url = new URL(trackingLink.replace(/&amp;/g, "&"));
-      const pParam = url.searchParams.get("p");
-      if (!pParam) continue;
-      const decoded = JSON.parse(Buffer.from(pParam, "base64").toString());
-      const innerData = JSON.parse(decoded.p);
-      const pdfUrl: string = innerData.url;
-      // SSRF guard: the URL comes from attacker-influenceable email body.
-      // Exact-host allowlist (not substring) + https + no redirects.
-      let parsed: URL;
-      try {
-        parsed = new URL(pdfUrl);
-      } catch {
-        continue;
-      }
-      const host = parsed.hostname.toLowerCase().replace(/\.$/, "");
-      if (
-        parsed.protocol !== "https:" ||
-        (host !== "cdn.10bis.co.il" && !host.endsWith(".cdn.10bis.co.il")) ||
-        !parsed.pathname.toLowerCase().endsWith(".pdf")
-      )
-        continue;
-      if (pdfUrl.includes("refund_")) continue;
-      const res = await fetch(pdfUrl, { redirect: "manual" });
-      if (!res.ok) continue; // 3xx (redirect) has res.ok === false → skipped
-      const buf = Buffer.from(await res.arrayBuffer());
-      out.push({ buffer: buf, fileName: pdfUrl.split("/").pop() ?? "tenbis-report.pdf" });
-    } catch {}
-  }
-  if (out.length > 0) return out;
-
-  // Pattern 1b: Tenbis tax invoices (חשבונית מס) via the invoice-one.com
-  // viewer (mirrors email-inbound/route.ts Pattern 1b). The viewer URL
-  //   https://invoice-one.com/ViewerNew/pages/Y_GreeViewer_document/<DOCID>
-  // maps to the PDF download
-  //   https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=<DOCID>
-  const viewerLinks = [
-    ...htmlBody.matchAll(
-      /https?:\/\/(?:www\.)?invoice-one\.com\/ViewerNew\/pages\/Y_GreeViewer_document\/(\w+)/gi
-    ),
-  ];
-  const docIds = [...new Set(viewerLinks.map((m) => m[1]))];
-  for (const docId of docIds) {
-    const pdfUrl = `https://invoice-one.com/ViewerNew/api/GreeViewer/Document/Download?DocumentID=${docId}`;
-    try {
-      const response = await fetch(pdfUrl);
-      if (!response.ok) continue;
-      const contentType = response.headers.get("content-type") ?? "";
-      // octet-stream when the doc exists; text/html (SPA shell) when invalid.
-      if (
-        !contentType.includes("octet-stream") &&
-        !contentType.includes("application/pdf")
-      ) {
-        continue;
-      }
-      const buf = Buffer.from(await response.arrayBuffer());
-      out.push({ buffer: buf, fileName: `tenbis-invoice-${docId}.pdf` });
-    } catch {}
-  }
-  if (out.length > 0) return out;
-
-  const ezLinks =
-    htmlBody.match(
-      /https?:\/\/files\.ezcount\.co\.il\/front\/documents\/get\/[^"'\s<>]+/g
-    ) || [];
-  for (const u of ezLinks) {
-    try {
-      const res = await fetch(u.replace(/&amp;/g, "&"), { redirect: "follow" });
-      if (!res.ok) continue;
-      const buf = Buffer.from(await res.arrayBuffer());
-      const m = u.match(/get\/([0-9a-f-]+)\//);
-      out.push({ buffer: buf, fileName: m ? `ezcount-${m[1]}.pdf` : "ezcount.pdf" });
-    } catch {}
-  }
-  if (out.length === 0) {
-    const direct =
-      htmlBody.match(/https?:\/\/[^\s"'<>]+\.pdf(?:\?[^\s"'<>]*)?/gi) || [];
-    const unique = [...new Set(direct.map((u) => u.replace(/&amp;/g, "&")))];
-    for (const u of unique) {
-      try {
-        const res = await fetch(u);
-        if (!res.ok) continue;
-        const buf = Buffer.from(await res.arrayBuffer());
-        const fileName = u.split("?")[0].split("/").pop() ?? "report.pdf";
-        out.push({ buffer: buf, fileName });
-      } catch {}
-    }
-  }
-  return out;
-}
 
 interface ReplayOutcome {
   emailId: string;
@@ -296,10 +98,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const allFranchisees = (await database
+  const activeFranchisees = (await database
     .select()
     .from(franchisee)
     .where(eq(franchisee.isActive, true))) as Franchisee[];
+  // Inactive list feeds the shared resolver's silent-skip path so a replay
+  // of a closed-branch email (e.g. Pluxee → קינג קונג מוצקין) is skipped, not
+  // misassigned — same as the live webhook.
+  const inactiveFranchisees = (await database
+    .select()
+    .from(franchisee)
+    .where(eq(franchisee.isActive, false))) as Franchisee[];
 
   const outcomes: ReplayOutcome[] = [];
 
@@ -314,6 +123,43 @@ export async function POST(request: NextRequest) {
       },
     };
     const trace = outcome.trace!;
+    let documentsCreated = 0;
+    let duplicatesSkipped = 0;
+
+    // Resolve the franchisee via the shared resolver and return the id, or
+    // null when the file should be skipped (inactive branch) or has no
+    // acceptable match. Records the reason into the trace.
+    const resolveOrTrace = async (
+      buffer: Buffer,
+      mimeType: string,
+      parserCode: string,
+      subject: string,
+      attachmentFilename: string | undefined,
+      documentType: "client_report" | "commission_invoice",
+      label: string,
+    ): Promise<string | null> => {
+      const fr = await resolveFranchisee(
+        buffer,
+        mimeType,
+        parserCode,
+        subject,
+        activeFranchisees,
+        attachmentFilename,
+        documentType,
+        inactiveFranchisees,
+      );
+      if (fr.ok) return fr.franchiseeId;
+      if (isInactiveFranchiseeSkip(fr)) {
+        duplicatesSkipped++;
+        trace.franchiseeResolveFailures!.push(
+          `${label}: skipped inactive franchisee "${fr.inactiveFranchiseeName}"`,
+        );
+        return null;
+      }
+      trace.franchiseeResolveFailures!.push(label);
+      return null;
+    };
+
     try {
       const email = await fetchInboundEmail(emailId);
       if (!email) {
@@ -335,10 +181,10 @@ export async function POST(request: NextRequest) {
       outcome.clientCode = identifiedClient.clientCode;
 
       const period = resolvePeriod(email.subject, email.createdAt);
-      const documentType = detectDocumentType(email.subject);
-
-      let documentsCreated = 0;
-      let duplicatesSkipped = 0;
+      const documentType = detectDocumentType(
+        email.subject,
+        email.text || email.html || undefined,
+      );
 
       // TENBIS inline monthly report — body carries "פירוט עסקאות למסעדת".
       // Mirror the main route: the month-end *cover* email (report behind a
@@ -360,23 +206,23 @@ export async function POST(request: NextRequest) {
         if (content) {
           const buf = Buffer.from(content, "utf-8");
           const mime = email.html ? "text/html" : "text/plain";
-          const fr = await resolveFranchisee(
+          const franchiseeId = await resolveOrTrace(
             buf,
             mime,
             identifiedClient.parserCode,
             email.subject,
-            allFranchisees,
             undefined,
-            documentType
+            documentType,
+            `email-${emailId} body`,
           );
-          if (fr) {
+          if (franchiseeId) {
             const r = await processClientDocument({
               buffer: buf,
               fileName: `email-${emailId}.${email.html ? "html" : "txt"}`,
               mimeType: mime,
               clientId: identifiedClient.clientId,
               parserCode: identifiedClient.parserCode,
-              franchiseeId: fr.franchiseeId,
+              franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,
               documentType,
@@ -413,7 +259,10 @@ export async function POST(request: NextRequest) {
           let innerBody = "";
           try {
             const unwrapped = await unwrapRfc822(emlBuffer);
-            innerType = detectDocumentType(unwrapped.subject);
+            innerType = detectDocumentType(
+              unwrapped.subject,
+              unwrapped.html || unwrapped.text || undefined,
+            );
             extracted = unwrapped.pdfFiles;
             innerBody = `${unwrapped.html}\n${unwrapped.text}`;
             trace.rfc822Extracted! += extracted.length;
@@ -432,26 +281,23 @@ export async function POST(request: NextRequest) {
           // Inner PDF/Excel documents.
           for (let j = 0; j < extracted.length; j++) {
             const f = extracted[j];
-            const fr = await resolveFranchisee(
+            const franchiseeId = await resolveOrTrace(
               f.buffer,
               "application/pdf",
               identifiedClient.parserCode,
               email.subject,
-              allFranchisees,
               f.fileName,
               innerType,
+              f.fileName,
             );
-            if (!fr) {
-              trace.franchiseeResolveFailures!.push(f.fileName);
-              continue;
-            }
+            if (!franchiseeId) continue;
             const r = await processClientDocument({
               buffer: f.buffer,
               fileName: f.fileName,
               mimeType: "application/pdf",
               clientId: identifiedClient.clientId,
               parserCode: identifiedClient.parserCode,
-              franchiseeId: fr.franchiseeId,
+              franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,
               documentType: innerType,
@@ -468,29 +314,29 @@ export async function POST(request: NextRequest) {
 
           // Inner body download links (link-based invoices).
           if (innerBody.trim()) {
-            const downloaded = await extractAndDownloadLinks(innerBody);
+            const downloaded = await extractAndDownloadLinks(
+              innerBody,
+              identifiedClient.clientCode,
+            );
             for (let i = 0; i < downloaded.length; i++) {
               const f = downloaded[i];
-              const fr = await resolveFranchisee(
+              const franchiseeId = await resolveOrTrace(
                 f.buffer,
                 "application/pdf",
                 identifiedClient.parserCode,
                 email.subject,
-                allFranchisees,
                 f.fileName,
                 innerType,
+                f.fileName,
               );
-              if (!fr) {
-                trace.franchiseeResolveFailures!.push(f.fileName);
-                continue;
-              }
+              if (!franchiseeId) continue;
               const r = await processClientDocument({
                 buffer: f.buffer,
                 fileName: f.fileName,
                 mimeType: "application/pdf",
                 clientId: identifiedClient.clientId,
                 parserCode: identifiedClient.parserCode,
-                franchiseeId: fr.franchiseeId,
+                franchiseeId,
                 periodMonth: period.month,
                 periodYear: period.year,
                 documentType: innerType,
@@ -530,31 +376,31 @@ export async function POST(request: NextRequest) {
             (html.match(/https?:\/\/[^\s"'<>]+\.pdf(?:\?[^\s"'<>]*)?/gi) || []).length;
           trace.extractedLinks = linkCount;
 
-          const downloaded = await extractAndDownloadLinks(html);
+          const downloaded = await extractAndDownloadLinks(
+            html,
+            identifiedClient.clientCode,
+          );
           trace.downloadedFiles = downloaded.length;
 
           for (let i = 0; i < downloaded.length; i++) {
             const f = downloaded[i];
-            const fr = await resolveFranchisee(
+            const franchiseeId = await resolveOrTrace(
               f.buffer,
               "application/pdf",
               identifiedClient.parserCode,
               email.subject,
-              allFranchisees,
               f.fileName,
-              documentType
+              documentType,
+              f.fileName,
             );
-            if (!fr) {
-              trace.franchiseeResolveFailures!.push(f.fileName);
-              continue;
-            }
+            if (!franchiseeId) continue;
             const r = await processClientDocument({
               buffer: f.buffer,
               fileName: f.fileName,
               mimeType: "application/pdf",
               clientId: identifiedClient.clientId,
               parserCode: identifiedClient.parserCode,
-              franchiseeId: fr.franchiseeId,
+              franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,
               documentType,
@@ -571,7 +417,7 @@ export async function POST(request: NextRequest) {
         } else {
           // Wolt File A/B selector for attachment-based emails (mirror of
           // route.ts filterAttachments).
-          let attsToProcess: Array<{
+          const attsToProcess: Array<{
             id: string;
             filename: string;
             contentType: string;
@@ -631,23 +477,23 @@ export async function POST(request: NextRequest) {
           }
 
           for (const a of attsToProcess) {
-            const fr = await resolveFranchisee(
+            const franchiseeId = await resolveOrTrace(
               a.buffer,
               a.contentType,
               identifiedClient.parserCode,
               email.subject,
-              allFranchisees,
               a.filename,
-              a.documentType
+              a.documentType,
+              a.filename,
             );
-            if (!fr) continue;
+            if (!franchiseeId) continue;
             const r = await processClientDocument({
               buffer: a.buffer,
               fileName: a.filename,
               mimeType: a.contentType,
               clientId: identifiedClient.clientId,
               parserCode: identifiedClient.parserCode,
-              franchiseeId: fr.franchiseeId,
+              franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,
               documentType: a.documentType,

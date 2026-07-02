@@ -30,6 +30,16 @@ const resend = process.env.RESEND_API_KEY
   ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
+// In production a missing RESEND_API_KEY is a real outage: without this guard
+// the send paths below console.log "would be sent" and return success, so crons
+// look green while nothing is actually delivered for days. Fail loudly in prod;
+// keep the console.log preview for local/dev where no key is expected.
+const IS_PRODUCTION =
+  process.env.VERCEL_ENV === "production" ||
+  process.env.NODE_ENV === "production";
+const MISSING_PROVIDER_MESSAGE =
+  "RESEND_API_KEY is not configured — email not sent";
+
 /**
  * Replace template variables in a string
  * Supports variables in {{variable_name}} format
@@ -244,6 +254,13 @@ export async function sendEmailWithTemplateData(
       return { success: false, error: errorMessage };
     }
   } else {
+    if (IS_PRODUCTION) {
+      await updateEmailLogStatus(logId, "failed", {
+        failedAt: new Date(),
+        errorMessage: MISSING_PROVIDER_MESSAGE,
+      });
+      throw new Error(MISSING_PROVIDER_MESSAGE);
+    }
     // No email provider configured - log for development
     console.log("Email would be sent (no provider configured):", {
       to: options.to,
@@ -333,6 +350,13 @@ export async function sendDirectEmail(options: {
       return { success: false, error: errorMessage };
     }
   } else {
+    if (IS_PRODUCTION) {
+      await updateEmailLogStatus(logId, "failed", {
+        failedAt: new Date(),
+        errorMessage: MISSING_PROVIDER_MESSAGE,
+      });
+      throw new Error(MISSING_PROVIDER_MESSAGE);
+    }
     console.log("Email would be sent (no provider configured):", { to, subject });
     await updateEmailLogStatus(logId, "sent", {
       sentAt: new Date(),

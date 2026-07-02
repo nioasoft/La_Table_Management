@@ -11,7 +11,7 @@ import {
   jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ============================================================================
 // ENUMS
@@ -3123,6 +3123,22 @@ export const clientDocument = pgTable(
     index("idx_client_doc_type").on(table.documentType),
     index("idx_client_doc_status").on(table.processingStatus),
     index("idx_client_doc_created").on(table.createdAt),
+    // Partial unique constraints that back the inbound-email dedup + the
+    // per-(client, franchisee, period) overwrite guard. These existed in
+    // production (added via direct SQL) but were undeclared here — a fresh DB
+    // built from this schema would silently lack them. Match production exactly.
+    uniqueIndex("idx_client_doc_gmail_msg")
+      .on(table.gmailMessageId)
+      .where(sql`${table.gmailMessageId} IS NOT NULL`),
+    uniqueIndex("idx_client_doc_unique_report")
+      .on(table.clientId, table.franchiseeId, table.periodMonth, table.periodYear)
+      .where(sql`${table.documentType} = 'client_report'`),
+    uniqueIndex("idx_client_doc_unique_tabit")
+      .on(table.clientId, table.franchiseeId, table.periodMonth, table.periodYear)
+      .where(sql`${table.documentType} = 'tabit_report'`),
+    uniqueIndex("idx_client_doc_unique_invoice")
+      .on(table.clientId, table.franchiseeId, table.periodMonth, table.periodYear)
+      .where(sql`${table.documentType} = 'commission_invoice'`),
   ]
 );
 
