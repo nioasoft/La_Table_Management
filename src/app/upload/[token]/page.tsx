@@ -98,6 +98,12 @@ function inferMimeFromName(name: string): string | null {
     pdf: "application/pdf",
     xls: "application/vnd.ms-excel",
     xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    // .xlsm (macro) and .xlsb (binary) are OOXML/Excel variants. Some
+    // POS/ERP exports produce these; map them to the standard xlsx MIME so
+    // they pass the client picker/validation. The server magic-byte check
+    // stays authoritative and returns a clear error if it can't read them.
+    xlsm: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xlsb: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     doc: "application/msword",
     docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     jpg: "image/jpeg",
@@ -106,6 +112,43 @@ function inferMimeFromName(name: string): string | null {
     gif: "image/gif",
   };
   return map[ext] ?? null;
+}
+
+/**
+ * Build the file input's `accept` attribute from the link's allowed MIME
+ * types PLUS explicit extensions.
+ *
+ * Windows file dialogs apply a MIME-only `accept` strictly and gray out files
+ * whose registered type doesn't map to those MIME strings (e.g. `.xlsm`,
+ * `.xlsb`, or an HTML table saved as `.xls`) — so the supplier can't even
+ * select the file and the upload silently does nothing. Adding extensions
+ * makes the picker reliably allow every Excel/CSV variant.
+ */
+function buildAcceptAttr(mimeTypes: string[]): string {
+  const mimeToExtensions: Record<string, string[]> = {
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [
+      ".xlsx",
+      ".xlsm",
+      ".xlsb",
+    ],
+    "application/vnd.ms-excel": [".xls"],
+    "text/csv": [".csv"],
+    "application/csv": [".csv"],
+    "application/pdf": [".pdf"],
+    "text/plain": [".txt"],
+    "application/msword": [".doc"],
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [
+      ".docx",
+    ],
+    "image/jpeg": [".jpg", ".jpeg"],
+    "image/png": [".png"],
+    "image/gif": [".gif"],
+  };
+  const extensions = new Set<string>();
+  for (const mime of mimeTypes) {
+    for (const ext of mimeToExtensions[mime] ?? []) extensions.add(ext);
+  }
+  return [...mimeTypes, ...extensions].join(",");
 }
 
 export default function PublicUploadPage({
@@ -617,7 +660,11 @@ export default function PublicUploadPage({
                           type="file"
                           className="hidden"
                           onChange={handleFileChange}
-                          accept={uploadLinkInfo?.allowedFileTypes.join(",")}
+                          accept={
+                            uploadLinkInfo
+                              ? buildAcceptAttr(uploadLinkInfo.allowedFileTypes)
+                              : undefined
+                          }
                           disabled={status === "uploading"}
                           multiple
                         />
@@ -635,7 +682,11 @@ export default function PublicUploadPage({
                       type="file"
                       className="absolute inset-0 cursor-pointer opacity-0"
                       onChange={handleFileChange}
-                      accept={uploadLinkInfo?.allowedFileTypes.join(",")}
+                      accept={
+                        uploadLinkInfo
+                          ? buildAcceptAttr(uploadLinkInfo.allowedFileTypes)
+                          : undefined
+                      }
                       disabled={status === "uploading"}
                       multiple
                     />
