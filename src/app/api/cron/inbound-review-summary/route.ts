@@ -29,6 +29,33 @@ import { sendDirectEmail } from "@/lib/email/service";
 const LOOKBACK_HOURS = 24;
 const STUCK_HOURS = 24; // failed/needs_review older than this → flagged as stuck
 
+// Signature of the overwrite-guard failure (client-document-processor.ts).
+// These are the DANGEROUS parked rows: a real document was received but the
+// (client, franchisee, period) slot was already taken by a different email —
+// so the number currently shown in reconciliation may be WRONG until resolved.
+// Every June-2026 slot-collision incident (ezcount receipt 20007 blocking
+// invoice 10052; 7 CIBUS daily snapshots blocking the month-end reports) sat
+// unnoticed for weeks precisely because this signal was buried among benign
+// "couldn't resolve franchisee" noise. Surfaced as its own category so any
+// FUTURE collision — regardless of vendor or document type — is flagged loudly
+// the next morning instead of silently persisting a wrong figure.
+const OVERWRITE_CONFLICT_SIGNATURE = "קיים כבר מסמך";
+const OVERWRITE_CONFLICT_STRATEGY = "overwrite_conflict";
+
+// Primary signal is the structured resolutionStrategy the webhook now stamps
+// on conflict rows; the failureReason substring is a fallback for historical
+// rows written before that marker existed (so the ₪-wrong backlog surfaces too).
+function isOverwriteConflict(
+  resolutionStrategy: string | null,
+  failureReason: string | null,
+): boolean {
+  return (
+    resolutionStrategy === OVERWRITE_CONFLICT_STRATEGY ||
+    (resolutionStrategy === null &&
+      (failureReason ?? "").includes(OVERWRITE_CONFLICT_SIGNATURE))
+  );
+}
+
 interface SummaryReport {
   generatedAt: string;
   lookbackHours: number;
@@ -48,8 +75,10 @@ interface SummaryReport {
     failureReason: string | null;
     fileUrl: string | null;
     ageHours: number;
+    isConflict: boolean;
   }>;
   stuckCount: number;
+  conflictCount: number;
 }
 
 async function gatherCounts(since: Date): Promise<SummaryReport["counts"]> {
@@ -95,6 +124,7 @@ async function gatherPendingItems(): Promise<SummaryReport["pendingItems"]> {
     failureReason: r.failureReason,
     fileUrl: r.fileUrl,
     ageHours: Math.floor((now - r.createdAt.getTime()) / (3600 * 1000)),
+    isConflict: isOverwriteConflict(r.resolutionStrategy, r.failureReason),
   }));
 }
 
@@ -116,47 +146,74 @@ function formatDateTimeIL(iso: string): string {
   });
 }
 
+function renderPendingRows(
+  items: SummaryReport["pendingItems"],
+): string {
+  return items
+    .map((item) => {
+      const stuck = item.ageHours >= STUCK_HOURS;
+      const ageLabel = stuck
+        ? `<strong style="color:#dc2626">${item.ageHours} ש'</strong>`
+        : `${item.ageHours} ש'`;
+      return `
+        <tr>
+          <td style="padding:6px;border:1px solid #e5e7eb;white-space:nowrap">${
+            item.receivedAt ? formatDateTimeIL(item.receivedAt) : "—"
+          }</td>
+          <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml(item.clientCode ?? "—")}</td>
+          <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml((item.subject ?? "—").slice(0, 80))}</td>
+          <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml(item.proposedFranchiseeName ?? "—")}</td>
+          <td style="padding:6px;border:1px solid #e5e7eb;color:#dc2626">${escapeHtml((item.failureReason ?? "—").slice(0, 80))}</td>
+          <td style="padding:6px;border:1px solid #e5e7eb">${ageLabel}</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function renderPendingTable(items: SummaryReport["pendingItems"]): string {
+  return `
+    <table style="border-collapse:collapse;width:100%;font-size:0.9em" dir="rtl">
+      <thead style="background:#f3f4f6">
+        <tr>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">התקבל</th>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">ספק</th>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">נושא</th>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">זכיין מוצע</th>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">סיבה</th>
+          <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">גיל</th>
+        </tr>
+      </thead>
+      <tbody>${renderPendingRows(items)}</tbody>
+    </table>`;
+}
+
 function renderHtml(report: SummaryReport, dashboardUrl: string): string {
   const c = report.counts;
-  const itemsHtml =
-    report.pendingItems.length === 0
-      ? `<p style="color:#16a34a">אין רשומות שדורשות סקירה כרגע 🎉</p>`
+  const conflicts = report.pendingItems.filter((i) => i.isConflict);
+  const others = report.pendingItems.filter((i) => !i.isConflict);
+
+  // Overwrite-conflicts get a dedicated, prominent section: these mean a real
+  // document is sitting blocked and the reconciled figure may be wrong.
+  const conflictSection =
+    conflicts.length === 0
+      ? ""
       : `
-        <table style="border-collapse:collapse;width:100%;font-size:0.9em" dir="rtl">
-          <thead style="background:#f3f4f6">
-            <tr>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">התקבל</th>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">ספק</th>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">נושא</th>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">זכיין מוצע</th>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">סיבה</th>
-              <th style="text-align:right;padding:6px;border:1px solid #e5e7eb">גיל</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${report.pendingItems
-              .map((item) => {
-                const stuck = item.ageHours >= STUCK_HOURS;
-                const ageLabel = stuck
-                  ? `<strong style="color:#dc2626">${item.ageHours} ש'</strong>`
-                  : `${item.ageHours} ש'`;
-                return `
-                  <tr>
-                    <td style="padding:6px;border:1px solid #e5e7eb;white-space:nowrap">${
-                      item.receivedAt ? formatDateTimeIL(item.receivedAt) : "—"
-                    }</td>
-                    <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml(item.clientCode ?? "—")}</td>
-                    <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml((item.subject ?? "—").slice(0, 80))}</td>
-                    <td style="padding:6px;border:1px solid #e5e7eb">${escapeHtml(item.proposedFranchiseeName ?? "—")}</td>
-                    <td style="padding:6px;border:1px solid #e5e7eb;color:#dc2626">${escapeHtml((item.failureReason ?? "—").slice(0, 80))}</td>
-                    <td style="padding:6px;border:1px solid #e5e7eb">${ageLabel}</td>
-                  </tr>
-                `;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      `;
+        <div style="background:#fef2f2;border:2px solid #dc2626;border-radius:6px;padding:12px;margin:16px 0">
+          <h3 style="color:#991b1b;margin:0 0 4px">🛑 ${conflicts.length} מסמכים אמיתיים נחסמו — ייתכן שהמספר בהתאמה שגוי</h3>
+          <p style="color:#7f1d1d;font-size:0.9em;margin:0 0 8px">
+            עבור כל שורה כאן, המשבצת (לקוח/זכיין/תקופה) כבר תפוסה על ידי מסמך אחר, אז
+            המסמך הנכון לא נשמר. פִּתחו את השורה במערכת ואשרו כדי להחליף את הישן.
+          </p>
+          ${renderPendingTable(conflicts)}
+        </div>`;
+
+  const itemsHtml =
+    others.length === 0
+      ? conflicts.length > 0
+        ? `<p style="color:#16a34a">אין רשומות נוספות שדורשות סקירה 🎉</p>`
+        : `<p style="color:#16a34a">אין רשומות שדורשות סקירה כרגע 🎉</p>`
+      : renderPendingTable(others);
 
   const stuckBanner =
     report.stuckCount > 0
@@ -169,6 +226,8 @@ function renderHtml(report: SummaryReport, dashboardUrl: string): string {
 <html dir="rtl" lang="he"><body style="font-family:Rubik,Arial,sans-serif;color:#111;max-width:900px;margin:0 auto;padding:16px">
   <h2>תיבת מיילים נכנסים — סיכום ${report.lookbackHours} שעות אחרונות</h2>
   <p style="color:#666">${formatDateTimeIL(report.generatedAt)}</p>
+
+  ${conflictSection}
 
   ${stuckBanner}
 
@@ -220,12 +279,28 @@ function renderText(report: SummaryReport, dashboardUrl: string): string {
     lines.push("");
     lines.push(`⚠️ ${report.stuckCount} רשומות תקועות מעל ${STUCK_HOURS} שעות`);
   }
+
+  const conflicts = report.pendingItems.filter((i) => i.isConflict);
+  const others = report.pendingItems.filter((i) => !i.isConflict);
+
+  if (conflicts.length > 0) {
+    lines.push("");
+    lines.push(
+      `🛑 ${conflicts.length} מסמכים אמיתיים נחסמו (המשבצת תפוסה) — ייתכן שהמספר בהתאמה שגוי:`,
+    );
+    for (const item of conflicts) {
+      lines.push(
+        `  [${item.ageHours}ש'] ${item.clientCode ?? "?"}  ${(item.subject ?? "—").slice(0, 60)}  → ${item.proposedFranchiseeName ?? "?"}`,
+      );
+    }
+  }
+
   lines.push("");
-  lines.push("== רשומות שדורשות סקירה ==");
-  if (report.pendingItems.length === 0) {
+  lines.push("== רשומות אחרות שדורשות סקירה ==");
+  if (others.length === 0) {
     lines.push("  אין");
   } else {
-    for (const item of report.pendingItems) {
+    for (const item of others) {
       lines.push(
         `  [${item.ageHours}ש'] ${item.clientCode ?? "?"}  ${(item.subject ?? "—").slice(0, 60)}`,
       );
@@ -284,12 +359,15 @@ export async function GET(request: NextRequest) {
       (p) => new Date(p.receivedAt ?? new Date()).getTime() < stuckCutoff.getTime(),
     ).length;
 
+    const conflictCount = pendingItems.filter((p) => p.isConflict).length;
+
     const report: SummaryReport = {
       generatedAt: new Date().toISOString(),
       lookbackHours: LOOKBACK_HOURS,
       counts,
       pendingItems,
       stuckCount,
+      conflictCount,
     };
 
     // Skip the email when there's literally nothing to report — no traffic
@@ -302,8 +380,14 @@ export async function GET(request: NextRequest) {
 
     if (shouldSend) {
       const dashboardUrl = getDashboardUrl();
+      // Conflicts (real docs blocked) lead the subject — they mean a figure
+      // may be wrong right now, so they must jump out in the inbox list.
       const subjectPrefix =
-        pendingItems.length > 0 ? `[${pendingItems.length} ממתינים] ` : "";
+        conflictCount > 0
+          ? `🛑 [${conflictCount} נחסמו] `
+          : pendingItems.length > 0
+            ? `[${pendingItems.length} ממתינים] `
+            : "";
       const subject = `${subjectPrefix}תיבת מיילים נכנסים — ${counts.autoCommitted}/${counts.total} עברו`;
       const html = renderHtml(report, dashboardUrl);
       const text = renderText(report, dashboardUrl);

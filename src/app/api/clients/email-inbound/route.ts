@@ -1103,6 +1103,13 @@ async function recordInboundReviewOutcome(args: {
   try {
     let status: InboundReviewStatus;
     let failureReason: string | null = null;
+    // Structured marker for the overwrite-guard conflict (a real document was
+    // received but its (client, franchisee, period) slot was already taken by a
+    // different email). The daily review digest keys on this to surface the
+    // DANGEROUS parked rows — where the reconciled figure may be wrong — as
+    // their own category, instead of relying on the (translatable) failureReason
+    // text. See cron/inbound-review-summary.
+    let resolutionStrategy: string | null = null;
     let committedClientDocumentId: string | null = null;
     let proposedFranchiseeId: string | null = null;
     let proposedFranchiseeName: string | null = null;
@@ -1144,6 +1151,9 @@ async function recordInboundReviewOutcome(args: {
       } else {
         status = "failed";
         failureReason = args.processResult?.error ?? "processing failed";
+        if (args.processResult?.skippedConflict) {
+          resolutionStrategy = "overwrite_conflict";
+        }
       }
     }
 
@@ -1191,7 +1201,7 @@ async function recordInboundReviewOutcome(args: {
       proposedFranchiseeName,
       franchiseeConfidence,
       franchiseeAlternatives,
-      resolutionStrategy: null,
+      resolutionStrategy,
       proposedDocumentType: args.documentType,
       docTypeSource: null,
       fileUrl,
