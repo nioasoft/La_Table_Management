@@ -222,6 +222,34 @@ export function isPromotionalSubject(
 }
 
 /**
+ * An ezcount/EasyCount payment RECEIPT — "קבלה NNNN מאת <franchisee>"
+ * (optionally "[העתק]"/"[מקור]" prefixed). A receipt only acknowledges a
+ * payment received (usually a bank transfer, net of platform fees); it is NOT
+ * the reconciled document, and its amount differs from the tax invoice.
+ *
+ * The franchisee issues BOTH a "חשבונית מס NNNN" (the report Reut reconciles)
+ * and a "קבלה NNNN" for the same period. The receipt carries no distinguishing
+ * keyword, so detectDocumentType fell it through to the default client_report;
+ * when it arrived first it grabbed the single (client, franchisee, period)
+ * report slot and the overwrite guard then parked the real invoice as `failed`.
+ *
+ * Real incident (Reut/מינה, HAAT, קינג קונג חורב, June 2026): receipt 20007
+ * (₪17,385.98, bank transfer) arrived 2026-06-15 and displaced tax invoice
+ * 10052 (₪22,061), which arrived 2026-07-01 and was parked in the review queue.
+ *
+ * We therefore DROP receipts on arrival (like the Cibus daily snapshot and the
+ * HAAT red monthly report). A combined "חשבונית מס/קבלה" IS a real tax invoice,
+ * so subjects containing "חשבונית" are excluded.
+ */
+const RECEIPT_SUBJECT_PATTERN = /קבלה\s+\d+\s+מאת/;
+
+export function isReceiptDocument(subject: string | null | undefined): boolean {
+  if (!subject) return false;
+  if (subject.includes("חשבונית")) return false; // keep "חשבונית מס/קבלה"
+  return RECEIPT_SUBJECT_PATTERN.test(subject);
+}
+
+/**
  * Detect document type from email subject (and optionally body content).
  *
  * Resolution order:

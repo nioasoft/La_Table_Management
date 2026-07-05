@@ -40,6 +40,7 @@ import {
   isPromotionalSubject,
   isCibusDailyReport,
   isHaatMonthlyReport,
+  isReceiptDocument,
 } from "@/lib/email/classify-document-type";
 import { isRfc822Attachment, unwrapRfc822 } from "@/lib/email/unwrap-rfc822";
 import {
@@ -354,6 +355,38 @@ export async function POST(request: NextRequest) {
         received: true,
         skipped: true,
         reason: "haat_monthly_summary",
+      });
+    }
+
+    // ─── Step 3d: Drop ezcount payment receipts ("קבלה NNNN מאת ...") ───
+    // The franchisee issues both a "חשבונית מס" (the reconciled report) and a
+    // "קבלה" (payment receipt) per period. The receipt has no distinguishing
+    // keyword, so it fell through to the default client_report; when it arrived
+    // first it grabbed the single (client, franchisee, period) report slot and
+    // the overwrite guard then parked the real invoice as `failed`. Real
+    // incident (Reut/מינה, June 2026): receipt 20007 (₪17,385.98) displaced tax
+    // invoice 10052 (₪22,061) for HAAT / קינג קונג חורב. The receipt is not
+    // used in reconciliation and its amount differs from the invoice, so drop
+    // it on arrival. Client-independent: receipts are franchisee-issued via
+    // ezcount regardless of platform. A combined "חשבונית מס/קבלה" is excluded.
+    if (isReceiptDocument(subject)) {
+      console.log(
+        `[email-inbound] Skipping payment receipt: "${subject}"`
+      );
+      await finalizeSyncLog(syncLog.id, "completed", {
+        messagesScanned: 1,
+        documentsCreated: 0,
+        duplicatesSkipped: 1,
+        errorCount: 0,
+        errorDetails: [
+          `דולג: קבלת תשלום ("${subject}") — הדוח שנקלט הוא חשבונית המס של הזכיין`,
+        ],
+        ...diagnostics,
+      });
+      return NextResponse.json({
+        received: true,
+        skipped: true,
+        reason: "payment_receipt",
       });
     }
 

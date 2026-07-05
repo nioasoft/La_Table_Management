@@ -3,6 +3,7 @@ import {
   detectDocumentType,
   isPromotionalSubject,
   isHaatMonthlyReport,
+  isReceiptDocument,
 } from "../classify-document-type";
 
 describe("detectDocumentType", () => {
@@ -194,5 +195,39 @@ describe("isHaatMonthlyReport", () => {
     expect(isHaatMonthlyReport(null, "הדוח החודשי שלך עבור 05/2026")).toBe(
       false,
     );
+  });
+});
+
+describe("isReceiptDocument", () => {
+  it("flags an ezcount payment receipt (the June 2026 HAAT incident)", () => {
+    expect(
+      isReceiptDocument('[העתק] קבלה 20007 מאת קינג קונג חורב בע"מ'),
+    ).toBe(true);
+  });
+
+  it("flags [מקור] and un-prefixed receipt subjects", () => {
+    expect(isReceiptDocument('[מקור] קבלה 20008 מאת קסטרא טומאיי בע"מ')).toBe(
+      true,
+    );
+    expect(isReceiptDocument('קבלה 12345 מאת מסעדה כלשהי בע"מ')).toBe(true);
+  });
+
+  it("does NOT flag a tax invoice (which must still be captured)", () => {
+    expect(
+      isReceiptDocument('[העתק] חשבונית מס 10052 מאת קינג קונג חורב בע"מ'),
+    ).toBe(false);
+  });
+
+  it("does NOT flag a combined חשבונית מס/קבלה (a real invoice)", () => {
+    expect(
+      isReceiptDocument('[העתק] חשבונית מס/קבלה 555 מאת קינג קונג חורב בע"מ'),
+    ).toBe(false);
+  });
+
+  it("does not flag unrelated subjects or empty input", () => {
+    expect(isReceiptDocument("EasyCount Invoice for HAAT")).toBe(false);
+    expect(isReceiptDocument("קבלה בברכה")).toBe(false); // no "NNNN מאת"
+    expect(isReceiptDocument(null)).toBe(false);
+    expect(isReceiptDocument(undefined)).toBe(false);
   });
 });
