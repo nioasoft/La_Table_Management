@@ -257,6 +257,26 @@ export async function parseTabitFile(
       return { success: false, data: null, errors, warnings };
     }
 
+    // "Totals-only" layout guard: the export carries a per-branch grand total
+    // ("סה"כ תקבולים") but NO per-branch payment-method breakdown — the method
+    // split exists only on a branch-less network-aggregate row (which is
+    // skipped). Every branch then has empty `amounts`, so downstream creates
+    // one document per (branch × payment-method) → 0 documents, silently.
+    // Detect it here and fail with a clear, actionable message instead.
+    // ponytail: heuristic = branches matched but zero method amounts anywhere,
+    // while at least one branch has a non-zero total. No way to reconstruct the
+    // method split from a grand total — the fix is a correct re-export.
+    const hasAnyAmounts = branches.some(
+      (b) => Object.keys(b.amounts).length > 0
+    );
+    const hasAnyTotal = branches.some((b) => b.total !== 0);
+    if (!hasAnyAmounts && hasAnyTotal) {
+      errors.push(
+        'הקובץ יוצא בפריסת "סה"כ תקבולים" בלבד — יש סכום כולל לכל סניף אך אין פירוט לפי אמצעי תשלום (Wolt, סיבוס, תן ביס וכו\'). יש לייצא מחדש מטאביט עם פירוט אמצעי התשלום לכל סניף (כמו בדוחות של מינה טומאיי/ויני).'
+      );
+      return { success: false, data: null, errors, warnings };
+    }
+
     return {
       success: true,
       data: {

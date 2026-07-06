@@ -73,4 +73,22 @@ describe("parseTabitFile", () => {
     expect(castra.amounts["סיבוס"]).toBe(41944);
     expect(castra.amounts["סיבוס Online"]).toBe(87472);
   });
+
+  // Real production file: Reut's June 2026 King Kong export ("data (27).xlsx").
+  // Exported in a "totals-only" shape — each branch has only "סה"כ תקבולים"
+  // (col C), and every payment-method column is empty per branch; the method
+  // split appears solely on a branch-less network-aggregate row (skipped).
+  // This produced a silent "נוצרו 0 מסמכים". The parser must now reject it
+  // with a clear, actionable message instead of returning empty-amount branches.
+  it("Totals-only layout: fails with a clear message (no per-branch method breakdown)", async () => {
+    const result = await parseTabitFile(
+      fixture("tabit-king-kong-totals-only.xlsx"),
+      XLSX_MIME,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.data).toBeNull();
+    expect(result.errors.join(" ")).toContain('סה"כ תקבולים');
+    expect(result.errors.join(" ")).toContain("לייצא מחדש");
+  });
 });
