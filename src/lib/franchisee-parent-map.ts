@@ -92,6 +92,63 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
 ];
 
 /**
+ * Shared-legal-entity disambiguation by client-assigned customer number.
+ *
+ * Some clients bill several franchisees that share ONE legal entity and ח.פ
+ * (e.g. HAAT bills both "פט ויני עזריאלי חיפה" and "נתנזון עזריאלי חיפה"
+ * under ח.פ 516161361). On those invoices the "לכבוד" recipient, the ח.פ,
+ * and even the issuing ezcount account are identical — name-based matching
+ * and the PARENT_BRAND_MAP keyword gate CANNOT tell them apart (the HAAT
+ * commission invoice carries no "Natanzon Burger" marker). The only reliable
+ * discriminator is the client's own per-restaurant customer number, printed
+ * on every invoice as "מס. לקוח" (distinct from the 9-digit "מס. חברה לקוח"
+ * legal-entity number, which is shared).
+ *
+ * Keyed by parserCode (uppercase) → customer number → operating franchisee.
+ * Keep explicit; add a row only from a verified invoice (see the audit query
+ * in memory:gotcha-haat-shared-entity-overwrites). Confirmed 2026-07-06 from
+ * HAAT invoices months 3–6: Vini=107127, Natanzon=107143 (stable).
+ */
+export const CLIENT_CUSTOMER_NUMBER_MAP: Readonly<
+  Record<string, Readonly<Record<string, { franchiseeId: string; franchiseeName: string }>>>
+> = {
+  HAAT: {
+    "107127": {
+      franchiseeId: "0e2a027a-18bb-4274-af4e-be451799a29b",
+      franchiseeName: "פט ויני עזריאלי חיפה",
+    },
+    "107143": {
+      franchiseeId: "ab020323-fefe-4543-9a69-16d14dd54b99",
+      franchiseeName: "נתנזון עזריאלי חיפה",
+    },
+  },
+};
+
+/**
+ * Find the franchisee for a document by the client-assigned customer number
+ * embedded in its raw text. Returns null when the parser has no customer-number
+ * map or no known number appears in the text.
+ *
+ * ponytail: matches the number as a standalone digit run (not part of a longer
+ * number). The mapped numbers are distinctive 6-digit codes; if a future
+ * client ever prints an amount equal to one, tighten to require the adjacent
+ * "מס. לקוח" label.
+ */
+export function findFranchiseeByCustomerNumber(
+  parserCode: string | undefined | null,
+  contentText: string | undefined | null,
+): { franchiseeId: string; franchiseeName: string } | null {
+  if (!parserCode || !contentText) return null;
+  const byNumber = CLIENT_CUSTOMER_NUMBER_MAP[parserCode.toUpperCase()];
+  if (!byNumber) return null;
+  for (const [customerNo, target] of Object.entries(byNumber)) {
+    const bounded = new RegExp(`(?<!\\d)${customerNo}(?!\\d)`);
+    if (bounded.test(contentText)) return target;
+  }
+  return null;
+}
+
+/**
  * Look up the operating-brand pair for a candidate name.
  *
  * Match rules (in order of preference):

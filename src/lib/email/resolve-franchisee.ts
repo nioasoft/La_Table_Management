@@ -5,7 +5,10 @@ import {
   formatVerdictForLog,
   type AcceptanceVerdict,
 } from "@/lib/franchisee-match-acceptance";
-import { findOperatingBrand } from "@/lib/franchisee-parent-map";
+import {
+  findFranchiseeByCustomerNumber,
+  findOperatingBrand,
+} from "@/lib/franchisee-parent-map";
 import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 
 /** Sentinel values the parser uses when it cannot identify the franchisee */
@@ -136,6 +139,39 @@ export async function resolveFranchisee(
           parseResult.data.rawText ?? "",
           ...(parseResult.data.lineItems ?? []).map((li) => li.description ?? ""),
         ].join("\n");
+
+        // Shared-legal-entity disambiguation (deterministic, highest
+        // priority). When several franchisees share one legal entity + ח.פ
+        // (HAAT: Pat Vini Azrieli + Natanzon Azrieli Haifa), the "לכבוד"
+        // recipient is identical on every invoice and name/keyword matching
+        // cannot tell them apart — the second one used to fall to the wrong
+        // franchisee and get parked by the overwrite guard every month. The
+        // client's own per-restaurant customer number ("מס. לקוח") is the
+        // only reliable signal; route by it before any name-based logic.
+        const customerNumberMatch = findFranchiseeByCustomerNumber(
+          parserCode,
+          contentText,
+        );
+        if (customerNumberMatch) {
+          const target = franchisees.find(
+            (f) => f.id === customerNumberMatch.franchiseeId,
+          );
+          if (target) {
+            console.log(
+              `[email-inbound] Customer-number override (${parserCode}): "${extractedName}" → "${customerNumberMatch.franchiseeName}"`,
+            );
+            return {
+              ok: true,
+              franchiseeId: customerNumberMatch.franchiseeId,
+              franchiseeName: customerNumberMatch.franchiseeName,
+              confidence: 1,
+            };
+          }
+          console.warn(
+            `[email-inbound] Customer-number matched "${customerNumberMatch.franchiseeName}" but that franchisee is not active — falling back`,
+          );
+        }
+
         const parentOverride = findOperatingBrand(extractedName, contentText);
         if (parentOverride) {
           const operatingFranchisee = franchisees.find(

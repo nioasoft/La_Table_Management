@@ -1,5 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { findOperatingBrand } from "../franchisee-parent-map";
+import {
+  findFranchiseeByCustomerNumber,
+  findOperatingBrand,
+} from "../franchisee-parent-map";
+
+describe("findFranchiseeByCustomerNumber (HAAT shared legal entity)", () => {
+  const VINI = "0e2a027a-18bb-4274-af4e-be451799a29b";
+  const NATANZON = "ab020323-fefe-4543-9a69-16d14dd54b99";
+
+  // Real HAAT commission-invoice raw text — both restaurants share ח.פ
+  // 516161361 (the "מס. חברה לקוח" line) but differ on "מס. לקוח".
+  const viniInvoice =
+    'לכבוד:\nפט ויני עזריאלי בע"מ\nHaifa\n107127מס. לקוח:\n516161361מס. חברה לקוח:';
+  const natanzonInvoice =
+    'לכבוד:\nפט ויני עזריאלי בע"מ\nHaifa\n107143מס. לקוח:\n516161361מס. חברה לקוח:';
+
+  it("routes HAAT customer 107127 → Pat Vini Azrieli Haifa", () => {
+    expect(findFranchiseeByCustomerNumber("HAAT", viniInvoice)?.franchiseeId).toBe(VINI);
+  });
+
+  it("routes HAAT customer 107143 → Natanzon Azrieli Haifa", () => {
+    expect(findFranchiseeByCustomerNumber("HAAT", natanzonInvoice)?.franchiseeId).toBe(
+      NATANZON,
+    );
+  });
+
+  it("is case-insensitive on the parser code", () => {
+    expect(findFranchiseeByCustomerNumber("haat", natanzonInvoice)?.franchiseeId).toBe(
+      NATANZON,
+    );
+  });
+
+  it("does not match the shared 9-digit company number (516161361)", () => {
+    // Only the company number present, no customer number → no route.
+    expect(
+      findFranchiseeByCustomerNumber("HAAT", "516161361מס. חברה לקוח:"),
+    ).toBeNull();
+  });
+
+  it("does not match a customer number embedded in a longer digit run", () => {
+    expect(findFranchiseeByCustomerNumber("HAAT", "9107127מס. לקוח:")).toBeNull();
+    expect(findFranchiseeByCustomerNumber("HAAT", "1071270מס. לקוח:")).toBeNull();
+  });
+
+  it("returns null for clients with no customer-number map / empty input", () => {
+    expect(findFranchiseeByCustomerNumber("MISHLOCHA", natanzonInvoice)).toBeNull();
+    expect(findFranchiseeByCustomerNumber("HAAT", "")).toBeNull();
+    expect(findFranchiseeByCustomerNumber(null, natanzonInvoice)).toBeNull();
+  });
+});
 
 describe("findOperatingBrand", () => {
   it('routes "פט ויני עזריאלי בע\\"מ" to Natanzon Azrieli Haifa (Asaf 2026-04-30 rule)', () => {
