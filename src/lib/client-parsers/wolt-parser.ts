@@ -48,6 +48,27 @@ const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
  */
 type WoltEzcountClass = "fileB" | "fileA" | "unknown";
 
+/**
+ * Extract the invoice number next to the "מס' חשבונית" label.
+ *
+ * Wolt's visual-RTL pdf-parse output puts the VALUE on the line BEFORE the
+ * label ("660012\n \nחשבונית 'מס"), while the 9-digit allocation number sits
+ * right AFTER it (followed by its own "הקצאה מספר" label). The old
+ * after-label-only regex therefore captured the allocation number as the
+ * invoice number on every self-billed Wolt invoice. Try before-label first,
+ * fall back to after-label, and never accept the allocation number.
+ */
+export function extractWoltInvoiceNumber(
+  text: string,
+  allocationNumber: string | undefined
+): string {
+  const before = text.match(/(\d+)[ \t]*\n\s*חשבונית\s*'מס/);
+  if (before && before[1] !== allocationNumber) return before[1];
+  const after = text.match(/חשבונית\s*'מס\s*\n?\s*(\d+)/);
+  if (after && after[1] !== allocationNumber) return after[1];
+  return "";
+}
+
 export interface WoltEzcountScore {
   verdict: WoltEzcountClass;
   fileBScore: number;
@@ -303,16 +324,12 @@ function parseEzcountWoltInvoice(
     }
   }
 
-  // ── Invoice number (optional, for description) ──
-  let invoiceNumber = "";
-  const invoiceMatch = text.match(/חשבונית\s*'מס\s*\n?\s*(\d+)/);
-  if (invoiceMatch) {
-    invoiceNumber = invoiceMatch[1];
-  }
-
   // Israeli tax allocation number (מספר הקצאה) — only present on invoices
   // over the threshold (₪10,000 today, dropping to ₪5,000). undefined when absent.
   const allocationNumber = extractAllocationNumber(text);
+
+  // ── Invoice number (optional, for description) ──
+  const invoiceNumber = extractWoltInvoiceNumber(text, allocationNumber);
 
   if (gross === 0) {
     errors.push("לא נמצא סכום מכירות (סה\"כ מכירות) בחשבונית וולט");
@@ -543,15 +560,11 @@ function parseTaxInvoice(
     franchiseeName = `${nameMatch[2]} ${nameMatch[1]}`;
   }
 
-  // Extract invoice number
-  let invoiceNumber = "";
-  const invoiceMatch = text.match(/חשבונית\s*'מס\s*\n?\s*(\d+)/);
-  if (invoiceMatch) {
-    invoiceNumber = invoiceMatch[1];
-  }
-
   // Israeli tax allocation number (מספר הקצאה) — shared 9-digit extractor.
   const allocationNumber = extractAllocationNumber(text);
+
+  // Extract invoice number
+  const invoiceNumber = extractWoltInvoiceNumber(text, allocationNumber);
 
   // Extract period
   let periodMonth: number | undefined;
