@@ -149,6 +149,23 @@ export function findFranchiseeByCustomerNumber(
 }
 
 /**
+ * Franchisees that share one legal entity under this parser and are only
+ * distinguishable by the client's per-restaurant customer number. When a
+ * document for one of them carries NO customer number, name matching cannot
+ * attribute it (the legal name is identical on every document) — the
+ * resolver must park it for manual assignment instead of guessing.
+ * Proven by June 2026: the invoice-number order flipped vs May, so the
+ * auto-committed EasyCount report landed on the wrong franchisee.
+ */
+export function getSharedEntityFranchisees(
+  parserCode: string | undefined | null,
+): Array<{ franchiseeId: string; franchiseeName: string }> {
+  if (!parserCode) return [];
+  const byNumber = CLIENT_CUSTOMER_NUMBER_MAP[parserCode.toUpperCase()];
+  return byNumber ? Object.values(byNumber) : [];
+}
+
+/**
  * Look up the operating-brand pair for a candidate name.
  *
  * Match rules (in order of preference):

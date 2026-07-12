@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import { database } from "@/db";
-import { clientDocument, client, franchisee } from "@/db/schema";
+import { clientDocument, client, clientFranchisee, franchisee } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getApprovalsByFranchisee } from "@/data-access/client-reconciliation-approval";
 
@@ -134,10 +134,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Collect all client IDs (from both sides)
+    // Linked active clients always get a row. Without this, a client whose
+    // documents never arrived (or are parked in inbound review) silently
+    // vanishes from the screen instead of showing as "missing" — the
+    // HAAT/Mishloha × Vini/Natanzon incident of June 2026.
+    const linkedClients = await database
+      .select({ clientId: clientFranchisee.clientId })
+      .from(clientFranchisee)
+      .innerJoin(client, eq(clientFranchisee.clientId, client.id))
+      .where(
+        and(
+          eq(clientFranchisee.franchiseeId, franchiseeId),
+          eq(client.isActive, true)
+        )
+      );
+
+    // Collect all client IDs (documents from both sides + linked clients)
     const allClientIds = new Set([
       ...clientReports.keys(),
       ...tabitReports.keys(),
+      ...linkedClients.map((l) => l.clientId),
     ]);
 
     if (allClientIds.size === 0) {

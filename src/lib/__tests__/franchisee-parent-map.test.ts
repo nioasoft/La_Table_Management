@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   findFranchiseeByCustomerNumber,
   findOperatingBrand,
+  getSharedEntityFranchisees,
 } from "../franchisee-parent-map";
 
 describe("findFranchiseeByCustomerNumber (HAAT shared legal entity)", () => {
@@ -47,6 +48,29 @@ describe("findFranchiseeByCustomerNumber (HAAT shared legal entity)", () => {
     expect(findFranchiseeByCustomerNumber("MISHLOCHA", natanzonInvoice)).toBeNull();
     expect(findFranchiseeByCustomerNumber("HAAT", "")).toBeNull();
     expect(findFranchiseeByCustomerNumber(null, natanzonInvoice)).toBeNull();
+  });
+});
+
+describe("getSharedEntityFranchisees", () => {
+  it("returns both HAAT shared-entity franchisees", () => {
+    const shared = getSharedEntityFranchisees("HAAT");
+    expect(shared.map((f) => f.franchiseeId).sort()).toEqual(
+      [
+        "0e2a027a-18bb-4274-af4e-be451799a29b",
+        "ab020323-fefe-4543-9a69-16d14dd54b99",
+      ].sort(),
+    );
+  });
+
+  it("is case-insensitive on the parser code", () => {
+    expect(getSharedEntityFranchisees("haat")).toHaveLength(2);
+  });
+
+  it("returns empty for parsers without a shared entity / empty input", () => {
+    expect(getSharedEntityFranchisees("MISHLOCHA")).toEqual([]);
+    expect(getSharedEntityFranchisees("WOLT")).toEqual([]);
+    expect(getSharedEntityFranchisees(null)).toEqual([]);
+    expect(getSharedEntityFranchisees(undefined)).toEqual([]);
   });
 });
 

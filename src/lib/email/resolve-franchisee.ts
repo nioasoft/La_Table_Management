@@ -8,6 +8,7 @@ import {
 import {
   findFranchiseeByCustomerNumber,
   findOperatingBrand,
+  getSharedEntityFranchisees,
 } from "@/lib/franchisee-parent-map";
 import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 
@@ -102,6 +103,39 @@ export async function resolveFranchisee(
       bestRejectedVerdict = verdict;
     }
   };
+
+  // Shared-legal-entity guard. When the accepted match is one of the
+  // franchisees that share a legal entity for this parser (e.g. HAAT: Pat
+  // Vini Azrieli + Natanzon Azrieli Haifa) and the document carried NO
+  // customer number (the deterministic override above didn't fire), the
+  // match is a guess — the documents are content-identical for both. Park
+  // for manual assignment instead of auto-committing; June 2026 proved the
+  // guess lands on the wrong franchisee (invoice-number order flipped).
+  const sharedEntityFranchisees = getSharedEntityFranchisees(parserCode);
+  const isSharedEntityFranchisee = (franchiseeId: string) =>
+    sharedEntityFranchisees.some((f) => f.franchiseeId === franchiseeId);
+  const sharedEntityRejection = (
+    matchedName: string,
+    extracted?: string,
+  ): ResolveFranchiseeResult => ({
+    ok: false,
+    extractedName: extracted,
+    reason: `Matched "${matchedName}" but it shares a legal entity with ${sharedEntityFranchisees
+      .map((f) => `"${f.franchiseeName}"`)
+      .join(
+        " / ",
+      )} and the document carries no customer number (מס. לקוח) — manual assignment required`,
+    rejectedVerdict: {
+      accept: false,
+      reason: "ambiguous",
+      bestConfidence: 0.5,
+      candidates: sharedEntityFranchisees.map((f) => ({
+        id: f.franchiseeId,
+        name: f.franchiseeName,
+        confidence: 0.5,
+      })),
+    },
+  });
 
   // Strategy 1: Parse document and use extracted franchisee name.
   // Critical: commission invoices (Mishloha, Wolt, etc.) have a SEPARATE
@@ -203,6 +237,12 @@ export async function resolveFranchisee(
         });
         const verdict = decideFranchiseeAcceptance(match);
         if (verdict.accept) {
+          if (isSharedEntityFranchisee(verdict.franchiseeId)) {
+            console.warn(
+              `[email-inbound] Shared-entity guard: content match "${extractedName}" → "${verdict.franchiseeName}" parked (no customer number)`
+            );
+            return sharedEntityRejection(verdict.franchiseeName, extractedName);
+          }
           console.log(
             `[email-inbound] Matched franchisee from document content: "${extractedName}" → "${verdict.franchiseeName}" @${verdict.confidence.toFixed(2)}${verdict.needsReview ? " [needs_review]" : ""}`
           );
@@ -233,6 +273,12 @@ export async function resolveFranchisee(
       recordRejection,
     );
     if (filenameMatch) {
+      if (isSharedEntityFranchisee(filenameMatch.franchiseeId)) {
+        console.warn(
+          `[email-inbound] Shared-entity guard: filename match "${attachmentFilename}" → "${filenameMatch.franchiseeName}" parked (no customer number)`
+        );
+        return sharedEntityRejection(filenameMatch.franchiseeName, extractedName);
+      }
       console.log(
         `[email-inbound] Matched franchisee from filename: "${attachmentFilename}" → "${filenameMatch.franchiseeName}" @${filenameMatch.confidence.toFixed(2)}`
       );
@@ -247,6 +293,12 @@ export async function resolveFranchisee(
     recordRejection,
   );
   if (subjectMatch) {
+    if (isSharedEntityFranchisee(subjectMatch.franchiseeId)) {
+      console.warn(
+        `[email-inbound] Shared-entity guard: subject match "${subject}" → "${subjectMatch.franchiseeName}" parked (no customer number)`
+      );
+      return sharedEntityRejection(subjectMatch.franchiseeName, extractedName);
+    }
     return { ok: true, ...subjectMatch };
   }
 
