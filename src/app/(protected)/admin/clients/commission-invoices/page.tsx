@@ -479,7 +479,6 @@ export default function CommissionInvoicesPage() {
                   <TableHead>לקוח</TableHead>
                   {!selectedFranchiseeId && <TableHead>זכיין</TableHead>}
                   <TableHead className="text-start">סכום דוח לקוח</TableHead>
-                  <TableHead className="text-start">עמלה צפויה</TableHead>
                   <TableHead className="text-start">סכום חשבונית</TableHead>
                   <TableHead className="text-start">הפרש</TableHead>
                   <TableHead className="text-center">סטטוס</TableHead>
@@ -514,30 +513,6 @@ export default function CommissionInvoicesPage() {
                           variant="emerald"
                         />
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {row.expectedCommission !== null ? (
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="tabular-nums">
-                            {formatAmountDetailed(row.expectedCommission)}
-                          </span>
-                          {row.systemCommissionRate !== null && (
-                            <span className="text-xs text-muted-foreground">
-                              ({row.systemCommissionRate}%)
-                            </span>
-                          )}
-                        </div>
-                      ) : row.systemCommissionRates.length > 1 ? (
-                        <span className="text-xs text-muted-foreground">
-                          מעורב (
-                          {row.systemCommissionRates
-                            .map((r) => `${r}%`)
-                            .join(" / ")}
-                          )
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
