@@ -4,8 +4,10 @@
  * GET /api/reports/hashavshevet/franchisee-client-invoices-export?franchiseeId=&periodMonth=&periodYear=
  *
  * Produces a 9-column Hashavshevet import sheet for the invoices we issue TO
- * clients (Tenbis, Cibus, Giftcard, …) for the franchisee+period. Only includes
- * clients flagged `client.invoiceGeneration = true`. Amount source is the
+ * clients (Cibus, Giftcard, …) for the franchisee+period. Only includes
+ * clients flagged `client.invoiceGeneration = true` — plus TENBIS for periods
+ * before July 2026, when it moved to the self-billed journal-entries export
+ * (see `tenbisUsesJournalEntries`). Amount source is the
  * approved reconciliation rows in `client_reconciliation_approval` (same
  * source-of-truth as the commission export).
  *
@@ -32,7 +34,10 @@ import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getApprovedForExport } from "@/data-access/client-reconciliation-approval";
+import {
+  getApprovedForExport,
+  tenbisUsesJournalEntries,
+} from "@/data-access/client-reconciliation-approval";
 import { getOccasionalClientsForExport } from "@/data-access/occasional-clients";
 import * as XLSX from "xlsx";
 
@@ -87,7 +92,14 @@ export async function GET(request: NextRequest) {
       periodYear,
     });
 
-    const invoiceRows = approved.filter((a) => a.invoiceGeneration === true);
+    const invoiceRows = approved.filter(
+      (a) =>
+        a.invoiceGeneration === true ||
+        // TENBIS cutover: its flag flipped to journal entries, but pre-July-2026
+        // periods must still export as client invoices.
+        (a.clientCode === "TENBIS" &&
+          !tenbisUsesJournalEntries(periodMonth, periodYear))
+    );
 
     // Fetch occasional-client rows for this franchisee+period. Already filters
     // out ignored rows and zero amounts in the data-access layer.

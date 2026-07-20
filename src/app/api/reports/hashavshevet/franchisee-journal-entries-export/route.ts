@@ -5,12 +5,15 @@
  *
  * Produces an 11-column Hashavshevet "תנועות" sheet for the journal
  * entries booking the invoices we RECEIVE FROM clients — Mishlocha, Wolt,
- * HAAT today (anyone flagged `client.journalEntryGeneration = true`).
+ * HAAT, and Tenbis from the July-2026 period (anyone flagged
+ * `client.journalEntryGeneration = true`; TENBIS is period-gated via
+ * `tenbisUsesJournalEntries` — earlier periods stay in the client-invoices
+ * export).
  *
  * Layout (per Reut's revised sample):
- *   A. אסמתכא 2          — MISHLOCHA/HAAT/WOLT: last 4 digits of invoice#;
+ *   A. אסמתכא 2          — MISHLOCHA/HAAT/WOLT/TENBIS: last 4 digits of invoice#;
  *                            HEVER: "9999" placeholder (both rows);
- *                            CIBUS/TENBIS/everyone else: empty.
+ *                            CIBUS/everyone else: empty.
  *   B. תאריך אסמכתא      — last day of period (DD/MM/YYYY)
  *   C. תאריך ערך         — last day of period
  *   D. חן חובה           — debit account (per-brand override → hashavshevetName → code → name)
@@ -46,7 +49,10 @@ import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import { database } from "@/db";
 import { franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { getApprovedForExport } from "@/data-access/client-reconciliation-approval";
+import {
+  getApprovedForExport,
+  tenbisUsesJournalEntries,
+} from "@/data-access/client-reconciliation-approval";
 import * as XLSX from "xlsx";
 
 // Israeli מע"מ (VAT) rate — 18% since January 2025.
@@ -73,8 +79,14 @@ const HEVER_COMMISSION_CREDIT_ACCOUNT = "הכנ עמלות חבר";
 const HEVER_ASMACHTA_PLACEHOLDER = "9999";
 
 // Clients whose uploads actually carry an invoice number we can extract.
-// Anything outside this set (CIBUS, TENBIS, …) leaves אסמכתא 2 empty per Reut.
-const INVOICE_BEARING_CLIENT_CODES = new Set(["MISHLOCHA", "HAAT", "WOLT"]);
+// Anything outside this set (CIBUS, …) leaves אסמכתא 2 empty per Reut.
+// TENBIS added 2026-07 — self-billed from the July-2026 period.
+const INVOICE_BEARING_CLIENT_CODES = new Set([
+  "MISHLOCHA",
+  "HAAT",
+  "WOLT",
+  "TENBIS",
+]);
 
 // Franchisee-specific revenue-account overrides now live on
 // `franchisee.hashavshevet_revenue_account` (added migration 0063).
@@ -127,7 +139,13 @@ export async function GET(request: NextRequest) {
     });
 
     const journalRows = approved.filter(
-      (a) => a.journalEntryGeneration === true
+      (a) =>
+        a.journalEntryGeneration === true &&
+        // TENBIS cutover: pre-July-2026 periods stay in the client-invoices export.
+        !(
+          a.clientCode === "TENBIS" &&
+          !tenbisUsesJournalEntries(periodMonth, periodYear)
+        )
     );
 
     if (journalRows.length === 0) {
@@ -159,8 +177,8 @@ export async function GET(request: NextRequest) {
       .filter((x) => x.amount !== 0)
       .flatMap(({ row, amount }): JournalRow[] => {
         // אסמכתא 2 per-client rule (Reut): real invoice# (last 4 digits) only
-        // for MISHLOCHA/HAAT/WOLT; HEVER gets the "9999" placeholder on both
-        // of its rows; CIBUS/TENBIS and anything else stay empty.
+        // for MISHLOCHA/HAAT/WOLT/TENBIS; HEVER gets the "9999" placeholder on
+        // both of its rows; CIBUS and anything else stay empty.
         const asmachta2 =
           row.clientCode === HEVER_CLIENT_CODE
             ? HEVER_ASMACHTA_PLACEHOLDER

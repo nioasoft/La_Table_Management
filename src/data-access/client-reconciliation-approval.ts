@@ -550,3 +550,13 @@ export async function getApprovedForExport(input: {
 
   return result;
 }
+
+// ponytail: temporary cutover guard — 10bis moved to self-billed journal
+// entries from the July 2026 settlement period (docs arriving Aug; Reut,
+// 20.7.26). Delete once pre-July-2026 periods are no longer re-exported.
+export function tenbisUsesJournalEntries(
+  periodMonth: number,
+  periodYear: number
+): boolean {
+  return periodYear > 2026 || (periodYear === 2026 && periodMonth >= 7);
+}
