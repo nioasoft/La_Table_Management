@@ -4,6 +4,7 @@ import {
   supplier,
   franchisee,
   brand,
+  supplierFileUpload,
   type Commission,
   type Brand,
   type CreateCommissionData,
@@ -1423,18 +1424,50 @@ export async function calculateBatchCommissions(
     ));
 
   if (existingCommissions.length > 0) {
-    // Always delete ALL existing calculated/pending commissions for this supplier+period.
-    // This handles both cases:
-    // 1. Same file processed twice (same sourceFileId) → prevents duplicates
-    // 2. Different file replacing old one (different sourceFileId) → cleans up old data
-    // 3. Legacy commissions with no sourceFileId → cleaned up on re-process
-    const deleteIds = existingCommissions.map(c => c.id);
-    await database
-      .delete(commission)
-      .where(inArray(commission.id, deleteIds));
-    console.log(
-      `[Commission Dedup] Deleted ${deleteIds.length} existing commissions for supplier ${input.supplierId} period ${input.periodStartDate}-${input.periodEndDate}`
-    );
+    // Delete existing calculated/pending commissions for this supplier+period,
+    // EXCEPT rows owned by a DIFFERENT file that is still approved. Multi-file
+    // suppliers (דגי הקיבוצים, פסטה לה קאזה — one file per franchisee, same
+    // period) accumulate one commission set per file, and syncing file B must
+    // not destroy file A's rows (real incident 2026-07-22: 20 dagei Q2 files
+    // saved one-by-one left only the last franchisee's commission).
+    // Still deleted:
+    // 1. Rows from this same file (sourceFileId = input.sourceFileId) → re-process dedup
+    // 2. Legacy rows with no sourceFileId → cleaned up on re-process
+    // 3. Rows whose source file was rejected/replaced → stale data
+    const siblingFileIds = [
+      ...new Set(
+        existingCommissions
+          .map((c) => c.sourceFileId)
+          .filter((id): id is string => id !== null && id !== input.sourceFileId)
+      ),
+    ];
+
+    const liveSiblingIds = new Set<string>();
+    if (siblingFileIds.length > 0) {
+      const liveSiblings = await database
+        .select({ id: supplierFileUpload.id })
+        .from(supplierFileUpload)
+        .where(
+          and(
+            inArray(supplierFileUpload.id, siblingFileIds),
+            inArray(supplierFileUpload.processingStatus, ["approved", "auto_approved"])
+          )
+        );
+      for (const s of liveSiblings) liveSiblingIds.add(s.id);
+    }
+
+    const deleteIds = existingCommissions
+      .filter((c) => !c.sourceFileId || !liveSiblingIds.has(c.sourceFileId))
+      .map((c) => c.id);
+
+    if (deleteIds.length > 0) {
+      await database
+        .delete(commission)
+        .where(inArray(commission.id, deleteIds));
+      console.log(
+        `[Commission Dedup] Deleted ${deleteIds.length} existing commissions for supplier ${input.supplierId} period ${input.periodStartDate}-${input.periodEndDate} (spared ${existingCommissions.length - deleteIds.length} rows from other approved files)`
+      );
+    }
   }
 
   const commissions: Commission[] = [];
