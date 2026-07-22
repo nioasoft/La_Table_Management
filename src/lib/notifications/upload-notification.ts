@@ -55,17 +55,17 @@ function formatDate(date: Date): string {
 function buildProcessLink(uploadLink: UploadLinkWithEntity): string {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL || "http://localhost:3000";
 
-  // Link to the entity's page with upload link ID parameter
-  // This allows admins to navigate directly to the relevant entity and see the uploaded files
+  // Link to the review screen where the uploaded file is actually processed.
+  // Admin pages live under /admin/* — the old /suppliers/:id paths don't exist (404).
   const entityPath = uploadLink.entityType === "supplier"
-    ? `/suppliers/${uploadLink.entityId}`
+    ? `/admin/supplier-files?supplierId=${uploadLink.entityId}`
     : uploadLink.entityType === "franchisee"
-    ? `/franchisees/${uploadLink.entityId}`
+    ? `/admin/bkmvdata`
     : uploadLink.entityType === "brand"
-    ? `/brands/${uploadLink.entityId}`
-    : `/upload-links/${uploadLink.id}`;
+    ? `/admin/brands`
+    : `/admin`;
 
-  return `${baseUrl}${entityPath}?uploadLinkId=${uploadLink.id}`;
+  return `${baseUrl}${entityPath}`;
 }
 
 /**
