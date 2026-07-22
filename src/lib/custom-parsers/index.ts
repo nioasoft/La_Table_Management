@@ -41,6 +41,7 @@ export { parseYevuleiGourmetFile } from "./yevulei-gourmet-parser";
 export { parseSheriChocoFile } from "./sheri-choco-parser";
 export { parseLeumiCardFile } from "./leumi-card-parser";
 export { parsePereshPastaFile } from "./peresh-pasta-parser";
+export { parseDiplomatFile } from "./diplomat-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
@@ -197,6 +198,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   PERESH_PASTA: async (buffer, vatRate) => {
     const { parsePereshPastaFile } = await import("./peresh-pasta-parser");
     return parsePereshPastaFile(buffer, vatRate);
+  },
+  DIPLOMAT: async (buffer, vatRate) => {
+    const { parseDiplomatFile } = await import("./diplomat-parser");
+    return parseDiplomatFile(buffer, vatRate);
   },
 };
 
