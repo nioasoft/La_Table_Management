@@ -10,8 +10,9 @@ import {
   supplier,
   franchisee,
   fileRequest,
+  supplierFileUpload,
 } from "@/db/schema";
-import { eq, and, gte, lte, sql, or, inArray } from "drizzle-orm";
+import { eq, and, gte, lte, sql, or, inArray, isNull } from "drizzle-orm";
 
 /**
  * Response type for period status dashboard widget
@@ -45,6 +46,13 @@ export type PeriodStatusResponse = {
     sessionId: string;
     supplierId: string;
     supplierName: string;
+  }>;
+  /** Supplier files in needs_review — awaiting file approval (before a reconciliation session exists) */
+  pendingFileReviews: Array<{
+    fileId: string;
+    supplierId: string;
+    supplierName: string;
+    fileName: string;
   }>;
 };
 
@@ -92,8 +100,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Supplier files still awaiting manual review (file-level approval).
+    // NULL-period files are failed auto-parses — attribute them by upload date.
+    const pendingFileConditions = [
+      eq(supplierFileUpload.processingStatus, "needs_review" as const),
+    ];
+    if (filterByPeriod) {
+      pendingFileConditions.push(
+        or(
+          and(
+            lte(supplierFileUpload.periodStartDate, periodEnd!),
+            gte(supplierFileUpload.periodEndDate, periodStart!),
+          ),
+          and(
+            isNull(supplierFileUpload.periodStartDate),
+            gte(supplierFileUpload.createdAt, new Date(periodStart!)),
+          ),
+        )!,
+      );
+    }
+
     // Fetch V2 reconciliation stats and file requests in parallel
-    const [sessionStats, discrepancyRows, fileRequests, completedSessions] = await Promise.all([
+    const [sessionStats, discrepancyRows, fileRequests, completedSessions, pendingFiles] = await Promise.all([
       // Aggregate counts from reconciliation_session
       database
         .select({
@@ -155,6 +183,18 @@ export async function GET(request: NextRequest) {
         .from(reconciliationSession)
         .innerJoin(supplier, eq(reconciliationSession.supplierId, supplier.id))
         .where(and(...completedSessionConditions)),
+
+      // Supplier files awaiting manual review
+      database
+        .select({
+          fileId: supplierFileUpload.id,
+          supplierId: supplierFileUpload.supplierId,
+          supplierName: supplier.name,
+          fileName: supplierFileUpload.originalFileName,
+        })
+        .from(supplierFileUpload)
+        .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
+        .where(and(...pendingFileConditions)),
     ]);
 
     // Extract V2 aggregated stats
@@ -198,13 +238,15 @@ export async function GET(request: NextRequest) {
     const pendingActionItems: PeriodStatusResponse["pendingActions"]["items"] =
       [];
 
-    // Sessions completed but not yet file-approved (high priority)
-    if (completedSessions.length > 0) {
+    // Files/sessions awaiting approval (high priority):
+    // reconciliation sessions pending approval + supplier files pending review
+    const totalAwaitingApproval = completedSessions.length + pendingFiles.length;
+    if (totalAwaitingApproval > 0) {
       pendingActionItems.push({
         type: "approval",
-        count: completedSessions.length,
+        count: totalAwaitingApproval,
         priority: "high",
-        description: `${completedSessions.length} קבצים ממתינים לאישור`,
+        description: `${totalAwaitingApproval} קבצים ממתינים לאישור`,
       });
     }
 
@@ -255,6 +297,7 @@ export async function GET(request: NextRequest) {
       crossReferenceStatus,
       pendingActions,
       pendingApprovalDetails,
+      pendingFileReviews: pendingFiles,
     };
 
     return NextResponse.json({ data: response });

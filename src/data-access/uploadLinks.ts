@@ -1295,7 +1295,11 @@ export async function getFranchiseeBkmvStatusForPeriod(
       )
     );
 
-  // Get all BKMV files for this period (non-rejected)
+  // Get all BKMV files that COVER this period (non-rejected).
+  // Coverage, not overlap: a Q1 file whose range spills a few days into Q2
+  // (e.g. 2026-01-01..2026-04-30) must not count as the Q2 file.
+  // ponytail: single-file coverage; switch to union-of-ranges if franchisees
+  // ever start sending partial-period files.
   const bkmvFiles = await database
     .select({
       franchiseeId: uploadedFile.franchiseeId,
@@ -1304,8 +1308,8 @@ export async function getFranchiseeBkmvStatusForPeriod(
     .where(
       and(
         isNotNull(uploadedFile.franchiseeId),
-        lte(uploadedFile.periodStartDate, periodEndDate),
-        gte(uploadedFile.periodEndDate, periodStartDate),
+        lte(uploadedFile.periodStartDate, periodStartDate),
+        gte(uploadedFile.periodEndDate, periodEndDate),
         ne(uploadedFile.processingStatus, "rejected")
       )
     );
