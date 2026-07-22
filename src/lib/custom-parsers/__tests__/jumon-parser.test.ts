@@ -54,6 +54,36 @@ describe("parseJumonFile — multi-sheet handling", () => {
     expect(r.summary.totalNetAmount).toBe(1500 + 2000 + 700);
   });
 
+  it("parses the new-branch layout (leading חודש column, name repeated on every row)", () => {
+    const newBranchLayout = [
+      ["חודש", "מס' לקוח", "שם לקוח", "מק'ט", "תאור מוצר משתנה", "כמות", "סכום (ש'ח)", "אחוז עמלת ניהול ", 'סה"כ ניהול לפני מע"מ'],
+      ["יונ-26", "200801131", 'פט ויני עזריאלי בע"מ (חיפה)', "25036", "בצלים", "10", " 420.08 ", "17%", " 71.41 "],
+      ["יונ-26", "200801131", 'פט ויני עזריאלי בע"מ (חיפה)', "5018101", "רוטב", "6", " 626.81 ", "17%", " 106.56 "],
+      ["", "", "", "", "", "", "", "", " 177.97 "], // total row — no product, skipped
+      ["", "תחילת פעילות חודש 06.26", "", "", "", "", "", "", ""],
+    ];
+    const r = parseJumonFile(xlsx({ "4-6.26": newBranchLayout }));
+    expect(r.success).toBe(true);
+    expect(r.data).toHaveLength(1);
+    const azrieli = r.data[0];
+    expect(azrieli.franchisee).toBe('פט ויני עזריאלי בע"מ (חיפה)');
+    expect(azrieli.netAmount).toBe(1047); // 420.08 + 626.81 rounded — amounts, not quantities
+    expect(azrieli.preCalculatedCommission).toBe(178);
+  });
+
+  it("sums repeated blocks of the same customer within one sheet (no drop, no warning)", () => {
+    const twoBlocks = [
+      HEADERS,
+      ["100", "מינה יהוד", "1", "אורז", "2", "1,000", "17%", "170"],
+      ["100", "מינה יהוד", "2", "אצות", "1", "500", "17%", "85"], // second block, same customer
+    ];
+    const r = parseJumonFile(xlsx({ ראשי: twoBlocks }));
+    expect(r.success).toBe(true);
+    expect(r.data).toHaveLength(1);
+    expect(r.data[0].netAmount).toBe(1500);
+    expect(r.legacyWarnings).toHaveLength(0);
+  });
+
   it("keeps first sheet's numbers and warns when a duplicate has different totals", () => {
     const conflicting = [
       HEADERS,

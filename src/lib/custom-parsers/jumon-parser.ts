@@ -31,19 +31,11 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
-// Column indices (0-based)
-const CUSTOMER_ID_COL = 0; // Column A - מס' לקוח
-const FRANCHISEE_COL = 1; // Column B - שם לקוח
-const PRODUCT_COL = 2; // Column C - מק'ט
-const PRODUCT_AMOUNT_COL = 5; // Column F - סכום של סכום ש'ח (purchase amount for cross-reference)
-const COMMISSION_AMOUNT_COL = 7; // Column H - סה"כ ניהול לפני מע"מ (pre-calculated commission)
-
-// Row configuration
-const HEADER_ROW = 0; // Row 1 (0-indexed)
-const DATA_START_ROW = 1; // Row 2 (0-indexed)
-
-// Skip keywords - rows with these values in column A should be skipped
-const SKIP_KEYWORDS = ["סכום כולל", "מס' לקוח"];
+// Legacy fallback column indices (0-based) — used when a header isn't found
+const LEGACY_FRANCHISEE_COL = 1; // Column B - שם לקוח
+const LEGACY_PRODUCT_COL = 2; // Column C - מק'ט
+const LEGACY_PRODUCT_AMOUNT_COL = 5; // Column F - סכום של סכום ש'ח
+const LEGACY_COMMISSION_AMOUNT_COL = 7; // Column H - סה"כ ניהול לפני מע"מ
 
 /**
  * Parse a numeric value from cell content
@@ -68,30 +60,32 @@ function parseNumericValue(value: unknown): number {
 }
 
 /**
- * Check if a row is a customer header row (has customer ID in column A)
+ * Locate the header row: the first row containing a "שם לקוח" cell.
+ * Returns -1 when the sheet has no recognizable header.
  */
-function isCustomerHeaderRow(row: unknown[]): boolean {
-  const customerId = String(row[CUSTOMER_ID_COL] || "").trim();
-  if (!customerId) return false;
-  // Skip total row and header row
-  return !SKIP_KEYWORDS.some((keyword) =>
-    customerId.toLowerCase().includes(keyword.toLowerCase())
-  );
+function findHeaderRow(rawData: unknown[][]): number {
+  const scanLimit = Math.min(rawData.length, 10);
+  for (let r = 0; r < scanLimit; r++) {
+    const row = rawData[r];
+    if (row?.some(c => String(c || "").includes("שם לקוח"))) return r;
+  }
+  return -1;
 }
 
-/**
- * Check if a row has valid product data
- */
-function hasProductData(row: unknown[]): boolean {
-  // Check if row has a product ID (column C)
-  const productId = row[PRODUCT_COL];
-  return productId !== null && productId !== undefined && String(productId).trim() !== "";
+/** Locate a column by header predicate, falling back to a legacy index */
+function findCol(
+  headers: unknown[],
+  match: (h: string) => boolean,
+  fallback: number
+): number {
+  const idx = headers.findIndex(h => match(String(h || "")));
+  return idx >= 0 ? idx : fallback;
 }
 
 interface CustomerBlock {
   franchisee: string;
-  totalPurchase: number; // Sum of product amounts (Column F) - for cross-reference
-  totalCommission: number; // Sum of commission amounts (Column H) - pre-calculated
+  totalPurchase: number; // Sum of product amounts - for cross-reference
+  totalCommission: number; // Sum of commission amounts - pre-calculated
   rowCount: number;
   firstRow: number;
 }
@@ -137,139 +131,86 @@ export function parseJumonFile(buffer: Buffer): FileProcessingResult {
       if (!rawData || rawData.length < 2) continue;
       totalRowsAllSheets += rawData.length;
 
-      // Validate headers (first sheet only — later sheets share the layout)
-      if (sheetIdx === 0) {
-        const headers = rawData[HEADER_ROW] || [];
-        const customerIdHeader = String(headers[CUSTOMER_ID_COL] || "");
-        const franchiseeHeader = String(headers[FRANCHISEE_COL] || "");
-        const commissionHeader = String(headers[COMMISSION_AMOUNT_COL] || "");
-
-        if (!customerIdHeader.includes("לקוח")) {
-          warnings.push(
-            createFileProcessingError("PARSE_ERROR", {
-              details: `Expected customer ID column header at A, found: "${customerIdHeader}"`,
-            })
-          );
-        }
-        if (!franchiseeHeader.includes("לקוח")) {
-          warnings.push(
-            createFileProcessingError("PARSE_ERROR", {
-              details: `Expected franchisee column header at B, found: "${franchiseeHeader}"`,
-            })
-          );
-        }
-        if (!commissionHeader.includes("ניהול") && !commissionHeader.includes("מע")) {
-          warnings.push(
-            createFileProcessingError("PARSE_ERROR", {
-              details: `Expected commission column header at H, found: "${commissionHeader}"`,
-            })
-          );
-        }
+      // Locate the header row + columns by header text. Layouts seen so far:
+      //   standard: [מס' לקוח, שם לקוח, מק'ט, תאור, כמות, סכום של סכום (ש'ח), אחוז, סה"כ ניהול]
+      //   new-branch (Q2-2026, e.g. פט ויני עזריאלי): a leading חודש column
+      //   shifts everything right and the name repeats on every row.
+      const headerRowIdx = findHeaderRow(rawData);
+      if (headerRowIdx < 0) {
+        legacyWarnings.push(`Sheet "${workbook.SheetNames[sheetIdx]}": no שם לקוח header found, skipped`);
+        continue;
       }
+      const headers = rawData[headerRowIdx];
+      const nameCol = findCol(headers, h => h.includes("שם לקוח"), LEGACY_FRANCHISEE_COL);
+      const productCol = findCol(headers, h => h.includes("מק"), LEGACY_PRODUCT_COL);
+      // The purchase-amount header mentions ש"ח (vs "סכום של כמות" = quantity)
+      const amountCol = findCol(
+        headers,
+        h => h.includes("סכום") && /ש["'׳״]ח/.test(h),
+        LEGACY_PRODUCT_AMOUNT_COL
+      );
+      const commissionCol = findCol(
+        headers,
+        h => h.includes("ניהול") && !h.includes("אחוז"),
+        LEGACY_COMMISSION_AMOUNT_COL
+      );
 
-      // Find all customer block start rows in this sheet
-      const customerStartRows: number[] = [];
-      for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
+      // Aggregate product rows per franchisee. The name cell is filled either
+      // only on the first row of a customer block (standard layout) or on
+      // every row (new-branch layout) — carry-forward covers both, and blocks
+      // of the same customer within one sheet sum together.
+      const sheetTotals = new Map<string, CustomerBlock>();
+      let currentName = "";
+
+      for (let rowIdx = headerRowIdx + 1; rowIdx < rawData.length; rowIdx++) {
         const row = rawData[rowIdx];
-        if (row && isCustomerHeaderRow(row)) {
-          customerStartRows.push(rowIdx);
+        if (!row) continue;
+
+        const nameCell = String(row[nameCol] || "").trim();
+        if (nameCell) currentName = nameCell;
+
+        const product = String(row[productCol] || "").trim();
+        if (!product || !currentName) {
+          skippedRows++;
+          continue;
         }
+
+        const block = sheetTotals.get(currentName) ?? {
+          franchisee: currentName,
+          totalPurchase: 0,
+          totalCommission: 0,
+          rowCount: 0,
+          firstRow: rowIdx + 1,
+        };
+        // Include all values (positive and negative for returns)
+        block.totalPurchase += parseNumericValue(row[amountCol]);
+        block.totalCommission += parseNumericValue(row[commissionCol]);
+        block.rowCount++;
+        sheetTotals.set(currentName, block);
       }
-      if (customerStartRows.length === 0) continue;
 
-      // Find the last row with product data
-      let lastDataRow = DATA_START_ROW;
-      for (let rowIdx = rawData.length - 1; rowIdx >= DATA_START_ROW; rowIdx--) {
-        const row = rawData[rowIdx];
-        if (row && hasProductData(row)) {
-          lastDataRow = rowIdx;
-          break;
-        }
-      }
-
-      // Add end boundary for last customer
-      customerStartRows.push(lastDataRow + 1);
-
-      // Process each customer block in this sheet
-      for (let i = 0; i < customerStartRows.length - 1; i++) {
-        const startRow = customerStartRows[i];
-        const endRow = customerStartRows[i + 1];
-        const headerRow = rawData[startRow];
-
-        if (!headerRow) {
-          skippedRows++;
-          continue;
-        }
-
-        const franchisee = String(headerRow[FRANCHISEE_COL] || "").trim();
-        if (!franchisee) {
-          warnings.push(
-            createFileProcessingError("EMPTY_FRANCHISEE_NAME", {
-              rowNumber: startRow + 1,
-            })
-          );
-          legacyWarnings.push(`Row ${startRow + 1}: Empty franchisee name`);
-          skippedRows++;
-          continue;
-        }
-
-        // Sum purchase and commission amounts for all product rows in this customer block
-        let totalPurchase = 0;
-        let totalCommission = 0;
-        let rowCount = 0;
-
-        for (let rowIdx = startRow; rowIdx < endRow; rowIdx++) {
-          const row = rawData[rowIdx];
-          if (!row || !hasProductData(row)) {
-            continue;
-          }
-
-          const purchase = parseNumericValue(row[PRODUCT_AMOUNT_COL]);
-          const commission = parseNumericValue(row[COMMISSION_AMOUNT_COL]);
-          // Include all values (positive and negative for returns)
-          totalPurchase += purchase;
-          totalCommission += commission;
-          rowCount++;
-        }
-
-        if (rowCount === 0) {
-          warnings.push(
-            createFileProcessingError("PARSE_ERROR", {
-              rowNumber: startRow + 1,
-              details: `Customer "${franchisee}" has no product rows`,
-            })
-          );
-          skippedRows++;
-          continue;
-        }
-
-        const existing = mergedBlocks.get(franchisee);
+      // Merge this sheet into the cross-sheet result
+      for (const block of sheetTotals.values()) {
+        const existing = mergedBlocks.get(block.franchisee);
         if (existing) {
           // Same totals → per-brand breakout duplicate, skip silently.
           // Different totals → keep the first sheet's numbers and warn.
-          const samePurchase = roundAmount(existing.totalPurchase) === roundAmount(totalPurchase);
-          const sameCommission = roundAmount(existing.totalCommission) === roundAmount(totalCommission);
+          const samePurchase = roundAmount(existing.totalPurchase) === roundAmount(block.totalPurchase);
+          const sameCommission = roundAmount(existing.totalCommission) === roundAmount(block.totalCommission);
           if (!samePurchase || !sameCommission) {
             warnings.push(
               createFileProcessingError("PARSE_ERROR", {
-                rowNumber: startRow + 1,
-                details: `"${franchisee}" מופיע בגיליון "${workbook.SheetNames[sheetIdx]}" עם סכומים שונים (${roundAmount(totalPurchase)} מול ${roundAmount(existing.totalPurchase)}) — נלקחו הסכומים מהגיליון הראשון`,
+                rowNumber: block.firstRow,
+                details: `"${block.franchisee}" מופיע בגיליון "${workbook.SheetNames[sheetIdx]}" עם סכומים שונים (${roundAmount(block.totalPurchase)} מול ${roundAmount(existing.totalPurchase)}) — נלקחו הסכומים מהגיליון הראשון`,
               })
             );
             legacyWarnings.push(
-              `"${franchisee}" appears on sheet "${workbook.SheetNames[sheetIdx]}" with different totals; kept first sheet's numbers`
+              `"${block.franchisee}" appears on sheet "${workbook.SheetNames[sheetIdx]}" with different totals; kept first sheet's numbers`
             );
           }
           continue;
         }
-
-        mergedBlocks.set(franchisee, {
-          franchisee,
-          totalPurchase,
-          totalCommission,
-          rowCount,
-          firstRow: startRow + 1,
-        });
+        mergedBlocks.set(block.franchisee, block);
       }
     }
 
