@@ -99,7 +99,7 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   },
   FRESCO: async (buffer, vatRate) => {
     const { parseFrescoFile } = await import("./fresco-parser");
-    return parseFrescoFile(buffer);
+    return parseFrescoFile(buffer, vatRate);
   },
   ASPIRIT: async (buffer, vatRate) => {
     const { parseAspiritFile } = await import("./aspirit-parser");
