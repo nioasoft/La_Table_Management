@@ -57,10 +57,14 @@ export async function POST(request: NextRequest) {
       .where(and(...conditions));
 
     // Only reprocess approved files (auto_approved or manually approved); skip rejected/pending.
+    // Exception: an explicit fileId is an intentional admin action — allow
+    // needs_review too, so failed uploads can be re-run after a parser fix
+    // (status is preserved; the file still goes through review/approval).
     const filesToProcess = files.filter(
       (f) =>
         f.processingStatus === "auto_approved" ||
-        f.processingStatus === "approved"
+        f.processingStatus === "approved" ||
+        (filterFileId !== null && f.processingStatus === "needs_review")
     );
 
     if (dryRun) {
