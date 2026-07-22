@@ -1407,6 +1407,59 @@ export interface BatchCommissionResult {
  * Calculate and create commission records for multiple transactions in batch
  * All transactions must be for the same supplier
  */
+/**
+ * Pure dedup-cleanup decision for calculateBatchCommissions: which existing
+ * calculated/pending rows of the supplier+period may be deleted before
+ * re-inserting. Rows owned by a DIFFERENT file that is still approved are
+ * spared — multi-file suppliers (one file per franchisee, same period)
+ * accumulate one commission set per file (real incident 2026-07-22: 20 dagei
+ * Q2 files saved one-by-one left only the last franchisee's commission).
+ * Deleted: rows of the syncing file itself, legacy NULL-source rows, and
+ * rows whose source file is no longer approved (rejected/replaced).
+ */
+export function selectCommissionCleanupIds(
+  existing: Array<{ id: string; sourceFileId: string | null }>,
+  liveSiblingFileIds: ReadonlySet<string>
+): string[] {
+  return existing
+    .filter((c) => !c.sourceFileId || !liveSiblingFileIds.has(c.sourceFileId))
+    .map((c) => c.id);
+}
+
+/**
+ * Pure duplicate-guard decision: franchisees that must NOT get a new
+ * commission because one already stands for an overlapping period.
+ * Covers all double-count classes seen in prod: a spared sibling file's row
+ * for the same period (duplicate upload), an overlapping-but-different
+ * period (mistagged upload — שרי שוקו Q1-as-April; cumulative report —
+ * יקב לוריא H1 over an approved Q1), and approved/paid rows the cleanup
+ * never touches. Returns franchiseeId → human-readable block reason.
+ */
+export function buildDuplicateBlockMap(
+  overlapping: Array<{
+    franchiseeId: string;
+    periodStartDate: string;
+    periodEndDate: string;
+    status: string;
+  }>,
+  periodStartDate: string,
+  periodEndDate: string
+): Map<string, string> {
+  const blocked = new Map<string, string>();
+  for (const row of overlapping) {
+    const samePeriod =
+      row.periodStartDate === periodStartDate &&
+      row.periodEndDate === periodEndDate;
+    blocked.set(
+      row.franchiseeId,
+      samePeriod
+        ? `Commission already exists for this franchisee+period from another approved file (status: ${row.status}). Reject/replace the other file first.`
+        : `Commission period overlaps an existing ${row.status} commission (${row.periodStartDate}–${row.periodEndDate}). Possible mistagged period or cumulative report — resolve manually.`
+    );
+  }
+  return blocked;
+}
+
 export async function calculateBatchCommissions(
   input: BatchCommissionInput,
   auditContext?: AuditContext
@@ -1456,9 +1509,7 @@ export async function calculateBatchCommissions(
       for (const s of liveSiblings) liveSiblingIds.add(s.id);
     }
 
-    const deleteIds = existingCommissions
-      .filter((c) => !c.sourceFileId || !liveSiblingIds.has(c.sourceFileId))
-      .map((c) => c.id);
+    const deleteIds = selectCommissionCleanupIds(existingCommissions, liveSiblingIds);
 
     if (deleteIds.length > 0) {
       await database
@@ -1470,6 +1521,37 @@ export async function calculateBatchCommissions(
     }
   }
 
+  // Duplicate guard: after cleanup, any commission still standing for this
+  // supplier whose period OVERLAPS the input period blocks re-creation for
+  // its franchisee. This catches every double-count class seen in prod:
+  // - same period, different approved file (spared sibling) → same franchisee
+  //   arriving from a second file is a duplicate upload, not new data
+  // - overlapping-but-different period → a mistagged upload (שרי שוקו: Q1
+  //   file re-tagged "April") or a cumulative report over an already-billed
+  //   quarter (יקב לוריא H1 vs approved Q1)
+  // - approved/paid rows (never deleted by cleanup) → re-sync must not add
+  //   a second row next to them
+  // Blocked rows surface as per-franchisee errors, nothing is deleted.
+  const overlapping = await database
+    .select({
+      franchiseeId: commission.franchiseeId,
+      periodStartDate: commission.periodStartDate,
+      periodEndDate: commission.periodEndDate,
+      status: commission.status,
+    })
+    .from(commission)
+    .where(and(
+      eq(commission.supplierId, input.supplierId),
+      lte(commission.periodStartDate, input.periodEndDate),
+      gte(commission.periodEndDate, input.periodStartDate)
+    ));
+
+  const blockedFranchisees = buildDuplicateBlockMap(
+    overlapping,
+    input.periodStartDate,
+    input.periodEndDate
+  );
+
   const commissions: Commission[] = [];
   const errors: Array<{ franchiseeId: string; error: string }> = [];
 
@@ -1479,6 +1561,15 @@ export async function calculateBatchCommissions(
   let totalCommissionRate = 0;
 
   for (const transaction of input.transactions) {
+    const blockReason = blockedFranchisees.get(transaction.franchiseeId);
+    if (blockReason) {
+      errors.push({ franchiseeId: transaction.franchiseeId, error: blockReason });
+      console.warn(
+        `[Commission Guard] Blocked duplicate for franchisee ${transaction.franchiseeId}, supplier ${input.supplierId}, period ${input.periodStartDate}-${input.periodEndDate}: ${blockReason}`
+      );
+      continue;
+    }
+
     const result = await calculateAndCreateCommission(
       {
         supplierId: input.supplierId,
