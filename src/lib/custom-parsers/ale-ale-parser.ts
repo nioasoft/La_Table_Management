@@ -12,7 +12,13 @@
  *   - "מחיר תקליט" was dropped, so the line total moves from col H (idx 7)
  *     to col G (idx 6).
  *
- * VAT: amounts are NET; supports per-item VAT via vatProducts.
+ * 2026-Q2 layout: columns reshuffled again —
+ *   [תקופה, שם לקוח, שם פריט, כמות, מחיר, מחיר תקליט, סהכ לפריט, מקט].
+ *   The supplier keeps moving columns between exports, so columns are now
+ *   located BY HEADER NAME with the legacy indices as fallback.
+ *
+ * VAT: amounts are NET; supports per-item VAT via vatProducts (matched by
+ * product NAME — locating שם פריט correctly is what makes per-item VAT work).
  */
 
 import * as XLSX from "xlsx";
@@ -25,32 +31,19 @@ import {
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
 
-// Common to both layouts
-const DATE_COL = 0;
-const FRANCHISEE_COL = 1;
-const PRODUCT_NAME_COL = 3;
-
-// Layout-specific amount column
+// Legacy fallback indices (used only when a header isn't found by name)
+const LEGACY_DATE_COL = 0;
+const LEGACY_FRANCHISEE_COL = 1;
+const LEGACY_PRODUCT_NAME_COL = 3;
 const LEGACY_AMOUNT_COL = 7;
-const NEW_AMOUNT_COL = 6;
-
-const LEGACY_TOTAL_HEADER = "סהכ לפריט";
-const LEGACY_RECORDPRICE_HEADER = "מחיר תקליט";
 
 /**
- * Pick the right amount column based on the header row. Defaults to legacy
- * if headers are unclear so existing callers don't regress.
+ * Locate a column by header text, falling back to the legacy index.
+ * The supplier reshuffles columns between exports; header names are stable.
  */
-function pickAmountCol(headers: unknown[]): number {
-  const h7 = String(headers[7] || "");
-  const h6 = String(headers[6] || "");
-  if (h7.includes(LEGACY_TOTAL_HEADER) || h7.includes(LEGACY_RECORDPRICE_HEADER)) {
-    return LEGACY_AMOUNT_COL;
-  }
-  if (h6.includes(LEGACY_TOTAL_HEADER)) {
-    return NEW_AMOUNT_COL;
-  }
-  return LEGACY_AMOUNT_COL;
+function findCol(headers: unknown[], headerText: string, fallback: number): number {
+  const idx = headers.findIndex(h => String(h || "").includes(headerText));
+  return idx >= 0 ? idx : fallback;
 }
 
 export function parseAleAleFile(
@@ -88,7 +81,11 @@ export function parseAleAleFile(
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    const amountCol = pickAmountCol(rawData[0] || []);
+    const headers = rawData[0] || [];
+    const dateCol = findCol(headers, "תקופה", LEGACY_DATE_COL);
+    const franchiseeCol = findCol(headers, "שם לקוח", LEGACY_FRANCHISEE_COL);
+    const productNameCol = findCol(headers, "שם פריט", LEGACY_PRODUCT_NAME_COL);
+    const amountCol = findCol(headers, "סהכ לפריט", LEGACY_AMOUNT_COL);
 
     const franchiseeAmounts: Map<
       string,
@@ -100,10 +97,10 @@ export function parseAleAleFile(
       const row = rawData[i];
       if (!row || row.length === 0) continue;
 
-      const franchisee = String(row[FRANCHISEE_COL] || "").trim();
+      const franchisee = String(row[franchiseeCol] || "").trim();
       const amountStr = String(row[amountCol] || "").trim();
-      const dateStr = String(row[DATE_COL] || "").trim();
-      const productName = String(row[PRODUCT_NAME_COL] || "").trim();
+      const dateStr = String(row[dateCol] || "").trim();
+      const productName = String(row[productNameCol] || "").trim();
 
       if (productName) uniqueProducts.add(productName);
       if (!franchisee) continue;
