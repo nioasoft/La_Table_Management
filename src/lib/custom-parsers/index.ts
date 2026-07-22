@@ -40,6 +40,7 @@ export { parseYekevLuriaFile } from "./yekev-luria-parser";
 export { parseYevuleiGourmetFile } from "./yevulei-gourmet-parser";
 export { parseSheriChocoFile } from "./sheri-choco-parser";
 export { parseLeumiCardFile } from "./leumi-card-parser";
+export { parsePereshPastaFile } from "./peresh-pasta-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
@@ -192,6 +193,10 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   LEUMI_CARD: async (buffer) => {
     const { parseLeumiCardFile } = await import("./leumi-card-parser");
     return parseLeumiCardFile(buffer);
+  },
+  PERESH_PASTA: async (buffer, vatRate) => {
+    const { parsePereshPastaFile } = await import("./peresh-pasta-parser");
+    return parsePereshPastaFile(buffer, vatRate);
   },
 };
 
