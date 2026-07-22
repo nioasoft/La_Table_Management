@@ -563,10 +563,16 @@ export async function POST(
 
     // Automatic supplier file processing for supplier uploads
     let supplierProcessingResult = null;
-    const isExcelFile = file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-                        file.type === "application/vnd.ms-excel";
+    // CSV included: some suppliers (e.g. עלה עלה) send CSV reports and their
+    // parsers handle it. Without this, CSV uploads sat as "pending" forever
+    // with no supplier_file_upload record — invisible to the review queue.
+    const isProcessableFile =
+      file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      file.type === "application/vnd.ms-excel" ||
+      file.type === "text/csv" ||
+      file.name.toLowerCase().endsWith(".csv");
 
-    if (link.entityType === "supplier" && isExcelFile) {
+    if (link.entityType === "supplier" && isProcessableFile) {
       // Get supplier details outside try-catch so we have access in catch block
       const supplier = await getSupplierById(link.entityId);
 
