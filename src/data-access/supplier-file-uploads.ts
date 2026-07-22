@@ -843,7 +843,12 @@ export async function getSupplierFileUploadSummariesForYear(
 ) {
   const yearStart = `${year}-01-01`;
   const yearEnd = `${year}-12-31`;
+  const nextYearStart = new Date(year + 1, 0, 1);
 
+  // Match by OVERLAP with the year (not containment) so cross-year periods
+  // (e.g. fiscal-annual 2025-04-01..2026-03-31) are included, and also return
+  // files with NO period dates (failed auto-parse awaiting manual review) that
+  // were uploaded during the year — the completeness board shows them as pending.
   return database
     .select({
       id: supplierFileUpload.id,
@@ -852,12 +857,20 @@ export async function getSupplierFileUploadSummariesForYear(
       processingStatus: supplierFileUpload.processingStatus,
       periodStartDate: supplierFileUpload.periodStartDate,
       periodEndDate: supplierFileUpload.periodEndDate,
+      createdAt: supplierFileUpload.createdAt,
     })
     .from(supplierFileUpload)
     .where(
-      and(
-        gte(supplierFileUpload.periodStartDate, yearStart),
-        lte(supplierFileUpload.periodEndDate, yearEnd)
+      or(
+        and(
+          gte(supplierFileUpload.periodEndDate, yearStart),
+          lte(supplierFileUpload.periodStartDate, yearEnd)
+        ),
+        and(
+          isNull(supplierFileUpload.periodStartDate),
+          gte(supplierFileUpload.createdAt, new Date(year, 0, 1)),
+          lte(supplierFileUpload.createdAt, nextYearStart)
+        )
       )
     )
     .orderBy(desc(supplierFileUpload.periodStartDate));

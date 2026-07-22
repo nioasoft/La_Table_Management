@@ -135,51 +135,30 @@ export async function GET(request: NextRequest) {
       ? [...currentYearFiles, ...await getSupplierFileUploadSummariesForYear(year - 1)]
       : currentYearFiles;
 
-    // Build a map of supplier -> period -> file
-    const fileMap = new Map<string, Map<string, { id: string; fileName: string; status: SupplierFileProcessingStatus }>>();
+    // Group files per supplier (dedup by id — currentDue mode loads 2 years
+    // and a cross-year file can appear in both).
+    type FileLite = {
+      id: string;
+      fileName: string;
+      status: SupplierFileProcessingStatus;
+      periodStartDate: string | null;
+      periodEndDate: string | null;
+      createdAt: Date;
+    };
+    const filesBySupplier = new Map<string, Map<string, FileLite>>();
 
     for (const file of allFiles) {
-      if (!file.periodStartDate || !file.periodEndDate) continue;
-
-      const supplierId = file.supplierId;
-      if (!fileMap.has(supplierId)) {
-        fileMap.set(supplierId, new Map());
+      if (!filesBySupplier.has(file.supplierId)) {
+        filesBySupplier.set(file.supplierId, new Map());
       }
-
-      // Create period key from dates
-      const periodKey = createPeriodKey(file.periodStartDate, file.periodEndDate);
-      const supplierFiles = fileMap.get(supplierId)!;
-
-      // Keep the best file for each period (approved > pending > other)
-        const existing = supplierFiles.get(periodKey);
-        const isApproved = file.processingStatus === "approved" || file.processingStatus === "auto_approved";
-        const isPending = ["needs_review", "pending", "processing"].includes(file.processingStatus);
-
-      if (!existing) {
-        supplierFiles.set(periodKey, {
-          id: file.id,
-          fileName: file.originalFileName,
-          status: file.processingStatus,
-        });
-      } else {
-        const existingIsApproved = existing.status === "approved" || existing.status === "auto_approved";
-        const existingIsPending = ["needs_review", "pending", "processing"].includes(existing.status);
-
-        // Prefer approved over pending over other
-        if (isApproved && !existingIsApproved) {
-          supplierFiles.set(periodKey, {
-            id: file.id,
-            fileName: file.originalFileName,
-            status: file.processingStatus,
-          });
-        } else if (isPending && !existingIsApproved && !existingIsPending) {
-          supplierFiles.set(periodKey, {
-            id: file.id,
-            fileName: file.originalFileName,
-            status: file.processingStatus,
-          });
-        }
-      }
+      filesBySupplier.get(file.supplierId)!.set(file.id, {
+        id: file.id,
+        fileName: file.originalFileName,
+        status: file.processingStatus,
+        periodStartDate: file.periodStartDate,
+        periodEndDate: file.periodEndDate,
+        createdAt: new Date(file.createdAt),
+      });
     }
 
     // Current date for filtering future periods
@@ -194,7 +173,7 @@ export async function GET(request: NextRequest) {
         ? (rawFrequency as SettlementPeriodType)
         : "quarterly";
       const fiscalYearStartMonth = supplier.fiscalYearStartMonth ?? 1;
-      const supplierFiles = fileMap.get(supplier.id) || new Map();
+      const supplierFiles = [...(filesBySupplier.get(supplier.id)?.values() ?? [])];
 
       // Determine applicable periods based on mode
       let applicablePeriods: SettlementPeriodInfo[];
@@ -216,17 +195,61 @@ export async function GET(request: NextRequest) {
         applicablePeriods = periods.filter(p => p.endDate < now);
       }
 
+      const isApprovedStatus = (s: SupplierFileProcessingStatus) =>
+        s === "approved" || s === "auto_approved";
+      const isPendingStatus = (s: SupplierFileProcessingStatus) =>
+        ["needs_review", "pending", "processing"].includes(s);
+
+      // Each undated file (failed auto-parse, no period stamped yet) counts
+      // once — toward the most recent period that ended before it was uploaded.
+      const usedUndatedFileIds = new Set<string>();
+      const periodsNewestFirst = [...applicablePeriods].sort(
+        (a, b) => b.endDate.getTime() - a.endDate.getTime()
+      );
+      const matchByPeriodKey = new Map<string, FileLite>();
+
+      for (const period of periodsNewestFirst) {
+        const pStart = formatDateAsLocal(period.startDate);
+        const pEnd = formatDateAsLocal(period.endDate);
+
+        // 1. Exact period match (the normal case)
+        let candidates = supplierFiles.filter(
+          f => f.periodStartDate === pStart && f.periodEndDate === pEnd
+        );
+
+        // 2. Fallback: a report for a period is only sent after the period
+        //    ends, so files uploaded after period end whose stamped dates
+        //    merely OVERLAP the period (parser extracted partial dates, e.g.
+        //    a single delivery date), or that have NO stamped dates at all
+        //    (parse failed, awaiting manual review), belong to this period.
+        if (!candidates.some(f => isApprovedStatus(f.status) || isPendingStatus(f.status))) {
+          candidates = supplierFiles.filter(f => {
+            if (f.createdAt <= period.endDate) return false;
+            if (!f.periodStartDate || !f.periodEndDate) {
+              return !usedUndatedFileIds.has(f.id);
+            }
+            return f.periodStartDate <= pEnd && f.periodEndDate >= pStart;
+          });
+        }
+
+        // Best candidate: approved > pending; rejected never counts
+        const best =
+          candidates.find(f => isApprovedStatus(f.status)) ??
+          candidates.find(f => isPendingStatus(f.status));
+
+        if (best) {
+          matchByPeriodKey.set(createPeriodKey(pStart, pEnd), best);
+          if (!best.periodStartDate) usedUndatedFileIds.add(best.id);
+        }
+      }
+
       const periodStatuses: PeriodStatus[] = applicablePeriods.map(period => {
         const periodKey = createPeriodKeyFromInfo(period);
-        const file = supplierFiles.get(periodKey);
+        const file = matchByPeriodKey.get(periodKey);
 
         let status: "approved" | "pending" | "missing" = "missing";
         if (file) {
-          if (file.status === "approved" || file.status === "auto_approved") {
-            status = "approved";
-          } else if (["needs_review", "pending", "processing"].includes(file.status)) {
-            status = "pending";
-          }
+          status = isApprovedStatus(file.status) ? "approved" : "pending";
         }
 
         return {
