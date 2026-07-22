@@ -1,22 +1,26 @@
 /**
  * Custom parser for מחלבות גד (MACHLAVOT_GAD) supplier files
  *
- * Problem: Multiple pivot tables side by side in the same sheet
- * Structure:
- *   - Table 1 (Cols 0-3): Full year purchases "קניות רשת 2025"
- *   - Table 2 (Cols 4-7): Half-year with adjustments "קניות רשת כולל ניגרת חצי שנתי 7-12/2025"
- *     - Col 4: Category (קטגורית לקוח)
- *     - Col 5: Customer name
- *     - Col 6: Amount (*סכום)
- *   - Table 3 (Cols 4-7, starting after Table 2): Half-year without adjustments "לא כולל ניגרת"
+ * The supplier sends a pivot-table export whose geometry changes between
+ * periods (H2-2025: tables stacked in cols 4-7; H1-2026: cross-ref table in
+ * cols 0-2 plus THREE per-brand commission tables in cols 5-8 and 10-13).
+ * Columns/positions are therefore located by HEADER TEXT, not fixed indices:
  *
- * Important distinction:
- *   - Table 2 ("כולל ניגרת"): Used for cross-reference comparison with franchisee reports
- *   - Table 3 ("לא כולל ניגרת"): Used as basis for 9% commission calculation
+ *   - A title cell containing "כולל ניגרת" (without "לא") anchors the
+ *     CROSS-REFERENCE table: franchisee names under the title column,
+ *     amounts under the "*סכום" header on the next row. → netAmount
+ *   - Each title cell containing "לא כולל ניגרת" anchors a COMMISSION-BASE
+ *     table: franchisee names under the "לקוח" header, per-product rows
+ *     under the title column, amounts under "*סכום". Product rows are summed
+ *     per franchisee (franchisee-subtotal rows have an empty product cell and
+ *     are skipped to avoid double counting). → 9% commission basis
  *
- * We need BOTH tables:
- *   - netAmount from Table 2 (for cross-reference)
- *   - preCalculatedCommission from Table 3 × 9% (for commission)
+ * Every table ends at its "Grand Total" row.
+ *
+ * Output per franchisee:
+ *   - netAmount   = כולל ניגרת amount (cross-reference vs franchisee reports)
+ *   - grossAmount = netAmount × (1 + VAT)
+ *   - preCalculatedCommission = 9% × לא כולל ניגרת amount (fallback: netAmount)
  */
 
 import * as XLSX from "xlsx";
@@ -33,11 +37,59 @@ const VAT_RATE = 0.18;
 // Commission rate for מחלבות גד
 const COMMISSION_RATE = 0.09;
 
-// Valid category values
-const VALID_CATEGORIES = ["פט ויני", "מינה טומאיי", "קינג קונג"];
+const GRAND_TOTAL = "Grand Total";
+
+type TableAnchor = {
+  row: number;
+  col: number;
+  isCommissionBase: boolean;
+};
+
+/** Find every table title cell containing "ניגרת" */
+function findAnchors(rawData: unknown[][]): TableAnchor[] {
+  const anchors: TableAnchor[] = [];
+  for (let r = 0; r < rawData.length; r++) {
+    const row = rawData[r];
+    if (!row) continue;
+    for (let c = 0; c < row.length; c++) {
+      const cell = String(row[c] || "");
+      if (!cell.includes("ניגרת") || !cell.includes("קניות")) continue;
+      anchors.push({
+        row: r,
+        col: c,
+        isCommissionBase: cell.includes("לא כולל ניגרת"),
+      });
+    }
+  }
+  return anchors;
+}
+
+/** Locate the amount column: the "סכום" header on the row below the title */
+function findAmountCol(rawData: unknown[][], anchor: TableAnchor): number {
+  const headerRow = rawData[anchor.row + 1] || [];
+  for (let c = Math.max(0, anchor.col - 2); c <= anchor.col + 4; c++) {
+    if (String(headerRow[c] || "").includes("סכום")) return c;
+  }
+  return -1;
+}
+
+/** Locate the franchisee-name column: a cell equal to "לקוח" on the title row */
+function findNameCol(rawData: unknown[][], anchor: TableAnchor): number {
+  const titleRow = rawData[anchor.row] || [];
+  for (let c = Math.max(0, anchor.col - 3); c <= anchor.col + 3; c++) {
+    if (String(titleRow[c] || "").trim() === "לקוח") return c;
+  }
+  // Cross-reference table has no "לקוח" header — names sit under the title
+  return anchor.col;
+}
+
+function parseAmount(value: unknown): number {
+  const num = parseFloat(String(value || "").replace(/[,\s]/g, ""));
+  return isNaN(num) ? 0 : num;
+}
 
 /**
- * Parse מחלבות גד supplier file with multiple tables
+ * Parse מחלבות גד supplier file — header-anchored multi-table pivot layout
  */
 export function parseMachlavotGadFile(buffer: Buffer): FileProcessingResult {
   const errors: import("../file-processing-errors").FileProcessingError[] = [];
@@ -47,11 +99,7 @@ export function parseMachlavotGadFile(buffer: Buffer): FileProcessingResult {
   const data: ParsedRowData[] = [];
 
   try {
-    // Read the workbook
-    const workbook = XLSX.read(buffer, {
-      type: "buffer",
-      cellDates: true,
-    });
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
 
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
@@ -73,145 +121,79 @@ export function parseMachlavotGadFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Maps to store amounts by franchisee name
-    const table2Amounts: Map<string, number> = new Map(); // "כולל ניגרת" - for cross-reference
-    const table3Amounts: Map<string, number> = new Map(); // "לא כולל ניגרת" - for commission
+    const anchors = findAnchors(rawData);
+    const crossRefAnchors = anchors.filter(a => !a.isCommissionBase);
+    const baseAnchors = anchors.filter(a => a.isCommissionBase);
 
-    // Find the end of Table 2 (look for "Grand Total" row)
-    let table2EndRow = rawData.length;
-    for (let i = 2; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (!row) continue;
-      const categoryCell = String(row[4] || "").trim();
-      if (categoryCell === "Grand Total") {
-        table2EndRow = i;
-        break;
-      }
-    }
-
-    // Extract data from Table 2 (columns 4-6), rows 2 to table2EndRow
-    for (let i = 2; i < table2EndRow; i++) {
-      const row = rawData[i];
-      if (!row) continue;
-
-      const categoryCell = String(row[4] || "").trim();
-      const customerCell = String(row[5] || "").trim();
-      const amountCell = String(row[6] || "").trim();
-
-      // Skip if not a valid category
-      if (!VALID_CATEGORIES.includes(categoryCell)) {
-        continue;
-      }
-
-      // Skip if no customer name
-      if (!customerCell) {
-        continue;
-      }
-
-      const amount = parseFloat(amountCell.replace(/[,\s]/g, ""));
-      if (!isNaN(amount) && amount !== 0) {
-        const existing = table2Amounts.get(customerCell) || 0;
-        table2Amounts.set(customerCell, existing + amount);
-      }
-    }
-
-    // Find Table 3 start - look for "לא כולל ניגרת" header
-    let table3StartRow = -1;
-    for (let i = table2EndRow; i < rawData.length; i++) {
-      const row = rawData[i];
-      if (!row) continue;
-
-      // Check columns 4-6 for the "לא כולל ניגרת" indicator
-      for (let col = 4; col <= 6; col++) {
-        const cellValue = String(row[col] || "").trim();
-        if (cellValue.includes("לא כולל ניגרת")) {
-          table3StartRow = i + 1; // Data starts on next row
-          break;
-        }
-      }
-      if (table3StartRow >= 0) break;
-    }
-
-    // If Table 3 found, extract its data
-    if (table3StartRow >= 0) {
-      // Find the end of Table 3 (look for "Grand Total" row)
-      let table3EndRow = rawData.length;
-      for (let i = table3StartRow; i < rawData.length; i++) {
-        const row = rawData[i];
-        if (!row) continue;
-        const categoryCell = String(row[4] || "").trim();
-        if (categoryCell === "Grand Total") {
-          table3EndRow = i;
-          break;
-        }
-      }
-
-      // Extract data from Table 3 (same column structure as Table 2)
-      for (let i = table3StartRow; i < table3EndRow; i++) {
-        const row = rawData[i];
-        if (!row) continue;
-
-        const categoryCell = String(row[4] || "").trim();
-        const customerCell = String(row[5] || "").trim();
-        const amountCell = String(row[6] || "").trim();
-
-        // Skip if not a valid category
-        if (!VALID_CATEGORIES.includes(categoryCell)) {
-          continue;
-        }
-
-        // Skip if no customer name
-        if (!customerCell) {
-          continue;
-        }
-
-        const amount = parseFloat(amountCell.replace(/[,\s]/g, ""));
-        if (!isNaN(amount) && amount !== 0) {
-          const existing = table3Amounts.get(customerCell) || 0;
-          table3Amounts.set(customerCell, existing + amount);
-        }
-      }
-    } else {
-      // Table 3 not found - add warning
-      warnings.push(
+    if (crossRefAnchors.length === 0) {
+      errors.push(
         createFileProcessingError("PARSE_ERROR", {
-          details: "Could not find Table 3 (לא כולל ניגרת). Commission will be calculated from Table 2 amounts.",
+          details: 'לא נמצאה טבלת "כולל ניגרת" בקובץ — ייתכן שמבנה הקובץ השתנה שוב',
         })
       );
-      legacyWarnings.push("Could not find Table 3 (לא כולל ניגרת). Commission will be calculated from Table 2 amounts.");
+      legacyErrors.push('Could not find the "כולל ניגרת" (cross-reference) table');
+      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
-    // Merge data: Table 2 provides netAmount, Table 3 provides commission basis
+    // netAmount per franchisee (כולל ניגרת — for cross-reference)
+    const crossRefAmounts: Map<string, number> = new Map();
+    // commission basis per franchisee (לא כולל ניגרת, summed across brand tables)
+    const baseAmounts: Map<string, number> = new Map();
+
+    for (const anchor of anchors) {
+      const amountCol = findAmountCol(rawData, anchor);
+      const nameCol = findNameCol(rawData, anchor);
+      if (amountCol < 0) {
+        legacyWarnings.push(`Skipping table at row ${anchor.row + 1}: no סכום column found`);
+        continue;
+      }
+      // Commission-base tables carry per-product rows under the title column
+      const productCol = anchor.isCommissionBase ? anchor.col : -1;
+      const target = anchor.isCommissionBase ? baseAmounts : crossRefAmounts;
+
+      for (let r = anchor.row + 2; r < rawData.length; r++) {
+        const row = rawData[r];
+        if (!row) continue;
+
+        const nameNeighbor = String(row[nameCol - 1] || "").trim();
+        const name = String(row[nameCol] || "").trim();
+        if (name === GRAND_TOTAL || nameNeighbor === GRAND_TOTAL) break;
+        if (!name) continue;
+
+        // In base tables, franchisee-subtotal rows have an empty product cell —
+        // skip them; the per-product rows already sum to the subtotal.
+        if (productCol >= 0 && !String(row[productCol] || "").trim()) continue;
+
+        const amount = parseAmount(row[amountCol]);
+        if (amount === 0) continue;
+
+        target.set(name, (target.get(name) || 0) + amount);
+      }
+    }
+
+    // Merge: netAmount from cross-ref table, commission from base tables
     let totalGrossAmount = 0;
     let totalNetAmount = 0;
     let processedRows = 0;
     let rowNumber = 1;
 
-    // Get all unique franchisee names from both tables
-    const allFranchisees = new Set([...table2Amounts.keys(), ...table3Amounts.keys()]);
-
-    for (const franchisee of allFranchisees) {
-      const table2Amount = table2Amounts.get(franchisee);
-      const table3Amount = table3Amounts.get(franchisee);
-
-      // Skip if only in Table 3 (unusual case - warn and skip)
-      if (table2Amount === undefined && table3Amount !== undefined) {
+    for (const [franchisee, baseOnly] of baseAmounts) {
+      if (!crossRefAmounts.has(franchisee)) {
         warnings.push(
           createFileProcessingError("PARSE_ERROR", {
-            details: `Franchisee "${franchisee}" found only in Table 3, skipping.`,
+            details: `Franchisee "${franchisee}" (${baseOnly}) found only in לא כולל ניגרת tables, skipping.`,
           })
         );
-        continue;
+        legacyWarnings.push(`Franchisee "${franchisee}" found only in commission-base tables, skipping.`);
       }
+    }
 
-      // Use Table 2 amount for netAmount (for cross-reference)
-      const netAmount = roundAmount(table2Amount!);
+    for (const [franchisee, crossRefAmount] of crossRefAmounts) {
+      const netAmount = roundAmount(crossRefAmount);
       if (netAmount <= 0) continue;
 
       const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
-
-      // Calculate commission: use Table 3 amount if available, otherwise fallback to Table 2
-      const commissionBasis = table3Amount !== undefined ? table3Amount : table2Amount!;
+      const commissionBasis = baseAmounts.get(franchisee) ?? crossRefAmount;
       const preCalculatedCommission = roundAmount(commissionBasis * COMMISSION_RATE);
 
       data.push({
