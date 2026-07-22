@@ -10,13 +10,15 @@
  *   - Col G: Franchisee name (only on first row of each group)
  *   - "סה״כ" rows mark group boundaries (skip)
  *
- * NEW layout (one aggregated row per franchisee, 8 columns):
- *   - Row 0: Period info ("נכון לתקופה: dd/mm/yyyy-dd/mm/yyyy")
- *   - Row 1: Headers ["מטבע", "הכנסה משוערכת", "מטבע", "הכנסה", "הכנסה כולל מע\"מ", "שם לקוח", "מס. לקוח", "חודש"]
- *   - Col B (1): Net amount in source currency
- *   - Col D (3): Net amount in functional currency (ש"ח)
- *   - Col E (4): Gross amount with VAT
- *   - Col F (5): Franchisee name
+ * NEW layout (aggregated rows, headers located by TEXT, not position):
+ *   The supplier reshuffles both the header row index and the column order
+ *   between exports (seen: headers at row 1 with name at col F; headers at
+ *   row 0 with name at col B — Q2-2026). The header row is found by scanning
+ *   the first rows for a cell containing "שם לקוח", then columns are mapped
+ *   by header text:
+ *   - "שם לקוח"            → franchisee name
+ *   - "הכנסה" + "מע"       → gross amount with VAT (written "מע\"מ" or "מע'מ")
+ *   - "הכנסה" (exact-ish)  → net amount in ש"ח
  */
 
 import * as XLSX from "xlsx";
@@ -31,13 +33,9 @@ import { createFileProcessingError } from "../file-processing-errors";
 const LEGACY_AMOUNT_COL = 0;
 const LEGACY_FRANCHISEE_COL = 6;
 
-// NEW layout column indices
-const NEW_NET_COL = 3; // "הכנסה" — net in functional currency
-const NEW_GROSS_COL = 4; // "הכנסה כולל מע\"מ" — with VAT
-const NEW_FRANCHISEE_COL = 5; // "שם לקוח"
-
-const HEADER_ROW = 1;
-const DATA_START_ROW = 2;
+const LEGACY_HEADER_ROW = 1;
+/** How many leading rows to scan for the header row */
+const HEADER_SCAN_ROWS = 5;
 
 const SKIP_KEYWORDS = ['סה"כ', "סהכ", "total", "grand"];
 
@@ -67,15 +65,40 @@ function shouldSkipRow(row: unknown[]): boolean {
   );
 }
 
-type Layout = "legacy" | "new";
+interface NewLayoutColumns {
+  headerRowIdx: number;
+  franchiseeCol: number;
+  netCol: number;
+  grossCol: number;
+}
 
-function detectLayout(headers: unknown[]): Layout {
-  const franchiseeAtNew = String(headers[NEW_FRANCHISEE_COL] || "");
-  const grossAtNew = String(headers[NEW_GROSS_COL] || "");
-  if (franchiseeAtNew.includes("לקוח") && grossAtNew.includes("מע")) {
-    return "new";
+/**
+ * Locate the aggregated-layout header row and map its columns by text.
+ * Returns null when no such header exists (→ legacy grouped layout).
+ */
+function detectNewLayout(rawData: unknown[][]): NewLayoutColumns | null {
+  for (let i = 0; i < Math.min(HEADER_SCAN_ROWS, rawData.length); i++) {
+    const row = rawData[i] || [];
+    const headers = row.map((c) => String(c ?? "").trim());
+
+    const franchiseeCol = headers.findIndex((h) => h.includes("שם לקוח"));
+    if (franchiseeCol === -1) continue;
+
+    // Gross carries a VAT marker — written "מע\"מ" or "מע'מ" between exports
+    const grossCol = headers.findIndex((h) => h.includes("הכנסה") && h.includes("מע"));
+    // Net is the bare "הכנסה" — must not match gross or "הכנסה משוערכת"
+    let netCol = headers.findIndex((h) => h === "הכנסה");
+    if (netCol === -1) {
+      netCol = headers.findIndex(
+        (h) => h.includes("הכנסה") && !h.includes("מע") && !h.includes("משוערכת")
+      );
+    }
+
+    if (netCol === -1 && grossCol === -1) continue;
+
+    return { headerRowIdx: i, franchiseeCol, netCol, grossCol };
   }
-  return "legacy";
+  return null;
 }
 
 export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
@@ -107,12 +130,11 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    const headers = rawData[HEADER_ROW] || [];
-    const layout = detectLayout(headers);
-
-    if (layout === "new") {
-      return parseNewLayout(rawData, errors, warnings, legacyErrors, legacyWarnings);
+    const newLayout = detectNewLayout(rawData);
+    if (newLayout) {
+      return parseNewLayout(rawData, newLayout, errors, warnings, legacyErrors, legacyWarnings);
     }
+    const headers = rawData[LEGACY_HEADER_ROW] || [];
     return parseLegacyLayout(rawData, headers, errors, warnings, legacyErrors, legacyWarnings, data);
   } catch (error) {
     errors.push(
@@ -127,6 +149,7 @@ export function parseKillBillFile(buffer: Buffer): FileProcessingResult {
 
 function parseNewLayout(
   rawData: unknown[][],
+  cols: NewLayoutColumns,
   errors: import("../file-processing-errors").FileProcessingError[],
   warnings: import("../file-processing-errors").FileProcessingError[],
   legacyErrors: string[],
@@ -134,11 +157,11 @@ function parseNewLayout(
 ): FileProcessingResult {
   const data: ParsedRowData[] = [];
   // One aggregated row per franchisee — but the same franchisee can appear in
-  // multiple monthly rows (col "חודש"). Aggregate to a single row per name.
+  // multiple monthly rows (col "חודש" / per-invoice rows). Aggregate per name.
   const franchiseeTotals = new Map<string, { netAmount: number; grossAmount: number; rowCount: number; firstRow: number }>();
   let skippedRows = 0;
 
-  for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
+  for (let rowIdx = cols.headerRowIdx + 1; rowIdx < rawData.length; rowIdx++) {
     const row = rawData[rowIdx];
     if (!row || row.length === 0) {
       skippedRows++;
@@ -149,14 +172,14 @@ function parseNewLayout(
       continue;
     }
 
-    const franchisee = String(row[NEW_FRANCHISEE_COL] || "").trim();
+    const franchisee = String(row[cols.franchiseeCol] || "").trim();
     if (!franchisee) {
       skippedRows++;
       continue;
     }
 
-    const netAmount = parseNumericValue(row[NEW_NET_COL]);
-    const grossAmount = parseNumericValue(row[NEW_GROSS_COL]);
+    const netAmount = cols.netCol === -1 ? 0 : parseNumericValue(row[cols.netCol]);
+    const grossAmount = cols.grossCol === -1 ? 0 : parseNumericValue(row[cols.grossCol]);
 
     if (netAmount === 0 && grossAmount === 0) {
       warnings.push(
@@ -187,7 +210,11 @@ function parseNewLayout(
   let rowNumber = 1;
 
   for (const [franchisee, totals] of franchiseeTotals.entries()) {
-    if (totals.netAmount <= 0) {
+    // A file may carry only one of the two amount columns — derive the other
+    // with 18% VAT (matches Kill Bill's standard markup).
+    const netTotal = totals.netAmount > 0 ? totals.netAmount : totals.grossAmount / 1.18;
+
+    if (netTotal <= 0) {
       warnings.push(
         createFileProcessingError("NEGATIVE_AMOUNT", {
           rowNumber: totals.firstRow,
@@ -198,10 +225,8 @@ function parseNewLayout(
       continue;
     }
 
-    // Some monthly rows may have empty gross — if grossAmount is 0 but net isn't,
-    // back-calc gross with 18% VAT (matches Kill Bill's standard markup).
-    const net = roundAmount(totals.netAmount);
-    const gross = totals.grossAmount > 0 ? roundAmount(totals.grossAmount) : roundAmount(totals.netAmount * 1.18);
+    const net = roundAmount(netTotal);
+    const gross = totals.grossAmount > 0 ? roundAmount(totals.grossAmount) : roundAmount(netTotal * 1.18);
 
     data.push({
       franchisee,
@@ -274,7 +299,7 @@ function parseLegacyLayout(
   let skippedRows = 0;
   let totalRawRows = 0;
 
-  for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
+  for (let rowIdx = LEGACY_HEADER_ROW + 1; rowIdx < rawData.length; rowIdx++) {
     const row = rawData[rowIdx];
     if (!row || row.length === 0) {
       skippedRows++;
