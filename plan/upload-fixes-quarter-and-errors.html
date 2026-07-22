@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<title>תוכנית תיקון — העלאות ספקים: רבעון, עיתוי ושגיאות</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: "Rubik", "Segoe UI", Arial, sans-serif; line-height: 1.7; margin: 0; padding: 2rem; background: #f6f7f9; color: #1f2430; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: 1.7rem; border-bottom: 3px solid #2563eb; padding-bottom: .5rem; }
+  h2 { font-size: 1.3rem; margin-top: 2.2rem; color: #1d4ed8; border-right: 4px solid #2563eb; padding-right: .6rem; }
+  h3 { font-size: 1.08rem; margin-top: 1.4rem; color: #334155; }
+  code { background: #eef1f5; padding: .1rem .35rem; border-radius: 4px; font-family: "SF Mono", Menlo, monospace; font-size: .9em; direction: ltr; display: inline-block; }
+  pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 8px; overflow-x: auto; direction: ltr; text-align: left; font-size: .82rem; }
+  pre code { background: none; color: inherit; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  th, td { border: 1px solid #e2e8f0; padding: .55rem .7rem; text-align: right; vertical-align: top; font-size: .92rem; }
+  th { background: #2563eb; color: #fff; font-weight: 600; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .box { background: #fff; border-radius: 10px; padding: 1rem 1.3rem; margin: 1rem 0; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .crit { border-right: 5px solid #dc2626; }
+  .ok { border-right: 5px solid #16a34a; }
+  .warn { border-right: 5px solid #f59e0b; }
+  .tag { display: inline-block; background: #2563eb; color: #fff; border-radius: 6px; padding: .1rem .5rem; font-size: .78rem; margin-inline-start: .4rem; }
+  .file { font-family: monospace; direction: ltr; background: #fef3c7; padding: .1rem .35rem; border-radius: 4px; font-size: .85em; }
+  ul { padding-right: 1.3rem; }
+  .small { color: #64748b; font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>תיקון תהליך העלאת דוחות ספקים — רבעון, עיתוי ושגיאות</h1>
+<p class="small">נכתב 30/06/2026 · נובע מכשלי העלאה של אראל אריזות ופרסקו (אורי פרסקו)</p>
+
+<h2>למה אנחנו עושים את זה (הקשר)</h2>
+<p>שני ספקים דיווחו "לא הצלחתי להעלות" דרך קישור ההעלאה העצמית. החקירה חשפה <b>שלוש בעיות נפרדות</b>:</p>
+<div class="box crit">
+<ol>
+  <li><b>אראל אריזות</b> — קובץ <code>.xls</code> ישן נדחה בולידציית magic-bytes (<code>FILE_TYPE_MISMATCH</code>). <span class="tag">תוקן ונפרס</span> מקבל <code>cfb</code> ל-<code>.xls/.doc</code> ישנים.</li>
+  <li><b>פרסקו</b> — הקובץ עלה ונקרא בהצלחה, אבל <b>נחתם כרבעון 1</b> במקום רבעון 2 → נדחה ככפילות (409) מול קובץ Q1 קיים. <b>זו הבעיה המרכזית כאן.</b></li>
+  <li><b>שגיאות עמומות + עיוורון</b> — השגיאות שמופיעות לספק לא מסבירות מה לעשות, ורוב הדחיות אינן נרשמות בשרת, אז אנחנו לא יודעים מה קרה בלי לחפור ב-Vercel ידנית.</li>
+</ol>
+</div>
+
+<h2>שורש הבעיה — למה פרסקו נחתם כ-Q1 (מאומת)</h2>
+<p>התקופה של קובץ העלאה נגזרת כך ב-<span class="file">src/app/api/public/upload/[token]/route.ts</span> (שורות 680–702):</p>
+<ul>
+  <li>אם יש תאריכים בשורות הקובץ → לוקחים מוקדם..מאוחר.</li>
+  <li>אם <b>אין</b> תאריכים (פרסקו, נספרסו, אראל — ה-parser מחזיר <code>date: null</code>) → fallback ש<b>מחשב תקופה מהתאריך הנוכחי</b>: <code>getPeriodsForFrequency(quarterly, new Date(), 1, includeCurrent=false)</code>.</li>
+</ul>
+<p>החישוב ב-30/06/2026: <code>includeCurrent=false</code> מדלג על הרבעון הנוכחי (Q2) ומחזיר את <b>הרבעון המלא האחרון = Q1</b> (01/01–31/03). מכאן חותמת ה-Q1.</p>
+
+<div class="box warn">
+<h3 style="margin-top:0">אי-העקביות שגרמה לכל הסיפור</h3>
+<table>
+<tr><th></th><th>לוגיקת רבעון</th><th>תוצאה ב-30/6</th></tr>
+<tr><td><b>בקשת הדוח</b> (cron)</td><td><code>includeCurrent=true</code></td><td>"Q2 נסגר היום" → שולח בקשת <b>Q2</b></td></tr>
+<tr><td><b>חותמת ההעלאה</b> (קובץ בלי תאריכים)</td><td><code>includeCurrent=false</code></td><td>"רבעון מלא אחרון" → חותם <b>Q1</b></td></tr>
+</table>
+<p style="margin-bottom:0">הבקשה אומרת Q2, ההעלאה חותמת Q1 → דחיית כפילות. <b>אם הבקשה הייתה יוצאת ב-1/7 (כפי שביקש אסף), ההעלאה הייתה ביולי → "רבעון מלא אחרון" = Q2 → הכל עובד.</b> שני הדברים הם אותו שורש.</p>
+</div>
+
+<hr>
+
+<h2>Workstream 1 — לחתום תקופה לפי הבקשה (משחרר את פרסקו היום)</h2>
+<p class="tag">דחיפות גבוהה</p>
+<p>קובץ: <span class="file">src/app/api/public/upload/[token]/route.ts</span> (אזור שורות 685–702).</p>
+<p><b>הרעיון:</b> הקישור מקושר ל-<code>file_request</code> דרך <code>file_request.upload_link_id = link.id</code>, ובמטא-דאטה שלו נשמר <code>periodKey: "2026-Q2"</code> (אומת ב-DB). נשתמש בזה במקום לנחש מתאריך ההעלאה.</p>
+
+<h3>סדר עדיפויות חדש לקביעת התקופה</h3>
+<ol>
+  <li>תאריכים בתוך הקובץ (כמו היום) — מנצח כשקיימים.</li>
+  <li><b>חדש:</b> <code>periodKey</code> מה-<code>file_request</code> של הקישור → המרה לתאריכים עם <code>getPeriodByKey(periodKey)</code> (כבר קיים ב-<span class="file">settlement-periods.ts:252</span>).</li>
+  <li>fallback הקיים מבוסס-תאריך — רק אם אין בקשה משויכת.</li>
+</ol>
+
+<pre><code>// בתוך הענף "אין תאריכים בקובץ" (היום שורות 693–701):
+// 1) קודם ננסה את התקופה שהתבקשה דרך הקישור
+const fileReq = await getFileRequestByUploadLinkId(link.id); // helper חדש קטן
+const requestedKey = (fileReq?.metadata as Record&lt;string,unknown&gt; | null)?.periodKey as string | undefined;
+const requestedPeriod = requestedKey ? getPeriodByKey(requestedKey) : null;
+
+if (requestedPeriod) {
+  periodStartDate = formatDateAsLocal(requestedPeriod.startDate);
+  periodEndDate   = formatDateAsLocal(requestedPeriod.endDate);
+} else {
+  // 2) fallback מבוסס-תאריך הקיים (ללא שינוי)
+  const frequency = (supplier.settlementFrequency as SettlementPeriodType) || "quarterly";
+  const periods = getPeriodsForFrequency(frequency, new Date(), 1, supplier.fiscalYearStartMonth ?? 1);
+  if (periods.length > 0) { /* ... כמו היום ... */ }
+}</code></pre>
+
+<ul>
+  <li>helper חדש <code>getFileRequestByUploadLinkId(linkId)</code> ב-<span class="file">src/data-access/fileRequests.ts</span> (כבר יש שם שאילתות לפי <code>uploadLinkId</code> — רק getter שמחזיר את ה-row + metadata).</li>
+  <li><b>תוצאה לפרסקו היום:</b> קובץ בלי תאריכים → <code>periodKey "2026-Q2"</code> → נחתם Q2 → אין כפילות מול ה-Q1 הקיים → עובר.</li>
+  <li><b>בונוס:</b> עמיד גם למי שמעלה באיחור (אוקטובר) — עדיין ייחתם לפי התקופה שהתבקשה, לא לפי תאריך ההעלאה.</li>
+</ul>
+
+<hr>
+
+<h2>Workstream 2 — בקשות יוצאות ב-1 לחודש שאחרי הרבעון</h2>
+<p class="tag">בקשת אסף מההקלטה</p>
+<p>קובץ: <span class="file">src/app/api/cron/settlement-requests/route.ts</span> (שורה 270).</p>
+<p>שינוי של מילה אחת — <code>includeCurrent</code> מ-<code>true</code> ל-<code>false</code>:</p>
+<pre><code>// היום:  const candidates = getPeriodsForFrequency(periodType, now, 1, 1, true);
+// חדש:   const candidates = getPeriodsForFrequency(periodType, now, 1, 1, false);
+// + לעדכן את ההערה בשורות 253/266 ("הרבעון שנסגר היום" → "הרבעון שנסגר במלואו")</code></pre>
+
+<h3>למה זה עובד ובטוח</h3>
+<table>
+<tr><th>תאריך הרצה</th><th>תקופה נבחרת (חדש)</th><th>פעולה</th></tr>
+<tr><td>בתוך Q2 (1/4–30/6)</td><td>Q1 (כבר נשלח באפריל)</td><td>dedup חוסם — אין שליחה</td></tr>
+<tr><td><b>1/7</b></td><td><b>Q2</b></td><td><b>שולח Q2</b> ✓ — בדיוק "1 לחודש אחרי"</td></tr>
+<tr><td>5/7 (אם 1/7 נכשל)</td><td>Q2</td><td>catch-up — שולח Q2 (dedup ל-once)</td></tr>
+</table>
+<ul>
+  <li><b>לא יישלח כפול היום:</b> בקשת Q2 כבר יצאה הבוקר (30/6). מחר (1/7) ה-cron יזהה Q2, אבל <code>hasExistingFileRequest(supplier, "2026-Q2")</code> ימצא את הבקשה של היום וידלג. תואם ל-"מה שנשלח, נשלח — אל תשלח שוב".</li>
+  <li>תקף לכל התדירויות (חודשי/חצי-שנתי/שנתי) — כולם יעברו ל-"1 לחודש שאחרי התקופה".</li>
+  <li>catch-up נשמר (חלון של תקופה אחת קדימה, כמו היום).</li>
+</ul>
+<p class="small">הערה: Workstream 1 ו-2 משלימים זה את זה. אחרי 2, העלאות יקרו בחודש שאחרי הרבעון וה-fallback ממילא יחזיר נכון; אבל 1 הכרחי כדי לשחרר את פרסקו <b>היום</b> ולכסות מעלים-באיחור.</p>
+
+<hr>
+
+<h2>Workstream 3 — שגיאות מדויקות + רישום בשרת</h2>
+<p class="tag">בקשת אסף המקורית</p>
+<p>קבצים: <span class="file">src/app/upload/[token]/page.tsx</span>, <span class="file">.../upload/[token]/route.ts</span>, <span class="file">src/lib/translations/he.ts</span>.</p>
+
+<h3>(א) ניסוח מחדש של כל שגיאה — מה קרה + מה לעשות</h3>
+<table>
+<tr><th>קוד</th><th>מתי</th><th>היום</th><th>חדש (מוצע)</th></tr>
+<tr><td><code>FILE_TYPE_MISMATCH</code></td><td>קובץ פגום / לא Excel תקין</td><td>"תוכן הקובץ אינו תואם לסוג המוצהר"</td><td>"הקובץ אינו קובץ Excel תקין או שהוא פגום. פתחי אותו ב-Excel, שמרי שוב כ-<code>.xlsx</code> ונסי שוב."</td></tr>
+<tr><td><code>INVALID_FILE_TYPE</code></td><td>סוג לא מורשה</td><td>"סוג קובץ לא מורשה"</td><td>"סוג הקובץ אינו נתמך. יש להעלות Excel (<code>.xlsx</code>/<code>.xls</code>) או CSV." (כולל רשימת המותרים)</td></tr>
+<tr><td><code>DUPLICATE_FILE</code></td><td>קובץ קיים לתקופה</td><td>הודעת "קיים כבר"</td><td>"כבר קיים במערכת דוח לתקופה זו (<b>{תקופה}</b>). אם זה דוח מעודכן — לחצי 'החלף'." — <b>להציג את התקופה שזוהתה</b></td></tr>
+<tr><td><code>FILE_TOO_LARGE</code></td><td>גדול מדי</td><td>תקין (כולל מקס')</td><td>ללא שינוי</td></tr>
+<tr><td><code>MAX_FILES_REACHED</code></td><td>מכסת קבצים</td><td>"הגעת למספר המקסימלי"</td><td>ללא שינוי מהותי</td></tr>
+<tr><td><code>UPLOAD_ERROR</code> (500)</td><td>שגיאת שרת</td><td>"שגיאה בהעלאת הקובץ"</td><td>"שגיאה זמנית. נסי שוב בעוד רגע. אם חוזר — צרי קשר ומסרי את הקוד: <b>{requestId}</b>."</td></tr>
+</table>
+
+<h3>(ב) קוד-שגיאה גלוי לספק</h3>
+<p>בתיבת השגיאה האדומה (<span class="file">page.tsx</span> שורות 508–515) להוסיף שורה קטנה: <code>קוד: FILE_TYPE_MISMATCH</code>. כך הספק יכול לצלם/להקריא לנו את הקוד ואנחנו יודעים מיד מה קרה — בלי לחפור בלוגים.</p>
+
+<h3>(ג) רישום אחיד בשרת לכל דחייה</h3>
+<p>היום רק <code>FILE_TYPE_MISMATCH</code> כותב <code>console.warn</code>; שאר ה-4xx שקטים. נוסיף <code>console.warn("upload rejected", {code, status, supplierName, linkId, email, fileName})</code> בכל החזרת שגיאה ב-route. כך כל דחייה ניתנת לחיפוש דרך Vercel logs לפי קוד/ספק.</p>
+<p class="small">ponytail: לא בונים טבלת DB/דשבורד לדחיות עכשיו — <code>console.warn</code> אחיד + שאילתת Vercel logs מספיק. אם נצטרך מעקב מתמשך, נוסיף persist בהמשך.</p>
+
+<hr>
+
+<h2>אימות (end-to-end)</h2>
+<ul>
+  <li><b>WS1:</b> בנייה (<code>npm run build</code>). אחרי deploy — לבקש מפרסקו להעלות שוב את אותו קובץ דרך הקישור; אמור לעבור (נחתם Q2). לאמת ב-DB שנוצר <code>uploaded_file</code> + תקופה Q2.</li>
+  <li><b>WS2:</b> להריץ את ה-cron עם <code>?date=2026-07-01&dryRun=true</code> ולוודא שמחזיר Q2; ועם <code>?date=2026-06-30&dryRun=true</code> שלא שולח כלום חדש (Q1 כבר נשלח).</li>
+  <li><b>WS3:</b> להעלות קובץ פגום/סוג לא נכון ולראות את ההודעה החדשה + הקוד; לאמת <code>console.warn</code> ב-Vercel logs.</li>
+</ul>
+
+<h2>סדר ביצוע מוצע</h2>
+<ol>
+  <li><b>WS1</b> קודם — משחרר את פרסקו היום (הכי דחוף).</li>
+  <li><b>WS3</b> — שגיאות מדויקות (ערך מיידי לכל הספקים).</li>
+  <li><b>WS2</b> — עיתוי הבקשות (אפקט מהרבעון הבא, לא דחוף להיום).</li>
+</ol>
+<p class="small">כל workstream = commit נפרד. אחרי אישור — מתחילים מ-WS1.</p>
+
+</div>
+</body>
+</html>
