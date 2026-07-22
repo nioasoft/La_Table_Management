@@ -1,18 +1,29 @@
 /**
  * Custom parser for מקאטי (MAKATI) supplier files
  *
+ * Columns (stable across both known exports):
+ *   B (1) שם החנות / שם חשבון — franchisee name
+ *   C (2) הכנסות חייבות לפני מע"מ — taxable income (before VAT)
+ *   D (3) הכנסות פטורות — exempt income
+ *   E (4) סה"כ — total
+ *
+ * netAmount = C + D — NOT column E. In the original export E was exactly
+ * C + D, but the Q2-2026 "דוח עמלות רשת" export bakes VAT on the taxable
+ * portion into E (at the supplier's stale 17% rate: E = C×1.17 + D), and
+ * commission is never charged on VAT. Falls back to E when C and D are
+ * both empty.
+ *
+ * Sign convention: the Q2-2026 export is a bookkeeping credit-side report —
+ * EVERY amount arrives negative. When all rows are negative the parser flips
+ * the whole file to positive and surfaces a NEGATIVE_AMOUNTS anomaly (real
+ * incident: Q2-2026 commissions synced negative into the invoice report).
+ * Isolated negative rows in an otherwise positive file are kept as credits.
+ *
  * Partial VAT handling:
- *   The BKMV report includes VAT only on the taxable portion.
- *   Column C has taxable income (before VAT), Column D has exempt income,
- *   Column E has the total (C + D, no VAT anywhere).
- *
- *   netAmount  = Column E (total, no VAT)
- *   grossAmount = Column E + (Column C × vatRate)
- *
+ *   grossAmount = netAmount + (Column C × vatRate)
  *   This allows the reconciliation's partialVatMap to subtract
  *   only the taxable VAT from BKMV amounts:
  *     partialVat = grossAmount - netAmount = Column C × vatRate
- *     adjustedBKMV = bkmvAmount - partialVat ≈ Column E
  */
 
 import * as XLSX from "xlsx";
@@ -23,17 +34,19 @@ import {
   ISRAEL_VAT_RATE,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
+import type { Anomaly } from "@/types/file-anomalies";
 
 // Column indices (0-based)
-const FRANCHISEE_COL = 1; // Column B - שם החנות
+const FRANCHISEE_COL = 1; // Column B - שם החנות / שם חשבון
 const TAXABLE_COL = 2; // Column C - הכנסות חייבות לפני מע"מ
+const EXEMPT_COL = 3; // Column D - הכנסות פטורות
 const TOTAL_COL = 4; // Column E - סהכ
 
 // Skip keywords for totals row
 const SKIP_KEYWORDS = ['סה"כ', "סהכ", "סה״כ", "סה\"כ"];
 
 /**
- * Find the header row by looking for "שם החנות" in column B.
+ * Find the header row by looking for the name-column header in column B.
  * Returns the 0-based index, or -1 if not found.
  */
 function findHeaderRow(rawData: unknown[][]): number {
@@ -41,7 +54,11 @@ function findHeaderRow(rawData: unknown[][]): number {
     const row = rawData[i];
     if (!row) continue;
     const cellB = String(row[FRANCHISEE_COL] || "").trim();
-    if (cellB.includes("שם החנות") || cellB.includes("שם הלקוח")) {
+    if (
+      cellB.includes("שם החנות") ||
+      cellB.includes("שם הלקוח") ||
+      cellB.includes("שם חשבון")
+    ) {
       return i;
     }
   }
@@ -92,7 +109,10 @@ export function parseMakatiFile(
     let totalNetAmount = 0;
     let processedRows = 0;
     let skippedRows = 0;
-    let rowNumber = 1;
+
+    // First pass: collect rows so the credit-side sign flip can be decided
+    // over the whole file, not per row.
+    const parsedRows: Array<{ franchisee: string; taxable: number; net: number }> = [];
 
     for (let i = dataStartRow; i < rawData.length; i++) {
       const row = rawData[i];
@@ -117,14 +137,20 @@ export function parseMakatiFile(
 
       // Parse amounts
       const taxableStr = String(row[TAXABLE_COL] || "0").trim();
+      const exemptStr = String(row[EXEMPT_COL] || "0").trim();
       const totalStr = String(row[TOTAL_COL] || "0").trim();
 
-      const taxableAmount =
-        parseFloat(taxableStr.replace(/[,\s]/g, "")) || 0;
+      const taxableAmount = parseFloat(taxableStr.replace(/[,\s]/g, "")) || 0;
+      const exemptAmount = parseFloat(exemptStr.replace(/[,\s]/g, "")) || 0;
       const totalAmount = parseFloat(totalStr.replace(/[,\s]/g, "")) || 0;
 
-      // Use Column E (total) as the net amount
-      const netAmount = totalAmount;
+      // Commission base = taxable + exempt income, never column E — the
+      // Q2-2026 export bakes VAT-on-taxable into E. Fall back to E only
+      // when C and D are both empty.
+      const netAmount =
+        taxableAmount !== 0 || exemptAmount !== 0
+          ? taxableAmount + exemptAmount
+          : totalAmount;
 
       if (netAmount === 0) {
         warnings.push(
@@ -138,15 +164,32 @@ export function parseMakatiFile(
         continue;
       }
 
+      parsedRows.push({ franchisee, taxable: taxableAmount, net: netAmount });
+    }
+
+    // Credit-side export: every amount negative → flip the whole file.
+    const creditSideExport =
+      parsedRows.length > 0 && parsedRows.every((r) => r.net < 0);
+    const sign = creditSideExport ? -1 : 1;
+    if (creditSideExport) {
+      legacyWarnings.push(
+        "All amounts in file are negative (credit-side export) — converted to positive"
+      );
+    }
+
+    let rowNumber = 1;
+    for (const parsed of parsedRows) {
+      const net = parsed.net * sign;
+      const taxable = parsed.taxable * sign;
+
       // Partial VAT: gross includes VAT only on the taxable portion
       // grossAmount = netAmount + (taxableAmount × vatRate)
       // partialVat = grossAmount - netAmount = taxableAmount × vatRate
-      const vatOnTaxable = taxableAmount * vatRate;
-      const grossAmount = roundAmount(netAmount + vatOnTaxable);
-      const roundedNet = roundAmount(netAmount);
+      const grossAmount = roundAmount(net + taxable * vatRate);
+      const roundedNet = roundAmount(net);
 
       data.push({
-        franchisee,
+        franchisee: parsed.franchisee,
         date: null,
         grossAmount,
         netAmount: roundedNet,
@@ -177,7 +220,7 @@ export function parseMakatiFile(
       );
     }
 
-    return createResult(
+    const result = createResult(
       true,
       data,
       errors,
@@ -190,6 +233,28 @@ export function parseMakatiFile(
       totalGrossAmount,
       totalNetAmount
     );
+
+    if (creditSideExport) {
+      const anomaly: Anomaly = {
+        code: "NEGATIVE_AMOUNTS",
+        severity: "warning",
+        messageHe:
+          "כל הסכומים בקובץ מקטי שליליים (ייצוא הנהלת-חשבונות בצד זכות) — הוסבו אוטומטית לחיוביים.",
+        details: {
+          explanationHe:
+            'הדוח החדש של מקטי ("דוח עמלות רשת") מיוצא מהנהלת החשבונות עם יתרות זכות, ולכן כל ההכנסות מופיעות במינוס. המערכת הפכה את הסימן לכל השורות. שימו לב: עמודת סה"כ בקובץ כוללת מע"מ על החלק החייב — בסיס העמלה חושב מסכום החייבות + הפטורות בלבד, ולכן הסכום במערכת נמוך מסה"כ בקובץ.',
+        },
+        suggestedActions: [
+          {
+            type: "acknowledge_only",
+            labelHe: "הבנתי, הסכומים הוסבו לחיוביים",
+          },
+        ],
+      };
+      return { ...result, anomalies: [anomaly] };
+    }
+
+    return result;
   } catch (error) {
     errors.push(
       createFileProcessingError("SYSTEM_ERROR", {
