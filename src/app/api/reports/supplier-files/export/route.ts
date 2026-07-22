@@ -11,6 +11,7 @@ import {
   type SupplierFilesFilters,
 } from "@/data-access/supplier-file-reports";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { createBrandMatrixSheets } from "./brand-matrix";
 
 // Format currency for Excel (round to whole shekels)
 const formatCurrency = (amount: number): number => {
@@ -41,6 +42,8 @@ function createSupplierFilesSheets(
   data: SupplierFilesReport,
   wb: XLSX.WorkBook
 ): void {
+  createBrandMatrixSheets(data, wb);
+
   // Summary sheet
   const summaryData = [
     ["נתוני קבצי ספקים - סיכום כללי", ""],
