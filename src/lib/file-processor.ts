@@ -1,5 +1,19 @@
 import * as XLSX from "xlsx";
+// SheetJS's ESM build (what Next.js bundles for the server on Vercel) ships
+// without the Windows codepage tables. Without them, BIFF (.xls) cells stored
+// as CP1255 Hebrew decode as Latin-1 mojibake ("ריכוז מכירות" → "øéëåæ
+// îëéøåú"), silently breaking every title/header-anchored parser (real
+// incident: אראל אריזות Q2-2026, upload e86e41ab). Register the full table
+// once here — all custom parsers share this module instance and are only
+// dispatched from this module. The CJS build (vitest/tsx) auto-loads the
+// table and exposes no set_cptable, hence the guard.
+// @ts-expect-error -- third-party codepage bundle (no .d.ts)
+import * as cpexcel from "xlsx/dist/cpexcel.full.mjs";
 import type { SupplierFileMapping } from "@/db/schema";
+
+if (typeof XLSX.set_cptable === "function") {
+  XLSX.set_cptable(cpexcel);
+}
 import {
   type FileProcessingError,
   type FileProcessingErrorCategory,
