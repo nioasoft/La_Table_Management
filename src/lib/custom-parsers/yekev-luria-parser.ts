@@ -45,6 +45,7 @@ import {
   createFileProcessingError,
   createCustomError,
 } from "../file-processing-errors";
+import type { Anomaly } from "@/types/file-anomalies";
 
 const VAT_RATE = 0.18;
 
@@ -60,6 +61,21 @@ const GRAND_TOTAL_LABEL = ':סה"כ לדוח';
 const GRAND_TOTAL_LABEL_ALT = ":סה''כ לדוח";
 
 const TRAILING_CUSTOMER_CODE_RE = /\s+(\d{6,})\s*$/;
+
+// --- Customer-summary layout (first seen 2026-07, sheet "d_customers_sale_report") ---
+// One row per customer: סה"כ סכום | ... | ע.מ. / ת.ז | שם לקוח | מס' לקוח.
+// The sheet range starts at B3, so columns are ALWAYS located by header text.
+const SUMMARY_HEADER_TOTAL = 'סהכ סכום'; // compared after quote-stripping
+const SUMMARY_HEADER_NAME = "שם לקוח";
+const SUMMARY_HEADER_CODE = "מס לקוח";
+const SUMMARY_HEADER_SCAN_ROWS = 12;
+const SUMMARY_PERIOD_RE =
+  /מתאריך\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+עד\s+תאריך\s+(\d{1,2}\/\d{1,2}\/\d{2,4})/;
+
+/** Strip Hebrew/ASCII quote marks so 'סה"כ' / "סה''כ" / 'סה״כ' all compare equal */
+function stripQuotes(value: string): string {
+  return value.replace(/["'׳״`]/g, "");
+}
 
 interface AggregatedRow {
   cleanedName: string;
@@ -106,6 +122,20 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
     }
 
     const rows = sheetToRows(sheet);
+
+    // Customer-summary layout takes priority — it has no item blocks at all.
+    const summaryHeaderIdx = findSummaryHeaderRow(rows);
+    if (summaryHeaderIdx !== -1) {
+      return parseCustomerSummaryLayout(
+        rows,
+        summaryHeaderIdx,
+        errors,
+        warnings,
+        legacyErrors,
+        legacyWarnings,
+      );
+    }
+
     const aggregates = new Map<string, AggregatedRow>();
     let blocksFound = 0;
 
@@ -283,6 +313,168 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
     legacyErrors.push(message);
     return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
   }
+}
+
+// ============================================================================
+// Customer-summary layout
+// ============================================================================
+
+/** Row index of the summary-layout header, or -1 when not that layout */
+function findSummaryHeaderRow(rows: unknown[][]): number {
+  for (let i = 0; i < Math.min(SUMMARY_HEADER_SCAN_ROWS, rows.length); i++) {
+    const row = rows[i];
+    if (!row) continue;
+    const cells = row.map((c) => stripQuotes(String(c ?? "").trim()));
+    if (cells.includes(SUMMARY_HEADER_TOTAL) && cells.includes(SUMMARY_HEADER_NAME)) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function findColumnStripped(header: unknown[], target: string): number {
+  for (let i = 0; i < header.length; i++) {
+    const cell = header[i];
+    if (cell === null || cell === undefined) continue;
+    if (stripQuotes(String(cell).trim()) === target) return i;
+  }
+  return -1;
+}
+
+/**
+ * Parse the per-customer summary report. Amounts are treated as NET like the
+ * block layout (gross = net × 1.18). The report is CUMULATIVE for the date
+ * range in its title (e.g. 01/01–30/06) — surfaced as a MIXED_PERIODS anomaly
+ * so the admin never approves it as a single quarter when earlier quarters
+ * were already invoiced.
+ */
+function parseCustomerSummaryLayout(
+  rows: unknown[][],
+  headerIdx: number,
+  errors: FileProcessingError[],
+  warnings: FileProcessingError[],
+  legacyErrors: string[],
+  legacyWarnings: string[],
+): FileProcessingResult {
+  const data: ParsedRowData[] = [];
+  const header = rows[headerIdx] ?? [];
+  const totalCol = findColumnStripped(header, SUMMARY_HEADER_TOTAL);
+  const nameCol = findColumnStripped(header, SUMMARY_HEADER_NAME);
+  const codeCol = findColumnStripped(header, SUMMARY_HEADER_CODE);
+
+  if (totalCol === -1 || nameCol === -1) {
+    errors.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: "Customer-summary layout detected but required columns are missing.",
+      }),
+    );
+    legacyErrors.push("Customer-summary layout: required columns missing");
+    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rows.length);
+  }
+
+  // Extract the report period from the title rows above the header
+  let periodText: string | null = null;
+  for (let i = 0; i < headerIdx; i++) {
+    for (const cell of rows[i] ?? []) {
+      if (cell === null || cell === undefined) continue;
+      const match = String(cell).match(SUMMARY_PERIOD_RE);
+      if (match) {
+        periodText = `${match[1]} – ${match[2]}`;
+        break;
+      }
+    }
+    if (periodText) break;
+  }
+
+  let totalGrossAmount = 0;
+  let totalNetAmount = 0;
+  let skipped = 0;
+  let rowNumber = 0;
+
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every(isEmpty)) continue;
+
+    const rawName = String(row[nameCol] ?? "").trim();
+    // The grand-total row ("סה"כ N לקוחות") has no customer name
+    if (!rawName || stripQuotes(rawName).startsWith("סהכ")) {
+      skipped++;
+      continue;
+    }
+
+    const netSale = toNumber(row[totalCol]);
+    if (netSale === null || netSale === 0) {
+      skipped++;
+      continue;
+    }
+
+    // Older exports glued the customer code to the name — strip defensively
+    const cleanedName = rawName.replace(TRAILING_CUSTOMER_CODE_RE, "").trim() || rawName;
+    const codeCell = codeCol === -1 ? null : row[codeCol];
+    const franchiseeId =
+      codeCell !== null && codeCell !== undefined && String(codeCell).trim() !== ""
+        ? String(codeCell).trim()
+        : undefined;
+
+    const netAmount = roundAmount(netSale);
+    const grossAmount = roundAmount(netSale * (1 + VAT_RATE));
+
+    data.push({
+      franchisee: cleanedName,
+      franchiseeId,
+      date: null,
+      grossAmount,
+      netAmount,
+      originalAmount: netAmount,
+      rowNumber: ++rowNumber,
+    });
+
+    totalGrossAmount += grossAmount;
+    totalNetAmount += netAmount;
+  }
+
+  if (data.length === 0) {
+    errors.push(
+      createFileProcessingError("PARSE_ERROR", {
+        details: "No customer rows could be extracted from the summary-layout workbook.",
+      }),
+    );
+    legacyErrors.push("No customer rows extracted from Yekev Luria summary workbook");
+    return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rows.length);
+  }
+
+  const cumulativePeriodAnomaly: Anomaly = {
+    code: "MIXED_PERIODS",
+    severity: "warning",
+    messageHe: periodText
+      ? `דוח יקב לוריא מצטבר לתקופה ${periodText} — לא לאשר כרבעון בודד לפני בדיקה מול תקופות שכבר אושרו.`
+      : "דוח יקב לוריא במבנה סיכום-לקוחות ללא תאריכי שורה — יש לוודא שהתקופה שתויגה תואמת את טווח הדוח.",
+    details: {
+      explanationHe:
+        "בפורמט החדש של יקב לוריא כל שורה היא סכום מצטבר ללקוח לכל טווח הדוח. אם הטווח חופף תקופה שכבר אושרה (למשל דוח חצי-שנתי אחרי שרבעון 1 כבר חושב), אישור הקובץ כמו-שהוא יכפיל עמלות. יש לבקש מהספק דוח לתקופה הרלוונטית בלבד או לטפל ידנית.",
+    },
+    suggestedActions: [
+      {
+        type: "acknowledge_only",
+        labelHe: "בדקתי שהתקופה אינה חופפת תקופה שאושרה",
+      },
+    ],
+  };
+
+  const result = createResult(
+    true,
+    data,
+    errors,
+    warnings,
+    legacyErrors,
+    legacyWarnings,
+    rows.length,
+    data.length,
+    skipped,
+    totalGrossAmount,
+    totalNetAmount,
+  );
+  return { ...result, anomalies: [cumulativePeriodAnomaly] };
 }
 
 // ============================================================================
