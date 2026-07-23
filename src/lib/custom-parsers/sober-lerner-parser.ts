@@ -44,7 +44,8 @@ const HEADER_ROW = 0; // Row 1 (0-indexed)
 const DATA_START_ROW = 1; // Row 2 (0-indexed)
 
 // Skip keywords (note: "סניף" removed - it's a valid franchisee column header, not a summary indicator)
-const SKIP_KEYWORDS = ["סה״כ", "סהכ", "סיכום", "total"];
+// Row text is quote-stripped before matching, so "סהכ" catches סה"כ / סה״כ / סה'כ variants
+const SKIP_KEYWORDS = ["סהכ", "סיכום", "total"];
 
 /**
  * Parse a numeric value from cell content
@@ -72,7 +73,10 @@ function parseNumericValue(value: unknown): number {
  * Check if a row is a summary row
  */
 function isSummaryRow(row: unknown[]): boolean {
-  const rowText = row.map((cell) => String(cell || "").toLowerCase()).join(" ");
+  const rowText = row
+    .map((cell) => String(cell || "").toLowerCase())
+    .join(" ")
+    .replace(/["״'׳]/g, "");
   return SKIP_KEYWORDS.some((keyword) => rowText.includes(keyword.toLowerCase()));
 }
 

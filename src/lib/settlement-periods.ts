@@ -608,6 +608,47 @@ export function snapPeriodToFrequency(
 }
 
 /**
+ * Decide whether a supplier file belongs in a Hashavshevet export for the
+ * requested [rangeStart, rangeEnd] window. All dates are YYYY-MM-DD strings.
+ *
+ * Rules (Reut, 2026-07):
+ * - Monthly export (range ≤ 35 days): only monthly-or-faster suppliers appear.
+ * - Multi-month export (quarter/half/year/custom): monthly-or-faster suppliers
+ *   contribute only files whose period starts in the LAST month of the range —
+ *   the one month not yet invoiced by a monthly run. Earlier months were
+ *   already billed monthly; including them double-bills. Other suppliers keep
+ *   the existing date-overlap semantics.
+ */
+export function fileBelongsInExportRange(
+  supplierFrequency: string | null,
+  filePeriodStart: string | null,
+  rangeStart: string,
+  rangeEnd: string
+): boolean {
+  // null frequency → schema default is "monthly"
+  const isShortCycle =
+    supplierFrequency == null ||
+    supplierFrequency === "weekly" ||
+    supplierFrequency === "bi_weekly" ||
+    supplierFrequency === "monthly";
+
+  const start = parseLocalDateString(rangeStart);
+  const end = parseLocalDateString(rangeEnd);
+  const spanDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  const isMonthlyRun = spanDays <= 35;
+
+  if (!isShortCycle) return !isMonthlyRun;
+
+  if (isMonthlyRun) return true;
+
+  // Multi-month run: keep only files starting in the range's last month.
+  // NULL-period files never reach here (SQL overlap filter excludes them).
+  if (!filePeriodStart) return true;
+  const lastMonthStart = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`;
+  return filePeriodStart >= lastMonthStart;
+}
+
+/**
  * Format date range for display
  * Handles both Date objects and ISO date strings
  */

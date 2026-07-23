@@ -201,8 +201,10 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
         const franchiseeName = String(row[franchiseeColIndex] || "").trim();
         const totalAmount = parseCurrency(row[totalColIndex]);
 
-        // Skip empty rows or rows with zero/negative total
-        if (!franchiseeName || totalAmount <= 0) continue;
+        // Skip empty rows or rows with zero total. Negative rows are kept —
+        // credit lines (e.g. old legal entity of a franchisee) must net against
+        // the positive rows; commission sync sums per matched franchisee.
+        if (!franchiseeName || totalAmount === 0) continue;
 
         // Get or create entry for this franchisee
         let entry = franchiseeMap.get(franchiseeName);

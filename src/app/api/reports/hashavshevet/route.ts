@@ -14,6 +14,7 @@ import {
 } from "@/db/schema";
 import { eq, and, gte, lte, inArray, or, sql } from "drizzle-orm";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
+import { fileBelongsInExportRange } from "@/lib/settlement-periods";
 
 // ============================================================================
 // TYPES
@@ -154,6 +155,7 @@ export async function GET(request: NextRequest) {
         hashavshevetCode: supplier.hashavshevetCode,
         commissionRate: supplier.defaultCommissionRate,
         commissionType: supplier.commissionType,
+        settlementFrequency: supplier.settlementFrequency,
         processingResult: supplierFileUpload.processingResult,
         periodStartDate: supplierFileUpload.periodStartDate,
         periodEndDate: supplierFileUpload.periodEndDate,
@@ -267,6 +269,19 @@ export async function GET(request: NextRequest) {
 
     for (const file of files) {
       if (!file.processingResult) continue;
+
+      // Frequency gate: monthly suppliers appear in monthly runs; multi-month
+      // runs take only their last-month file (earlier months already billed).
+      if (
+        !fileBelongsInExportRange(
+          file.settlementFrequency,
+          file.periodStartDate,
+          startDate,
+          endDate
+        )
+      ) {
+        continue;
+      }
 
       const processingResult = file.processingResult as SupplierFileProcessingResult;
       if (!processingResult.franchiseeMatches) continue;
