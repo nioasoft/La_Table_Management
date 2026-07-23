@@ -230,9 +230,10 @@ export async function PATCH(
 
     // Optionally add as alias to the franchisee
     let sweepNewlyMatched = 0;
+    let aliasResult: Awaited<ReturnType<typeof addFranchiseeAlias>> | null = null;
     let finalStats = updatedFile.processingResult?.matchStats;
     if (addAsAlias) {
-      await addFranchiseeAlias(franchiseeId, originalName);
+      aliasResult = await addFranchiseeAlias(franchiseeId, originalName);
 
       // After adding the alias, re-run matching across all rows in this file
       // that are still unmatched. The new alias may unlock other rows whose
@@ -255,7 +256,11 @@ export async function PATCH(
     }
 
     let message: string;
-    if (addAsAlias) {
+    if (addAsAlias && aliasResult === "conflict") {
+      // Match applied, but the alias was NOT learned — it already belongs to
+      // another franchisee and sharing it would misroute future files.
+      message = `התאמה עודכנה לזכיין ${franchisee.name}, אך הכינוי "${originalName}" לא נשמר — הוא כבר רשום אצל זכיין אחר (כינוי יכול להיות רשום רק במקום אחד)`;
+    } else if (addAsAlias) {
       message =
         sweepNewlyMatched > 0
           ? `התאמה עודכנה והכינוי "${originalName}" נוסף לזכיין ${franchisee.name}. עוד ${sweepNewlyMatched} שורות תואמו אוטומטית.`

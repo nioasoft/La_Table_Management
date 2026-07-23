@@ -11,6 +11,7 @@ import {
   isFranchiseeCodeUnique,
   getFranchiseesPageData,
   getOtherIncomeSources,
+  findAliasCollisions,
   type GetFranchiseesOptions,
 } from "@/data-access/franchisees";
 import { randomUUID } from "crypto";
@@ -141,6 +142,23 @@ export async function POST(request: NextRequest) {
         { error: "Franchisee code already exists" },
         { status: 400 }
       );
+    }
+
+    // Reject aliases already registered to another franchisee
+    if (Array.isArray(aliases) && aliases.length > 0) {
+      const collisions = await findAliasCollisions(aliases);
+      if (collisions.length > 0) {
+        const detail = collisions
+          .map((c) => `"${c.alias}" (רשום אצל ${c.ownerName})`)
+          .join(", ");
+        return NextResponse.json(
+          {
+            error: `כינוי יכול להיות רשום רק אצל זכיין אחד. הכינויים הבאים כבר תפוסים: ${detail}`,
+            collisions,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     const newFranchisee = await createFranchisee({

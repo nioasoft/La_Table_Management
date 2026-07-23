@@ -6,6 +6,7 @@ import {
 import {
   getFranchiseeById,
   updateFranchisee,
+  findAliasCollisions,
 } from "@/data-access/franchisees";
 import { createAuditContext } from "@/data-access/auditLog";
 
@@ -50,6 +51,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json(
         { error: "Alias already exists for this franchisee" },
         { status: 400 }
+      );
+    }
+
+    // Block aliases that already belong to another franchisee — a shared
+    // alias makes the matcher route that name to the wrong franchisee.
+    const collisions = await findAliasCollisions([trimmedAlias], franchiseeId);
+    if (collisions.length > 0) {
+      return NextResponse.json(
+        {
+          error: `הכינוי "${trimmedAlias}" כבר רשום אצל הזכיין "${collisions[0].ownerName}". כינוי יכול להיות רשום רק במקום אחד — הסירי אותו שם קודם.`,
+          conflictFranchiseeId: collisions[0].ownerId,
+          conflictFranchiseeName: collisions[0].ownerName,
+        },
+        { status: 409 }
       );
     }
 

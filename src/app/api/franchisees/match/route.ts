@@ -7,6 +7,7 @@ import {
   matchSingleFranchiseeName,
   matchMultipleFranchiseeNames,
   addFranchiseeAlias,
+  findAliasCollisions,
 } from "@/data-access/franchisees";
 import type { MatcherConfig } from "@/lib/franchisee-matcher";
 
@@ -134,6 +135,19 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json(
         { error: "Franchisee ID and alias are required" },
         { status: 400 }
+      );
+    }
+
+    // Block aliases that already belong to another franchisee
+    const collisions = await findAliasCollisions([alias.trim()], franchiseeId);
+    if (collisions.length > 0) {
+      return NextResponse.json(
+        {
+          error: `הכינוי "${alias.trim()}" כבר רשום אצל הזכיין "${collisions[0].ownerName}". כינוי יכול להיות רשום רק במקום אחד.`,
+          conflictFranchiseeId: collisions[0].ownerId,
+          conflictFranchiseeName: collisions[0].ownerName,
+        },
+        { status: 409 }
       );
     }
 

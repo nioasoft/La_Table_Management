@@ -266,8 +266,9 @@ export function normalizeName(name: string): string {
   const normalised = name
     .toLowerCase()
     .trim()
-    // Remove common punctuation
-    .replace(/[.,\-_'"()[\]{}!?:;#@&*+=/\\<>|`~^]/g, " ")
+    // Remove common punctuation (incl. Hebrew geresh ׳ and gershayim ״ so
+    // בע"מ / בע״מ / בעמ normalize identically)
+    .replace(/[.,\-_'"׳״()[\]{}!?:;#@&*+=/\\<>|`~^]/g, " ")
     // Normalize whitespace
     .replace(/\s+/g, " ")
     .trim();

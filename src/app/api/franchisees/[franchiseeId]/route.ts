@@ -10,6 +10,7 @@ import {
   updateFranchisee,
   deleteFranchisee,
   isFranchiseeCodeUnique,
+  findAliasCollisions,
   type UpdateFranchiseeDataWithStatusChange,
 } from "@/data-access/franchisees";
 import { createAuditContext } from "@/data-access/auditLog";
@@ -112,7 +113,27 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.code = code;
       updateData.companyId = /^\d+$/.test(code) ? code : null;
     }
-    if (aliases !== undefined) updateData.aliases = aliases;
+    if (aliases !== undefined) {
+      // Reject aliases already registered to another franchisee — a shared
+      // alias makes the matcher route that name to the wrong franchisee.
+      if (Array.isArray(aliases) && aliases.length > 0) {
+        const collisions = await findAliasCollisions(aliases, franchiseeId);
+        if (collisions.length > 0) {
+          const detail = collisions
+            .map((c) => `"${c.alias}" (רשום אצל ${c.ownerName})`)
+            .join(", ");
+          return NextResponse.json(
+            {
+              error: `כינוי יכול להיות רשום רק אצל זכיין אחד. הכינויים הבאים כבר תפוסים: ${detail}`,
+              collisions,
+            },
+            { status: 409 }
+          );
+        }
+      }
+      // Dedup within the list itself
+      updateData.aliases = Array.isArray(aliases) ? [...new Set(aliases)] : aliases;
+    }
     if (address !== undefined) updateData.address = address;
     if (city !== undefined) updateData.city = city;
     if (state !== undefined) updateData.state = state;

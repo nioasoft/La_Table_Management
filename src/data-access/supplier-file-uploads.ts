@@ -14,6 +14,7 @@ import { eq, and, desc, sql, count, gte, lte, ne, or, isNull } from "drizzle-orm
 import { randomUUID } from "crypto";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { calculateBatchCommissions } from "./commissions";
+import { findAliasCollisions } from "./franchisees";
 import { getOrCreateSettlementPeriodByPeriodKey } from "./settlements";
 import { derivePeriodKey } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
@@ -511,12 +512,15 @@ export async function updateSupplierFileUpload(
 /**
  * Add an alias to a franchisee when manually matching.
  * Returns `"added"` if newly inserted, `"existed"` if already present
- * (case-insensitive dedup), `"missing"` if the franchisee was not found.
+ * (case-insensitive dedup), `"missing"` if the franchisee was not found,
+ * `"conflict"` if the alias already belongs to ANOTHER franchisee — in that
+ * case it is NOT saved (a shared alias misroutes future matches; see
+ * מוצקין→כרמיאל Q2 2026). The match itself still applies to the current file.
  */
 export async function addFranchiseeAlias(
   franchiseeId: string,
   alias: string
-): Promise<"added" | "existed" | "missing"> {
+): Promise<"added" | "existed" | "missing" | "conflict"> {
   // Get current franchisee
   const [current] = await database
     .select({ aliases: franchisee.aliases })
@@ -534,6 +538,14 @@ export async function addFranchiseeAlias(
 
   if (currentAliases.some((a) => a.trim().toLowerCase() === aliasLower)) {
     return "existed";
+  }
+
+  const collisions = await findAliasCollisions([normalizedAlias], franchiseeId);
+  if (collisions.length > 0) {
+    console.warn(
+      `[addFranchiseeAlias] Alias "${normalizedAlias}" not learned for franchisee ${franchiseeId} — already belongs to "${collisions[0].ownerName}" (${collisions[0].ownerId})`
+    );
+    return "conflict";
   }
 
   const updatedAliases = [...currentAliases, normalizedAlias];

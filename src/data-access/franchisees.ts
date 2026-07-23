@@ -29,6 +29,7 @@ import {
 import {
   matchFranchiseeName,
   matchFranchiseeNames,
+  normalizeName,
   type FranchiseeMatchResult,
   type BatchMatchResult,
   type MatcherConfig,
@@ -1334,6 +1335,69 @@ function formatIls(n: number): string {
     currency: "ILS",
     maximumFractionDigits: 0,
   }).format(n);
+}
+
+export interface AliasCollision {
+  alias: string;
+  ownerId: string;
+  ownerName: string;
+}
+
+/**
+ * Pure collision check: which of `candidates` already belong (after
+ * normalizeName) to a DIFFERENT franchisee — via its name, code, or aliases.
+ * Same normalization semantics as the matcher and the weekly
+ * franchisee-alias-collision cron, so "blocked at save" === "would have
+ * misrouted at match time".
+ */
+export function findCollidingAliases(
+  candidates: string[],
+  owners: Array<{ id: string; name: string; code: string | null; aliases: string[] | null }>,
+  excludeFranchiseeId?: string
+): AliasCollision[] {
+  const ownerByNorm = new Map<string, { id: string; name: string }>();
+  for (const o of owners) {
+    if (o.id === excludeFranchiseeId) continue;
+    for (const raw of [o.name, o.code, ...(o.aliases ?? [])]) {
+      if (!raw) continue;
+      const norm = normalizeName(raw);
+      if (!norm || norm.length < 3) continue;
+      if (!ownerByNorm.has(norm)) ownerByNorm.set(norm, { id: o.id, name: o.name });
+    }
+  }
+
+  const collisions: AliasCollision[] = [];
+  for (const alias of candidates) {
+    const norm = normalizeName(alias ?? "");
+    if (!norm) continue;
+    const owner = ownerByNorm.get(norm);
+    if (owner) collisions.push({ alias, ownerId: owner.id, ownerName: owner.name });
+  }
+  return collisions;
+}
+
+/**
+ * DB-backed collision check for alias writes: rejects any candidate alias
+ * that is already the name/code/alias of another ACTIVE franchisee.
+ * An alias registered in one place must not be registered in another —
+ * a shared alias is exactly what misrouted מוצקין's commissions into
+ * כרמיאל (Q2 2026).
+ */
+export async function findAliasCollisions(
+  candidates: string[],
+  excludeFranchiseeId?: string
+): Promise<AliasCollision[]> {
+  if (candidates.length === 0) return [];
+  const owners = await database
+    .select({
+      id: franchisee.id,
+      name: franchisee.name,
+      code: franchisee.code,
+      aliases: franchisee.aliases,
+    })
+    .from(franchisee)
+    .where(eq(franchisee.isActive, true));
+  return findCollidingAliases(candidates, owners, excludeFranchiseeId);
 }
 
 /**
