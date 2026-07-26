@@ -184,13 +184,15 @@ export async function getSupplierFilesReport(
   // Build conditions array - all applied in a single .where(and(...)) to avoid overwriting
   const conditions: ReturnType<typeof eq>[] = [];
 
-  // Use overlap logic: show files whose period overlaps with the filter range
-  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
+  // Containment logic: show a file only when its whole period fits inside the filter range.
+  // Overlap would leak a semi-annual file (Jan-Jun) into a single quarter (Q1) with its
+  // full half-year amounts. File periods are already snapped to the supplier's settlement
+  // frequency on upload (api/supplier-files/route.ts), so containment == frequency match.
   if (filters.startDate) {
-    conditions.push(gte(supplierFileUpload.periodEndDate, filters.startDate));
+    conditions.push(gte(supplierFileUpload.periodStartDate, filters.startDate));
   }
   if (filters.endDate) {
-    conditions.push(lte(supplierFileUpload.periodStartDate, filters.endDate));
+    conditions.push(lte(supplierFileUpload.periodEndDate, filters.endDate));
   }
   if (filters.supplierId) {
     conditions.push(eq(supplierFileUpload.supplierId, filters.supplierId));
@@ -715,14 +717,14 @@ export async function getFranchiseeBreakdownReport(
     eq(supplier.isHidden, false),
   ];
 
-  // Apply date filters using overlap logic
-  // Overlap condition: file.endDate >= filter.startDate AND file.startDate <= filter.endDate
+  // Containment logic (same as getSupplierFilesReport): the file's whole period must fit
+  // inside the filter range, so a semi-annual file doesn't leak into a single quarter.
   if (filters.startDate) {
-    conditions.push(gte(supplierFileUpload.periodEndDate, filters.startDate));
+    conditions.push(gte(supplierFileUpload.periodStartDate, filters.startDate));
   }
 
   if (filters.endDate) {
-    conditions.push(lte(supplierFileUpload.periodStartDate, filters.endDate));
+    conditions.push(lte(supplierFileUpload.periodEndDate, filters.endDate));
   }
 
   // Note: Brand filtering is done at franchisee-match level below, not at supplier level.
