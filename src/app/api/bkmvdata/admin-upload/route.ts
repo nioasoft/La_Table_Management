@@ -192,9 +192,9 @@ export async function POST(request: NextRequest) {
     ).length;
     const unmatched = classifiedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
-    // Determine processing status (blacklisted items don't count as unmatched)
-    const shouldAutoApprove = exactMatches === classifiedResults.length && unmatched === 0;
-    const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
+    // Admin upload = uploaded by the reviewer, so it's approved on save (same as
+    // the admin-process path). Only public-link uploads go to needs_review.
+    const processingStatus = "approved";
 
     // Build supplier ID map for monthly breakdown (maps BKMV name to matched supplier ID)
     // Only include exact matches (confidence === 1) — fuzzy matches should not be stored
@@ -242,8 +242,9 @@ export async function POST(request: NextRequest) {
     // Update file with processing status and result
     await updateUploadedFileProcessingStatus(
       uploadedFileRecord.id,
-      processingStatus as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected",
-      storedResult
+      processingStatus,
+      storedResult,
+      user.id // approved by whoever uploaded it — keeps the review trail honest
     );
 
     // Archive to year-based BKMV table
@@ -300,7 +301,6 @@ export async function POST(request: NextRequest) {
         exactMatches,
         fuzzyMatches,
         unmatched,
-        autoApproved: shouldAutoApprove,
       },
       crossReferences: crossRefResult ? {
         updated: crossRefResult.crossReferencesUpdated,

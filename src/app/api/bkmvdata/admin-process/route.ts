@@ -221,9 +221,11 @@ export async function POST(request: NextRequest) {
     ).length;
     const unmatched = classifiedResults.filter(r => !r.matchResult.matchedSupplier).length;
 
-    // Determine processing status (blacklisted items don't count as unmatched)
-    const shouldAutoApprove = exactMatches === classifiedResults.length && unmatched === 0;
-    const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
+    // An admin uploading a מבנה אחיד IS the reviewer — she saw the parse in this
+    // very screen before saving, so sending the file to her own review queue was
+    // a second click for nothing. Public-link uploads (the franchisee's own
+    // upload) still land in needs_review.
+    const processingStatus = "approved";
 
     // Build supplier ID map for monthly breakdown
     // Only include exact matches (confidence === 1) — fuzzy matches should not be stored
@@ -334,8 +336,9 @@ export async function POST(request: NextRequest) {
     // Update file with processing status and result
     await updateUploadedFileProcessingStatus(
       uploadedFileRecord.id,
-      processingStatus as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected",
-      storedResult
+      processingStatus,
+      storedResult,
+      user.id // approved by whoever uploaded it — keeps the review trail honest
     );
 
     // Archive to year-based BKMV table
@@ -397,7 +400,6 @@ export async function POST(request: NextRequest) {
         exactMatches,
         fuzzyMatches,
         unmatched,
-        autoApproved: shouldAutoApprove,
       },
       crossReferences: crossRefResult ? {
         updated: crossRefResult.crossReferencesUpdated,

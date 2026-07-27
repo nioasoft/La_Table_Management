@@ -248,7 +248,7 @@ export default function BkmvDataPage() {
   const [debouncedHistorySearch, setDebouncedHistorySearch] = useState<string>("");
   const [historyFranchiseeSearch, setHistoryFranchiseeSearch] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; autoApproved: boolean } | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<{ fileId: string; fuzzyMatches: number } | null>(null);
   const [duplicateDialog, setDuplicateDialog] = useState<{
     open: boolean;
     existingFile?: DuplicateCheckResult["existingFile"];
@@ -671,7 +671,7 @@ export default function BkmvDataPage() {
       // Success
       setUploadSuccess({
         fileId: data.file.id,
-        autoApproved: data.processing.autoApproved,
+        fuzzyMatches: data.processing.fuzzyMatches ?? 0,
       });
 
       // Close duplicate dialog if it was open (forceReplace flow)
@@ -1551,16 +1551,16 @@ export default function BkmvDataPage() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="h-5 w-5 text-green-500" />
-                      <span className="font-medium text-green-700">קובץ נשמר בהצלחה!</span>
+                      <span className="font-medium text-green-700">קובץ נשמר ואושר!</span>
                     </div>
                     <div className="bg-green-100 rounded-lg p-3 space-y-2">
-                      {uploadSuccess.autoApproved ? (
-                        <p className="text-sm text-green-800">
-                          הקובץ אושר אוטומטית - כל הספקים הותאמו בדיוק של 100%
-                        </p>
-                      ) : (
+                      <p className="text-sm text-green-800">
+                        העלאה של מנהל מאושרת מיד — אין צורך לאשר שוב בסקירת קבצים.
+                      </p>
+                      {uploadSuccess.fuzzyMatches > 0 && (
                         <p className="text-sm text-amber-800">
-                          הקובץ נשלח לתור הסקירה - יש התאמות שדורשות אישור ידני
+                          {uploadSuccess.fuzzyMatches} שמות התאימו חלקית ולכן לא שויכו לספק.
+                          שווה לוודא שאין ביניהם ספק שלנו.
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2">
