@@ -100,10 +100,14 @@ export function AnomalyReviewModal({
 
   // When the parent passes a different anomaly array (re-open / refresh),
   // sync our local state. Important after onAfterAction returns a new list.
-  useMemo(() => {
+  // Must NOT be a useMemo: React may discard a memo cache and re-run it,
+  // which would wipe the acknowledgements the admin just clicked.
+  const [syncedFrom, setSyncedFrom] = useState(initialAnomalies);
+  if (syncedFrom !== initialAnomalies) {
+    setSyncedFrom(initialAnomalies);
     setAnomalies(initialAnomalies);
     setExpandedIndices(new Set());
-  }, [initialAnomalies]);
+  }
 
   const sorted = useMemo(() => {
     return [...anomalies]
@@ -302,9 +306,9 @@ export function AnomalyReviewModal({
                         variant={
                           action.type === "reject_file"
                             ? "destructive"
-                            : action.type === "update_franchisee_company_id"
-                              ? "default"
-                              : "outline"
+                            : action.type === "acknowledge_only" && a.acknowledged
+                              ? "outline"
+                              : "default"
                         }
                         disabled={isBusy || (a.acknowledged && action.type === "acknowledge_only")}
                         onClick={() => handleAction(a, action, i)}
@@ -322,7 +326,16 @@ export function AnomalyReviewModal({
           })}
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-2 pt-4">
+        <DialogFooter className="gap-2 sm:gap-2 pt-4 items-center">
+          {/* Spelled out, not just a title tooltip — admins hit the grey
+              button and had no idea what was blocking it. */}
+          {!canConfirm && !isConfirming && (
+            <p className="me-auto text-xs font-medium text-amber-700">
+              {blockingCount > 0
+                ? `יש לפתור ${blockingCount} התראות חוסמות לפני שמירה`
+                : `כדי להמשיך — לחצי על כפתור האישור בתוך כל אזהרה (${unacknowledgedWarnings} ממתינות)`}
+            </p>
+          )}
           <Button
             type="button"
             variant="ghost"
