@@ -416,6 +416,17 @@ export function matchBkmvSuppliers(
   blacklistedNames?: Set<string>,
   smallSupplierNames?: Set<string>
 ): BkmvSupplierMatchingResult[] {
+  // BKMV is a historical ledger: a supplier we stopped working with still owns
+  // its past transactions. Matching against active suppliers only meant that
+  // deactivating a supplier silently unlinked its rows on the NEXT מבנה אחיד
+  // upload — including already-reconciled months (גרינטי, היכל היין → ₪0 in the
+  // Q1 2026 sessions). Hidden suppliers stay excluded: "הסתר מדוחות עמלות" is a
+  // deliberate exclusion, and archiving sets isHidden alongside isActive.
+  const bkmvConfig: Partial<SupplierMatcherConfig> = {
+    includeInactive: true,
+    ...config,
+  };
+
   // Phase 1: Initial matching - run matchSupplierName for each BKMV name
   const entries: Array<{
     bkmvName: string;
@@ -453,7 +464,7 @@ export function matchBkmvSuppliers(
       };
       entries.push({ bkmvName, summary, matchResult: smallSupplierResult, isBlacklisted: false });
     } else {
-      const matchResult = matchSupplierName(bkmvName, suppliers, config);
+      const matchResult = matchSupplierName(bkmvName, suppliers, bkmvConfig);
       entries.push({ bkmvName, summary, matchResult, isBlacklisted: false });
     }
   }
@@ -510,7 +521,7 @@ export function matchBkmvSuppliers(
         // Supplier already claimed by a higher-confidence entry AND this is not an
         // explicit alias match — re-match excluding all claimed suppliers.
         const availableSuppliers = suppliers.filter(s => !claimedSupplierIds.has(s.id));
-        matchResult = matchSupplierName(bkmvName, availableSuppliers, config);
+        matchResult = matchSupplierName(bkmvName, availableSuppliers, bkmvConfig);
 
         // If we got a new match, claim it
         if (matchResult.matchedSupplier) {
