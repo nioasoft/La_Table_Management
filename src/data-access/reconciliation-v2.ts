@@ -494,10 +494,40 @@ export async function createReconciliationSession(
     if (row.brand_id) brandIdSet.add(row.brand_id);
   }
 
-  // Determine which file IDs to load
-  const fileIdsToLoad = (supplierFileIds && supplierFileIds.length > 0)
-    ? supplierFileIds
-    : [supplierFileId];
+  // Determine which file IDs to load.
+  //
+  // For multi-file suppliers (one file per branch) the caller's list can't be
+  // trusted: "התחל סשן חדש" passes only the session's own file, and any list
+  // built from a cached period may point at files a re-upload has since
+  // rejected. Either way every other branch would build at ₪0. Resolve the
+  // period's live files here instead, so every caller gets the same answer.
+  const fileMapping = await database
+    .select({ fileMapping: supplier.fileMapping })
+    .from(supplier)
+    .where(eq(supplier.id, supplierId))
+    .limit(1);
+  const isMultiFile =
+    ((fileMapping[0]?.fileMapping as SupplierFileMapping | null)?.maxUploadFiles ?? 1) > 1;
+
+  let fileIdsToLoad =
+    supplierFileIds && supplierFileIds.length > 0 ? supplierFileIds : [supplierFileId];
+
+  if (isMultiFile) {
+    const livePeriodFiles = await database
+      .select({ id: supplierFileUpload.id })
+      .from(supplierFileUpload)
+      .where(
+        and(
+          eq(supplierFileUpload.supplierId, supplierId),
+          ne(supplierFileUpload.processingStatus, "rejected"),
+          eq(supplierFileUpload.periodStartDate, periodStartDate),
+          eq(supplierFileUpload.periodEndDate, periodEndDate)
+        )
+      );
+    if (livePeriodFiles.length > 0) {
+      fileIdsToLoad = livePeriodFiles.map((f) => f.id);
+    }
+  }
 
   // Get supplier file(s) with processing results
   const supplierFileData = await database
