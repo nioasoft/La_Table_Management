@@ -132,6 +132,13 @@ export interface ReconciliationSessionWithDetails extends ReconciliationSession 
   supplierName: string;
   supplierCode: string;
   supplierFileName: string;
+  /**
+   * Set on creation when the supplier has no brand mapping and no history to
+   * infer one from. Session building then skips zero-amount row generation, so
+   * branches with no activity are silently absent. Not persisted — it describes
+   * the build, not the session.
+   */
+  brandMappingMissing?: boolean;
 }
 
 // History item for display

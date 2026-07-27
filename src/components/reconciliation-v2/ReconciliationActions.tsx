@@ -135,6 +135,12 @@ export function ReconciliationActions({
         periodEndDate,
       });
       toast.success("סשן חדש נוצר");
+      if (newSession?.brandMappingMissing) {
+        toast.warning(
+          "לספק לא מוגדרים מותגים — יופיעו רק סניפים שמופיעים בקובץ הספק. סניפים ללא פעילות לא ייווצרו כשורות 0.",
+          { duration: 12000 }
+        );
+      }
       setRestartOpen(false);
       // Replace the URL so the page re-mounts on the new session id.
       const params = new URLSearchParams(window.location.search);

@@ -64,7 +64,7 @@ export default function ReconciliationV2Page() {
     if (periodData.hasExistingSession) return; // useEffect above handles redirect
 
     try {
-      await createSession.mutateAsync({
+      const session = await createSession.mutateAsync({
         supplierId,
         supplierFileId: periodData.supplierFileId,
         supplierFileIds: periodData.supplierFileIds,
@@ -73,6 +73,12 @@ export default function ReconciliationV2Page() {
       });
 
       toast.success("סשן התאמה נוצר בהצלחה");
+      if (session?.brandMappingMissing) {
+        toast.warning(
+          "לספק לא מוגדרים מותגים — יופיעו רק סניפים שמופיעים בקובץ הספק. סניפים ללא פעילות לא ייווצרו כשורות 0. הגדר מותגים בכרטיס הספק ובנה מחדש.",
+          { duration: 12000 }
+        );
+      }
       router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
     } catch (error) {
       console.error("Failed to create session:", error);
