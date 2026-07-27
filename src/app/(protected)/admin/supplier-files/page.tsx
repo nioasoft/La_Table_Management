@@ -1862,13 +1862,19 @@ export default function SupplierFilesPage() {
         fileId={savedFileId}
         onConfirm={(updatedAnomalies) => {
           // Persist the (possibly acknowledged) anomalies onto the in-memory
-          // processing result so they round-trip into supplier_file_upload
-          // when the user clicks Save.
-          setProcessingResult((prev) =>
-            prev ? { ...prev, anomalies: updatedAnomalies } : prev
-          );
+          // processing result so they round-trip into supplier_file_upload.
+          const updated = processingResult
+            ? { ...processingResult, anomalies: updatedAnomalies }
+            : null;
+          setProcessingResult(updated);
           setPendingAnomalyReview(null);
           setAnomaliesReviewed(true);
+          // The button reads "שמור לבדיקה ידנית" — so save. It used to only
+          // close the dialog and wait for a second click on the save button,
+          // which reads as "the upload does nothing" (אראל אריזות, 2026-07-27).
+          if (updated) {
+            saveToReviewQueue(updated, selectedSupplierId, selectedPeriodKey);
+          }
         }}
         onCancel={() => {
           // Treat cancel as "abort this upload": clear the result so the user
