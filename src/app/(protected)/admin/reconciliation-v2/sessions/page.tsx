@@ -20,7 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Scale, ArrowLeft, Loader2, ExternalLink, Trash2 } from "lucide-react";
+import { Scale, ArrowLeft, Loader2, ExternalLink, Trash2, AlertTriangle } from "lucide-react";
 import { useReconciliationSessions, useDeleteReconciliationSession } from "@/queries/reconciliation-v2";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
@@ -209,9 +209,20 @@ export default function SessionsListPage() {
                         {formatPeriod(session.periodStartDate, session.periodEndDate)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusColors[session.status as SessionStatus]}>
-                          {statusLabels[session.status as SessionStatus] || session.status}
-                        </Badge>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <Badge variant={statusColors[session.status as SessionStatus]}>
+                            {statusLabels[session.status as SessionStatus] || session.status}
+                          </Badge>
+                          {/* Archived runs are filtered out server-side, so staleAt
+                              alone means "a newer file landed — rebuild me". The
+                              session page has the banner and the rebuild button. */}
+                          {session.staleAt && (
+                            <Badge variant="warning" className="gap-1" title="התקבל קובץ חדש לתקופה — יש לבנות מחדש">
+                              <AlertTriangle className="h-3 w-3" />
+                              לא מעודכן
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
