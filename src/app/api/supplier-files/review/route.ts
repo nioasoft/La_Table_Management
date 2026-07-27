@@ -103,12 +103,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file is in reviewable state
+    // Validate file is in reviewable state. Spell out WHY — "not awaiting
+    // review" on an auto-approved file reads like the upload failed.
     if (file.processingStatus !== "needs_review") {
-      return NextResponse.json(
-        { error: "הקובץ אינו במצב הממתין לבדיקה" },
-        { status: 400 }
-      );
+      const reason =
+        file.processingStatus === "auto_approved"
+          ? "הקובץ כבר אושר אוטומטית (כל השורות הותאמו) — אין צורך לאשר אותו שוב"
+          : file.processingStatus === "approved"
+            ? "הקובץ כבר אושר"
+            : file.processingStatus === "rejected"
+              ? "הקובץ נדחה — יש להעלות אותו מחדש"
+              : "הקובץ אינו במצב הממתין לבדיקה";
+      return NextResponse.json({ error: reason }, { status: 400 });
     }
 
     const previousStatus = file.processingStatus;

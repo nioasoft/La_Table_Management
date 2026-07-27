@@ -754,6 +754,9 @@ export default function SupplierFilesPage() {
     let hasOverwritePrompt = false;
     let shouldOverwriteAll = overwriteAllDuplicates;
     let snappedRange: { start: string; end: string } | null = null;
+    // Files that replaced an existing upload for the same franchisee+period.
+    // Reported at the end — a silent overwrite reads as "nothing happened".
+    const replacedFileNames: string[] = [];
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
@@ -771,9 +774,11 @@ export default function SupplierFilesPage() {
         setOverwriteAllDuplicates(true);
         // Retry with overwrite
         result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+        if (result.success) replacedFileNames.push(file.name);
       } else if (!result.success && result.needsOverwrite && shouldOverwriteAll) {
         // Already decided to overwrite all
         result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+        if (result.success) replacedFileNames.push(file.name);
       }
 
       if (result.success) {
@@ -804,6 +809,13 @@ export default function SupplierFilesPage() {
       toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
     } else {
       toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    if (replacedFileNames.length > 0) {
+      toast.info(
+        `${replacedFileNames.length} קבצים כבר היו קיימים לאותם סניפים בתקופה הזו — הקובץ החדש החליף את הישן (הישן סומן כנדחה). זה תקין, לא צריך להעלות שוב.`,
+        { duration: 12000 }
+      );
     }
 
     if (snappedRange) {
@@ -938,6 +950,7 @@ export default function SupplierFilesPage() {
 
     let shouldOverwriteAll = false;
     let snappedRange: { start: string; end: string } | null = null;
+    const replacedFileNames: string[] = [];
 
     for (let i = 0; i < fileArray.length; i++) {
       const file = fileArray[i];
@@ -950,8 +963,10 @@ export default function SupplierFilesPage() {
       if (!result.success && result.needsOverwrite && !shouldOverwriteAll) {
         shouldOverwriteAll = true;
         result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+        if (result.success) replacedFileNames.push(file.name);
       } else if (!result.success && result.needsOverwrite && shouldOverwriteAll) {
         result = await processSingleFile(file, selectedSupplierId, selectedPeriodKey, true);
+        if (result.success) replacedFileNames.push(file.name);
       }
 
       if (result.success) {
@@ -981,6 +996,13 @@ export default function SupplierFilesPage() {
       toast.warning(`${progress.succeeded} הצליחו, ${progress.failed} נכשלו`);
     } else {
       toast.error(`כל ${progress.failed} הקבצים נכשלו`);
+    }
+
+    if (replacedFileNames.length > 0) {
+      toast.info(
+        `${replacedFileNames.length} קבצים כבר היו קיימים לאותם סניפים בתקופה הזו — הקובץ החדש החליף את הישן (הישן סומן כנדחה). זה תקין, לא צריך להעלות שוב.`,
+        { duration: 12000 }
+      );
     }
 
     if (snappedRange) {

@@ -374,7 +374,12 @@ export default function SupplierFileDetailPage() {
   }
 
   const { file, supplier, processingResult, franchiseeMatches } = fileData;
-  const isReviewed = file.processingStatus === "approved" || file.processingStatus === "rejected";
+  // auto_approved counts as reviewed — the API rejects an approve on it with
+  // "הקובץ אינו במצב הממתין לבדיקה", which reads like the upload failed.
+  const isReviewed =
+    file.processingStatus === "approved" ||
+    file.processingStatus === "auto_approved" ||
+    file.processingStatus === "rejected";
 
   return (
     <div className="container mx-auto p-6">
@@ -429,10 +434,14 @@ export default function SupplierFileDetailPage() {
           )}
           {isReviewed && (
             <Badge
-              variant={file.processingStatus === "approved" ? "success" : "destructive"}
+              variant={file.processingStatus === "rejected" ? "destructive" : "success"}
               className="text-base px-4 py-2"
             >
-              {file.processingStatus === "approved" ? "אושר" : "נדחה"}
+              {file.processingStatus === "rejected"
+                ? "נדחה"
+                : file.processingStatus === "auto_approved"
+                  ? "אושר אוטומטית — אין צורך לאשר שוב"
+                  : "אושר"}
             </Badge>
           )}
         </div>
