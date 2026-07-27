@@ -6,20 +6,19 @@
  * FORMAT 1: Single XLSX file
  *   - One franchisee per file
  *   - Sheet named "Report" (or first sheet)
- *   - Row 0: Headers
- *   - Column A (0): Status - filter for "מסמך פתוח" only
- *   - Column B (1): Document type - include "חשבונית מס" and "חשבונית זיכוי" only
- *   - Column D (3): Date (Excel serial number)
- *   - Column E (4): Business ID (מספר עוסק)
- *   - Column F (5): Address (used as fallback franchisee name)
- *   - Column O (14): Amount before VAT (credit notes already negative)
+ *   - Row 0: Headers — every column is located BY HEADER, never by position.
+ *     The export gained a "מפתח לקוח" column in Q2-2026 which shifted
+ *     everything right by one (the parser then read מע"מ as the amount).
+ *   - Status column has a blank header; it is always the first column.
+ *   - Filters: status "מסמך פתוח", doc type "חשבונית מס" / "חשבונית זיכוי"
+ *   - Amount comes from "סכום לפני מע"מ" (credit notes already negative)
  *
  * FORMAT 2: ZIP archive containing multiple XLSX files
  *   - Each file is for a different franchisee
  *   - Same structure as Format 1 per file
  *
- * Amounts in column O are already before VAT, so the supplier should have
- * vatIncluded = false. The parser returns col O as netAmount and calculates
+ * Amounts are already before VAT, so the supplier should have vatIncluded =
+ * false. The parser returns that column as netAmount and calculates
  * grossAmount = netAmount * (1 + vatRate).
  */
 
@@ -46,17 +45,55 @@ interface FilteredRow {
   amount: number;
 }
 
-// Column indices
-const STATUS_COL = 0; // Column A
-const DOC_TYPE_COL = 1; // Column B
-const DATE_COL = 3; // Column D
-const BUSINESS_ID_COL = 4; // Column E
-const ADDRESS_COL = 5; // Column F
-const AMOUNT_BEFORE_VAT_COL = 14; // Column O
+// The status column ships with a blank header — it is always the first one.
+const STATUS_COL = 0;
 
 // Filter values
 const VALID_STATUS = "מסמך פתוח";
 const VALID_DOC_TYPES = new Set(["חשבונית מס", "חשבונית זיכוי"]);
+
+interface DageiColumns {
+  docType: number;
+  date: number;
+  businessId: number;
+  address: number;
+  amountBeforeVat: number;
+}
+
+/** Quote-insensitive header key: `סכום לפני מע"מ` → `סכום לפני מעמ`. */
+function normalizeHeader(value: unknown): string {
+  return String(value ?? "")
+    .replace(/["'`׳״]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Locate the columns we need by header text. Throws (rather than guessing an
+ * index) so a future reshuffle surfaces as a parse error instead of silently
+ * summing the wrong column.
+ */
+function resolveColumns(headerRow: unknown[]): DageiColumns {
+  const headers = headerRow.map(normalizeHeader);
+  const find = (predicate: (h: string) => boolean, label: string): number => {
+    const index = headers.findIndex(predicate);
+    if (index === -1) {
+      throw new Error(
+        `לא נמצאה עמודת "${label}" בקובץ דגי הקיבוצים — ייתכן שהפורמט של הייצוא השתנה`
+      );
+    }
+    return index;
+  };
+
+  return {
+    docType: find((h) => h === "סוג מסמך", 'סוג מסמך'),
+    date: find((h) => h === "תאריך מסמך", "תאריך מסמך"),
+    businessId: find((h) => h.startsWith("מספר עוסק"), "מספר עוסק / ח.פ"),
+    address: find((h) => h === "כתובת", "כתובת"),
+    // Must not match "מעמ" (the VAT column) or "ללא מעמ".
+    amountBeforeVat: find((h) => h === "סכום לפני מעמ", 'סכום לפני מע"מ'),
+  };
+}
 
 /**
  * Parse Excel serial date number to Date object
@@ -102,20 +139,22 @@ function parseSingleXlsx(
 
   if (!rawData || rawData.length < 2) return franchiseeAmounts;
 
+  const cols = resolveColumns(rawData[0]);
+
   // Skip header row (row 0), process data rows
   for (let i = 1; i < rawData.length; i++) {
     const row = rawData[i];
     if (!row) continue;
 
     const status = String(row[STATUS_COL] || "").trim();
-    const docType = String(row[DOC_TYPE_COL] || "").trim();
+    const docType = String(row[cols.docType] || "").trim();
 
     // Filter: only open documents that are invoices or credit notes.
     // Track everything that gets dropped here so we can surface it in the
     // pre-save review modal — see FILTERED_ROWS_BY_DOCTYPE anomaly below.
     if (status !== VALID_STATUS || !VALID_DOC_TYPES.has(docType)) {
       if (filteredRowsOut) {
-        const amountRaw = row[AMOUNT_BEFORE_VAT_COL];
+        const amountRaw = row[cols.amountBeforeVat];
         const amount =
           typeof amountRaw === "number"
             ? amountRaw
@@ -134,12 +173,12 @@ function parseSingleXlsx(
 
     // Get business ID as franchisee identifier
     // Normalize to handle format variations (e.g., "123456789-0" -> "123456789")
-    const rawBusinessId = String(row[BUSINESS_ID_COL] || "").trim();
+    const rawBusinessId = String(row[cols.businessId] || "").trim();
     const businessId = normalizeBusinessId(rawBusinessId);
     if (!businessId) continue;
 
-    // Parse amount before VAT (column O)
-    const amountRaw = row[AMOUNT_BEFORE_VAT_COL];
+    // Parse amount before VAT
+    const amountRaw = row[cols.amountBeforeVat];
     const amount =
       typeof amountRaw === "number"
         ? amountRaw
@@ -147,14 +186,14 @@ function parseSingleXlsx(
     if (isNaN(amount)) continue;
 
     // Parse date (Excel serial number)
-    const dateRaw = row[DATE_COL];
+    const dateRaw = row[cols.date];
     let date: Date | null = null;
     if (typeof dateRaw === "number") {
       date = parseExcelDate(dateRaw);
     }
 
     // Get address as franchisee display name
-    const address = String(row[ADDRESS_COL] || "").trim();
+    const address = String(row[cols.address] || "").trim();
 
     const existing = franchiseeAmounts.get(businessId);
     if (existing) {
@@ -250,13 +289,16 @@ export function parseDageiHakibbutzimFile(
             }
           }
           processedFiles++;
-        } catch {
+        } catch (err) {
+          // Includes the "column not found" message — a layout change must be
+          // readable, not hidden behind a generic parse failure.
+          const reason = err instanceof Error ? err.message : "שגיאה לא ידועה";
           warnings.push(
             createFileProcessingError("PARSE_ERROR", {
-              details: `Could not parse file: ${entry.name}`,
+              details: `${entry.name}: ${reason}`,
             })
           );
-          legacyWarnings.push(`Could not parse file: ${entry.name}`);
+          legacyWarnings.push(`${entry.name}: ${reason}`);
         }
       }
 
