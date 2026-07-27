@@ -71,10 +71,17 @@ export type SupplierPeriod = {
 };
 
 // Session with details
+// NOTE: mirrored in src/types/reconciliation-v2.ts — keep the two in sync.
 export type ReconciliationSessionWithDetails = ReconciliationSession & {
   supplierName: string;
   supplierCode: string;
   supplierFileName: string;
+  /**
+   * Set on creation when the supplier has no brand mapping and no history to
+   * infer one from, so zero-amount row generation was skipped and branches
+   * with no activity are absent. Not persisted — it describes the build.
+   */
+  brandMappingMissing?: boolean;
 };
 
 // Comparison with franchisee info
@@ -542,7 +549,13 @@ export async function createReconciliationSession(
   ];
   if (brandIdSet.size === 0) {
     // No brand associations configured — skip compatible franchisee generation
-    // to avoid adding ALL franchisees from all brands as zero-amount rows
+    // to avoid adding ALL franchisees from all brands as zero-amount rows.
+    // Surfaced to the user via brandMappingMissing on the returned session:
+    // the session then holds only file-matched rows, and branches with no
+    // activity are absent rather than shown as 0/0.
+    console.warn(
+      `[createReconciliationSession] ${supplierData[0].code}: no brand mapping and no history to infer one — zero-amount rows skipped`
+    );
   } else {
     compatConditions.push(inArray(franchisee.brandId, [...brandIdSet]));
 
@@ -702,6 +715,7 @@ export async function createReconciliationSession(
     supplierName: supplierData[0].name,
     supplierCode: supplierData[0].code,
     supplierFileName: displayFileName,
+    brandMappingMissing: brandIdSet.size === 0,
   };
 }
 
@@ -1747,7 +1761,10 @@ export async function getAllSessions(filters?: {
     .orderBy(desc(reconciliationSession.createdAt))
     .$dynamic();
 
-  const conditions = [];
+  // Archived runs keep the status they had when they were superseded, so an
+  // archived "in_progress" run shows up next to its approved replacement and
+  // reads as unfinished work. The list is "סשנים פעילים" — leave them out.
+  const conditions = [isNull(reconciliationSession.archivedAt)];
   if (filters?.status) {
     conditions.push(eq(reconciliationSession.status, filters.status as "in_progress" | "completed" | "file_approved" | "file_rejected"));
   }
@@ -1755,9 +1772,7 @@ export async function getAllSessions(filters?: {
     conditions.push(eq(reconciliationSession.supplierId, filters.supplierId));
   }
 
-  if (conditions.length > 0) {
-    query = query.where(and(...conditions));
-  }
+  query = query.where(and(...conditions));
 
   if (filters?.limit) {
     query = query.limit(filters.limit);

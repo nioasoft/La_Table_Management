@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -60,11 +60,35 @@ function formatAmount(amount: string | number | null): string {
 
 export default function SessionsListPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [periodFilter, setPeriodFilter] = useState<string>("all");
 
   const { data: sessions, isLoading, error } = useReconciliationSessions(
     statusFilter !== "all" ? { status: statusFilter } : undefined
   );
   const deleteSession = useDeleteReconciliationSession();
+
+  // Periods come from the sessions themselves rather than a month/quarter
+  // picker, so the list only ever offers periods that actually exist.
+  const periods = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const s of sessions ?? []) {
+      const key = `${s.periodStartDate}_${s.periodEndDate}`;
+      if (!seen.has(key)) {
+        seen.set(key, formatPeriod(s.periodStartDate, s.periodEndDate));
+      }
+    }
+    return [...seen.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [sessions]);
+
+  const visibleSessions = useMemo(
+    () =>
+      (sessions ?? []).filter(
+        (s) =>
+          periodFilter === "all" ||
+          `${s.periodStartDate}_${s.periodEndDate}` === periodFilter
+      ),
+    [sessions, periodFilter]
+  );
 
   const handleDeleteSession = async (sessionId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -115,6 +139,20 @@ export default function SessionsListPage() {
             <SelectItem value="file_rejected">קובץ נדחה</SelectItem>
           </SelectContent>
         </Select>
+
+        <Select value={periodFilter} onValueChange={setPeriodFilter} dir="rtl">
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="סנן לפי תקופה" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">כל התקופות</SelectItem>
+            {periods.map(([key, label]) => (
+              <SelectItem key={key} value={key}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Sessions Table */}
@@ -122,7 +160,7 @@ export default function SessionsListPage() {
         <CardHeader>
           <CardTitle>סשני התאמה</CardTitle>
           <CardDescription>
-            {sessions?.length ?? 0} סשנים נמצאו
+            {visibleSessions.length} סשנים נמצאו
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -134,7 +172,7 @@ export default function SessionsListPage() {
             <div className="text-center py-12 text-destructive">
               שגיאה בטעינת סשנים
             </div>
-          ) : sessions?.length === 0 ? (
+          ) : visibleSessions.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               לא נמצאו סשנים
             </div>
@@ -153,7 +191,7 @@ export default function SessionsListPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessions?.map((session) => {
+                {visibleSessions.map((session) => {
                   const progress = session.totalFranchisees
                     ? Math.round(((session.approvedCount ?? 0) / session.totalFranchisees) * 100)
                     : 0;
