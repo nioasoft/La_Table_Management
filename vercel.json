@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/franchisee-alias-collision",
       "schedule": "0 5 * * 1"
+    },
+    {
+      "path": "/api/cron/build-reconciliation-sessions",
+      "schedule": "30 4 * * *"
     }
   ]
 }

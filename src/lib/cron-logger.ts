@@ -12,7 +12,8 @@ export type CronJobName =
   | "monthly-upload-reminder"
   | "email-pipeline-health"
   | "inbound-review-summary"
-  | "franchisee-alias-collision";
+  | "franchisee-alias-collision"
+  | "build-reconciliation-sessions";
 
 export type CronTriggerType = "cron" | "manual";
 
