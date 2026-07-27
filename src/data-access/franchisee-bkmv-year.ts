@@ -17,6 +17,8 @@ import {
   aggregateSupplierMatchesFromBreakdown,
   getAmountForPeriod,
   mergeMonthlyBreakdown,
+  changedMonths,
+  groupIntoConsecutiveRuns,
 } from "@/lib/bkmvdata-parser";
 
 type SupplierMatchEntry = {
@@ -32,6 +34,8 @@ interface UpsertResult {
   merged: boolean;
   reason?: "year_complete";
   record?: FranchiseeBkmvYear;
+  /** Month keys ("YYYY-MM") whose data actually differs from what was stored. */
+  changedMonths: string[];
 }
 
 /**
@@ -76,11 +80,24 @@ export async function upsertBkmvYearData(
     )
     .limit(1);
 
+  // Which months this upload actually changes — computed against the stored
+  // data BEFORE merging. Callers use it to avoid reacting to the months a
+  // cumulative מבנה אחיד file merely repeats.
+  const existingBreakdown =
+    (existing[0]?.monthlyBreakdown as MonthlyBreakdown) || undefined;
+  const monthsChanged = changedMonths(existingBreakdown, monthlyBreakdown);
+  if (opts?.forceOverwrite && existingBreakdown) {
+    // Full replacement also drops months the new file doesn't cover — a change too.
+    for (const month of Object.keys(existingBreakdown)) {
+      if (!(month in monthlyBreakdown)) monthsChanged.push(month);
+    }
+    monthsChanged.sort();
+  }
+
   // If year exists: merge new months into existing data (last-write-wins)
   // forceOverwrite = true means full replacement (no merge)
   if (existing.length > 0 && !opts?.forceOverwrite) {
-    const existingBreakdown = existing[0].monthlyBreakdown as MonthlyBreakdown || {};
-    monthlyBreakdown = mergeMonthlyBreakdown(existingBreakdown, monthlyBreakdown);
+    monthlyBreakdown = mergeMonthlyBreakdown(existingBreakdown ?? {}, monthlyBreakdown);
     // Re-aggregate supplier matches from merged breakdown
     supplierMatches = aggregateSupplierMatchesFromBreakdown(monthlyBreakdown);
   }
@@ -119,7 +136,12 @@ export async function upsertBkmvYearData(
       .where(eq(franchiseeBkmvYear.id, existing[0].id))
       .returning();
 
-    return { skipped: false, merged: existing.length > 0, record: updated };
+    return {
+      skipped: false,
+      merged: existing.length > 0,
+      record: updated,
+      changedMonths: monthsChanged,
+    };
   } else {
     // Insert new record
     const [inserted] = await database
@@ -142,7 +164,12 @@ export async function upsertBkmvYearData(
       })
       .returning();
 
-    return { skipped: false, merged: false, record: inserted };
+    return {
+      skipped: false,
+      merged: false,
+      record: inserted,
+      changedMonths: monthsChanged,
+    };
   }
 }
 
@@ -165,6 +192,7 @@ export async function upsertFromFullBreakdown(
   const updated: number[] = [];
   const skipped: number[] = [];
   const merged: number[] = [];
+  const monthsChanged: string[] = [];
 
   for (const [year, yearBreakdown] of byYear) {
     const yearSupplierMatches =
@@ -187,24 +215,30 @@ export async function upsertFromFullBreakdown(
         merged.push(year);
       }
     }
+    monthsChanged.push(...result.changedMonths);
   }
 
   // A franchisee's BKMV data just changed — any active reconciliation session
-  // that includes this franchisee and overlaps the uploaded months now has a
+  // that includes this franchisee and overlaps the CHANGED months now has a
   // stale franchisee-side amount. Flag those sessions so the UI prompts a
-  // rebuild. Best-effort; dynamic import avoids a circular dependency with
-  // reconciliation-v2 (which imports from this module).
+  // rebuild. מבנה אחיד files are cumulative from January, so flagging by the
+  // file's whole span would re-flag every closed period of the year on each
+  // quarterly upload — hence changed months only, grouped into runs so an
+  // upload touching Jan and Jul doesn't drag Feb–Jun along. Best-effort;
+  // dynamic import avoids a circular dependency with reconciliation-v2
+  // (which imports from this module).
   try {
-    const months = Object.keys(monthlyBreakdown)
-      .filter((k) => /^\d{4}-\d{2}$/.test(k))
-      .sort();
+    const months = [
+      ...new Set(monthsChanged.filter((k) => /^\d{4}-\d{2}$/.test(k))),
+    ].sort();
     if (months.length > 0) {
-      const periodStart = `${months[0]}-01`;
-      const [ey, em] = months[months.length - 1].split("-").map(Number);
-      // new Date(year, month, 0).getDate() → last day of that 1-indexed month
-      const periodEnd = `${months[months.length - 1]}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`;
       const { markFranchiseeSessionsStale } = await import("@/data-access/reconciliation-v2");
-      await markFranchiseeSessionsStale(franchiseeId, periodStart, periodEnd);
+      for (const [first, last] of groupIntoConsecutiveRuns(months)) {
+        const [ey, em] = last.split("-").map(Number);
+        // new Date(year, month, 0).getDate() → last day of that 1-indexed month
+        const periodEnd = `${last}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`;
+        await markFranchiseeSessionsStale(franchiseeId, `${first}-01`, periodEnd);
+      }
     }
   } catch (staleErr) {
     console.error("Failed to flag reconciliation sessions stale after BKMV upsert:", staleErr);

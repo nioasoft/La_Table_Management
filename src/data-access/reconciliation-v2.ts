@@ -950,6 +950,92 @@ export async function updateComparisonStatus(
 }
 
 /**
+ * Franchisee-side (net) amounts as they stand RIGHT NOW for a session's
+ * supplier + period, keyed by franchiseeId. This is the single source of truth
+ * for "what should the franchisee column say" — used both to refresh a live
+ * comparison and to check whether a session's stored amounts are still current.
+ *
+ * Returns null when the supplier no longer exists. A franchisee missing from
+ * the map has no current data (callers treat it as 0).
+ */
+export async function computeFranchiseeAmountsForSession(sess: {
+  supplierId: string;
+  supplierFileId: string | null;
+  periodStartDate: string;
+  periodEndDate: string;
+}): Promise<Map<string, { amount: number; fileId: string | null }> | null> {
+  const supplierData = await database
+    .select({ vatExempt: supplier.vatExempt })
+    .from(supplier)
+    .where(eq(supplier.id, sess.supplierId))
+    .limit(1);
+  if (supplierData.length === 0) return null;
+  const isVatExempt = supplierData[0].vatExempt;
+
+  const vatRate = await getVatRateForDate(new Date(sess.periodStartDate));
+
+  // Pull the franchisees' BKMV totals for this supplier in this period.
+  const { getAllFranchiseeAmountsFromYearTable } = await import(
+    "@/data-access/franchisee-bkmv-year"
+  );
+  const yearAmounts = await getAllFranchiseeAmountsFromYearTable(
+    sess.supplierId,
+    sess.periodStartDate,
+    sess.periodEndDate
+  );
+
+  // For VAT-exempt suppliers (e.g. ale-ale), BKMV still includes VAT on
+  // vat_applicable items but the supplier reports net — subtract the partial
+  // VAT contribution that we can derive from the supplier file's match rows.
+  const partialVatByFranchisee = new Map<string, number>();
+  if (isVatExempt && sess.supplierFileId) {
+    const fileRes = await database
+      .select({ processingResult: supplierFileUpload.processingResult })
+      .from(supplierFileUpload)
+      .where(eq(supplierFileUpload.id, sess.supplierFileId))
+      .limit(1);
+    const result = fileRes[0]?.processingResult as SupplierFileProcessingResult | null;
+    for (const match of result?.franchiseeMatches ?? []) {
+      if (
+        !match.matchedFranchiseeId ||
+        match.matchType === "blacklisted" ||
+        match.matchType === "fuzzy" ||
+        match.matchType === "none"
+      ) {
+        continue;
+      }
+      const pv = match.grossAmount - match.netAmount;
+      if (pv > 0) {
+        partialVatByFranchisee.set(
+          match.matchedFranchiseeId,
+          (partialVatByFranchisee.get(match.matchedFranchiseeId) ?? 0) + pv
+        );
+      }
+    }
+  }
+
+  const franchiseeIds = new Set([
+    ...yearAmounts.keys(),
+    ...partialVatByFranchisee.keys(),
+  ]);
+
+  const result = new Map<string, { amount: number; fileId: string | null }>();
+  for (const franchiseeId of franchiseeIds) {
+    const bkmv = yearAmounts.get(franchiseeId) ?? { amount: 0, fileId: null };
+    // BKMV stores gross. Supplier reports net. Convert per supplier's VAT mode.
+    const bkmvNet = isVatExempt
+      ? roundAmount(bkmv.amount)
+      : roundAmount(calculateNetFromGross(bkmv.amount, vatRate));
+    result.set(franchiseeId, {
+      amount: bkmvNet - (partialVatByFranchisee.get(franchiseeId) ?? 0),
+      fileId: bkmv.fileId,
+    });
+  }
+
+  return result;
+}
+
+/**
  * Refresh a single comparison's franchisee-side amount by re-aggregating the
  * latest BKMV data for that franchisee + period. Supplier-side data is left
  * untouched. Manual statuses are preserved (manually_approved,
@@ -977,62 +1063,14 @@ export async function refreshFranchiseeAmount(
   // Refusing to mutate archived sessions keeps history truthful.
   if (sess.archivedAt) return null;
 
-  const supplierData = await database
-    .select({ vatExempt: supplier.vatExempt })
-    .from(supplier)
-    .where(eq(supplier.id, sess.supplierId))
-    .limit(1);
-  if (supplierData.length === 0) return null;
-  const isVatExempt = supplierData[0].vatExempt;
-
-  const vatRate = await getVatRateForDate(new Date(sess.periodStartDate));
-
-  // Pull the franchisee's BKMV total for this supplier in this period.
-  const { getAllFranchiseeAmountsFromYearTable } = await import(
-    "@/data-access/franchisee-bkmv-year"
-  );
-  const yearAmounts = await getAllFranchiseeAmountsFromYearTable(
-    sess.supplierId,
-    sess.periodStartDate,
-    sess.periodEndDate
-  );
-  const bkmvData = yearAmounts.get(comp.franchiseeId) ?? {
+  const currentAmounts = await computeFranchiseeAmountsForSession(sess);
+  if (!currentAmounts) return null;
+  const current = currentAmounts.get(comp.franchiseeId) ?? {
     amount: 0,
     fileId: comp.franchiseeFileId,
   };
 
-  // BKMV stores gross. Supplier reports net. Convert per supplier's VAT mode.
-  const bkmvNet = isVatExempt
-    ? roundAmount(bkmvData.amount)
-    : roundAmount(calculateNetFromGross(bkmvData.amount, vatRate));
-
-  // For VAT-exempt suppliers (e.g. ale-ale), BKMV still includes VAT on
-  // vat_applicable items but the supplier reports net — subtract the partial
-  // VAT contribution that we can derive from the supplier file's match rows.
-  let partialVat = 0;
-  if (isVatExempt && sess.supplierFileId) {
-    const fileRes = await database
-      .select({ processingResult: supplierFileUpload.processingResult })
-      .from(supplierFileUpload)
-      .where(eq(supplierFileUpload.id, sess.supplierFileId))
-      .limit(1);
-    const result = fileRes[0]?.processingResult as SupplierFileProcessingResult | null;
-    if (result?.franchiseeMatches) {
-      for (const match of result.franchiseeMatches) {
-        if (
-          match.matchedFranchiseeId === comp.franchiseeId &&
-          match.matchType !== "blacklisted" &&
-          match.matchType !== "fuzzy" &&
-          match.matchType !== "none"
-        ) {
-          const pv = match.grossAmount - match.netAmount;
-          if (pv > 0) partialVat += pv;
-        }
-      }
-    }
-  }
-
-  const newFranchiseeAmount = bkmvNet - partialVat;
+  const newFranchiseeAmount = current.amount;
   const supplierAmount = Number(comp.supplierAmount);
   const difference = supplierAmount - newFranchiseeAmount;
   const absoluteDifference = Math.abs(difference);
@@ -1052,7 +1090,7 @@ export async function refreshFranchiseeAmount(
       franchiseeAmount: newFranchiseeAmount.toString(),
       difference: difference.toString(),
       absoluteDifference: absoluteDifference.toString(),
-      franchiseeFileId: bkmvData.fileId ?? comp.franchiseeFileId,
+      franchiseeFileId: current.fileId ?? comp.franchiseeFileId,
       status: newStatus,
     })
     .where(eq(reconciliationComparison.id, comparisonId))

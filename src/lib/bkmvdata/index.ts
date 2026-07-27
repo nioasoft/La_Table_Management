@@ -74,6 +74,8 @@ export {
   buildMonthlyBreakdown,
   getAmountForPeriod,
   mergeMonthlyBreakdown,
+  changedMonths,
+  groupIntoConsecutiveRuns,
   groupMonthlyBreakdownByYear,
   aggregateSupplierMatchesFromBreakdown,
 } from './monthly-breakdown';
