@@ -280,6 +280,31 @@ function parseA100Record(line: string): { companyId: string; version: string } |
 }
 
 /**
+ * Opening-balance batch (יתרות פתיחה) — a whole journal some bookkeepers post
+ * on Jan 1 as document #1 with no real description: balance-sheet accounts
+ * (הון מניות, פחת נצבר, עתודה לפיצויים) plus every supplier's balance carried
+ * over from last year, credit side with a minus sign.
+ *
+ * These are not transactions of the period. Counting them flips January's
+ * supplier totals negative, which then doubles the gap in the reconciliation
+ * report — סידיוס and מיאמוטו, where 100% of the batch's credits were negative
+ * (85/85 and 79/79) across both 2025 and 2026.
+ *
+ * Legitimate Jan-1 document-1 entries do exist (rent, insurance, management
+ * fees) and must be kept — they always carry a real description and were never
+ * negative in any of the 190 stored files, so the empty description is what
+ * separates the two.
+ */
+export function isOpeningBalanceEntry(tx: BkmvTransaction): boolean {
+  return (
+    Number(tx.documentNumber) === 1 &&
+    tx.documentDate.getMonth() === 0 &&
+    tx.documentDate.getDate() === 1 &&
+    tx.description.trim().length <= 1
+  );
+}
+
+/**
  * Parse BKMVDATA text content into structured result.
  * This is the core parse function called by the router after decoding and classification.
  *
@@ -300,6 +325,7 @@ export function parseContent(textContent: string, _softwareType: BkmvSoftwareTyp
   };
 
   const lines = textContent.split(/\r?\n/);
+  let openingBalanceSkipped = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -321,7 +347,11 @@ export function parseContent(textContent: string, _softwareType: BkmvSoftwareTyp
       case 'B10': {
         const transaction = parseB100Record(line, i + 1);
         if (transaction) {
-          result.transactions.push(transaction);
+          if (isOpeningBalanceEntry(transaction)) {
+            openingBalanceSkipped++;
+          } else {
+            result.transactions.push(transaction);
+          }
         }
         break;
       }
@@ -404,6 +434,12 @@ export function parseContent(textContent: string, _softwareType: BkmvSoftwareTyp
     if (!tx.resolvedAccountKey) {
       tx.resolvedAccountKey = accountNameToKey.get(counterparty) || '';
     }
+  }
+
+  if (openingBalanceSkipped > 0) {
+    result.warnings.push(
+      `דולגו ${openingBalanceSkipped} תנועות של מחזור יתרות פתיחה (1 בינואר, מסמך 1) — יתרות פתיחה אינן תנועות של התקופה`
+    );
   }
 
   return result;
