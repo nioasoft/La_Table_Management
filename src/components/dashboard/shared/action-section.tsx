@@ -21,6 +21,8 @@ interface ActionSectionProps {
   linkHref?: string;
   linkText?: string;
   emptyMessage: string;
+  /** "neutral" = empty because there's no data yet, not because all is well */
+  emptyTone?: "success" | "neutral";
   maxPreviewItems?: number;
   priority?: "high" | "medium" | "low";
   isLoading?: boolean;
@@ -48,6 +50,7 @@ export function ActionSection({
   linkHref,
   linkText,
   emptyMessage,
+  emptyTone,
   maxPreviewItems = 5,
   priority = "medium",
   isLoading,
@@ -65,7 +68,7 @@ export function ActionSection({
           <span className="text-muted-foreground/60">{icon}</span>
           <span className="text-xs text-muted-foreground">{title}</span>
         </div>
-        <SectionEmptyState message={emptyMessage} />
+        <SectionEmptyState message={emptyMessage} tone={emptyTone} />
       </div>
     );
   }

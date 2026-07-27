@@ -84,6 +84,8 @@ export function ReconciliationIssues() {
   const discrepancyCount =
     periodStatus?.crossReferenceStatus?.discrepancies || 0;
   const totalIssues = discrepancyCount + pendingCount;
+  // No sessions at all for this period != everything reconciled cleanly
+  const hasNoSessions = (periodStatus?.crossReferenceStatus?.total ?? 0) === 0;
 
   const allItems: DiscrepancyItem[] = [];
 
@@ -119,7 +121,12 @@ export function ReconciliationIssues() {
       count={totalIssues}
       linkHref="/admin/reconciliation-v2"
       linkText="צפה בהכל"
-      emptyMessage="אין בעיות התאמה - הכל תקין!"
+      emptyMessage={
+        hasNoSessions
+          ? "טרם בוצעה הצלבה לתקופה זו"
+          : "אין בעיות התאמה - הכל תקין!"
+      }
+      emptyTone={hasNoSessions ? "neutral" : "success"}
       maxPreviewItems={MAX_PREVIEW}
       priority="high"
       isLoading={isLoading}

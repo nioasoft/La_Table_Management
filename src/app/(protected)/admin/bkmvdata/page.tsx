@@ -200,6 +200,17 @@ export default function BkmvDataPage() {
   const [franchiseeError, setFranchiseeError] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<{ minDate: Date | null; maxDate: Date | null }>({ minDate: null, maxDate: null });
 
+  // A BKMV exported for the wrong year looks fine everywhere until the dashboard
+  // still reports the franchisee as missing. Real late uploads top out at ~130
+  // days behind; 180 flags only genuinely wrong exports.
+  // ponytail: compared against today, not against a requested period — the admin
+  // page has no "requested period" to compare to.
+  const staleDaysThreshold = 180;
+  const fileStaleDays = dateRange.maxDate
+    ? Math.floor((Date.now() - dateRange.maxDate.getTime()) / 86_400_000)
+    : 0;
+  const isStaleFile = fileStaleDays > staleDaysThreshold;
+
   // Date filter state
   const [filterStartDate, setFilterStartDate] = useState<string>("");
   const [filterEndDate, setFilterEndDate] = useState<string>("");
@@ -1458,6 +1469,22 @@ export default function BkmvDataPage() {
                     <p className="font-medium">{parseResult.totalRecords.toLocaleString()}</p>
                   </div>
                 </div>
+
+                {isStaleFile && (
+                  <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 p-3">
+                    <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <div className="text-sm">
+                      <p className="font-medium text-amber-800 dark:text-amber-300">
+                        ייתכן שזה קובץ מתקופה שגויה
+                      </p>
+                      <p className="text-amber-700 dark:text-amber-400">
+                        הנתונים בקובץ מסתיימים ב-{formatDateHebrew(dateRange.maxDate)} — לפני
+                        כ-{fileStaleDays} ימים. בדקי מול הזכיין שהיצוא נעשה לתקופה הנכונה לפני
+                        שאת מעלה.
+                      </p>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

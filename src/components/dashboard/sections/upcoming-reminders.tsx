@@ -127,6 +127,8 @@ export function UpcomingReminders() {
 
   const reminders = response?.reminders || [];
   const totalCount = reminders.length;
+  // Nothing in the 30-day window is not the same as no reminders at all
+  const hasLaterReminders = (response?.stats?.pending ?? 0) > 0;
 
   const previewItems = reminders.slice(0, MAX_PREVIEW);
   const expandedItems = reminders.slice(MAX_PREVIEW);
@@ -138,7 +140,12 @@ export function UpcomingReminders() {
       count={totalCount}
       linkHref="/admin/franchisee-reminders"
       linkText="צפה בהכל"
-      emptyMessage="אין תזכורות קרובות!"
+      emptyMessage={
+        hasLaterReminders
+          ? "אין תזכורות ב-30 הימים הקרובים"
+          : "אין תזכורות קרובות!"
+      }
+      emptyTone={hasLaterReminders ? "neutral" : "success"}
       maxPreviewItems={MAX_PREVIEW}
       priority="low"
       isLoading={isLoading}
