@@ -1,7 +1,7 @@
 "use client";
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { withBack } from "@/lib/back-link";
@@ -92,6 +92,22 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       setSessionId(sessionIdFromUrl);
     }
   }, [sessionIdFromUrl, sessionId]);
+
+  // A pinned sessionId goes stale whenever the session is replaced — "התחל סשן
+  // חדש" deletes it, and an open tab (or a bookmarked link) then 404s forever.
+  // Drop it and fall back to the period lookup below instead of showing an error.
+  const sessionMissing =
+    (sessionQuery.error as { status?: number } | null)?.status === 404;
+  useEffect(() => {
+    if (!sessionMissing) return;
+    setSessionId(null);
+    if (sessionIdFromUrl) {
+      const params = new URLSearchParams(window.location.search);
+      params.delete("sessionId");
+      const query = params.toString();
+      router.replace(`${window.location.pathname}${query ? `?${query}` : ""}`);
+    }
+  }, [sessionMissing, sessionIdFromUrl, router]);
 
   // On mount (or when no explicit sessionId is in the URL), look up the active session for this period.
   useMemo(() => {

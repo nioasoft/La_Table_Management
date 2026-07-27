@@ -76,7 +76,15 @@ async function fetchSessionWithComparisons(sessionId: string): Promise<{
   const res = await fetchWithTimeout(
     `/api/reconciliation-v2/sessions/${sessionId}?include=comparisons`
   );
-  if (!res.ok) throw new Error("Failed to fetch session with comparisons");
+  if (!res.ok) {
+    // Carry the status so callers can tell "this session is gone" (deleted or
+    // replaced by התחל סשן חדש / בנה מחדש) from a transient failure.
+    const error = new Error("Failed to fetch session with comparisons") as Error & {
+      status?: number;
+    };
+    error.status = res.status;
+    throw error;
+  }
   return res.json();
 }
 
@@ -192,6 +200,10 @@ export function useReconciliationSessionWithComparisons(
     queryKey: reconciliationV2Keys.sessionWithComparisons(sessionId || ""),
     queryFn: () => fetchSessionWithComparisons(sessionId!),
     enabled: !!sessionId && options?.enabled !== false,
+    // A missing session never becomes present — retrying just floods the
+    // console with 404s while the page waits.
+    retry: (failureCount, error) =>
+      (error as { status?: number }).status !== 404 && failureCount < 2,
   });
 }
 
