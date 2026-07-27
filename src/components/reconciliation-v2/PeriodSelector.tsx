@@ -17,14 +17,19 @@ import { he } from "date-fns/locale";
 interface PeriodSelectorProps {
   supplierId: string | null;
   value: string | null;
-  onValueChange: (value: string, periodData: {
-    periodStartDate: string;
-    periodEndDate: string;
-    supplierFileId: string;
-    supplierFileIds: string[];
-    hasExistingSession: boolean;
-    existingSessionId: string | null;
-  }) => void;
+  onValueChange: (
+    value: string,
+    periodData: {
+      periodStartDate: string;
+      periodEndDate: string;
+      supplierFileId: string;
+      supplierFileIds: string[];
+      hasExistingSession: boolean;
+      existingSessionId: string | null;
+    },
+    /** True when the component picked this period itself on load, not the user. */
+    isAutoSelected?: boolean
+  ) => void;
   disabled?: boolean;
 }
 
@@ -47,18 +52,24 @@ export function PeriodSelector({
     enabled: !!supplierId,
   });
 
-  // Auto-select the latest period when periods load
+  // Auto-select the latest period when periods load. Flagged as automatic so
+  // the page doesn't navigate away before the user can open the dropdown —
+  // that made every earlier period unreachable (מיטלנד אפריל/מאי, 2026-07-27).
   useEffect(() => {
     if (periods?.length && !value) {
       const latest = periods[0];
-      onValueChange(latest.periodKey, {
-        periodStartDate: latest.periodStartDate,
-        periodEndDate: latest.periodEndDate,
-        supplierFileId: latest.supplierFileId,
-        supplierFileIds: latest.supplierFileIds ?? [latest.supplierFileId],
-        hasExistingSession: latest.hasExistingSession,
-        existingSessionId: latest.existingSessionId,
-      });
+      onValueChange(
+        latest.periodKey,
+        {
+          periodStartDate: latest.periodStartDate,
+          periodEndDate: latest.periodEndDate,
+          supplierFileId: latest.supplierFileId,
+          supplierFileIds: latest.supplierFileIds ?? [latest.supplierFileId],
+          hasExistingSession: latest.hasExistingSession,
+          existingSessionId: latest.existingSessionId,
+        },
+        true
+      );
     }
   }, [periods, value]);
 
@@ -85,14 +96,18 @@ export function PeriodSelector({
       onValueChange={(periodKey) => {
         const period = periods?.find((p) => p.periodKey === periodKey);
         if (period) {
-          onValueChange(periodKey, {
-            periodStartDate: period.periodStartDate,
-            periodEndDate: period.periodEndDate,
-            supplierFileId: period.supplierFileId,
-            supplierFileIds: period.supplierFileIds ?? [period.supplierFileId],
-            hasExistingSession: period.hasExistingSession,
-            existingSessionId: period.existingSessionId,
-          });
+          onValueChange(
+            periodKey,
+            {
+              periodStartDate: period.periodStartDate,
+              periodEndDate: period.periodEndDate,
+              supplierFileId: period.supplierFileId,
+              supplierFileIds: period.supplierFileIds ?? [period.supplierFileId],
+              hasExistingSession: period.hasExistingSession,
+              existingSessionId: period.existingSessionId,
+            },
+            false
+          );
         }
       }}
       disabled={disabled || isLoading}

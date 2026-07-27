@@ -30,6 +30,10 @@ export default function ReconciliationV2Page() {
   const createSession = useCreateReconciliationSession();
   const { data: reviewQueueCount } = useReviewQueueCount();
 
+  // True while the period shown is the one the selector picked on load, not a
+  // period the user chose.
+  const [periodAutoSelected, setPeriodAutoSelected] = useState(true);
+
   const handlePeriodChange = (
     key: string,
     data: {
@@ -39,25 +43,35 @@ export default function ReconciliationV2Page() {
       supplierFileIds: string[];
       hasExistingSession: boolean;
       existingSessionId: string | null;
-    }
+    },
+    isAutoSelected = false
   ) => {
     setPeriodKey(key);
     setPeriodData(data);
+    setPeriodAutoSelected(isAutoSelected);
   };
 
-  // Auto-navigate to an existing session as soon as it's known.
-  // The user already chose the supplier+period; making them click "המשך"
-  // is a wasted click. Restart-with-new-session lives inside the session view.
+  const openExistingSession = () => {
+    if (supplierId && periodKey) {
+      router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
+    }
+  };
+
+  // Auto-navigate to an existing session as soon as it's known — but only for a
+  // period the USER chose. Navigating on the selector's own initial pick made
+  // the page bounce into the newest period's session before the dropdown could
+  // be opened, so no earlier period was reachable.
   useEffect(() => {
     if (
       supplierId &&
       periodKey &&
+      !periodAutoSelected &&
       periodData?.hasExistingSession &&
       periodData.existingSessionId
     ) {
       router.push(`/admin/reconciliation-v2/${supplierId}/${periodKey}`);
     }
-  }, [supplierId, periodKey, periodData?.hasExistingSession, periodData?.existingSessionId, router]);
+  }, [supplierId, periodKey, periodAutoSelected, periodData?.hasExistingSession, periodData?.existingSessionId, router]);
 
   const handleStartReconciliation = async () => {
     if (!supplierId || !periodData) return;
@@ -144,6 +158,7 @@ export default function ReconciliationV2Page() {
                 setSupplierId(value);
                 setPeriodKey(null);
                 setPeriodData(null);
+                setPeriodAutoSelected(true);
                 // Force fresh fetch of periods (including session existence)
                 queryClient.invalidateQueries({
                   queryKey: reconciliationV2Keys.supplierPeriods(value),
@@ -164,12 +179,18 @@ export default function ReconciliationV2Page() {
 
           {/* Existing-session note: redirect happens automatically via useEffect.
               Show a brief loader so the page doesn't look frozen during the push. */}
-          {periodData?.hasExistingSession && (
-            <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
-              <span>סשן קיים נמצא — מעביר אותך אליו...</span>
-            </div>
-          )}
+          {periodData?.hasExistingSession &&
+            (periodAutoSelected ? (
+              <Button onClick={openExistingSession} className="w-full" size="lg">
+                <Scale className="h-4 w-4 me-2" />
+                פתח את הסשן הקיים
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                <span>סשן קיים נמצא — מעביר אותך אליו...</span>
+              </div>
+            ))}
 
           {/* Start button — only shown when no session exists yet */}
           {!periodData?.hasExistingSession && (
