@@ -12,6 +12,7 @@ import type {
   ReconciliationReviewQueueItem,
   ReconciliationHistoryItem,
   ReconciliationComparisonStatus,
+  SessionlessPeriod,
 } from "@/types/reconciliation-v2";
 
 // ============================================================================
@@ -35,6 +36,9 @@ export const reconciliationV2Keys = {
     [...reconciliationV2Keys.all, "history", filters] as const,
   sessionsList: (filters?: Record<string, unknown>) =>
     [...reconciliationV2Keys.sessions(), "list", filters] as const,
+  // Nested under sessions() on purpose — create/delete already invalidate that
+  // prefix, so the "no session" list refreshes with no extra wiring.
+  sessionsMissing: () => [...reconciliationV2Keys.sessions(), "missing"] as const,
 };
 
 // ============================================================================
@@ -124,6 +128,12 @@ async function fetchSessionsList(filters?: {
 
   const res = await fetchWithTimeout(`/api/reconciliation-v2/sessions?${params.toString()}`);
   if (!res.ok) throw new Error("Failed to fetch sessions");
+  return res.json();
+}
+
+async function fetchMissingSessions(): Promise<SessionlessPeriod[]> {
+  const res = await fetchWithTimeout("/api/reconciliation-v2/sessions/missing");
+  if (!res.ok) throw new Error("Failed to fetch periods without session");
   return res.json();
 }
 
@@ -236,6 +246,17 @@ export function useReconciliationSessions(filters?: {
   return useQuery({
     queryKey: reconciliationV2Keys.sessionsList(filters),
     queryFn: () => fetchSessionsList(filters),
+    staleTime: 30000, // 30 seconds
+  });
+}
+
+/**
+ * Fetch (supplier × period) pairs that have a file but no session
+ */
+export function useMissingSessions() {
+  return useQuery({
+    queryKey: reconciliationV2Keys.sessionsMissing(),
+    queryFn: fetchMissingSessions,
     staleTime: 30000, // 30 seconds
   });
 }

@@ -117,6 +117,23 @@ export interface SupplierPeriod {
   existingSessionStatus: string | null;
 }
 
+// A (supplier × period) pair that has a supplier file but no active session.
+// Mirrors SessionlessPeriod in src/data-access/reconciliation-v2.ts.
+export interface SessionlessPeriod {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string;
+  /** null = the file's period dates were never parsed — a session can't be built from it */
+  periodStartDate: string | null;
+  periodEndDate: string | null;
+  supplierFileId: string;
+  supplierFileIds: string[];
+  supplierFileName: string;
+  /** processingStatus of the latest file for the period */
+  fileStatus: string;
+  uploadedAt: Date;
+}
+
 // Extended supplier type with file info for selection
 export interface SupplierWithFileInfo {
   id: string;

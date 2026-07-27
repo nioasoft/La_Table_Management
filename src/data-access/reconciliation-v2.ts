@@ -70,6 +70,23 @@ export type SupplierPeriod = {
   existingSessionStatus: string | null;
 };
 
+// A (supplier × period) pair that has a supplier file but no active session.
+// NOTE: mirrored in src/types/reconciliation-v2.ts — keep the two in sync.
+export type SessionlessPeriod = {
+  supplierId: string;
+  supplierName: string;
+  supplierCode: string;
+  /** null = the file's period dates were never parsed — a session can't be built from it */
+  periodStartDate: string | null;
+  periodEndDate: string | null;
+  supplierFileId: string;
+  supplierFileIds: string[];
+  supplierFileName: string;
+  /** processingStatus of the latest file for the period */
+  fileStatus: string;
+  uploadedAt: Date;
+};
+
 // Session with details
 // NOTE: mirrored in src/types/reconciliation-v2.ts — keep the two in sync.
 export type ReconciliationSessionWithDetails = ReconciliationSession & {
@@ -146,6 +163,78 @@ export async function getSuppliersWithFiles(): Promise<SupplierWithFileInfo[]> {
   return results;
 }
 
+/** One file row as the period grouping needs it */
+export type PeriodGroupInput = {
+  id: string;
+  periodStartDate: string | null;
+  periodEndDate: string | null;
+  originalFileName: string;
+  createdAt: Date;
+};
+
+/** A period built from one or more supplier files, before session lookup */
+export type GroupedPeriod = {
+  periodKey: string;
+  periodStartDate: string;
+  periodEndDate: string;
+  supplierFileId: string;
+  supplierFileIds: string[];
+  supplierFileName: string;
+  uploadedAt: Date;
+};
+
+/**
+ * Group a supplier's files into periods, newest period first.
+ *
+ * Files MUST arrive ordered createdAt DESC — "latest per period" relies on it.
+ * Files with no parsed period dates are dropped: they can't key a session.
+ * Multi-file suppliers (fileMapping.maxUploadFiles > 1) keep every file of a
+ * period so the session can merge them; everyone else keeps only the latest.
+ */
+export function groupFilesIntoPeriods(
+  files: PeriodGroupInput[],
+  isMultiFile: boolean
+): GroupedPeriod[] {
+  const latestByPeriod = new Map<string, PeriodGroupInput>();
+  const allFileIdsByPeriod = new Map<string, string[]>();
+
+  for (const file of files) {
+    if (!file.periodStartDate || !file.periodEndDate) continue;
+    const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
+    // First file we encounter for this period is the latest (due to ORDER BY)
+    if (!latestByPeriod.has(periodKey)) {
+      latestByPeriod.set(periodKey, file);
+    }
+    if (isMultiFile) {
+      const existingIds = allFileIdsByPeriod.get(periodKey) || [];
+      existingIds.push(file.id);
+      allFileIdsByPeriod.set(periodKey, existingIds);
+    } else if (!allFileIdsByPeriod.has(periodKey)) {
+      allFileIdsByPeriod.set(periodKey, [file.id]);
+    }
+  }
+
+  return Array.from(latestByPeriod.values())
+    .sort((a, b) => b.periodStartDate!.localeCompare(a.periodStartDate!))
+    .map((file) => {
+      const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
+      const fileIds = allFileIdsByPeriod.get(periodKey) || [file.id];
+
+      return {
+        periodKey,
+        periodStartDate: file.periodStartDate!,
+        periodEndDate: file.periodEndDate!,
+        supplierFileId: file.id,
+        supplierFileIds: fileIds,
+        supplierFileName:
+          fileIds.length > 1
+            ? `${file.originalFileName} (+${fileIds.length - 1})`
+            : file.originalFileName,
+        uploadedAt: file.createdAt,
+      };
+    });
+}
+
 /**
  * Get available periods for a supplier (periods with uploaded files)
  * Returns only the LATEST file for each unique period
@@ -179,30 +268,7 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     )
     .orderBy(desc(supplierFileUpload.createdAt)); // Order by upload date to get latest first
 
-  // Group by period and collect ALL file IDs per period (for multi-file suppliers)
-  const latestByPeriod = new Map<string, typeof files[0]>();
-  const allFileIdsByPeriod = new Map<string, string[]>();
-  for (const file of files) {
-    if (!file.periodStartDate || !file.periodEndDate) continue;
-    const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
-    // First file we encounter for this period is the latest (due to ORDER BY)
-    if (!latestByPeriod.has(periodKey)) {
-      latestByPeriod.set(periodKey, file);
-    }
-    // Collect file IDs for this period based on supplier type
-    if (isMultiFile) {
-      // Multi-file suppliers: include ALL files for the period
-      const existingIds = allFileIdsByPeriod.get(periodKey) || [];
-      existingIds.push(file.id);
-      allFileIdsByPeriod.set(periodKey, existingIds);
-    } else {
-      // Single-file suppliers: only include the LATEST file per period
-      // (first encountered due to ORDER BY desc createdAt)
-      if (!allFileIdsByPeriod.has(periodKey)) {
-        allFileIdsByPeriod.set(periodKey, [file.id]);
-      }
-    }
-  }
+  const periods = groupFilesIntoPeriods(files, isMultiFile);
 
   // Check which periods already have an ACTIVE (non-archived) session.
   // After Match-All clones a session, the source is archived — we surface only the active run.
@@ -228,29 +294,136 @@ export async function getSupplierPeriods(supplierId: string): Promise<SupplierPe
     ])
   );
 
-  // Convert to array and sort by period start date (newest first)
-  return Array.from(latestByPeriod.values())
-    .sort((a, b) => b.periodStartDate!.localeCompare(a.periodStartDate!))
-    .map((file) => {
-      const periodKey = `${file.periodStartDate}_${file.periodEndDate}`;
-      const existingSession = sessionMap.get(periodKey);
-      const fileIds = allFileIdsByPeriod.get(periodKey) || [file.id];
+  return periods.map((period) => {
+    const existingSession = sessionMap.get(period.periodKey);
 
-      return {
-        periodKey,
-        periodStartDate: file.periodStartDate!,
-        periodEndDate: file.periodEndDate!,
+    return {
+      ...period,
+      hasExistingSession: !!existingSession,
+      existingSessionId: existingSession?.id || null,
+      existingSessionStatus: existingSession?.status || null,
+    };
+  });
+}
+
+/**
+ * Every (supplier × period) that has a supplier file but no active session —
+ * the inverse of the sessions list. Answers "why didn't I build a session".
+ *
+ * Three queries, no per-supplier fan-out. Files whose period dates never parsed
+ * are returned too, with null dates: they are the most common reason a session
+ * was never built, and no session can ever key off them.
+ */
+export async function getPeriodsWithoutSession(): Promise<SessionlessPeriod[]> {
+  const suppliers = await database
+    .select({
+      id: supplier.id,
+      name: supplier.name,
+      code: supplier.code,
+      fileMapping: supplier.fileMapping,
+    })
+    .from(supplier)
+    .where(and(eq(supplier.isActive, true), eq(supplier.isHidden, false)));
+
+  if (suppliers.length === 0) return [];
+
+  const supplierIds = suppliers.map((s) => s.id);
+
+  const files = await database
+    .select({
+      id: supplierFileUpload.id,
+      supplierId: supplierFileUpload.supplierId,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
+      originalFileName: supplierFileUpload.originalFileName,
+      processingStatus: supplierFileUpload.processingStatus,
+      createdAt: supplierFileUpload.createdAt,
+    })
+    .from(supplierFileUpload)
+    .where(
+      and(
+        inArray(supplierFileUpload.supplierId, supplierIds),
+        ne(supplierFileUpload.processingStatus, "rejected")
+      )
+    )
+    .orderBy(desc(supplierFileUpload.createdAt));
+
+  const sessions = await database
+    .select({
+      supplierId: reconciliationSession.supplierId,
+      periodStartDate: reconciliationSession.periodStartDate,
+      periodEndDate: reconciliationSession.periodEndDate,
+    })
+    .from(reconciliationSession)
+    .where(isNull(reconciliationSession.archivedAt));
+
+  const sessionKeys = new Set(
+    sessions.map((s) => `${s.supplierId}_${s.periodStartDate}_${s.periodEndDate}`)
+  );
+
+  const filesBySupplier = new Map<string, typeof files>();
+  for (const file of files) {
+    const bucket = filesBySupplier.get(file.supplierId);
+    if (bucket) bucket.push(file);
+    else filesBySupplier.set(file.supplierId, [file]);
+  }
+
+  const results: SessionlessPeriod[] = [];
+
+  for (const s of suppliers) {
+    const supplierFiles = filesBySupplier.get(s.id);
+    if (!supplierFiles?.length) continue;
+
+    const fileMapping = s.fileMapping as SupplierFileMapping | null;
+    const isMultiFile = (fileMapping?.maxUploadFiles ?? 1) > 1;
+    const statusByFileId = new Map(supplierFiles.map((f) => [f.id, f.processingStatus]));
+
+    for (const period of groupFilesIntoPeriods(supplierFiles, isMultiFile)) {
+      if (sessionKeys.has(`${s.id}_${period.periodStartDate}_${period.periodEndDate}`)) continue;
+      results.push({
+        supplierId: s.id,
+        supplierName: s.name,
+        supplierCode: s.code,
+        periodStartDate: period.periodStartDate,
+        periodEndDate: period.periodEndDate,
+        supplierFileId: period.supplierFileId,
+        supplierFileIds: period.supplierFileIds,
+        supplierFileName: period.supplierFileName,
+        fileStatus: statusByFileId.get(period.supplierFileId) ?? "unknown",
+        uploadedAt: period.uploadedAt,
+      });
+    }
+
+    // Undated files never reach groupFilesIntoPeriods — list them individually.
+    for (const file of supplierFiles) {
+      if (file.periodStartDate && file.periodEndDate) continue;
+      results.push({
+        supplierId: s.id,
+        supplierName: s.name,
+        supplierCode: s.code,
+        periodStartDate: null,
+        periodEndDate: null,
         supplierFileId: file.id,
-        supplierFileIds: fileIds,
-        supplierFileName: fileIds.length > 1
-          ? `${file.originalFileName} (+${fileIds.length - 1})`
-          : file.originalFileName,
+        supplierFileIds: [file.id],
+        supplierFileName: file.originalFileName,
+        fileStatus: file.processingStatus,
         uploadedAt: file.createdAt,
-        hasExistingSession: !!existingSession,
-        existingSessionId: existingSession?.id || null,
-        existingSessionStatus: existingSession?.status || null,
-      };
-    });
+      });
+    }
+  }
+
+  // Newest period first; undated rows sink to the bottom, newest upload first.
+  return results.sort((a, b) => {
+    if (a.periodStartDate && b.periodStartDate) {
+      return (
+        b.periodStartDate.localeCompare(a.periodStartDate) ||
+        a.supplierName.localeCompare(b.supplierName, "he")
+      );
+    }
+    if (a.periodStartDate) return -1;
+    if (b.periodStartDate) return 1;
+    return b.uploadedAt.getTime() - a.uploadedAt.getTime();
+  });
 }
 
 // ============================================================================
