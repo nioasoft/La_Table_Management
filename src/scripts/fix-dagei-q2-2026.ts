@@ -62,7 +62,7 @@ async function printCommissions(supplierId: string, label: string): Promise<void
     .from(franchisee);
   const nameById = new Map(franchisees.map((f) => [f.id, f.name]));
 
-  const net = rows.reduce((acc, r) => acc + parseFloat(r.netAmount), 0);
+  const net = rows.reduce((acc, r) => acc + parseFloat(r.netAmount ?? "0"), 0);
   const comm = rows.reduce((acc, r) => acc + parseFloat(r.commissionAmount), 0);
   console.log(
     `\n--- commissions ${label}: ${rows.length} rows, net=₪${net.toFixed(0)}, commission=₪${comm.toFixed(2)} ---`
