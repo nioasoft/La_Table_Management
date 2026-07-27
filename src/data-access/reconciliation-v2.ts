@@ -464,33 +464,41 @@ export async function createReconciliationSession(
     .where(eq(supplierBrand.supplierId, supplierId));
   const brandIdSet = new Set(supplierBrandRows.map(sb => sb.brandId));
 
-  // Self-healing: augment brandIdSet with brands the supplier has actually
-  // served in the past, even if supplier_brand mapping is incomplete. Ensures
-  // (supplier, franchisee) pairs with zero current activity still appear as
-  // 0/0 rows when both sides are missing.
-  const historicalBrandsFromFiles = await database.execute<{ brand_id: string }>(sql`
-    SELECT DISTINCT f.brand_id AS brand_id
-    FROM ${supplierFileUpload} sfu,
-         jsonb_array_elements(sfu.processing_result -> 'franchiseeMatches') AS m
-    JOIN ${franchisee} f ON f.id = (m ->> 'matchedFranchiseeId')
-    WHERE sfu.supplier_id = ${supplierId}
-      AND m ->> 'matchedFranchiseeId' IS NOT NULL
-      AND m ->> 'matchedFranchiseeId' != ''
-      AND COALESCE(m ->> 'matchType', '') NOT IN ('blacklisted', 'fuzzy', 'none')
-  `);
-  const historicalBrandsFromBkmv = await database.execute<{ brand_id: string }>(sql`
-    SELECT DISTINCT f.brand_id AS brand_id
-    FROM ${franchiseeBkmvYear} fby
-    JOIN ${franchisee} f ON f.id = fby.franchisee_id
-    WHERE fby.supplier_matches @> jsonb_build_array(
-      jsonb_build_object('matchedSupplierId', ${supplierId}::text)
-    )
-  `);
-  for (const row of historicalBrandsFromFiles.rows) {
-    if (row.brand_id) brandIdSet.add(row.brand_id);
-  }
-  for (const row of historicalBrandsFromBkmv.rows) {
-    if (row.brand_id) brandIdSet.add(row.brand_id);
+  // "מותגים משויכים" on the supplier form is the definition of who a supplier
+  // sells to, and it wins. History is only a safety net for a supplier nobody
+  // has mapped yet — all 41 active suppliers are mapped today, so this branch
+  // is effectively for new ones.
+  //
+  // It used to be a union, which could only ever widen what Reut declared:
+  // רסטרטו is mapped to ויני alone, yet a rejected `רסטרטו.xlsx` and a poached
+  // `טרז פזוס` alias dragged in all of קינג קונג + מינה טומיי as 0/0 noise.
+  // Inferring a brand from history is a guess; a checkbox is an answer.
+  if (brandIdSet.size === 0) {
+    const historicalBrandsFromFiles = await database.execute<{ brand_id: string }>(sql`
+      SELECT DISTINCT f.brand_id AS brand_id
+      FROM ${supplierFileUpload} sfu,
+           jsonb_array_elements(sfu.processing_result -> 'franchiseeMatches') AS m
+      JOIN ${franchisee} f ON f.id = (m ->> 'matchedFranchiseeId')
+      WHERE sfu.supplier_id = ${supplierId}
+        AND sfu.processing_status <> 'rejected'
+        AND m ->> 'matchedFranchiseeId' IS NOT NULL
+        AND m ->> 'matchedFranchiseeId' != ''
+        AND COALESCE(m ->> 'matchType', '') NOT IN ('blacklisted', 'fuzzy', 'none')
+    `);
+    const historicalBrandsFromBkmv = await database.execute<{ brand_id: string }>(sql`
+      SELECT DISTINCT f.brand_id AS brand_id
+      FROM ${franchiseeBkmvYear} fby
+      JOIN ${franchisee} f ON f.id = fby.franchisee_id
+      WHERE fby.supplier_matches @> jsonb_build_array(
+        jsonb_build_object('matchedSupplierId', ${supplierId}::text)
+      )
+    `);
+    for (const row of historicalBrandsFromFiles.rows) {
+      if (row.brand_id) brandIdSet.add(row.brand_id);
+    }
+    for (const row of historicalBrandsFromBkmv.rows) {
+      if (row.brand_id) brandIdSet.add(row.brand_id);
+    }
   }
 
   // Determine which file IDs to load.

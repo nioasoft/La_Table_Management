@@ -37,7 +37,8 @@ async function main() {
       FROM supplier_file_upload sfu,
            jsonb_array_elements(sfu.processing_result -> 'franchiseeMatches') AS m
       JOIN franchisee f ON f.id = (m ->> 'matchedFranchiseeId')
-      WHERE m ->> 'matchedFranchiseeId' IS NOT NULL
+      WHERE sfu.processing_status <> 'rejected'
+        AND m ->> 'matchedFranchiseeId' IS NOT NULL
         AND m ->> 'matchedFranchiseeId' != ''
         AND COALESCE(m ->> 'matchType', '') NOT IN ('blacklisted', 'fuzzy', 'none')
     ),

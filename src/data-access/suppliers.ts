@@ -17,6 +17,7 @@ import {
   type CommissionException,
 } from "@/db/schema";
 import { eq, desc, and, inArray, asc, count } from "drizzle-orm";
+import { normalizeName } from "@/lib/supplier-matcher";
 import { logCommissionChange, type AuditContext } from "./auditLog";
 import {
   type PaginationParams,
@@ -324,6 +325,30 @@ export async function updateSupplier(
     commissionEffectiveDate,
     ...updateData
   } = data;
+
+  // A bkmv alias may not be another active supplier's own name. רסטרטו held
+  // "טרז פזוס שיווק בע"מ" — most likely one "הוסף כ-alias" click in the BKMV
+  // review UI — so every קינג קונג branch's טרז פזוס purchases were credited to
+  // רסטרטו, which then pulled the whole brand into רסטרטו's reconciliation as
+  // 0/0 rows. Guarded here because all write paths (both API routes and the
+  // BKMV review) funnel through updateSupplier.
+  if (Array.isArray(updateData.bkmvAliases) && updateData.bkmvAliases.length > 0) {
+    const others = await database
+      .select({ id: supplier.id, name: supplier.name })
+      .from(supplier)
+      .where(eq(supplier.isActive, true));
+    const ownedByOthers = new Map(
+      others.filter((s) => s.id !== id).map((s) => [normalizeName(s.name), s.name])
+    );
+    for (const alias of updateData.bkmvAliases) {
+      const owner = ownedByOthers.get(normalizeName(alias));
+      if (owner) {
+        throw new Error(
+          `הכינוי "${alias}" הוא השם של הספק "${owner}" ולא ניתן לשייך אותו לספק אחר`
+        );
+      }
+    }
+  }
 
   // Check if commission rate is changing
   const oldRate = existingSupplier.defaultCommissionRate;
