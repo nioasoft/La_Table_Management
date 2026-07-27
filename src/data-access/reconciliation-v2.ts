@@ -450,7 +450,6 @@ export async function createReconciliationSession(
       name: supplier.name,
       code: supplier.code,
       vatExempt: supplier.vatExempt,
-      isKosher: supplier.isKosher,
     })
     .from(supplier)
     .where(eq(supplier.id, supplierId))
@@ -764,13 +763,13 @@ export async function createReconciliationSession(
       `[createReconciliationSession] ${supplierData[0].code}: no brand mapping and no history to infer one — zero-amount rows skipped`
     );
   } else {
+    // ponytail: brand is the only compatibility filter. supplier.is_kosher used to
+    // hide kosher franchisees from a non-kosher supplier's zero rows, but the flag
+    // is an unmaintained default (33 of 41 suppliers false) and the data disproves
+    // the premise — kosher branches transact with "non-kosher" suppliers constantly
+    // (ויני חדרה bought ₪35,460 from רסטרטו Q2-2026). All it did was silently drop
+    // branches like קינג קונג מוצקין from the row set, which reads as a bug.
     compatConditions.push(inArray(franchisee.brandId, [...brandIdSet]));
-
-    // Non-kosher supplier: only show non-kosher franchisees
-    // Kosher supplier: show all franchisees (kosher + non-kosher)
-    if (!supplierData[0].isKosher) {
-      compatConditions.push(eq(franchisee.isKosher, false));
-    }
   }
   const allCompatible = brandIdSet.size === 0 ? [] : await database
     .select({ id: franchisee.id })
