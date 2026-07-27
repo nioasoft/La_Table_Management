@@ -182,10 +182,15 @@ export async function upsertFromFullBreakdown(
   monthlyBreakdown: MonthlyBreakdown | undefined,
   supplierMatches: SupplierMatchEntry[] | null,
   sourceFileId: string | null,
-  opts?: { forceOverwrite?: boolean }
-): Promise<{ updated: number[]; skipped: number[]; merged: number[] }> {
+  opts?: { forceOverwrite?: boolean; skipStaleMarking?: boolean }
+): Promise<{
+  updated: number[];
+  skipped: number[];
+  merged: number[];
+  changedMonths: string[];
+}> {
   if (!monthlyBreakdown || Object.keys(monthlyBreakdown).length === 0) {
-    return { updated: [], skipped: [], merged: [] };
+    return { updated: [], skipped: [], merged: [], changedMonths: [] };
   }
 
   const byYear = groupMonthlyBreakdownByYear(monthlyBreakdown);
@@ -227,11 +232,18 @@ export async function upsertFromFullBreakdown(
   // upload touching Jan and Jul doesn't drag Feb–Jun along. Best-effort;
   // dynamic import avoids a circular dependency with reconciliation-v2
   // (which imports from this module).
+  //
+  // skipStaleMarking is for bulk backfills that replay SEVERAL overlapping
+  // files for the same franchisee: each replay is diffed against the state the
+  // previous one left, so months flip back and forth and every flip reads as a
+  // change even when the end state is identical. Such callers own the flagging
+  // and should compare the year data once, before and after the whole run.
+  const months = [
+    ...new Set(monthsChanged.filter((k) => /^\d{4}-\d{2}$/.test(k))),
+  ].sort();
+
   try {
-    const months = [
-      ...new Set(monthsChanged.filter((k) => /^\d{4}-\d{2}$/.test(k))),
-    ].sort();
-    if (months.length > 0) {
+    if (months.length > 0 && !opts?.skipStaleMarking) {
       const { markFranchiseeSessionsStale } = await import("@/data-access/reconciliation-v2");
       for (const [first, last] of groupIntoConsecutiveRuns(months)) {
         const [ey, em] = last.split("-").map(Number);
@@ -244,7 +256,7 @@ export async function upsertFromFullBreakdown(
     console.error("Failed to flag reconciliation sessions stale after BKMV upsert:", staleErr);
   }
 
-  return { updated, skipped, merged };
+  return { updated, skipped, merged, changedMonths: months };
 }
 
 /**

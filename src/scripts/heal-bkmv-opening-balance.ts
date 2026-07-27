@@ -13,20 +13,37 @@
  * uses. Files without the batch are left untouched, so no unrelated parser
  * drift gets written to production.
  *
- * Existing supplier matches are preserved (no rematch). `upsertFromFullBreakdown`
- * merges per month and flags overlapping reconciliation sessions stale by itself.
+ * Existing supplier matches are preserved (no rematch).
+ *
+ * Stale marking is suppressed per file and done once at the end: a franchisee's
+ * year is fed by 5-6 overlapping files, and replaying them in sequence diffs
+ * each against the state the previous one left, so months flip back and forth
+ * and every flip flags sessions — 32 sessions were flagged this way on the
+ * first run for months whose amounts never actually changed. Comparing the year
+ * data once, before and after, flags only what genuinely moved.
  *
  *   npx tsx src/scripts/heal-bkmv-opening-balance.ts            # dry run
  *   npx tsx src/scripts/heal-bkmv-opening-balance.ts --apply    # write
  */
 import { database } from "@/db";
-import { uploadedFile } from "@/db/schema";
+import { uploadedFile, franchiseeBkmvYear } from "@/db/schema";
 import type { BkmvProcessingResult } from "@/db/schema";
 import { isNotNull, eq, sql, asc } from "drizzle-orm";
 import { getDocument } from "@/lib/storage";
 import { parseBkmvData, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
 import { upsertFromFullBreakdown } from "@/data-access/franchisee-bkmv-year";
+import { changedMonths, groupIntoConsecutiveRuns } from "@/lib/bkmvdata/monthly-breakdown";
+import { markFranchiseeSessionsStale } from "@/data-access/reconciliation-v2";
 import type { MonthlyBreakdown } from "@/lib/bkmvdata/types";
+
+/** Every stored month for a franchisee, flattened across year rows. */
+async function snapshotYears(franchiseeId: string): Promise<MonthlyBreakdown> {
+  const rows = await database
+    .select({ monthlyBreakdown: franchiseeBkmvYear.monthlyBreakdown })
+    .from(franchiseeBkmvYear)
+    .where(eq(franchiseeBkmvYear.franchiseeId, franchiseeId));
+  return Object.assign({}, ...rows.map((r) => r.monthlyBreakdown as MonthlyBreakdown));
+}
 
 const APPLY = process.argv.includes("--apply");
 
@@ -61,6 +78,8 @@ async function main() {
   let affected = 0;
   let healed = 0;
   const failures: Array<{ file: string; error: string }> = [];
+  // franchiseeId → stored months as they were before this run touched anything.
+  const beforeByFranchisee = new Map<string, MonthlyBreakdown>();
 
   for (const file of files) {
     if (!file.fileUrl) continue;
@@ -123,11 +142,15 @@ async function main() {
         .where(eq(uploadedFile.id, file.id));
 
       if (file.franchiseeId) {
+        if (!beforeByFranchisee.has(file.franchiseeId)) {
+          beforeByFranchisee.set(file.franchiseeId, await snapshotYears(file.franchiseeId));
+        }
         const result = await upsertFromFullBreakdown(
           file.franchiseeId,
           rebuilt,
           existing.supplierMatches ?? null,
-          file.id
+          file.id,
+          { skipStaleMarking: true }
         );
         console.log(
           `  written — years updated: ${result.updated.join(", ") || "none"}`
@@ -143,6 +166,20 @@ async function main() {
       });
     }
     console.log("");
+  }
+
+  // One diff per franchisee across the whole run, so only months that really
+  // moved flag their sessions.
+  for (const [franchiseeId, snapshot] of beforeByFranchisee) {
+    const months = changedMonths(snapshot, await snapshotYears(franchiseeId));
+    if (months.length === 0) continue;
+    let flagged = 0;
+    for (const [first, last] of groupIntoConsecutiveRuns(months)) {
+      const [ey, em] = last.split("-").map(Number);
+      const periodEnd = `${last}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`;
+      flagged += await markFranchiseeSessionsStale(franchiseeId, `${first}-01`, periodEnd);
+    }
+    console.log(`stale: ${months.join(", ")} → ${flagged} sessions flagged`);
   }
 
   console.log(
