@@ -1616,7 +1616,10 @@ export async function getReconciliationHistory(filters?: {
     .innerJoin(franchisee, eq(reconciliationComparison.franchiseeId, franchisee.id))
     .leftJoin(user, eq(reconciliationComparison.reviewedBy, user.id))
     .where(whereClause)
-    .orderBy(desc(reconciliationComparison.reviewedAt))
+    // NULLS LAST is load-bearing: Postgres puts NULLs first on DESC, so
+    // never-reviewed rows would fill page 1 of the history and push the
+    // recently-reviewed ones the screen is for off the end.
+    .orderBy(sql`${reconciliationComparison.reviewedAt} DESC NULLS LAST`)
     .$dynamic();
 
   if (filters?.limit) {

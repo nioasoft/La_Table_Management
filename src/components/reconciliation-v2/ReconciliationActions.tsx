@@ -14,12 +14,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { CheckCheck, Download, Mail, Loader2, RefreshCw } from "lucide-react";
+import { CheckCheck, Download, Mail, Loader2, RefreshCw, ListChecks } from "lucide-react";
 import { toast } from "sonner";
 import {
   useMatchAllSession,
   useDeleteReconciliationSession,
   useCreateReconciliationSession,
+  useBulkApproveComparisons,
 } from "@/queries/reconciliation-v2";
 import { EmailComposerDialog } from "./EmailComposerDialog";
 import type { ReconciliationComparisonWithDetails } from "@/types/reconciliation-v2";
@@ -41,10 +42,11 @@ interface ReconciliationActionsProps {
 /**
  * Action toolbar shown above the comparison table:
  * - Match-All ≤ ₪30 (clones session into a new run)
+ * - Approve-All (marks every pending row manually approved, in place)
  * - Download supplier file
  * - Compose free-form email to supplier
  *
- * All three are admin-only and disabled when viewing an archived run.
+ * All are admin-only and disabled when viewing an archived run.
  */
 export function ReconciliationActions({
   sessionId,
@@ -60,10 +62,12 @@ export function ReconciliationActions({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [restartOpen, setRestartOpen] = useState(false);
+  const [approveAllOpen, setApproveAllOpen] = useState(false);
 
   const matchAll = useMatchAllSession();
   const deleteSession = useDeleteReconciliationSession();
   const createSession = useCreateReconciliationSession();
+  const bulkApprove = useBulkApproveComparisons();
   const isRestartPending = deleteSession.isPending || createSession.isPending;
 
   const eligibleCount = comparisons.filter(
@@ -72,6 +76,27 @@ export function ReconciliationActions({
       c.absoluteDifference !== null &&
       Number(c.absoluteDifference) <= RECONCILIATION_THRESHOLD
   ).length;
+
+  // "אשר הכל" — every pending row, no threshold. Same effect as clicking ✓ on
+  // each one, so it stays in the current session (no clone/archive).
+  const pendingComparisons = comparisons.filter((c) => c.status === "needs_review");
+  const pendingDifference = pendingComparisons.reduce(
+    (sum, c) => sum + Number(c.absoluteDifference ?? 0),
+    0
+  );
+
+  const handleApproveAll = async () => {
+    try {
+      const result = await bulkApprove.mutateAsync({
+        comparisonIds: pendingComparisons.map((c) => c.id),
+      });
+      toast.success(`${result.approvedCount} שורות אושרו ידנית`);
+      setApproveAllOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "שגיאה באישור השורות";
+      toast.error(message);
+    }
+  };
 
   const handleMatchAll = async () => {
     try {
@@ -140,6 +165,25 @@ export function ReconciliationActions({
           {eligibleCount > 0 && (
             <Badge variant="secondary" className="ms-2">
               {eligibleCount}
+            </Badge>
+          )}
+        </Button>
+
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setApproveAllOpen(true)}
+          disabled={isArchived || pendingComparisons.length === 0 || bulkApprove.isPending}
+        >
+          {bulkApprove.isPending ? (
+            <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+          ) : (
+            <ListChecks className="ms-2 h-4 w-4" />
+          )}
+          אשר הכל
+          {pendingComparisons.length > 0 && (
+            <Badge variant="secondary" className="ms-2">
+              {pendingComparisons.length}
             </Badge>
           )}
         </Button>
@@ -219,6 +263,39 @@ export function ReconciliationActions({
                 <Loader2 className="ms-2 h-4 w-4 animate-spin" />
               ) : null}
               אישור והרץ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={approveAllOpen} onOpenChange={setApproveAllOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>אישור כל השורות</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingComparisons.length} שורות בסטטוס &quot;לבדיקה&quot; יסומנו
+              &quot;אושר ידנית&quot; — בדיוק כמו לחיצה על ✓ בכל שורה. הסשן הנוכחי
+              נשאר כפי שהוא, ללא ארכוב.
+              <br />
+              <strong>
+                שים לב: זה כולל שורות עם הפרש גדול. סך ההפרש שיאושר: ₪
+                {Math.round(pendingDifference).toLocaleString("he-IL")}.
+              </strong>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkApprove.isPending}>ביטול</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleApproveAll();
+              }}
+              disabled={bulkApprove.isPending || pendingComparisons.length === 0}
+            >
+              {bulkApprove.isPending ? (
+                <Loader2 className="ms-2 h-4 w-4 animate-spin" />
+              ) : null}
+              אשר הכל
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
