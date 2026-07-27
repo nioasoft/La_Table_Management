@@ -116,8 +116,9 @@ export function ReconciliationActions({
     }
   };
 
+  // Endpoint redirects to the single file, or zips them for multi-file suppliers.
   const downloadHref = supplierFileId
-    ? `/api/reports/files/${supplierFileId}/download?source=supplier`
+    ? `/api/reconciliation-v2/sessions/${sessionId}/download-files`
     : null;
 
   const handleRestart = async () => {
