@@ -29,7 +29,7 @@ import {
   type BkmvProcessingResult,
   type SupplierFileMapping,
 } from "@/db/schema";
-import { eq, and, desc, sql, count, gte, lte, or, ne, isNotNull, isNull, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, count, max, gte, lte, or, ne, isNotNull, isNull, inArray } from "drizzle-orm";
 import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
@@ -843,6 +843,23 @@ export async function createReconciliationSession(
   let newSession: ReconciliationSession;
   try {
     newSession = await database.transaction(async (tx) => {
+      // run_number is unique per (supplier, period) INCLUDING archived rows, and
+      // it defaults to 1. So once any run has been archived (rebuild, match-all),
+      // a plain create collides and throws — "התחל סשן חדש" then deleted the
+      // session and failed to make its replacement, leaving the period with no
+      // session at all (אראל אריזות, 2026-07-27). Always take the next free run.
+      const [maxRun] = await tx
+        .select({ value: max(reconciliationSession.runNumber) })
+        .from(reconciliationSession)
+        .where(
+          and(
+            eq(reconciliationSession.supplierId, supplierId),
+            eq(reconciliationSession.periodStartDate, periodStartDate),
+            eq(reconciliationSession.periodEndDate, periodEndDate)
+          )
+        );
+      const nextRunNumber = opts?.runNumber ?? (maxRun?.value ?? 0) + 1;
+
       const [session] = await tx
         .insert(reconciliationSession)
         .values({
@@ -854,9 +871,7 @@ export async function createReconciliationSession(
           periodEndDate,
           status: "in_progress",
           createdBy,
-          // Rebuild path: a fresh run replacing an archived stale session
-          // (runNumber+1 avoids the (supplier, period, run_number) unique index).
-          ...(opts?.runNumber ? { runNumber: opts.runNumber } : {}),
+          runNumber: nextRunNumber,
           ...(opts?.parentSessionId ? { parentSessionId: opts.parentSessionId } : {}),
         })
         .returning();
