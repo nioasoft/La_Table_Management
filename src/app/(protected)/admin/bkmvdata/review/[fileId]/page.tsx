@@ -3,7 +3,8 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { toast } from "sonner";
 import { useState, useCallback, useMemo } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { resolveBackHref } from "@/lib/back-link";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -167,6 +168,8 @@ export default function FileDetailsPage() {
   const router = useRouter();
   const params = useParams();
   const fileId = params.fileId as string;
+  // Where "חזרה" goes: the list page we were opened from, else the review queue.
+  const backHref = resolveBackHref(useSearchParams(), "/admin/bkmvdata/review");
   const queryClient = useQueryClient();
 
   const [reviewNotes, setReviewNotes] = useState("");
@@ -367,7 +370,7 @@ export default function FileDetailsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review"] });
-      router.push("/admin/bkmvdata/review");
+      router.push(backHref);
     },
   });
 
@@ -627,10 +630,10 @@ export default function FileDetailsPage() {
       <div className="container mx-auto p-6">
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center">
           <p className="text-destructive">שגיאה בטעינת פרטי הקובץ</p>
-          <Link href="/admin/bkmvdata/review">
+          <Link href={backHref}>
             <Button variant="outline" className="mt-4">
               <ArrowRight className="h-4 w-4 ms-2" />
-              חזרה לתור הסקירה
+              חזרה
             </Button>
           </Link>
         </div>
@@ -647,7 +650,7 @@ export default function FileDetailsPage() {
       <div className="mb-4 flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Link href="/admin/bkmvdata/review">
+            <Link href={backHref}>
               <Button variant="ghost" size="sm" className="h-7 px-2 text-xs">
                 <ArrowRight className="h-3.5 w-3.5 ms-1" />
                 חזרה

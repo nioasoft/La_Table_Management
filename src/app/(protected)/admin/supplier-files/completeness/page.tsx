@@ -45,6 +45,7 @@ import {
   Search,
 } from "lucide-react";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import type { SupplierCompletenessResponse, SupplierCompleteness, PeriodStatus, SupplierWithoutParser } from "@/app/api/dashboard/supplier-completeness/route";
 import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, Settings } from "lucide-react";
@@ -393,7 +394,7 @@ function SupplierRow({
             <TooltipTrigger asChild>
               <div className="flex justify-center">
                 {period.fileId ? (
-                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                  <Link href={withBack(`/admin/supplier-files/review/${period.fileId}`, "/admin/supplier-files/completeness")}>
                     <StatusIcon status={period.status} />
                   </Link>
                 ) : (
@@ -435,7 +436,7 @@ function SupplierRow({
                   <TooltipTrigger asChild>
                     <div>
                       {period.fileId ? (
-                        <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                        <Link href={withBack(`/admin/supplier-files/review/${period.fileId}`, "/admin/supplier-files/completeness")}>
                           <StatusIcon status={period.status} size="small" />
                         </Link>
                       ) : (
@@ -480,7 +481,7 @@ function SupplierRow({
             <TooltipTrigger asChild>
               <div className="flex justify-center">
                 {period.fileId ? (
-                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                  <Link href={withBack(`/admin/supplier-files/review/${period.fileId}`, "/admin/supplier-files/completeness")}>
                     <StatusIcon status={period.status} />
                   </Link>
                 ) : (
@@ -519,7 +520,7 @@ function SupplierRow({
             <TooltipTrigger asChild>
               <div className="flex justify-center">
                 {period.fileId ? (
-                  <Link href={`/admin/supplier-files/review/${period.fileId}`}>
+                  <Link href={withBack(`/admin/supplier-files/review/${period.fileId}`, "/admin/supplier-files/completeness")}>
                     <StatusIcon status={period.status} />
                   </Link>
                 ) : (

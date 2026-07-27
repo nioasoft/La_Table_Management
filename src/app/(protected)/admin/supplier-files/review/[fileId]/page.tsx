@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
+import { resolveBackHref } from "@/lib/back-link";
 import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -126,6 +127,8 @@ export default function SupplierFileDetailPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const fileId = params.fileId as string;
+  // Where "חזרה" goes: the list page we were opened from, else the review queue.
+  const backHref = resolveBackHref(searchParams, "/admin/supplier-files/review");
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -205,7 +208,7 @@ export default function SupplierFileDetailPage() {
           `${data.learnedAliasCount} כינויים נשמרו לזיהוי אוטומטי בקבצים הבאים`
         );
       }
-      router.push("/admin/supplier-files/review");
+      router.push(backHref);
     },
   });
 
@@ -359,10 +362,10 @@ export default function SupplierFileDetailPage() {
       <div className="container mx-auto p-6">
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-center">
           <p className="text-destructive">שגיאה בטעינת פרטי הקובץ</p>
-          <Link href="/admin/supplier-files/review">
+          <Link href={backHref}>
             <Button variant="outline" className="mt-4">
               <ArrowRight className="h-4 w-4 ms-2" />
-              חזרה לתור הסקירה
+              חזרה
             </Button>
           </Link>
         </div>
@@ -379,7 +382,7 @@ export default function SupplierFileDetailPage() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <Link href="/admin/supplier-files/review">
+            <Link href={backHref}>
               <Button variant="ghost" size="sm">
                 <ArrowRight className="h-4 w-4 ms-1" />
                 חזרה

@@ -3,8 +3,9 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -240,8 +241,13 @@ export default function BkmvDataPage() {
     }
   }, []);
 
-  // History and upload state
-  const [activeTab, setActiveTab] = useState<string>("upload");
+  // History and upload state. The tab is seeded from ?tab= so the review page's
+  // "חזרה" can land back on the tab the file was opened from.
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const tab = searchParams.get("tab");
+    return tab === "history" || tab === "explorer" ? tab : "upload";
+  });
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
   const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");
@@ -1564,7 +1570,7 @@ export default function BkmvDataPage() {
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2">
-                        <a href={`/admin/bkmvdata/review/${uploadSuccess.fileId}`}>
+                        <a href={withBack(`/admin/bkmvdata/review/${uploadSuccess.fileId}`, "/admin/bkmvdata?tab=history")}>
                           <Button size="sm" variant="outline" className="gap-1">
                             <Eye className="h-3 w-3" />
                             צפה בפרטים
@@ -2661,7 +2667,7 @@ export default function BkmvDataPage() {
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <a href={`/admin/bkmvdata/review/${item.id}`}>
+                              <a href={withBack(`/admin/bkmvdata/review/${item.id}`, "/admin/bkmvdata?tab=history")}>
                                 <Button size="sm" variant="outline" className="gap-1">
                                   <Eye className="h-3 w-3" />
                                   צפה

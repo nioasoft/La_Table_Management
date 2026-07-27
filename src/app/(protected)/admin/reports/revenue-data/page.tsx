@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { authClient } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -406,7 +407,7 @@ export default function RevenueDataReportPage() {
                         </TableCell>
                         <TableCell>
                           <Link
-                            href={`/admin/bkmvdata/review/${item.fileId}`}
+                            href={withBack(`/admin/bkmvdata/review/${item.fileId}`, "/admin/reports/revenue-data")}
                             className="text-primary hover:underline text-sm"
                           >
                             {item.fileName}

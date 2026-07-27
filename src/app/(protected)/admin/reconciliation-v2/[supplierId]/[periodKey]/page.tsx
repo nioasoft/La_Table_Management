@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { use, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -221,7 +222,10 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       const result = await backToProcessing.mutateAsync(sessionId);
       toast.success("הקובץ נשלח לעיבוד מחדש");
       router.push(
-        `/admin/supplier-files/review/${result.supplierFileId}?reprocessed=1`
+        withBack(
+          `/admin/supplier-files/review/${result.supplierFileId}?reprocessed=1`,
+          `/admin/reconciliation-v2/${supplierId}/${periodKey}`
+        )
       );
     } catch (error) {
       const message =

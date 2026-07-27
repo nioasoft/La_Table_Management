@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { authClient } from "@/lib/auth-client";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -382,7 +383,7 @@ function FranchiseeRow({
                         {formatCurrency(supplier.netAmount)}
                       </TableCell>
                       <TableCell className="py-1.5">
-                        <Link href={`/admin/supplier-files/review/${supplier.fileId}`}>
+                        <Link href={withBack(`/admin/supplier-files/review/${supplier.fileId}`, "/admin/supplier-files/by-franchisee")}>
                           <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
                             צפה
                           </Button>

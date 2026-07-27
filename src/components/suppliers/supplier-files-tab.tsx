@@ -36,6 +36,7 @@ import {
 import { format } from "date-fns";
 import { he as dateFnsHe } from "date-fns/locale";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { he } from "@/lib/translations/he";
 
 interface SupplierFilesTabProps {
@@ -307,7 +308,7 @@ export function SupplierFilesTab({ supplierId, supplierName }: SupplierFilesTabP
                             </Button>
                           )}
                           {file.processingStatus === "needs_review" && (
-                            <Link href={`/admin/supplier-files/review/${file.id}`}>
+                            <Link href={withBack(`/admin/supplier-files/review/${file.id}`, `/admin/suppliers/${supplierId}`)}>
                               <Button variant="outline" size="sm">
                                 <Eye className="h-4 w-4 me-1" />
                                 {t.actions.review}
@@ -315,7 +316,7 @@ export function SupplierFilesTab({ supplierId, supplierName }: SupplierFilesTabP
                             </Link>
                           )}
                           {(file.processingStatus === "approved" || file.processingStatus === "auto_approved") && (
-                            <Link href={`/admin/supplier-files/review/${file.id}`}>
+                            <Link href={withBack(`/admin/supplier-files/review/${file.id}`, `/admin/suppliers/${supplierId}`)}>
                               <Button variant="ghost" size="sm">
                                 <Eye className="h-4 w-4 me-1" />
                                 {t.actions.view}

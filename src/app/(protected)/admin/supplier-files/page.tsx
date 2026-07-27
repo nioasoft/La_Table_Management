@@ -66,6 +66,7 @@ import {
   BarChart3,
 } from "lucide-react";
 import Link from "next/link";
+import { withBack } from "@/lib/back-link";
 import { toast } from "sonner";
 import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingResult } from "@/db/schema";
 import { formatCurrency } from "@/lib/translations";
@@ -195,6 +196,9 @@ function formatPeriodRangeHe(start: string, end: string): string {
 export default function SupplierFilesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // Return path handed to the review page, so its "חזרה" lands back here
+  // with the same supplier selected.
+  const currentPath = `/admin/supplier-files${searchParams.toString() ? `?${searchParams}` : ""}`;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
@@ -1367,7 +1371,7 @@ export default function SupplierFilesPage() {
                     <span>{r.fileName}</span>
                   </div>
                   {r.success && r.fileId ? (
-                    <Link href={`/admin/supplier-files/review/${r.fileId}`}>
+                    <Link href={withBack(`/admin/supplier-files/review/${r.fileId}`, currentPath)}>
                       <Button variant="ghost" size="sm" className="h-7 text-xs">
                         <Eye className="h-3 w-3 me-1" />
                         צפייה
@@ -1481,7 +1485,7 @@ export default function SupplierFilesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {savedFileId ? (
-                      <Link href={`/admin/supplier-files/review/${savedFileId}`}>
+                      <Link href={withBack(`/admin/supplier-files/review/${savedFileId}`, currentPath)}>
                         <Button variant="outline" size="sm">
                           <Eye className="h-4 w-4 me-2" />
                           צפייה בקובץ
