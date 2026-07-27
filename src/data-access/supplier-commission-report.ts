@@ -14,6 +14,7 @@ import { eq, and, inArray, gte, lte, or, isNotNull, desc } from "drizzle-orm";
 import { getVatRateForDate } from "@/data-access/vatRates";
 import { roundAmount, roundPercent } from "@/lib/file-processor";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
+import { countableFileAmounts } from "@/data-access/supplier-file-reports";
 
 // ============================================================================
 // TYPES
@@ -441,7 +442,9 @@ export async function getSupplierCommissionReport(
           // Fallback: distribute file-level per-item commission proportionally
           // Total file commission = processedRows * rate (net)
           const totalFileCommission = processedRows * commissionRate;
-          const totalFileGross = result.totalGrossAmount || 1;
+          // Blacklisted "Totals" rows are not turnover — including them here
+          // shrinks every franchisee's proportion of the file commission.
+          const totalFileGross = countableFileAmounts(result).gross || 1;
           const proportion = totalFileGross > 0 ? grossAmount / totalFileGross : 0;
           commissionAmountBeforeVat = totalFileCommission * proportion;
           commissionAmount = isVatExempt
@@ -540,7 +543,9 @@ export async function getSupplierCommissionReport(
             : matchCommission * (1 + vatRate);
         } else {
           const totalFileCommission = processedRows * commissionRate;
-          const totalFileGross = result.totalGrossAmount || 1;
+          // Blacklisted "Totals" rows are not turnover — including them here
+          // shrinks every franchisee's proportion of the file commission.
+          const totalFileGross = countableFileAmounts(result).gross || 1;
           const proportion = totalFileGross > 0 ? grossAmount / totalFileGross : 0;
           unmatchedCommissionBeforeVat = totalFileCommission * proportion;
           unmatchedCommission = isVatExempt

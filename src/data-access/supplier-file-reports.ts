@@ -114,6 +114,35 @@ export interface SupplierFilesFilterOptions {
 // ============================================================================
 
 /**
+ * A file's amounts with blacklisted rows removed.
+ *
+ * A blacklisted row is a file artefact, not a franchisee — typically the
+ * "Totals" / "סה"כ" line the supplier's export carries. The parser sums it
+ * into totalGrossAmount/totalNetAmount, so counting those as-is doubles every
+ * amount (רסטרטו Q2-2026 reported ₪1,002,569 and ₪110,452 commission instead
+ * of ₪501,285 and ₪55,226). The per-franchisee breakdown already skips them;
+ * the file-level totals have to agree.
+ */
+export function countableFileAmounts(
+  processingResult: SupplierFileProcessingResult | null
+): { gross: number; net: number } {
+  if (!processingResult) return { gross: 0, net: 0 };
+
+  const blacklisted = (processingResult.franchiseeMatches ?? []).filter(
+    (m) => m.matchType === "blacklisted"
+  );
+
+  return {
+    gross:
+      (processingResult.totalGrossAmount || 0) -
+      blacklisted.reduce((sum, m) => sum + (m.grossAmount || 0), 0),
+    net:
+      (processingResult.totalNetAmount || 0) -
+      blacklisted.reduce((sum, m) => sum + (m.netAmount || 0), 0),
+  };
+}
+
+/**
  * Calculate commission from processing result
  */
 function calculateCommission(
@@ -134,6 +163,7 @@ function calculateCommission(
 
   if (processingResult.franchiseeMatches) {
     for (const match of processingResult.franchiseeMatches) {
+      if (match.matchType === "blacklisted") continue;
       const matchAny = match as Record<string, unknown>;
       if (typeof matchAny.preCalculatedCommission === "number" && (isFileCommission || matchAny.preCalculatedCommission > 0)) {
         preCalculatedTotal += matchAny.preCalculatedCommission;
@@ -145,7 +175,7 @@ function calculateCommission(
   // Calculate based on rate and type
   let calculated = 0;
   if (commissionRate && commissionType === "percentage") {
-    calculated = processingResult.totalNetAmount * (commissionRate / 100);
+    calculated = countableFileAmounts(processingResult).net * (commissionRate / 100);
   } else if (commissionRate && commissionType === "per_item") {
     calculated = processingResult.processedRows * commissionRate;
   }
@@ -357,8 +387,9 @@ export async function getSupplierFilesReport(
     const commissionRate = file.commissionRate ? parseFloat(file.commissionRate) : null;
 
     // When brand filter is active, calculate amounts only from franchisees of that brand
-    let totalGrossAmount = processingResult?.totalGrossAmount || 0;
-    let totalNetAmount = processingResult?.totalNetAmount || 0;
+    const countable = countableFileAmounts(processingResult);
+    let totalGrossAmount = countable.gross;
+    let totalNetAmount = countable.net;
     let franchiseeCount = processingResult?.matchStats?.total || 0;
 
     if (filters.brandId && franchiseeBrandMap && processingResult?.franchiseeMatches) {
@@ -398,6 +429,7 @@ export async function getSupplierFilesReport(
       let hasPreCalculated = false;
       const isFileCommission = hasCommissionFromFile(file.supplierCode);
       for (const match of matchesToUse) {
+        if (match.matchType === "blacklisted") continue;
         const matchAny = match as Record<string, unknown>;
         // File-commission suppliers: always use file value (even 0 = no commission)
         // Other suppliers: only count positive pre-calculated values
