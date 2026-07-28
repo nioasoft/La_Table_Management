@@ -14,6 +14,7 @@ import { sendDirectEmail } from "@/lib/email/service";
 import { getEmailTemplateByCode } from "@/data-access/emailTemplates";
 import { BkmvRequestEmail } from "@/emails/bkmv-request";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { bkmvCoverageEnd } from "@/lib/bkmv-coverage";
 import { startCronLog } from "@/lib/cron-logger";
 
 // Resolve default email template for BKMV file requests.
@@ -57,6 +58,12 @@ interface BkmvCycle {
   month: number; // 1, 4, 7, 10
   cycleKey: string; // e.g. "2026-04"
   startDate: string; // "01/01/YYYY" (display)
+  /**
+   * Last day the cycle actually asks about: the end of the quarter that just
+   * closed (cycle "2026-07" → "2026-06-30"). An upload only satisfies the
+   * cycle if it covers through this date.
+   */
+  requiredCoverageEnd: string; // YYYY-MM-DD
 }
 
 // Return the most recent BKMV cycle whose 15th is <= today, or null if none
@@ -84,6 +91,11 @@ function getCurrentBkmvCycle(date: Date): BkmvCycle | null {
     month: chosen.month,
     cycleKey: `${chosen.year}-${String(chosen.month).padStart(2, "0")}`,
     startDate: `01/01/${chosen.year}`,
+    // new Date(y, m - 1, 0) is the last day of the month before the cycle
+    // month, rolling the year back correctly for the January cycle.
+    requiredCoverageEnd: formatDateAsLocal(
+      new Date(chosen.year, chosen.month - 1, 0)
+    ),
   };
 }
 
@@ -124,26 +136,38 @@ async function getAccountantEmail(franchiseeId: string): Promise<string | null> 
 }
 
 // Has the franchisee already uploaded an approved BKMV file covering this
-// cycle? A BKMV file is a year-to-date snapshot, so any approved upload from
-// the current fiscal year whose periodEndDate >= the cycle's start counts.
+// cycle? A BKMV file is a year-to-date snapshot, so an upload counts when what
+// it actually covers reaches the end of the quarter the cycle asks about.
 // Without this, the cron sends "אנא העלה BKMV" emails to franchisees who
 // uploaded in late January (production showed 20+ cases at the April 15 cron).
+//
+// The bar used to be the cycle's fiscal-year START, which any upload made that
+// year cleared — so the July 15 2026 cycle created 3 requests out of ~21 and
+// everyone who last uploaded in May was never asked for the Q2 file. Comparing
+// against requiredCoverageEnd, through bkmvCoverageEnd (which discards the
+// future-dated documents that inflate period_end_date), asks the real question.
 async function hasUploadedBkmvForCycle(
   franchiseeId: string,
-  cycleStartIso: string
+  cycle: BkmvCycle
 ): Promise<boolean> {
-  const matches = await database
-    .select({ id: uploadedFile.id })
+  const candidates = await database
+    .select({
+      periodEndDate: uploadedFile.periodEndDate,
+      createdAt: uploadedFile.createdAt,
+    })
     .from(uploadedFile)
     .where(
       and(
         eq(uploadedFile.franchiseeId, franchiseeId),
         eq(uploadedFile.processingStatus, "approved"),
-        gte(uploadedFile.periodEndDate, cycleStartIso)
+        gte(uploadedFile.periodEndDate, cycle.requiredCoverageEnd)
       )
-    )
-    .limit(1);
-  return matches.length > 0;
+    );
+
+  return candidates.some((f) => {
+    const coverageEnd = bkmvCoverageEnd(f.periodEndDate, f.createdAt);
+    return coverageEnd !== null && coverageEnd >= cycle.requiredCoverageEnd;
+  });
 }
 
 // Check if a BKMV request already exists for this franchisee and cycle.
@@ -241,22 +265,21 @@ async function processBkmvRequests(
 
       const recipientEmail = accountantEmail || f.primaryContactEmail || f.contactEmail!;
 
-      // Dedup check (per BKMV cycle, with legacy startDate fallback)
-      if (!dryRun) {
-        const alreadySent = await hasExistingBkmvRequest(f.id, cycle.cycleKey, startDate);
-        if (alreadySent) {
-          results.skipped++;
-          continue;
-        }
+      // Dedup check (per BKMV cycle, with legacy startDate fallback).
+      // Runs in dryRun too — both checks are reads, and skipping them made the
+      // preview list every franchisee instead of the ones who'd actually be
+      // emailed, which is the only thing a dry run is for.
+      const alreadySent = await hasExistingBkmvRequest(f.id, cycle.cycleKey, startDate);
+      if (alreadySent) {
+        results.skipped++;
+        continue;
+      }
 
-        // Don't ask for a BKMV that's already on disk for this fiscal year.
-        // cycle.startDate is "01/01/YYYY"; convert to ISO for the date column.
-        const cycleStartIso = `${cycle.year}-01-01`;
-        const alreadyUploaded = await hasUploadedBkmvForCycle(f.id, cycleStartIso);
-        if (alreadyUploaded) {
-          results.skipped++;
-          continue;
-        }
+      // Don't ask for a BKMV that already covers the quarter this cycle is about.
+      const alreadyUploaded = await hasUploadedBkmvForCycle(f.id, cycle);
+      if (alreadyUploaded) {
+        results.skipped++;
+        continue;
       }
 
       if (dryRun) {
@@ -345,6 +368,7 @@ export async function POST(request: NextRequest) {
       dryRun,
       cycle: cycle.cycleKey,
       startDate: cycle.startDate,
+      requiredCoverageEnd: cycle.requiredCoverageEnd,
       ...bkmvResults,
     });
   } catch (error) {

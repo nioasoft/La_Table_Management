@@ -16,6 +16,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, lt, or, sql, isNotNull, gte, lte, inArray, ne, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { bkmvCoverageEnd } from "@/lib/bkmv-coverage";
 
 // Entity types that can have upload links
 export type UploadLinkEntityType = "supplier" | "franchisee" | "brand";
@@ -1300,9 +1301,17 @@ export async function getFranchiseeBkmvStatusForPeriod(
   // (e.g. 2026-01-01..2026-04-30) must not count as the Q2 file.
   // ponytail: single-file coverage; switch to union-of-ranges if franchisees
   // ever start sending partial-period files.
+  //
+  // The end of the range is NOT period_end_date: that's the max transaction
+  // date, and future-dated documents push it months past what the file really
+  // reports (a 07/05 upload showing 29/12). bkmvCoverageEnd resolves what the
+  // file honestly covers, so a May file no longer poses as the Q2 file and the
+  // franchisee shows up as missing.
   const bkmvFiles = await database
     .select({
       franchiseeId: uploadedFile.franchiseeId,
+      periodEndDate: uploadedFile.periodEndDate,
+      createdAt: uploadedFile.createdAt,
     })
     .from(uploadedFile)
     .where(
@@ -1316,7 +1325,13 @@ export async function getFranchiseeBkmvStatusForPeriod(
 
   // Build set of franchisee IDs that have files
   const franchiseeIdsWithFiles = new Set(
-    bkmvFiles.map((f) => f.franchiseeId).filter(Boolean)
+    bkmvFiles
+      .filter((f) => {
+        const coverageEnd = bkmvCoverageEnd(f.periodEndDate, f.createdAt);
+        return coverageEnd !== null && coverageEnd >= periodEndDate;
+      })
+      .map((f) => f.franchiseeId)
+      .filter(Boolean)
   );
 
   const result = activeFranchisees.map((f) => ({
