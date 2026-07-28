@@ -14,15 +14,41 @@ import { markFranchiseeBkmvRequestSubmitted } from "@/data-access/fileRequests";
 import { processFranchiseeBkmvData } from "@/data-access/crossReferences";
 import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
+import { createAuditContext, logAuditEvent, type AuditContext } from "@/data-access/auditLog";
 import { randomUUID } from "crypto";
 import type { BkmvProcessingResult } from "@/db/schema";
 import { formatDateAsLocal } from "@/lib/date-utils";
+
+/**
+ * Record an upload that never became an uploaded_file row.
+ * Every early return below creates no file record, so without this a rejected
+ * upload leaves no trace at all and "I uploaded it, nothing happened" can't be
+ * answered. Never throws — logging must not break the upload response.
+ */
+async function logUploadFailure(
+  context: AuditContext,
+  fileName: string,
+  reason: string,
+  metadata: Record<string, unknown> = {}
+): Promise<void> {
+  try {
+    await logAuditEvent(context, "file_process_error", "file_processing", randomUUID(), {
+      entityName: fileName,
+      reason,
+      metadata: { route: "bkmvdata/admin-upload", ...metadata },
+    });
+  } catch (logError) {
+    console.error("Failed to log BKMV upload failure:", logError);
+  }
+}
 
 /**
  * POST /api/bkmvdata/admin-upload
  * Admin upload of BKMVDATA file with automatic processing
  */
 export async function POST(request: NextRequest) {
+  let auditContext: AuditContext | null = null;
+  let auditFileName = "unknown";
   try {
     // Auth check
     const authResult = await requireAuth(request);
@@ -33,6 +59,7 @@ export async function POST(request: NextRequest) {
     if (isAuthError(roleResult)) return roleResult;
 
     const { user } = authResult;
+    auditContext = createAuditContext({ user }, request);
 
     // Parse multipart form data
     const formData = await request.formData();
@@ -43,15 +70,24 @@ export async function POST(request: NextRequest) {
     const forceReplace = formData.get("forceReplace") === "true";
 
     if (!file) {
+      await logUploadFailure(auditContext, "(no file)", "no_file_provided", {
+        franchiseeId: franchiseeIdParam,
+      });
       return NextResponse.json(
         { error: "No file provided" },
         { status: 400 }
       );
     }
 
+    auditFileName = file.name;
+
     // Server-side file size validation (25MB limit for BKMVDATA files)
     const MAX_BKMV_FILE_SIZE = 25 * 1024 * 1024; // 25MB
     if (file.size > MAX_BKMV_FILE_SIZE) {
+      await logUploadFailure(auditContext, file.name, "file_too_large", {
+        fileSize: file.size,
+        franchiseeId: franchiseeIdParam,
+      });
       return NextResponse.json(
         { error: "הקובץ גדול מדי. הגודל המקסימלי הוא 25MB" },
         { status: 413 }
@@ -66,8 +102,14 @@ export async function POST(request: NextRequest) {
     try {
       parseResult = parseBkmvData(buffer);
     } catch (parseError) {
+      const details = parseError instanceof Error ? parseError.message : "Unknown error";
+      await logUploadFailure(auditContext, file.name, "parse_failed", {
+        fileSize: file.size,
+        franchiseeId: franchiseeIdParam,
+        details,
+      });
       return NextResponse.json(
-        { error: "Failed to parse BKMVDATA file", details: parseError instanceof Error ? parseError.message : "Unknown error" },
+        { error: "Failed to parse BKMVDATA file", details },
         { status: 400 }
       );
     }
@@ -78,6 +120,11 @@ export async function POST(request: NextRequest) {
     const periodEndDate = periodEndDateParam || (dateRange?.endDate ? formatDateAsLocal(dateRange.endDate) : undefined);
 
     if (!periodStartDate || !periodEndDate) {
+      await logUploadFailure(auditContext, file.name, "no_period_dates", {
+        franchiseeId: franchiseeIdParam,
+        companyId: parseResult.companyId,
+        totalRecords: parseResult.totalRecords,
+      });
       return NextResponse.json(
         { error: "Could not determine period dates. Please provide periodStartDate and periodEndDate." },
         { status: 400 }
@@ -96,6 +143,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!franchiseeId) {
+      await logUploadFailure(auditContext, file.name, "franchisee_not_identified", {
+        companyId: parseResult.companyId,
+        periodStartDate,
+        periodEndDate,
+      });
       return NextResponse.json(
         { error: "Could not determine franchisee. Please provide franchiseeId or ensure the file contains a valid company ID." },
         { status: 400 }
@@ -105,6 +157,12 @@ export async function POST(request: NextRequest) {
     // Check for duplicates
     const duplicateCheck = await checkDuplicateBkmvUpload(franchiseeId, periodStartDate, periodEndDate);
     if (duplicateCheck.exists && !forceReplace) {
+      await logUploadFailure(auditContext, file.name, "duplicate_period", {
+        franchiseeId,
+        periodStartDate,
+        periodEndDate,
+        existingFileId: duplicateCheck.existingFile!.id,
+      });
       return NextResponse.json({
         error: "duplicate",
         message: "A file already exists for this franchisee and period",
@@ -310,6 +368,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in admin BKMVDATA upload:", error);
+    if (auditContext) {
+      await logUploadFailure(auditContext, auditFileName, "internal_error", {
+        details: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
