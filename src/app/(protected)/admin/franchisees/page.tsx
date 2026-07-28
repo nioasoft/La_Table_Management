@@ -134,7 +134,7 @@ const statusLabels: Record<FranchiseeStatus, string> = {
 const contactRoleLabels: Record<ContactRole, string> = {
   owner: "בעלים",
   manager: "מנהל",
-  accountant: "מנהלת חשבונות",
+  accountant: "מנהל/ת חשבונות",
   chef: "שף",
   staff: "עובד מטה",
   operations: "תפעול",
