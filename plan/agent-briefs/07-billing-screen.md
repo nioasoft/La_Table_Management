@@ -28,3 +28,23 @@
 
 ## גמור כאשר
 אפשר להזין דחייה, לראות את השווי בשקלים מתעדכן, לרענן, והדחייה שם. `npm test` ו-`npm run lint` עוברים.
+
+## מה כבר קיים
+
+- `src/data-access/franchisee-billing.ts` — שכבת הנתונים של T06, כולל תשעת קודי
+  האנומליה ב-`BillingAnomalyCode` ו-`processRoyaltyRevenueUpload`. **אל תשכפל לוגיקה
+  משם** ואל תחשב סכומים מחדש במסך; הצג את מה ששמור.
+- `src/app/api/franchisee-billing/upload/route.ts` — ה-route להעלאה.
+- `src/schemas/franchisee-royalty.ts` — הדפוס של Zod משותף לקליינט ולשרת בפרויקט הזה.
+- `src/components/franchisee-royalty-tier-editor.tsx` — הרכיב מ-T04. **קרא אותו לפני
+  שאתה כותב**: `dir="rtl"` על Radix, `dir="ltr"` על שדות מספר, `<bdi>` על מספרים
+  מעוצבים, הודעות שגיאה בעברית והפירוט ל-`console.error` באנגלית. אותו סטנדרט כאן.
+
+## אין לך בסיס נתונים
+
+worktree בלי `.env`. הפרד לוגיקה טהורה מגישה ל-DB והזרק את פעולות ה-DB, כמו
+`SeedDatabaseOperations` ב-`src/scripts/seed-royalty-config.ts` וכמו T06. כך הדחייה
+בנקודות אחוז, השווי בשקלים והמצבים הריקים נבדקים ב-vitest בלי חיבור.
+
+**השוואת ערכים סמנטית ולא מחרוזות** — `numeric` חוזר מ-Postgres כמחרוזת (`'1.00'`),
+ו-`jsonb` בסדר מפתחות משלו. זה כבר שבר דבר אחד בפרויקט הזה היום.
