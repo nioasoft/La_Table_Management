@@ -3,6 +3,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type {
   PersistDifferenceResolutionInput,
+  PersistNoRevenueReasonInput,
   ReopenedBillingValues,
 } from "@/data-access/franchisee-billing-screen";
 import * as schema from "@/db/schema";
@@ -44,6 +45,7 @@ function billingRowSelection(activeSourceFileId: string | null) {
     marketing: billing.marketing,
     subtotal: billing.subtotal,
     total: billing.total,
+    noRevenueReason: billing.noRevenueReason,
     deferralBalance: sql<string>`coalesce((
       select sum(${ledger.amount})
       from ${ledger}
@@ -82,6 +84,30 @@ export function createPeriodRowsQuery(
       ),
     )
     .orderBy(asc(schema.franchisee.name));
+}
+
+export function createNoRevenueReasonUpdateQuery(
+  database: BillingUpdateDatabase,
+  input: PersistNoRevenueReasonInput,
+) {
+  const billing = schema.franchiseeBilling;
+  const zeroAmountConditions = input.noRevenueReason
+    ? [
+        eq(billing.royalty, "0"),
+        eq(billing.marketing, "0"),
+        eq(billing.total, "0"),
+      ]
+    : [];
+  return database
+    .update(billing)
+    .set({ noRevenueReason: input.noRevenueReason })
+    .where(
+      and(
+        eq(billing.id, input.billingId),
+        eq(billing.status, "draft"),
+        ...zeroAmountConditions,
+      ),
+    );
 }
 
 function reopenedBillingSet(input: ReopenedBillingValues) {

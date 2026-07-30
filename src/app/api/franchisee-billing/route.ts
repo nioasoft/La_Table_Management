@@ -4,6 +4,7 @@ import {
   loadFranchiseeBillingScreen,
   resolveApprovedBillingDifference,
   updateBillingDiscount,
+  updateBillingNoRevenueReason,
   type BillingScreenOperations,
 } from "@/data-access/franchisee-billing-screen";
 import {
@@ -113,6 +114,18 @@ async function applyMutation(
       : updateBillingDiscount(
           mutation.billingId,
           mutation.discountRatePoints,
+        );
+  }
+  if (mutation.action === "update_no_revenue_reason") {
+    return operations
+      ? updateBillingNoRevenueReason(
+          mutation.billingId,
+          mutation.noRevenueReason,
+          operations,
+        )
+      : updateBillingNoRevenueReason(
+          mutation.billingId,
+          mutation.noRevenueReason,
         );
   }
   const input = {

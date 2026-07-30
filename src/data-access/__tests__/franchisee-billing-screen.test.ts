@@ -6,13 +6,16 @@ import {
   loadFranchiseeBillingScreen,
   resolveApprovedBillingDifference,
   updateBillingDiscount,
+  updateBillingNoRevenueReason,
   type BillingDiscountContext,
+  type BillingNoRevenueContext,
   type BillingScreenOperations,
   type BillingScreenRow,
   type BillingSourceReviewRecord,
   type DifferenceResolutionContext,
   type PersistDifferenceResolutionInput,
   type PersistDiscountInput,
+  type PersistNoRevenueReasonInput,
   type ReopenableBilling,
 } from "@/data-access/franchisee-billing-screen";
 
@@ -36,6 +39,7 @@ function screenRow(
     marketing: "1.000000",
     subtotal: "5.000000",
     total: "5.900000",
+    noRevenueReason: null,
     deferralBalance: "12.500000",
     sourceFileId: "source-1",
     sourceFileName: "יוני.xlsx",
@@ -151,6 +155,14 @@ class MemoryOperations implements BillingScreenOperations {
   context: BillingDiscountContext | null = discountContext();
   vat = 0.18;
   persistedDiscount: PersistDiscountInput | null = null;
+  noRevenueContext: BillingNoRevenueContext | null = {
+    id: "billing-1",
+    status: "draft",
+    royalty: "0",
+    marketing: "0",
+    total: "0",
+  };
+  persistedNoRevenueReason: PersistNoRevenueReasonInput | null = null;
   differenceContext: DifferenceResolutionContext | null = null;
   persistedResolution: PersistDifferenceResolutionInput | null = null;
   resolutionResult: "success" | "conflict" | "exported" = "success";
@@ -184,6 +196,22 @@ class MemoryOperations implements BillingScreenOperations {
     return true;
   }
 
+  async readNoRevenueContext(): Promise<BillingNoRevenueContext | null> {
+    return this.noRevenueContext;
+  }
+
+  async persistNoRevenueReason(
+    input: PersistNoRevenueReasonInput,
+  ): Promise<boolean> {
+    this.persistedNoRevenueReason = input;
+    this.rows = this.rows.map((row) =>
+      row.id === input.billingId
+        ? { ...row, noRevenueReason: input.noRevenueReason }
+        : row,
+    );
+    return true;
+  }
+
   async readDifferenceContext(): Promise<DifferenceResolutionContext | null> {
     return this.differenceContext;
   }
@@ -212,6 +240,61 @@ describe("calculateDiscountAmounts", () => {
     expect(() =>
       calculateDiscountAmounts(discountContext(), 4.01, 0.18),
     ).toThrow("הדחייה לא יכולה להיות גבוהה מתעריף המדרגה");
+  });
+});
+
+describe("updateBillingNoRevenueReason", () => {
+  it("stores a manual free-text reason for a zero draft", async () => {
+    const operations = new MemoryOperations();
+
+    await expect(
+      updateBillingNoRevenueReason(
+        "billing-1",
+        "  הסניף היה סגור  ",
+        operations,
+      ),
+    ).resolves.toEqual({
+      success: true,
+      data: { noRevenueReason: "הסניף היה סגור" },
+    });
+    expect(operations.persistedNoRevenueReason).toEqual({
+      billingId: "billing-1",
+      noRevenueReason: "הסניף היה סגור",
+    });
+  });
+
+  it("rejects a reason when any billing amount is positive", async () => {
+    const operations = new MemoryOperations();
+    operations.noRevenueContext = {
+      id: "billing-1",
+      status: "draft",
+      royalty: "0",
+      marketing: "1.000000",
+      total: "1.180000",
+    };
+
+    await expect(
+      updateBillingNoRevenueReason(
+        "billing-1",
+        "אין פעילות",
+        operations,
+      ),
+    ).resolves.toMatchObject({
+      success: false,
+      code: "nonzero",
+    });
+    expect(operations.persistedNoRevenueReason).toBeNull();
+  });
+
+  it("allows clearing an existing reason", async () => {
+    const operations = new MemoryOperations();
+
+    await expect(
+      updateBillingNoRevenueReason("billing-1", null, operations),
+    ).resolves.toEqual({
+      success: true,
+      data: { noRevenueReason: null },
+    });
   });
 });
 

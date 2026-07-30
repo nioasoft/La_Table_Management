@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 
 import {
   createDeleteBillingLedgerQuery,
+  createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
@@ -97,6 +98,27 @@ describe("franchisee billing reopen SQL", () => {
     expect(query.sql).toContain('"marketing_exported_at" is null');
     expect(query.sql).toContain('"marketing_export_batch_id" is null');
     expect(query.params).toContain("approved");
+  });
+
+  it("guards a no-revenue reason with draft status and all zero amounts", () => {
+    const database = drizzle.mock({ schema });
+    const query = createNoRevenueReasonUpdateQuery(database, {
+      billingId: "billing-1",
+      noRevenueReason: "הסניף היה סגור",
+    }).toSQL();
+
+    expect(query.sql).toContain('"status" =');
+    expect(query.sql).toContain('"royalty" =');
+    expect(query.sql).toContain('"marketing" =');
+    expect(query.sql).toContain('"total" =');
+    expect(query.params).toEqual([
+      "הסניף היה סגור",
+      "billing-1",
+      "draft",
+      "0",
+      "0",
+      "0",
+    ]);
   });
 
   it("deletes the approval ledger artifact by billing id", () => {

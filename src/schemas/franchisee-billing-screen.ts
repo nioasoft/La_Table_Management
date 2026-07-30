@@ -17,6 +17,31 @@ export const franchiseeBillingPeriodSchema = z.strictObject({
   month: billingMonthSchema,
 });
 
+export const franchiseeBillingItemTypeSchema = z.enum(
+  ["royalty", "marketing"],
+  { error: "סוג קובץ הייצוא אינו תקין" },
+);
+
+const exportStatusQuerySchema = z.strictObject({
+  mode: z.literal("status"),
+  year: billingYearSchema,
+  month: billingMonthSchema,
+});
+
+const exportFileQuerySchema = z.strictObject({
+  mode: z.literal("file"),
+  year: billingYearSchema,
+  month: billingMonthSchema,
+  brandId: z.string().trim().min(1, "מותג הייצוא חסר"),
+  itemType: franchiseeBillingItemTypeSchema,
+});
+
+export const franchiseeBillingHashavshevetQuerySchema =
+  z.discriminatedUnion("mode", [
+    exportStatusQuerySchema,
+    exportFileQuerySchema,
+  ]);
+
 const discountRatePointsSchema = z
   .number()
   .finite("הדחייה חייבת להיות מספר")
@@ -39,8 +64,22 @@ const resolveDifferenceSchema = z.strictObject({
   }),
 });
 
+const noRevenueReasonSchema = z
+  .union([
+    z.string().trim().max(500, "הסיבה יכולה להכיל עד 500 תווים"),
+    z.null(),
+  ])
+  .transform((value) => value === "" ? null : value);
+
+const updateNoRevenueReasonSchema = z.strictObject({
+  action: z.literal("update_no_revenue_reason"),
+  billingId: z.string().trim().min(1, "מזהה שורת החיוב חסר"),
+  noRevenueReason: noRevenueReasonSchema,
+});
+
 export const franchiseeBillingMutationSchema = z.discriminatedUnion("action", [
   updateDiscountSchema,
+  updateNoRevenueReasonSchema,
   resolveDifferenceSchema,
 ]);
 
@@ -89,6 +128,7 @@ const billingScreenRowSchema = z.object({
   marketing: z.string(),
   subtotal: z.string(),
   total: z.string(),
+  noRevenueReason: z.string().nullable(),
   deferralBalance: z.string(),
   sourceFileId: z.string().nullable(),
   sourceFileName: z.string().nullable(),
@@ -144,8 +184,38 @@ export const franchiseeBillingMutationResponseSchema = z.object({
   requestId: z.string(),
 });
 
+const exportMissingFranchiseeSchema = z.object({
+  franchiseeId: z.string(),
+  franchiseeName: z.string(),
+});
+
+export const franchiseeBillingExportBrandStatusSchema = z.object({
+  brandId: z.string(),
+  brandCode: z.string(),
+  brandName: z.string(),
+  readyCount: z.number().int().nonnegative(),
+  totalActive: z.number().int().nonnegative(),
+  canExport: z.boolean(),
+  missing: z.array(exportMissingFranchiseeSchema),
+});
+
+export const franchiseeBillingExportStatusResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    period: franchiseeBillingPeriodSchema,
+    brands: z.array(franchiseeBillingExportBrandStatusSchema),
+  }),
+  requestId: z.string(),
+});
+
 export type FranchiseeBillingPeriod = z.infer<
   typeof franchiseeBillingPeriodSchema
+>;
+export type FranchiseeBillingItemType = z.infer<
+  typeof franchiseeBillingItemTypeSchema
+>;
+export type FranchiseeBillingExportBrandStatus = z.infer<
+  typeof franchiseeBillingExportBrandStatusSchema
 >;
 export type FranchiseeBillingMutation = z.infer<
   typeof franchiseeBillingMutationSchema

@@ -12,6 +12,7 @@ import {
 
 import { FranchiseeBillingAlerts } from "@/components/franchisee-billing-alerts";
 import { FranchiseeBillingApproval } from "@/components/franchisee-billing-approval";
+import { FranchiseeBillingExport } from "@/components/franchisee-billing-export";
 import { FranchiseeBillingTable } from "@/components/franchisee-billing-table";
 import { FranchiseeBillingUpload } from "@/components/franchisee-billing-upload";
 import { Button } from "@/components/ui/button";
@@ -221,6 +222,18 @@ export function FranchiseeBillingScreen() {
     await query.refetch();
   };
 
+  const saveNoRevenueReason = async (
+    billingId: string,
+    noRevenueReason: string | null,
+  ) => {
+    await patchBillingScreen({
+      action: "update_no_revenue_reason",
+      billingId,
+      noRevenueReason,
+    });
+    await query.refetch();
+  };
+
   const handleUploaded = async (uploadedPeriod: FranchiseeBillingPeriod) => {
     if (
       uploadedPeriod.year === period.year &&
@@ -385,11 +398,22 @@ export function FranchiseeBillingScreen() {
             period={period}
             onApproved={() => query.refetch()}
           />
+          <FranchiseeBillingExport
+            key={[
+              "export",
+              period.year,
+              period.month,
+              data.rows.length,
+              data.rows.filter((row) => row.status === "approved").length,
+            ].join("-")}
+            period={period}
+          />
           {data.rows.length > 0 ? (
             <FranchiseeBillingTable
               key={`${period.year}-${period.month}`}
               rows={data.rows}
               onSaveDiscount={saveDiscount}
+              onSaveNoRevenueReason={saveNoRevenueReason}
             />
           ) : (
             <BillingEmptyState hasSource={Boolean(data.sourceFile)} />

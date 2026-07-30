@@ -3,10 +3,12 @@ import { NextRequest } from "next/server";
 
 import type {
   BillingDiscountContext,
+  BillingNoRevenueContext,
   BillingScreenOperations,
   BillingScreenRow,
   PersistDifferenceResolutionInput,
   PersistDiscountInput,
+  PersistNoRevenueReasonInput,
 } from "@/data-access/franchisee-billing-screen";
 
 vi.mock("@/lib/api-middleware", () => ({
@@ -45,6 +47,7 @@ function billingRow(
     marketing: "1",
     subtotal: "5",
     total: "5.9",
+    noRevenueReason: null,
     deferralBalance: "0",
     sourceFileId: "source-1",
     sourceFileName: "יוני.xlsx",
@@ -104,6 +107,23 @@ class RouteMemoryOperations implements BillingScreenOperations {
     return true;
   }
 
+  async readNoRevenueContext(): Promise<BillingNoRevenueContext> {
+    return {
+      id: this.row.id,
+      status: this.row.status,
+      royalty: this.row.royalty,
+      marketing: this.row.marketing,
+      total: this.row.total,
+    };
+  }
+
+  async persistNoRevenueReason(
+    input: PersistNoRevenueReasonInput,
+  ): Promise<boolean> {
+    this.row = { ...this.row, noRevenueReason: input.noRevenueReason };
+    return true;
+  }
+
   async readDifferenceContext(): Promise<null> {
     return null;
   }
@@ -133,6 +153,18 @@ function patchRequest(discountRatePoints: number): NextRequest {
   });
 }
 
+function noRevenueRequest(noRevenueReason: string): NextRequest {
+  return new NextRequest("http://localhost/api/franchisee-billing", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "update_no_revenue_reason",
+      billingId: "billing-1",
+      noRevenueReason,
+    }),
+  });
+}
+
 describe("franchisee billing route with injected database operations", () => {
   it("persists a typed discount and returns it after a full route reload", async () => {
     const operations = new RouteMemoryOperations();
@@ -155,5 +187,30 @@ describe("franchisee billing route with injected database operations", () => {
       subtotal: "3.5",
       total: "4.13",
     });
+  });
+
+  it("persists a manual no-revenue reason and returns it after reload", async () => {
+    const operations = new RouteMemoryOperations();
+    operations.row = billingRow({
+      royalty: "0",
+      marketing: "0",
+      subtotal: "0",
+      total: "0",
+    });
+
+    const patchResponse = await handlePatchFranchiseeBilling(
+      noRevenueRequest("הסניף היה סגור"),
+      operations,
+    );
+    const reloadResponse = await handleGetFranchiseeBilling(
+      getRequest(),
+      operations,
+    );
+    const reloadedBody = await reloadResponse.json();
+
+    expect(patchResponse.status).toBe(200);
+    expect(reloadedBody.data.rows[0].noRevenueReason).toBe(
+      "הסניף היה סגור",
+    );
   });
 });

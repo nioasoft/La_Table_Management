@@ -4,6 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@/db/schema";
 import {
   createDeleteBillingLedgerQuery,
+  createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
@@ -11,6 +12,7 @@ import {
 } from "@/data-access/franchisee-billing-screen-queries";
 import type {
   BillingDiscountContext,
+  BillingNoRevenueContext,
   BillingScreenOperations,
   BillingScreenRow,
   BillingSourceReviewRecord,
@@ -18,6 +20,7 @@ import type {
   PersistDifferenceResolutionInput,
   PersistDifferenceResolutionResult,
   PersistDiscountInput,
+  PersistNoRevenueReasonInput,
   ReopenableBilling,
   ReopenedBillingValues,
 } from "@/data-access/franchisee-billing-screen";
@@ -25,6 +28,7 @@ import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-scree
 
 export {
   createDeleteBillingLedgerQuery,
+  createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
@@ -151,6 +155,36 @@ async function persistDiscount(
       ),
     )
     .returning({ id: billing.id });
+  return Boolean(updated);
+}
+
+async function readNoRevenueContext(
+  database: BillingDatabase,
+  billingId: string,
+): Promise<BillingNoRevenueContext | null> {
+  const billing = schema.franchiseeBilling;
+  const [row] = await database
+    .select({
+      id: billing.id,
+      status: billing.status,
+      royalty: billing.royalty,
+      marketing: billing.marketing,
+      total: billing.total,
+    })
+    .from(billing)
+    .where(eq(billing.id, billingId))
+    .limit(1);
+  return row ?? null;
+}
+
+async function persistNoRevenueReason(
+  database: BillingDatabase,
+  input: PersistNoRevenueReasonInput,
+): Promise<boolean> {
+  const [updated] = await createNoRevenueReasonUpdateQuery(
+    database,
+    input,
+  ).returning({ id: schema.franchiseeBilling.id });
   return Boolean(updated);
 }
 
@@ -350,6 +384,10 @@ export async function createBillingScreenOperations(): Promise<BillingScreenOper
       readDiscountContext(database, billingId),
     readVatRate: (period) => readVatRate(database, period),
     persistDiscount: (input) => persistDiscount(database, input),
+    readNoRevenueContext: (billingId) =>
+      readNoRevenueContext(database, billingId),
+    persistNoRevenueReason: (input) =>
+      persistNoRevenueReason(database, input),
     readDifferenceContext: (sourceFileId, franchiseeId) =>
       readDifferenceContext(database, sourceFileId, franchiseeId),
     persistDifferenceResolution: (input) =>

@@ -25,6 +25,7 @@ export interface BillingScreenRow {
   readonly marketing: string;
   readonly subtotal: string;
   readonly total: string;
+  readonly noRevenueReason: string | null;
   readonly deferralBalance: string;
   readonly sourceFileId: string | null;
   readonly sourceFileName: string | null;
@@ -49,6 +50,14 @@ export interface BillingDiscountContext {
   readonly royaltyFull: string;
   readonly marketing: string;
   readonly status: FranchiseeBillingStatus;
+}
+
+export interface BillingNoRevenueContext {
+  readonly id: string;
+  readonly status: FranchiseeBillingStatus;
+  readonly royalty: string;
+  readonly marketing: string;
+  readonly total: string;
 }
 
 export interface ReopenableBilling extends BillingDiscountContext {
@@ -95,6 +104,11 @@ export interface PersistDiscountInput {
   readonly discountValue: string;
   readonly subtotal: string;
   readonly total: string;
+}
+
+export interface PersistNoRevenueReasonInput {
+  readonly billingId: string;
+  readonly noRevenueReason: string | null;
 }
 
 export interface ReopenedBillingValues {
@@ -150,6 +164,12 @@ export interface BillingScreenOperations {
     period: FranchiseeBillingPeriod,
   ) => Promise<number | null>;
   readonly persistDiscount: (input: PersistDiscountInput) => Promise<boolean>;
+  readonly readNoRevenueContext: (
+    billingId: string,
+  ) => Promise<BillingNoRevenueContext | null>;
+  readonly persistNoRevenueReason: (
+    input: PersistNoRevenueReasonInput,
+  ) => Promise<boolean>;
   readonly readDifferenceContext: (
     sourceFileId: string,
     franchiseeId: string,
@@ -197,6 +217,7 @@ type MutationFailureCode =
   | "approved"
   | "discount_exceeds_tier"
   | "vat_missing"
+  | "nonzero"
   | "conflict"
   | "invalid_review"
   | "exported";
@@ -334,6 +355,43 @@ export async function updateBillingDiscount(
   });
   return persisted
     ? { success: true, data: amounts }
+    : failure("conflict", "השורה השתנתה ולא נשמרה. רענני את העמוד ונסי שוב");
+}
+
+function isStoredZero(value: string): boolean {
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount === 0;
+}
+
+export async function updateBillingNoRevenueReason(
+  billingId: string,
+  noRevenueReason: string | null,
+  operations?: BillingScreenOperations,
+): Promise<MutationResult<{ readonly noRevenueReason: string | null }>> {
+  const activeOperations = operations ?? await defaultOperations();
+  const billing = await activeOperations.readNoRevenueContext(billingId);
+  if (!billing) return failure("not_found", "שורת החיוב לא נמצאה");
+  if (billing.status === "approved") {
+    return failure("approved", "שורה מאושרת אינה ניתנת לעריכה");
+  }
+  const reason = noRevenueReason?.trim() || null;
+  const allAmountsZero = [
+    billing.royalty,
+    billing.marketing,
+    billing.total,
+  ].every(isStoredZero);
+  if (reason && !allAmountsZero) {
+    return failure(
+      "nonzero",
+      "ניתן לסמן ללא מחזור רק כאשר התמלוגים, השיווק והסכום הכולל הם אפס",
+    );
+  }
+  const persisted = await activeOperations.persistNoRevenueReason({
+    billingId,
+    noRevenueReason: reason,
+  });
+  return persisted
+    ? { success: true, data: { noRevenueReason: reason } }
     : failure("conflict", "השורה השתנתה ולא נשמרה. רענני את העמוד ונסי שוב");
 }
 

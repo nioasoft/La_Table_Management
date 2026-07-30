@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, LockKeyhole } from "lucide-react";
 
 import { FranchiseeBillingDiscountCell } from "@/components/franchisee-billing-discount-cell";
+import { FranchiseeBillingNoRevenueCell } from "@/components/franchisee-billing-no-revenue-cell";
 import { BillingNumber } from "@/components/franchisee-billing-number";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,6 +24,10 @@ interface FranchiseeBillingTableProps {
     billingId: string,
     discountRatePoints: number,
   ) => Promise<void>;
+  readonly onSaveNoRevenueReason: (
+    billingId: string,
+    noRevenueReason: string | null,
+  ) => Promise<void>;
 }
 
 const currencyColumns = [
@@ -33,6 +38,7 @@ const currencyColumns = [
 export function FranchiseeBillingTable({
   rows,
   onSaveDiscount,
+  onSaveNoRevenueReason,
 }: FranchiseeBillingTableProps) {
   const [discountPreviews, setDiscountPreviews] = useState<
     Readonly<Record<string, number>>
@@ -47,7 +53,7 @@ export function FranchiseeBillingTable({
 
   return (
     <div className="rounded-xl border bg-background shadow-sm">
-      <Table className="min-w-[1480px]">
+      <Table className="min-w-[1700px]">
         <TableCaption className="pb-4">
           סכומי החיוב מוצגים כפי שנשמרו, ללא חישוב מחדש במסך.
         </TableCaption>
@@ -68,6 +74,7 @@ export function FranchiseeBillingTable({
             <TableHead className="min-w-32">שיווק</TableHead>
             <TableHead className="min-w-36">סה״כ לפני מע״מ</TableHead>
             <TableHead className="min-w-40">לתשלום כולל מע״מ</TableHead>
+            <TableHead className="min-w-60">סיבת אין מחזור</TableHead>
             <TableHead className="min-w-40">יתרת דחיות מצטברת</TableHead>
           </TableRow>
         </TableHeader>
@@ -156,6 +163,13 @@ export function FranchiseeBillingTable({
                     }
                     kind="currency"
                     className="font-medium text-amber-700 dark:text-amber-300"
+                  />
+                </TableCell>
+                <TableCell>
+                  <FranchiseeBillingNoRevenueCell
+                    key={`${row.id}:${row.noRevenueReason ?? ""}`}
+                    row={row}
+                    onSave={onSaveNoRevenueReason}
                   />
                 </TableCell>
                 <TableCell>

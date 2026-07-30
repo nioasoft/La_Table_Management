@@ -5,10 +5,12 @@ const {
   loadScreen,
   resolveDifference,
   updateDiscount,
+  updateNoRevenueReason,
 } = vi.hoisted(() => ({
   loadScreen: vi.fn(),
   resolveDifference: vi.fn(),
   updateDiscount: vi.fn(),
+  updateNoRevenueReason: vi.fn(),
 }));
 
 vi.mock("@/lib/api-middleware", () => ({
@@ -30,6 +32,7 @@ vi.mock("@/data-access/franchisee-billing-screen", () => ({
   loadFranchiseeBillingScreen: loadScreen,
   resolveApprovedBillingDifference: resolveDifference,
   updateBillingDiscount: updateDiscount,
+  updateBillingNoRevenueReason: updateNoRevenueReason,
 }));
 
 import { GET, PATCH } from "@/app/api/franchisee-billing/route";
@@ -47,6 +50,7 @@ describe("GET /api/franchisee-billing", () => {
     loadScreen.mockReset();
     resolveDifference.mockReset();
     updateDiscount.mockReset();
+    updateNoRevenueReason.mockReset();
   });
 
   it("rejects an invalid billing month in Hebrew", async () => {
@@ -125,6 +129,27 @@ describe("PATCH /api/franchisee-billing", () => {
       success: false,
       error: "שורה מאושרת אינה ניתנת לעריכה",
     });
+  });
+
+  it("passes a manual no-revenue reason to the data layer", async () => {
+    updateNoRevenueReason.mockResolvedValue({
+      success: true,
+      data: { noRevenueReason: "הסניף היה סגור" },
+    });
+
+    const response = await PATCH(
+      patchRequest({
+        action: "update_no_revenue_reason",
+        billingId: "billing-1",
+        noRevenueReason: "  הסניף היה סגור  ",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateNoRevenueReason).toHaveBeenCalledWith(
+      "billing-1",
+      "הסניף היה סגור",
+    );
   });
 
   it("resolves the explicit keep-approved choice", async () => {
