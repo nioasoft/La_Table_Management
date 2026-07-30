@@ -346,7 +346,14 @@ function sameTiers(
   current: readonly RoyaltyTier[] | null,
   target: readonly RoyaltyTier[] | null,
 ): boolean {
-  return JSON.stringify(current) === JSON.stringify(target);
+  if (current === null || target === null) return current === target;
+  return (
+    current.length === target.length &&
+    current.every(
+      (tier, index) =>
+        tier.upTo === target[index].upTo && tier.rate === target[index].rate,
+    )
+  );
 }
 
 function sameDecimal(current: string | null, target: string): boolean {
@@ -465,6 +472,19 @@ function formatDeltaValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
+function patchChangesValue(
+  entry: SeedPlanEntry,
+  field: keyof SeedPatch,
+): boolean {
+  if (field === "royaltyTiers") {
+    const target = entry.patch.royaltyTiers;
+    return (
+      target !== undefined && !sameTiers(entry.row.royaltyTiers, target)
+    );
+  }
+  return entry.row[field] !== entry.patch[field];
+}
+
 export function buildSeedDeltas(
   entries: readonly SeedPlanEntry[],
 ): SeedDelta[] {
@@ -472,7 +492,7 @@ export function buildSeedDeltas(
     (Object.keys(entry.patch) as Array<keyof SeedPatch>).flatMap((field) => {
       const fromValue = entry.row[field];
       const toValue = entry.patch[field];
-      if (JSON.stringify(fromValue) === JSON.stringify(toValue)) return [];
+      if (!patchChangesValue(entry, field)) return [];
       return [
         {
           franchisee: entry.config.label,

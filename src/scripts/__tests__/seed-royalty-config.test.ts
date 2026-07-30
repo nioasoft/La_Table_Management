@@ -98,6 +98,17 @@ function createDatabaseRows(): SeedFranchiseeRow[] {
   }));
 }
 
+function createSeededRows(): SeedFranchiseeRow[] {
+  const rows = createDatabaseRows();
+  const patchesById = new Map(
+    buildSeedPlan(rows).entries.map((entry) => [entry.row.id, entry.patch]),
+  );
+  return rows.map((row) => ({
+    ...row,
+    ...patchesById.get(row.id),
+  }));
+}
+
 describe("royalty seed configuration", () => {
   it("contains all 21 franchisees and the required special cases", () => {
     expect(ROYALTY_SEED_CONFIGS).toHaveLength(21);
@@ -320,6 +331,82 @@ describe("buildSeedPlan", () => {
         (entry) => Object.keys(entry.patch).length === 0,
       ),
     ).toBe(true);
+  });
+
+  it("treats tiers with reversed jsonb key order as unchanged", () => {
+    const rows = createSeededRows().map((row) => ({
+      ...row,
+      royaltyTiers:
+        row.royaltyTiers?.map((tier) => ({
+          rate: tier.rate,
+          upTo: tier.upTo,
+        })) ?? null,
+    }));
+
+    const plan = buildSeedPlan(rows);
+
+    expect(plan.errors).toEqual([]);
+    expect(
+      plan.entries.every((entry) => entry.status === "ללא שינוי"),
+    ).toBe(true);
+    expect(buildSeedDeltas(plan.entries)).toEqual([]);
+  });
+
+  it("treats matching null upper bounds as unchanged", () => {
+    const rows = createSeededRows().map((row) =>
+      row.name === "מינה טומאיי קסטרא"
+        ? { ...row, royaltyTiers: [{ rate: 3, upTo: null }] }
+        : row,
+    );
+
+    const entry = buildSeedPlan(rows).entries.find(
+      (item) => item.config.label === "מינה טומאיי קסטרא",
+    );
+
+    expect(entry?.status).toBe("ללא שינוי");
+    expect(entry?.patch.royaltyTiers).toBeUndefined();
+  });
+
+  it("detects real rate and upper-bound changes", () => {
+    const rows = createSeededRows().map((row) => {
+      if (row.name === "מינה טומאיי קסטרא") {
+        return { ...row, royaltyTiers: [{ upTo: null, rate: 4 }] };
+      }
+      if (row.name === "מינה טומאיי יהוד") {
+        return {
+          ...row,
+          royaltyTiers: [
+            { upTo: 700_001, rate: 0 },
+            { upTo: null, rate: 5 },
+          ],
+        };
+      }
+      return row;
+    });
+
+    const changedLabels = buildSeedPlan(rows).entries
+      .filter((entry) => entry.patch.royaltyTiers !== undefined)
+      .map((entry) => entry.config.label);
+
+    expect(changedLabels).toEqual([
+      "מינה טומאיי יהוד",
+      "מינה טומאיי קסטרא",
+    ]);
+  });
+
+  it("treats equivalent decimal representations as unchanged", () => {
+    const rows = createSeededRows().map((row) =>
+      row.name === "מינה טומאיי יהוד"
+        ? { ...row, marketingFeeRate: "1" }
+        : row,
+    );
+
+    const entry = buildSeedPlan(rows).entries.find(
+      (item) => item.config.label === "מינה טומאיי יהוד",
+    );
+
+    expect(entry?.status).toBe("ללא שינוי");
+    expect(entry?.patch.marketingFeeRate).toBeUndefined();
   });
 
   it("reports missing, ambiguous, and unexpected active franchisees", () => {
