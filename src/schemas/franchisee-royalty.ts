@@ -5,7 +5,8 @@ const royaltyTierSchema = z.strictObject({
   rate: z
     .number()
     .min(0, "אחוז תמלוגים חייב להיות בין 0 ל־100")
-    .max(100, "אחוז תמלוגים חייב להיות בין 0 ל־100"),
+    .max(100, "אחוז תמלוגים חייב להיות בין 0 ל־100")
+    .multipleOf(0.01, "אחוז תמלוגים יכול להכיל עד שתי ספרות אחרי הנקודה"),
 });
 
 export const franchiseeRoyaltyPatchSchema = z
@@ -20,7 +21,8 @@ export const franchiseeRoyaltyPatchSchema = z
     marketingFeeRate: z
       .number()
       .min(0, "אחוז שיווק חייב להיות בין 0 ל־100")
-      .max(100, "אחוז שיווק חייב להיות בין 0 ל־100"),
+      .max(100, "אחוז שיווק חייב להיות בין 0 ל־100")
+      .multipleOf(0.01, "אחוז שיווק יכול להכיל עד שתי ספרות אחרי הנקודה"),
   })
   .superRefine(({ royaltyTiers }, context) => {
     const lastIndex = royaltyTiers.length - 1;

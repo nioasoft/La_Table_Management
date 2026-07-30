@@ -225,7 +225,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       );
     }
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "אירעה תקלה בשרת. יש לנסות שוב בעוד כמה רגעים." },
       { status: 500 }
     );
   }

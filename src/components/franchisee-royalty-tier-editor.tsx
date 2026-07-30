@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Loader2, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,7 +39,7 @@ import {
   type FranchiseeRoyaltyPatch,
 } from "@/schemas/franchisee-royalty";
 
-const DISPLAY_VAT_RATE = 0.18;
+const DEFAULT_DISPLAY_VAT_RATE = 0.18;
 const numberFormatter = new Intl.NumberFormat("he-IL", {
   maximumFractionDigits: 2,
 });
@@ -58,6 +58,7 @@ interface FranchiseeRoyaltyTierEditorProps {
   initialSettings: InitialRoyaltySettings;
   normalizationNotes: string | null;
   onSaved: (settings: FranchiseeRoyaltyPatch) => void;
+  vatRate?: number;
 }
 
 interface DraftTier {
@@ -74,7 +75,7 @@ interface RoyaltyDraft {
   marketingRate: string;
 }
 
-function createDraft(settings: InitialRoyaltySettings): RoyaltyDraft {
+export function createDraft(settings: InitialRoyaltySettings): RoyaltyDraft {
   const tiers =
     settings.royaltyTiers && settings.royaltyTiers.length > 0
       ? settings.royaltyTiers.map((tier) => ({
@@ -97,7 +98,10 @@ function parseNumber(value: string): number {
   return value.trim() === "" ? Number.NaN : Number(value);
 }
 
-function toPatch(draft: RoyaltyDraft, confirmed: boolean): unknown {
+export function createFranchiseeRoyaltyPatch(
+  draft: RoyaltyDraft,
+  confirmed: boolean,
+): unknown {
   return {
     royaltyTiers: draft.tiers.map((tier) => ({
       upTo: tier.upTo === null ? null : parseNumber(tier.upTo),
@@ -112,30 +116,54 @@ function toPatch(draft: RoyaltyDraft, confirmed: boolean): unknown {
   };
 }
 
-function thresholdHint(upTo: string, basis: RoyaltyTierBasis): string | null {
+export function thresholdHint(
+  upTo: string,
+  basis: RoyaltyTierBasis,
+  vatRate: number = DEFAULT_DISPLAY_VAT_RATE,
+): string | null {
   const threshold = parseNumber(upTo);
   if (!Number.isFinite(threshold)) return null;
 
   const converted =
     basis === "net"
-      ? threshold * (1 + DISPLAY_VAT_RATE)
-      : threshold / (1 + DISPLAY_VAT_RATE);
+      ? threshold * (1 + vatRate)
+      : threshold / (1 + vatRate);
   const sourceLabel = basis === "net" ? "ללא מע״מ" : "כולל מע״מ";
   const targetLabel = basis === "net" ? "כולל מע״מ" : "ללא מע״מ";
 
   return `עד ${numberFormatter.format(threshold)} ${sourceLabel} ≈ ${numberFormatter.format(converted)} ${targetLabel}`;
 }
 
-function apiErrorMessage(value: unknown): string {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof value.error === "string"
-  ) {
-    return value.error;
+export function responseSaveErrorMessage(status: number): string {
+  if (status === 400 || status === 422) {
+    return "הנתונים שהוזנו אינם תקינים. בדקי את השדות ונסי שוב.";
   }
-  return "השמירה נכשלה. יש לנסות שוב.";
+  if (status >= 500) {
+    return "אירעה תקלה בשרת והשינויים לא נשמרו. נסי שוב בעוד כמה רגעים.";
+  }
+  return "לא ניתן לשמור את השינויים. רענני את העמוד ונסי שוב.";
+}
+
+export function networkSaveErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return "השרת לא הגיב בזמן והשינויים לא נשמרו. נסי שוב.";
+  }
+  return "אירעה שגיאת תקשורת והשינויים לא נשמרו. בדקי את החיבור ונסי שוב.";
+}
+
+function readVatRate(value: unknown): number | null {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("rate" in value) ||
+    typeof value.rate !== "number" ||
+    !Number.isFinite(value.rate) ||
+    value.rate < 0 ||
+    value.rate > 1
+  ) {
+    return null;
+  }
+  return value.rate;
 }
 
 export function FranchiseeRoyaltyTierEditor({
@@ -143,6 +171,7 @@ export function FranchiseeRoyaltyTierEditor({
   initialSettings,
   normalizationNotes,
   onSaved,
+  vatRate,
 }: FranchiseeRoyaltyTierEditorProps) {
   const [draft, setDraft] = useState<RoyaltyDraft>(() =>
     createDraft(initialSettings),
@@ -150,47 +179,90 @@ export function FranchiseeRoyaltyTierEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [serverVatRate, setServerVatRate] = useState(
+    DEFAULT_DISPLAY_VAT_RATE,
+  );
+  const displayVatRate = vatRate ?? serverVatRate;
   const isEmpty = !initialSettings.royaltyTiers?.length;
+
+  useEffect(() => {
+    if (vatRate !== undefined) return;
+
+    let isCurrent = true;
+    const loadVatRate = async () => {
+      try {
+        const response = await fetchWithTimeout("/api/vat-rates/current");
+        if (!response.ok) {
+          console.error("Failed to load VAT rate for royalty tier hints:", {
+            status: response.status,
+          });
+          return;
+        }
+        const responseBody: unknown = await response.json();
+        const currentVatRate = readVatRate(responseBody);
+        if (isCurrent && currentVatRate !== null) {
+          setServerVatRate(currentVatRate);
+        }
+      } catch (vatRateError: unknown) {
+        console.error(
+          "Failed to load VAT rate for royalty tier hints:",
+          vatRateError,
+        );
+      }
+    };
+
+    void loadVatRate();
+    return () => {
+      isCurrent = false;
+    };
+  }, [vatRate]);
+
+  const updateDraft = (updater: (current: RoyaltyDraft) => RoyaltyDraft) => {
+    setDraft(updater);
+    setSuccessMessage(null);
+  };
 
   const updateTier = (
     index: number,
     field: keyof DraftTier,
     value: string | null,
   ) => {
-    setDraft((current) => ({
+    updateDraft((current) => ({
       ...current,
       tiers: current.tiers.map((tier, tierIndex) =>
         tierIndex === index ? { ...tier, [field]: value } : tier,
       ),
     }));
-    setSuccessMessage(null);
   };
 
   const addTier = () => {
-    setDraft((current) => ({
-      ...current,
-      tiers: [
-        ...current.tiers.slice(0, -1),
-        { upTo: "", rate: "" },
-        current.tiers[current.tiers.length - 1],
-      ],
-    }));
-    setSuccessMessage(null);
+    updateDraft((current) => {
+      const finalTier = current.tiers[current.tiers.length - 1];
+      const tiers =
+        finalTier?.upTo === null
+          ? [
+              ...current.tiers.slice(0, -1),
+              { upTo: "", rate: "" },
+              finalTier,
+            ]
+          : [...current.tiers, { upTo: null, rate: "" }];
+
+      return { ...current, tiers };
+    });
   };
 
   const removeTier = (index: number) => {
-    setDraft((current) => ({
+    updateDraft((current) => ({
       ...current,
       tiers: current.tiers.filter((_, tierIndex) => tierIndex !== index),
     }));
-    setSuccessMessage(null);
   };
 
   const save = async (confirmed: boolean) => {
     setError(null);
     setSuccessMessage(null);
     const validation = franchiseeRoyaltyPatchSchema.safeParse(
-      toPatch(draft, confirmed),
+      createFranchiseeRoyaltyPatch(draft, confirmed),
     );
     if (!validation.success) {
       setError(
@@ -201,8 +273,9 @@ export function FranchiseeRoyaltyTierEditor({
     }
 
     setIsSaving(true);
+    let response: Response;
     try {
-      const response = await fetchWithTimeout(
+      response = await fetchWithTimeout(
         `/api/franchisees/${franchiseeId}`,
         {
           method: "PATCH",
@@ -210,37 +283,41 @@ export function FranchiseeRoyaltyTierEditor({
           body: serializeFranchiseeRoyaltyPatch(validation.data),
         },
       );
-      const responseBody: unknown = await response.json();
-      if (!response.ok) throw new Error(apiErrorMessage(responseBody));
-
-      setDraft(
-        createDraft({
-          royaltyTiers: validation.data.royaltyTiers,
-          royaltyTierBasis: validation.data.royaltyTierBasis,
-          royaltyTiersConfirmed: validation.data.royaltyTiersConfirmed,
-          royaltyIncludeTips: validation.data.royaltyIncludeTips,
-          hashavshevetAccountKey:
-            validation.data.hashavshevetAccountKey,
-          marketingFeeRate:
-            validation.data.marketingFeeRate.toString(),
-        }),
-      );
-      onSaved(validation.data);
-      const message = confirmed
-        ? "סולם התמלוגים נשמר ואושר"
-        : "הגדרות התמלוגים נשמרו";
-      setSuccessMessage(message);
-      toast.success(message);
     } catch (saveError: unknown) {
       console.error("Failed to save franchisee royalty settings:", saveError);
-      setError(
-        saveError instanceof Error
-          ? saveError.message
-          : "השמירה נכשלה. יש לנסות שוב.",
-      );
-    } finally {
       setIsSaving(false);
+      setError(networkSaveErrorMessage(saveError));
+      return;
     }
+
+    if (!response.ok) {
+      const responseBody: unknown = await response.json().catch(() => null);
+      console.error("Franchisee royalty save request failed:", {
+        status: response.status,
+        responseBody,
+      });
+      setIsSaving(false);
+      setError(responseSaveErrorMessage(response.status));
+      return;
+    }
+
+    setDraft(
+      createDraft({
+        royaltyTiers: validation.data.royaltyTiers,
+        royaltyTierBasis: validation.data.royaltyTierBasis,
+        royaltyTiersConfirmed: validation.data.royaltyTiersConfirmed,
+        royaltyIncludeTips: validation.data.royaltyIncludeTips,
+        hashavshevetAccountKey: validation.data.hashavshevetAccountKey,
+        marketingFeeRate: validation.data.marketingFeeRate.toString(),
+      }),
+    );
+    onSaved(validation.data);
+    const message = confirmed
+      ? "סולם התמלוגים נשמר ואושר"
+      : "הגדרות התמלוגים נשמרו";
+    setSuccessMessage(message);
+    setIsSaving(false);
+    toast.success(message);
   };
 
   return (
@@ -285,7 +362,7 @@ export function FranchiseeRoyaltyTierEditor({
       {error && (
         <Alert variant="destructive">
           <AlertTitle>הגדרות התמלוגים לא נשמרו</AlertTitle>
-          <AlertDescription>{error} תקני את הנתונים ונסי שוב.</AlertDescription>
+          <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
@@ -316,7 +393,7 @@ export function FranchiseeRoyaltyTierEditor({
               dir="rtl"
               value={draft.basis}
               onValueChange={(value: RoyaltyTierBasis) =>
-                setDraft((current) => ({ ...current, basis: value }))
+                updateDraft((current) => ({ ...current, basis: value }))
               }
               disabled={isSaving}
             >
@@ -347,13 +424,20 @@ export function FranchiseeRoyaltyTierEditor({
                 {draft.tiers.map((tier, index) => {
                   const previousUpTo = draft.tiers[index - 1]?.upTo;
                   const isLast = index === draft.tiers.length - 1;
+                  const isUnlimited = tier.upTo === null;
                   const hint =
                     tier.upTo === null
                       ? null
-                      : thresholdHint(tier.upTo, draft.basis);
+                      : thresholdHint(
+                          tier.upTo,
+                          draft.basis,
+                          displayVatRate,
+                        );
 
                   return (
-                    <TableRow key={`${index}-${isLast ? "infinity" : "tier"}`}>
+                    <TableRow
+                      key={`${index}-${isUnlimited ? "infinity" : "tier"}`}
+                    >
                       <TableCell className="whitespace-nowrap font-medium">
                         {index === 0 ? (
                           "מ־0"
@@ -371,7 +455,7 @@ export function FranchiseeRoyaltyTierEditor({
                         )}
                       </TableCell>
                       <TableCell className="min-w-44">
-                        {isLast ? (
+                        {isUnlimited ? (
                           <span className="font-medium">עד ∞</span>
                         ) : (
                           <div className="space-y-1">
@@ -391,6 +475,24 @@ export function FranchiseeRoyaltyTierEditor({
                             <span className="text-xs text-muted-foreground">
                               (כולל)
                             </span>
+                            {isLast && (
+                              <div className="space-y-1">
+                                <p className="text-xs text-destructive">
+                                  המדרגה האחרונה חייבת להיות ללא הגבלה.
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    updateTier(index, "upTo", null)
+                                  }
+                                  disabled={isSaving}
+                                >
+                                  הגדרה ללא הגבלה
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         )}
                       </TableCell>
@@ -424,7 +526,7 @@ export function FranchiseeRoyaltyTierEditor({
                         )}
                       </TableCell>
                       <TableCell>
-                        {!isLast && (
+                        {!isLast && !isUnlimited && (
                           <Button
                             type="button"
                             variant="ghost"
@@ -463,7 +565,7 @@ export function FranchiseeRoyaltyTierEditor({
                 id="hashavshevet-account-key"
                 value={draft.accountKey}
                 onChange={(event) =>
-                  setDraft((current) => ({
+                  updateDraft((current) => ({
                     ...current,
                     accountKey: event.target.value,
                   }))
@@ -482,7 +584,7 @@ export function FranchiseeRoyaltyTierEditor({
                 step="0.01"
                 value={draft.marketingRate}
                 onChange={(event) =>
-                  setDraft((current) => ({
+                  updateDraft((current) => ({
                     ...current,
                     marketingRate: event.target.value,
                   }))
@@ -499,7 +601,7 @@ export function FranchiseeRoyaltyTierEditor({
               id="royalty-include-tips"
               checked={draft.includeTips}
               onCheckedChange={(checked) =>
-                setDraft((current) => ({
+                updateDraft((current) => ({
                   ...current,
                   includeTips: checked,
                 }))
