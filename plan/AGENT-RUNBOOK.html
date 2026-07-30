@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>רנבוק · הרצת חיוב התמלוגים עם סוכני Codex</title>
+<style>
+  * { box-sizing:border-box; }
+  body { font-family:"Rubik","Assistant","Segoe UI",Arial,sans-serif; line-height:1.7;
+         margin:0; padding:2rem 1rem 5rem; background:#f4f6f9; color:#1c2230; font-size:15.5px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  header { background:#111827; color:#e8edf5; border-radius:14px; padding:1.7rem 1.9rem; margin-bottom:1.5rem; }
+  header h1 { font-size:1.5rem; margin:0 0 .35rem; color:#fff; }
+  header .sub { color:#9ca3af; font-size:.87rem; margin:0; }
+  h2 { font-size:1.18rem; margin:2.5rem 0 .8rem; color:#1d4ed8; border-right:4px solid #2563eb; padding-right:.65rem; }
+  h3 { font-size:1rem; margin:1.5rem 0 .45rem; color:#334155; }
+  p { margin:.65rem 0; }
+  table { border-collapse:collapse; width:100%; margin:.9rem 0; background:#fff;
+          box-shadow:0 1px 5px rgba(15,30,60,.07); border-radius:8px; overflow:hidden; }
+  th,td { border-bottom:1px solid #e8edf3; padding:.55rem .75rem; text-align:right; vertical-align:top; font-size:.89rem; }
+  th { background:#2563eb; color:#fff; font-weight:600; border-bottom:none; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafbfd; }
+  pre { background:#0f172a; color:#e2e8f0; padding:1rem 1.1rem; border-radius:9px; overflow-x:auto;
+        direction:ltr; text-align:left; font-size:.82rem; line-height:1.6; }
+  pre code { background:none; color:inherit; padding:0; }
+  code { background:#eef2f7; padding:.08rem .35rem; border-radius:4px; font-size:.9em; font-family:"SF Mono",Menlo,monospace; }
+  .file { font-family:"SF Mono",Menlo,monospace; direction:ltr; display:inline-block;
+          background:#fff7e0; padding:.05rem .35rem; border-radius:4px; font-size:.83em; }
+  .box { background:#fff; border-radius:10px; padding:1rem 1.3rem; margin:1rem 0; box-shadow:0 1px 5px rgba(15,30,60,.07); }
+  .box > :first-child { margin-top:0; } .box > :last-child { margin-bottom:0; }
+  .crit { border-right:5px solid #dc2626; background:#fff8f8; }
+  .ok { border-right:5px solid #16a34a; }
+  .warn { border-right:5px solid #f59e0b; }
+  ul,ol { padding-right:1.3rem; margin:.5rem 0; }
+  li { margin:.25rem 0; }
+  .small { color:#64748b; font-size:.85rem; }
+  .step { background:#fff; border-radius:11px; margin:1rem 0; overflow:hidden; box-shadow:0 2px 8px rgba(15,30,60,.08); }
+  .step > .hd { background:#1e293b; color:#fff; padding:.7rem 1.2rem; display:flex; align-items:center; gap:.7rem; }
+  .step > .hd .n { background:#2563eb; width:1.8rem; height:1.8rem; border-radius:50%;
+                   display:grid; place-items:center; font-weight:700; font-size:.85rem; flex:0 0 auto; }
+  .step > .hd .t { font-weight:600; }
+  .step > .bd { padding:1rem 1.25rem 1.1rem; }
+  .step > .bd > :first-child { margin-top:0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>רנבוק · הרצת חיוב התמלוגים עם סוכני Codex</h1>
+  <p class="sub">30/07/2026 · הפרוטוקול שסשן נקי מריץ · הפקודות אומתו בפועל, לא הועתקו מתיעוד</p>
+</header>
+
+<div class="box crit">
+<h3 style="margin-top:0">קרא את זה לפני כל דבר אחר</h3>
+<p><b><code>DATABASE_URL</code> ב-<code>.env</code> מצביע על פרודקשן.</b> אין בפרויקט הזה בסיס נתונים לפיתוח. סוכן שרץ עם <code>network_access=true</code> יכול להגיע ל-Neon ולהריץ SQL הרסני, והוא יעשה את זה בביטחון מלא אם הוא יחשוב שזה עוזר.</p>
+<p style="margin-bottom:0">האיסור מופיע בראש כל בריף וגם בצ'קליסט של הבודק, אבל <b>האחריות היא של המפעיל</b>: מיגרציות מורצות ביד, אחרי קריאה של ה-SQL. אף סוכן לא מריץ <code>db:migrate</code>.</p>
+</div>
+
+<h2>המבנה</h2>
+<p>לכל משימה שלושה תפקידים נפרדים, ואף אחד מהם לא רואה את ההקשר של האחר:</p>
+<table>
+<tr><th style="width:18%">תפקיד</th><th style="width:16%">מי</th><th>למה כך</th></tr>
+<tr><td><b>מיישם</b></td><td>Codex, סשן נקי, <code>workspace-write</code> + רשת</td><td>רץ על מכסת ChatGPT ולא על טוקנים של Claude. התמליל שלו הולך לקובץ ולא לקונטקסט, וזו כל הנקודה.</td></tr>
+<tr><td><b>בודק</b></td><td>Codex, <b>סשן חדש לגמרי</b>, <code>read-only</code></td><td>סוכן שכתב קוד מגן עליו. בודק בלי זיכרון מההטמעה קורא את הדיף כמו שהוא, ולא כמו שהתכוונו שיהיה. <code>read-only</code> מבטיח שהוא לא יכול לתקן וגם לא ללכלך את העץ.</td></tr>
+<tr><td><b>מאשר</b></td><td>Claude, הסשן הראשי</td><td>מריץ את הבדיקות בעצמו, קורא את הדיף, מכריע בין הממצאים, ומחליט אם ממשיכים. הרצת הבדיקות אצל Claude ולא אצל הבודק היא מה שמאפשר לבודק להיות read-only.</td></tr>
+</table>
+<p><b>מה שנכנס לקונטקסט של Claude:</b> <code>last.md</code>, הדיף, ופלט הבדיקות. <b>מה שלא נכנס בשום מצב:</b> <code>run.log</code>. אל תעשה עליו <code>Read</code> ואל תעשה <code>cat</code>. בכשל בלבד, <code>tail -30</code>.</p>
+
+<h2>סדר המשימות</h2>
+<p>אחת עשרה משימות. הבריפים ב-<span class="file">plan/agent-briefs/</span>, ותיאור ה"גמור כאשר" של כל אחת ב-<span class="file">plan/franchisee-royalty-billing-tasks.html</span>.</p>
+<table>
+<tr><th style="width:7%">#</th><th style="width:34%">משימה</th><th>תלוי ב</th></tr>
+<tr><td>T01</td><td>מנוע החישוב + 37 שורות fixtures</td><td>אין</td></tr>
+<tr><td>T02</td><td>סכימה ומיגרציה (בלי הרצה)</td><td>אין</td></tr>
+<tr><td>T03</td><td>סקריפט זריעת קונפיגורציה</td><td>T02</td></tr>
+<tr><td>T04</td><td>עורך המדרגות בכרטיס הזכיין</td><td>T02</td></tr>
+<tr><td>T05</td><td>פרסר מחזור וטיפים</td><td>אין</td></tr>
+<tr><td>T06</td><td>קליטה, חישוב, שורות טיוטה</td><td>T01, T02, T05</td></tr>
+<tr><td>T07</td><td>מסך החיוב</td><td>T06</td></tr>
+<tr><td>T08</td><td>אישור, ליג'ר, מייל</td><td>T07</td></tr>
+<tr><td>T09</td><td>ייצוא חשבשבת</td><td>T08</td></tr>
+<tr><td>T10</td><td>ארבעת הדוחות</td><td>T09</td></tr>
+<tr><td>T11</td><td>הרצת קבלה מול קבצי הלקוחה</td><td>T09</td></tr>
+</table>
+<p><b>T01, T02 ו-T05 פנויים לגמרי</b> ואינם מחכים לשום תשובה מהלקוחה, והם גם השלושה שרצים ב-worktree מבודד בלי <code>.env</code>. שם מתחילים. T04 יכול לרוץ ברגע ש-T02 אושר, ואז הלקוחה מאשרת 21 סולמות בזמן שהשאר נבנה.</p>
+<div class="box warn">
+<p style="margin:0"><b>משימה אחת בכל רגע.</b> אין שני סוכנים על אותו repo במקביל: העץ הנקי הוא רשת הביטחון היחידה, ושתי הרצאות מקבילות הופכות את הדיף לבלתי-משויך. אם באמת צריך מקביליות, worktree נפרד לכל הרצה, וזה סיפור אחר.</p>
+</div>
+
+<h2>מצב מבודד: worktree בלי <code>.env</code></h2>
+<div class="box ok">
+<p style="margin-top:0"><b>T01, T02 ו-T05 רצים ב-git worktree נפרד שאין בו <code>.env</code>.</b> זו ההגנה היחידה כאן שאינה הצהרתית: בלי <code>.env</code> אין <code>DATABASE_URL</code>, והסוכן פיזית אינו יכול להגיע ל-Neon גם אם ישתכנע שזה עוזר.</p>
+<p style="margin-bottom:0">שלושת אלה גם ממילא אינם צריכים DB, וגם הם השלושה הפנויים שבהם מתחילים. <b>T03 ומעלה אינם יכולים לרוץ מבודדים</b>: T03 קורא מה-DB ל-dry-run, ו-T04 ומעלה צריכים סכימה חיה. שם ההגנה חוזרת להיות האיסור בבריף ובצ'קליסט של הבודק.</p>
+</div>
+
+<h3>הקמה</h3>
+<pre><code>T=01-royalty-engine
+MAIN="$PWD"
+BR="agent/$T"
+WT="$(dirname "$MAIN")/lt-wt-$T"
+
+git worktree add -b "$BR" "$WT" HEAD
+ln -s "$MAIN/node_modules" "$WT/node_modules"
+
+# שער הבידוד. אם זה נכשל, אל תריץ סוכן.
+test ! -e "$WT/.env" && echo "isolated: no .env" || { echo "ABORT: .env leaked"; }</code></pre>
+<p><code>.env</code> נמצא ב-<code>.gitignore</code> (שורה 15), ולכן worktree חדש נולד בלעדיו. זה לא טריק אלא תוצאה ישרה של איך שהפרויקט מוגדר.</p>
+<p><b>ה-worktree יושב מחוץ ל-repo</b> (<code>../lt-wt-…</code>), כדי שלא יופיע ב-<code>git status</code> של הראשי ולא יבלבל את הדיף.</p>
+<p><code>node_modules</code> הוא סימלינק ולא העתקה. 986MB, ואין סיבה לשכפל אותם.</p>
+
+<h3>הרצה במצב מבודד</h3>
+<pre><code>codex exec -C "$WT" -s workspace-write \
+  -c sandbox_workspace_write.network_access=true \
+  -c model_reasoning_effort=high \
+  --add-dir "$MAIN/node_modules" \
+  --output-last-message "$RUN/last.md" \
+  - &lt; "$RUN/brief.md" &gt; "$RUN/run.log" 2&gt;&1</code></pre>
+<div class="box warn">
+<p style="margin:0"><b><code>--add-dir "$MAIN/node_modules"</code> אינו קוסמטי.</b> הסימלינק מצביע אל מחוץ ל-workspace, ו-vitest כותב cache לתוך <code>node_modules</code>. בלי ההרשאה הכתיבה נחסמת, ההרצה יוצאת עם קוד 0, והסוכן מדווח בביטחון על בדיקות שלא רצו. זה בדיוק מצב "חסום-סנדבוק" שהשער בשלב 4 קיים כדי לתפוס.</p>
+</div>
+<p>הבדיקות רצות מתוך ה-worktree: <code>cd "$WT" && npm test</code>. אומת בפועל: <b>50 קבצים, 504 בדיקות, כולן עוברות בלי <code>.env</code></b>. אם בדיקה חדשה נכשלת שם על היעדר DB, זה ממצא אמיתי על טוהר הקוד ולא תקלת סביבה.</p>
+<p style="margin-bottom:0">הבודק רץ גם הוא עם <code>-C "$WT"</code>, אחרת הוא יסתכל על דיף ריק ב-repo הראשי ויאשר כלום.</p>
+
+<h3>מיזוג בחזרה וניקוי</h3>
+<pre><code># commit בתוך ה-worktree, אחרי שהבדיקות והבודק עברו
+cd "$WT" && git add -A && git commit -m "feat(royalty): &lt;מה נבנה&gt;"
+
+# מיזוג לראשי. ff-only מכריח שהראשי לא זז מתחתינו.
+cd "$MAIN" && git merge --ff-only "$BR"
+
+# ניקוי. קודם הסימלינק, אחרת git מנסה למחוק 986MB.
+rm -f "$WT/node_modules"
+git worktree remove "$WT" && git branch -d "$BR"</code></pre>
+<p style="margin-bottom:0"><b><code>rm -f "$WT/node_modules"</code> לפני <code>worktree remove</code>, בסדר הזה.</b> ואם עבדת בתוך ה-worktree וה-shell עוד נמצא שם כשמוחקים אותו, כל פקודה אחריה נכשלת ב-<code>Unable to read current working directory</code>. <code>cd "$MAIN"</code> קודם, ואם זה קרה, <code>git worktree prune</code> מסדר את הרישום.</p>
+
+<h2>הלופ, משימה אחת</h2>
+
+<div class="step">
+<div class="hd"><span class="n">0</span><span class="t">Preflight</span></div>
+<div class="bd">
+<pre><code>command -v codex && codex --version   # אומת: 0.145.0 ב-~/.local/bin/codex
+git status --porcelain                # חייב להיות ריק
+npm test                              # בסיס: 50 קבצים, 504 בדיקות, ירוק
+npm run lint 2>&1 | tail -3           # בסיס: 18 שגיאות, 38 אזהרות</code></pre>
+<div class="box warn">
+<p style="margin:0"><b><code>npm run lint</code> נכשל כבר על master.</b> 18 שגיאות ו-38 אזהרות ב-<code>b2ad62a</code>, ואף אחת מהן אינה של הפיצ'ר הזה. לכן הקריטריון בבריפים הוא <b>"לא להוסיף שגיאות חדשות"</b> ולא "lint עובר". מודדים את הבסיס כאן, לפני שנוגעים, ומשווים בסוף. סוכן שיקבל הוראה "תקן עד ש-lint ירוק" יתחיל לתקן 18 שגיאות לא קשורות, וזו חריגה מההיקף שגם מרעישה את הדיף.</p>
+</div>
+<p style="margin-bottom:0"><b>עץ מלוכלך = עוצרים.</b> הדיף אחרי ההרצה הוא הדרך היחידה לדעת מה Codex עשה. הצע commit או stash, ורק אז המשך. (הסנדבוקס של Codex מגן על קבצים מחוץ ל-repo, לא על הדיף שלך.)</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">1</span><span class="t">הרכבת הבריף</span></div>
+<div class="bd">
+<p>הבריף של המיישם הוא <code>_SHARED.md</code> ואחריו קובץ המשימה. הם מודבקים, לא מועברים בנפרד:</p>
+<pre><code>T=01-royalty-engine
+RUN=~/.claude/agent-runs/$(date +%Y%m%d-%H%M%S)-codex-$T
+mkdir -p "$RUN"
+cat plan/agent-briefs/_SHARED.md plan/agent-briefs/$T.md > "$RUN/brief.md"</code></pre>
+<p style="margin-bottom:0"><b>לא מדביקים תוכן קבצים לתוך הבריף.</b> הסוכן קורא את ה-repo בעצמו. הבריפים מפנים ל-<span class="file">plan/franchisee-royalty-billing-execution.html</span> ול-<span class="file">raw_data/תמלוגים זכיינים/</span>, וזה מכוון.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">2</span><span class="t">המיישם</span></div>
+<div class="bd">
+<pre><code>codex exec -C "$PWD" -s workspace-write \
+  -c sandbox_workspace_write.network_access=true \
+  -c model_reasoning_effort=high \
+  --output-last-message "$RUN/last.md" \
+  - &lt; "$RUN/brief.md" &gt; "$RUN/run.log" 2&gt;&1</code></pre>
+<p>הרץ עם <code>run_in_background: true</code> והמשך לעבוד. ההארנס מודיע בסיום.</p>
+<p><b><code>network_access=true</code> הוא חובה ולא נוחות.</b> <code>-s workspace-write</code> חשוף חוסם את כל הרשת, כולל <code>localhost</code> ו-unix sockets. סוכן שלא מצליח להריץ <code>npm</code> לא נכשל ברעש. הוא מתדרדר בשקט להסקה ומחזיר דוח משוכנע ומקולקל. זו הדרך המרכזית שבה הרצאות כאלה מתבזבזות.</p>
+<p style="margin-bottom:0"><code>model_reasoning_effort=high</code> על T01, T06, T08 ו-T09. השאר יכולים בברירת מחדל.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">3</span><span class="t">תפיסת ה-session id, לפני שהבודק רץ</span></div>
+<div class="bd">
+<pre><code>IMPL_SID=$(find ~/.codex/sessions -name '*.jsonl' | sort | tail -1 \
+  | sed -E 's/.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/\1/')
+echo "$IMPL_SID" | tee "$RUN/impl.sid"</code></pre>
+<div class="box crit" style="margin:.7rem 0">
+<p style="margin:0"><b>זה השלב שקל לדלג עליו וזה שובר את הלופ.</b> ההרצה של הבודק יוצרת session חדש באותו cwd, ומאותו רגע <code>codex exec resume --last</code> מחזיר את <b>הבודק</b> ולא את המיישם. הממצאים יגיעו לסוכן שאין לו את הקוד בהקשר, והוא יתחיל לנחש. תופסים את ה-id לפני, ומשתמשים בו במפורש.</p>
+</div>
+<p style="margin-bottom:0" class="small">ה-id מוטבע בשם קובץ ה-session: <code>rollout-&lt;timestamp&gt;-&lt;uuid&gt;.jsonl</code>. אומת בפועל שגם החילוץ וגם <code>resume</code> לפי id מפורש שומרים הקשר.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">4</span><span class="t">שערי שפיות לפני שקוראים משהו</span></div>
+<div class="bd">
+<pre><code>grep -qiE '401|invalid_authentication|error code' "$RUN/last.md" && echo "AUTH-FAIL"
+grep -cE 'Operation not permitted|sandbox-blocked|blocked by the .*sandbox' "$RUN/run.log"
+git --no-pager diff --stat</code></pre>
+<p><b>הרצה חסומת-סנדבוק יוצאת עם קוד 0 ומחזירה תשובה סבירה.</b> אם המונה השני אינו 0, הדיף אינו תוצאה אמיתית. אל תסקור אותו. הרץ מחדש עם ההרשאה הנכונה.</p>
+<p style="margin-bottom:0">אם <code>diff --stat</code> ריק והסוכן טוען שעשה עבודה: <code>tail -30 "$RUN/run.log"</code> ולא יותר.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">5</span><span class="t">Claude מריץ את הבדיקות</span></div>
+<div class="bd">
+<pre><code># במצב מבודד: cd "$WT" קודם
+npm test 2>&1 | tail -30
+npm run lint 2>&1 | tail -3     # השווה למספרי הבסיס משלב 0</code></pre>
+<p style="margin-bottom:0">זה נעשה כאן ולא אצל הבודק, וזו הסיבה שהבודק יכול להיות <code>read-only</code>. פלט הבדיקות קצר וזול, והוא הראיה היחידה שיש לנו שהקוד באמת עובד. <b>אל תסתמך על מה שכתוב ב-<code>last.md</code> על בדיקות שעברו.</b></p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">6</span><span class="t">הבודק · סשן חדש, read-only</span></div>
+<div class="bd">
+<pre><code>sed -e "s|{{TASK}}|$T|g" -e "s|{{BRIEF}}|$T.md|g" \
+    plan/agent-briefs/_REVIEW-TEMPLATE.md > "$RUN/review-brief.md"
+
+codex exec -C "$PWD" -s read-only \
+  --output-last-message "$RUN/review.md" \
+  - &lt; "$RUN/review-brief.md" &gt; "$RUN/review.log" 2&gt;&1</code></pre>
+<p><b>במצב מבודד: <code>-C "$WT"</code> ולא <code>-C "$PWD"</code>.</b> בודק שמסתכל על ה-repo הראשי יראה דיף ריק ויאשר כלום.</p>
+<p><b>בלי <code>resume</code>.</b> זו הרצה חדשה בכוונה, ובודק בלי זיכרון מההטמעה הוא כל הערך כאן.</p>
+<p style="margin-bottom:0"><code>read-only</code> חוסם גם רשת, ולכן הבודק לא מריץ בדיקות. הוא קורא את הדיף, את הבריף ואת הקוד. את הבדיקות הרצנו בשלב 5.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">7</span><span class="t">Claude מכריע</span></div>
+<div class="bd">
+<p>קרא את <code>review.md</code> ואת הדיף. <b>אל תקבל את ממצאי הבודק כנתון.</b> סוכן בודק ממציא ממצאים כדי למלא רשימה, ומצד שני מפספס דברים. תפקידך להכריע איזה ממצא אמיתי ואיזה לא, ולהוסיף מה שאף אחד מהשניים לא ראה.</p>
+<p>בנוסף לרשימה שלו, עבור בעצמך על:</p>
+<ul>
+  <li>ה"גמור כאשר" של הבריף, סעיף-סעיף. מה מכוסה בקוד ובבדיקות ומה רק נאמר ב-<code>last.md</code>.</li>
+  <li><code>git status --porcelain</code>: קבצים מחוץ להיקף, וקבצים זמניים שנשארו.</li>
+  <li>מסלול הכסף: עיגול, כיוון ההנחה, בסיס הרף.</li>
+</ul>
+<p style="margin-bottom:0"><b>אין ממצאים חוסמים → שלב 9. יש → שלב 8.</b></p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">8</span><span class="t">חזרה למיישם, לפי id מפורש</span></div>
+<div class="bd">
+<p>כתוב ל-<code>$RUN/fix.md</code> את הממצאים <b>שהכרעת שהם אמיתיים</b>, ממוספרים, כל אחד עם קובץ:שורה ומה הנכון. בלי "הבודק אמר ש". אתה מזמין את התיקון.</p>
+<pre><code>cd "$PWD" && codex exec resume "$(cat "$RUN/impl.sid")" \
+  -c sandbox_mode="workspace-write" \
+  -c sandbox_workspace_write.network_access=true \
+  -o "$RUN/last-r2.md" \
+  - &lt; "$RUN/fix.md" &gt; "$RUN/run-r2.log" 2&gt;&1</code></pre>
+<p><b>לא לתקן בעצמך.</b> תיקון ב-Claude מייבא בחזרה בדיוק את העלות שהעברנו.</p>
+<p><b>ב-<code>resume</code>, קוד יציאה 0 אינו אומר שהסבב קרה.</b> דגל שגוי גורם ל-Codex לצאת 0 כשהשגיאה יושבת רק ב-<code>run-r2.log</code>. אמת ב-<code>git diff</code>, ואם העץ לא זז, <code>tail -5 "$RUN/run-r2.log"</code>.</p>
+<p style="margin-bottom:0"><b>מקסימום שני סבבים.</b> אחרי שניים, אם עוד יש ממצא חוסם, זה סימן שהבריף לא היה מדויק ולא שהסוכן חלש. תקן את הבריף והתחל את המשימה מאפס. אחרי שלב 8 חוזרים ל-4.</p>
+</div>
+</div>
+
+<div class="step">
+<div class="hd"><span class="n">9</span><span class="t">אישור ו-commit</span></div>
+<div class="bd">
+<pre><code>npm test && npm run lint
+git add -A && git commit -m "feat(royalty): &lt;מה נבנה&gt;"</code></pre>
+<p><b>commit לכל משימה בנפרד.</b> זו נקודת החזרה למשימה הבאה, ובלעדיה אין לאן לחזור.</p>
+<p style="margin-bottom:0"><b>מיגרציות:</b> אם המשימה יצרה קובץ SQL, הוא <b>לא הורץ</b>. קרא אותו, הרץ ביד, ואמת ב-psql ישיר. Drizzle מדווח "applied" גם כשה-journal נסחף. קרה בפרויקט הזה פעמיים.</p>
+</div>
+</div>
+
+<h2>מה נחשב סיום למשימה</h2>
+<ol>
+  <li><code>npm test</code> ו-<code>npm run lint</code> עוברים, ו-Claude ראה את הפלט.</li>
+  <li>הבודק רץ ואין ממצא חוסם פתוח.</li>
+  <li>ה"גמור כאשר" של הבריף מכוסה בקוד ובבדיקות, לא רק בדיווח.</li>
+  <li><code>git status --porcelain</code> ריק אחרי ה-commit.</li>
+  <li>אם היתה מיגרציה: הורצה ואומתה ב-SQL ישיר.</li>
+</ol>
+
+<h2>מה עוצר את השרשרת</h2>
+<table>
+<tr><th style="width:42%">מצב</th><th>מה עושים</th></tr>
+<tr><td>סוכן נגע ב-DB בכתיבה</td><td>עוצרים הכל. בודקים מה נכתב בפרודקשן לפני שממשיכים. זה לא באג בקוד, זה אירוע.</td></tr>
+<tr><td>הרצה חסומת-סנדבוק</td><td>מריצים מחדש עם ההרשאה מהטבלה בהמשך. <b>לא</b> סוקרים את הדיף הקיים.</td></tr>
+<tr><td>שני סבבי תיקון ועוד ממצא חוסם</td><td>הבריף לא מדויק. מתקנים בריף, מתחילים את המשימה מאפס.</td></tr>
+<tr><td>T05 והלקוחה עוד לא שלחה ייצוא חודשי</td><td>בונים על הקבצים הקיימים, והפרסר <b>נכשל במפורש</b> על קובץ שנתי. לא מנחשים חודש.</td></tr>
+<tr><td>T09 ועמודת <code>פרטים</code> לא הוכרעה</td><td>בונים 9 עמודות עם <code>פרטים</code> ריקה. זה מה שיש בשלושה מארבעת הקבצים שלה.</td></tr>
+</table>
+
+<h2>הרשאות הסנדבוק</h2>
+<table>
+<tr><th style="width:34%">מה נדרש</th><th>הדגלים</th></tr>
+<tr><td>ברירת מחדל למיישם</td><td><code>-s workspace-write -c sandbox_workspace_write.network_access=true</code></td></tr>
+<tr><td>בודק</td><td><code>-s read-only</code></td></tr>
+<tr><td><code>psql</code> דרך socket, Docker, כל דימון של המכונה</td><td><code>-s danger-full-access</code>. <b>לא נדרש באף אחת מ-11 המשימות.</b> אם סוכן מבקש את זה, קרא שוב את הבריף.</td></tr>
+</table>
+
+<div class="box ok">
+<h3 style="margin-top:0">היגיינת טוקנים, בשורה אחת</h3>
+<p style="margin-bottom:0">אף פעם <code>--json</code> ואף פעם <code>Read</code> על <code>run.log</code>. שטף אירועים JSONL הוא הדרך היקרה ביותר האפשרית לקרוא את זה, וכל העברת העבודה ל-Codex מתאפסת ברגע שהתמליל שלו נכנס לקונטקסט של Claude. נכנסים רק <code>last.md</code>, <code>review.md</code>, הדיף, ופלט הבדיקות.</p>
+</div>
+
+</div>
+</body>
+</html>

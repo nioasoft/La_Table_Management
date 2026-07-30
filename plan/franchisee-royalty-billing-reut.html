@@ -2,159 +2,334 @@
 <html dir="rtl" lang="he">
 <head>
 <meta charset="utf-8">
-<title>אפיון — חיוב תמלוגים ושיווק לזכיינים</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>חיוב תמלוגים ושיווק לזכיינים · אפיון</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: "Rubik", "Segoe UI", Arial, sans-serif; line-height: 1.7; margin: 0; padding: 2rem; background: #f6f7f9; color: #1f2430; }
+  body {
+    font-family: "Rubik", "Assistant", "Segoe UI", Arial, sans-serif;
+    line-height: 1.75; margin: 0; padding: 2rem 1rem 4rem;
+    background: #f4f6f9; color: #1c2230; font-size: 16px;
+  }
   .wrap { max-width: 880px; margin: 0 auto; }
-  h1 { font-size: 1.7rem; border-bottom: 3px solid #2563eb; padding-bottom: .5rem; }
-  h2 { font-size: 1.3rem; margin-top: 2.4rem; color: #1d4ed8; border-right: 4px solid #2563eb; padding-right: .6rem; }
-  h3 { font-size: 1.08rem; margin-top: 1.5rem; color: #334155; }
-  table { border-collapse: collapse; width: 100%; margin: 1rem 0; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  th, td { border: 1px solid #e2e8f0; padding: .55rem .7rem; text-align: right; vertical-align: top; font-size: .92rem; }
-  th { background: #2563eb; color: #fff; font-weight: 600; }
-  tr:nth-child(even) td { background: #f8fafc; }
-  .box { background: #fff; border-radius: 10px; padding: 1rem 1.3rem; margin: 1.1rem 0; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+
+  header { background: #fff; border-radius: 14px; padding: 1.6rem 1.8rem;
+           box-shadow: 0 2px 12px rgba(15,30,60,.07); margin-bottom: 1.6rem;
+           border-top: 5px solid #2563eb; }
+  h1 { font-size: 1.6rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  .sub { color: #64748b; font-size: .88rem; margin: 0; }
+
+  h2 { font-size: 1.22rem; margin: 2.6rem 0 .9rem; color: #1d4ed8;
+       border-right: 4px solid #2563eb; padding-right: .65rem; }
+  h3 { font-size: 1.03rem; margin: 1.6rem 0 .5rem; color: #334155; }
+  p { margin: .7rem 0; }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; background: #fff;
+          box-shadow: 0 1px 5px rgba(15,30,60,.07); border-radius: 8px; overflow: hidden; }
+  th, td { border-bottom: 1px solid #e8edf3; padding: .6rem .8rem; text-align: right;
+           vertical-align: top; font-size: .92rem; }
+  th { background: #2563eb; color: #fff; font-weight: 600; border-bottom: none; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: #fafbfd; }
+
+  .box { background: #fff; border-radius: 10px; padding: 1.05rem 1.35rem; margin: 1.1rem 0;
+         box-shadow: 0 1px 5px rgba(15,30,60,.07); }
+  .box > :first-child { margin-top: 0; }
+  .box > :last-child { margin-bottom: 0; }
+  .ok   { border-right: 5px solid #16a34a; }
   .warn { border-right: 5px solid #f59e0b; }
-  .q { border-right: 5px solid #7c3aed; background: #faf5ff; }
-  .tag { display: inline-block; background: #dc2626; color: #fff; border-radius: 6px; padding: .1rem .5rem; font-size: .78rem; margin-inline-start: .4rem; }
-  ul { padding-right: 1.3rem; }
-  .small { color: #64748b; font-size: .85rem; }
-  .calc { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: .9rem 1.1rem; font-size: .93rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .calc .hd { color: #64748b; font-size: .85rem; padding-bottom: .5rem; border-bottom: 1px solid #e2e8f0; margin-bottom: .5rem; }
-  .calc .line { display: flex; justify-content: space-between; padding: .2rem 0; }
-  .calc .sum { border-top: 2px solid #334155; margin-top: .5rem; padding-top: .5rem; font-weight: 700; font-size: 1.05rem; }
-  .num { direction: ltr; unicode-bidi: embed; font-variant-numeric: tabular-nums; }
-  .flow { background: #fff; border-radius: 10px; padding: 1.2rem 1.4rem; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-  .flow ol { margin: 0; padding-right: 1.2rem; }
-  .flow li { padding: .35rem 0; }
-  .qnum { display: inline-block; background: #7c3aed; color: #fff; border-radius: 50%; width: 1.6rem; height: 1.6rem; line-height: 1.6rem; text-align: center; font-weight: 700; margin-inline-end: .5rem; }
+  .q    { border-right: 5px solid #7c3aed; background: #fbf8ff; }
+  .hot  { border-right: 5px solid #dc2626; background: #fff7f7; }
+
+  .flow { background:#fff; border-radius:10px; padding:1.1rem 1.4rem;
+          box-shadow:0 1px 5px rgba(15,30,60,.07); }
+  .flow ol { margin:0; padding-right:1.25rem; }
+  .flow li { padding:.3rem 0; }
+
+  .calc { background:#fff; border:1px solid #e3e9f0; border-radius:9px;
+          padding:.9rem 1.1rem; font-size:.93rem; box-shadow:0 1px 5px rgba(15,30,60,.06); }
+  .calc .hd { color:#64748b; font-size:.84rem; padding-bottom:.5rem;
+              border-bottom:1px solid #e8edf3; margin-bottom:.5rem; }
+  .calc .line { display:flex; justify-content:space-between; gap:1rem; padding:.22rem 0; }
+  .calc .sum { border-top:2px solid #334155; margin-top:.5rem; padding-top:.5rem;
+               font-weight:700; font-size:1.04rem; }
+  .num { direction:ltr; unicode-bidi:embed; font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  .tag { display:inline-block; border-radius:6px; padding:.08rem .5rem; font-size:.75rem;
+         font-weight:600; margin-inline-start:.4rem; color:#fff; vertical-align:middle; }
+  .t-block { background:#dc2626; }
+  .t-ok    { background:#16a34a; }
+  .t-new   { background:#0891b2; }
+
+  .small { color:#64748b; font-size:.85rem; }
+  ul, ol { padding-right:1.3rem; }
+  li { margin:.25rem 0; }
+
+  .qlist { counter-reset:qq; list-style:none; padding:0; margin:1rem 0; }
+  .qlist > li { counter-increment:qq; background:#fff; border-radius:10px;
+                padding:.9rem 1.2rem .9rem 1.2rem; margin:.7rem 0; position:relative;
+                box-shadow:0 1px 5px rgba(15,30,60,.07); border-right:5px solid #7c3aed; }
+  .qlist > li::before { content:counter(qq); position:absolute; inset-inline-start:1.2rem;
+                top:.85rem; background:#7c3aed; color:#fff; width:1.55rem; height:1.55rem;
+                border-radius:50%; text-align:center; line-height:1.55rem;
+                font-weight:700; font-size:.85rem; }
+  .qlist > li { padding-inline-start:3.2rem; }
+  .qlist b { display:block; }
+
+  .quote { background:#f1f5f9; border-radius:7px; padding:.5rem .8rem; margin:.5rem 0;
+           font-size:.9rem; color:#334155; }
+  .tocbox { background:#0f172a; color:#e2e8f0; border-radius:12px; padding:1.1rem 1.4rem; }
+  .tocbox b { color:#fff; }
+  .tocbox a { color:#93c5fd; text-decoration:none; }
+  .tocbox a:hover { text-decoration:underline; }
+  code { background:#eef2f7; padding:.08rem .35rem; border-radius:4px; font-size:.9em; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-<h1>חיוב תמלוגים ושיווק לזכיינים</h1>
-<p class="small">אפיון לאישור · 16/07/2026</p>
+<header>
+  <h1>חיוב תמלוגים ושיווק לזכיינים</h1>
+  <p class="sub">אפיון לאישור · עודכן 29/07/2026 · אחרי הקבצים וההקלטות ששלחת</p>
+</header>
 
-<h2>המטרה</h2>
-<p>להעביר את החיוב החודשי של הזכיינים מהאקסל אל תוך המערכת — בלי לשנות את אופן העבודה. מעלים את המחזורים, המערכת מחשבת, את מזינה הנחות ומאשרת, והמערכת שולחת מיילים ומייצרת את קובץ חשבשבת.</p>
-
-<h2>מה קורה היום</h2>
-<div class="flow">
-<ol>
-  <li>מקבלים מחזורים מטאבית</li>
-  <li>מחשבים <b>תמלוגים</b> — אחוז מהמחזור, לפי מדרגות שונות לכל זכיין</li>
-  <li>מחשבים <b>שיווק</b> — 1% קבוע, כל הסניפים, כל המותגים</li>
-  <li>עוברים על הרשימה עם שרון ונותנים <b>הנחות</b> נקודתיות</li>
-  <li>שולחים מייל לכל זכיין</li>
-  <li>מייצאים לחשבשבת, וחשבשבת מוציאה את החשבוניות</li>
-</ol>
+<div class="tocbox">
+<p style="margin-top:0"><b>מה השתנה מאז המסמך הקודם</b></p>
+<p style="margin-bottom:.5rem">פתחתי את הנוסחאות באקסל שלך ואת קבצי החשבשבת, ובדקתי אותן מול המספרים. <b>החישוב פוענח במלואו</b>, כולל שני דברים שלא סופרו קודם: איך המע"מ באמת נכנס, ואיך ההנחה עובדת. גם דוח נתנזון וגם שאלת הטיפים עדיין פתוחים.</p>
+<p style="margin-bottom:0"><b>מה שאני צריך ממך:</b> <a href="#need">רשימה קצרה בסוף המסמך</a>. סעיף אחד חוסם, השאר לאישור.</p>
 </div>
-<p>הכל ידני, נעשה מחדש כל חודש. החשבון עצמו לא מסובך — הבעיה היא שהוא חוזר על עצמו ומועד לטעויות.</p>
 
-<h2>מה נבנה</h2>
+<h2>איך זה יעבוד</h2>
 <div class="flow">
 <ol>
-  <li>את מעלה את קובץ הטאבית של החודש <span class="small">— העלאה אחת, כל הזכיינים</span></li>
-  <li>המערכת מזהה כל סניף לזכיין שלו, ומחשבת תמלוגים + שיווק</li>
-  <li>נפתחת <b>טבלת חיוב לעריכה</b> — את מקלידה את ההנחות מול שרון</li>
+  <li><b>פעם אחת בהתחלה:</b> את נכנסת לכרטיס של כל זכיין ומזינה את המדרגות שלו (ממחזור, עד מחזור, אחוז) ומסמנת אם הוא מחויב כולל טיפים או לא</li>
+  <li>כל חודש: את מעלה את קובץ הטאבית</li>
+  <li>המערכת מזהה כל סניף, מחשבת תמלוגים + שיווק, ופותחת טבלה לעריכה</li>
+  <li>את עוברת עם שרון ומקלידה דחיות חיוב, בנקודות אחוז</li>
   <li>את לוחצת <b>אשר</b></li>
-  <li>המערכת שולחת מייל לכל זכיין</li>
-  <li>המערכת מייצרת את קובץ חשבשבת</li>
+  <li>יוצא מייל לבעלים של הזכיינים שקיבלו דחייה</li>
+  <li>נוצרים קבצי חשבשבת, באותו פורמט בדיוק שאת מייצאת היום</li>
 </ol>
 </div>
+<p class="small">הגרסה הראשונה מסתיימת בקובץ חשבשבת. חשבשבת ממשיכה להנפיק את החשבוניות, בדיוק כמו היום.</p>
 
-<div class="box">
-<p style="margin:0"><b>גבולות הגרסה הראשונה:</b> התהליך מסתיים בקובץ חשבשבת. חשבשבת ממשיכה להנפיק את החשבוניות, בדיוק כמו היום — המערכת לא מנפיקה חשבוניות ולא מספרת אותן.</p>
-</div>
-
-<h2>איך מחושב החיוב</h2>
-
-<h3>תמלוגים</h3>
-<p>המחזור קובע <b>באיזו מדרגה</b> הזכיין נמצא, והאחוז של אותה מדרגה חל על <b>כל המחזור</b>.</p>
+<h2>החישוב, פוענח במלואו</h2>
+<p>הכל כאן נשלף מהנוסחאות באקסל שלך ואומת מול כל 19 השורות של ינואר. אין פה ניחושים.</p>
 
 <div class="calc">
-<div class="hd">מוצקין · יולי 2026 · מדרגות: עד 700,000 → 3% | עד 800,000 → 5% | מעל → 6%</div>
-<div class="line"><span>מחזור</span><span class="num">850,000</span></div>
-<div class="line"><span class="small">← נמצא במדרגת 6%</span><span></span></div>
-<div class="line"><span>תמלוגים <span class="small">(850,000 × 6%)</span></span><span class="num">51,000</span></div>
-<div class="line"><span>שיווק <span class="small">(850,000 × 1%)</span></span><span class="num">8,500</span></div>
-<div class="line"><span>הנחה <span class="small">(מוזנת ידנית)</span></span><span class="num">−12,750</span></div>
-<div class="line sum"><span>לתשלום</span><span class="num">46,750</span></div>
+<div class="hd">שרשרת החישוב</div>
+<div class="line"><span>1 · מחזור כולל מע"מ, מגיע מטאבית</span><span class="num">C</span></div>
+<div class="line"><span>2 · מחזור ללא מע"מ</span><span class="num">C ÷ 1.18</span></div>
+<div class="line"><span>3 · <b>המדרגה נבחרת לפי המחזור כולל מע"מ</b></span><span class="num">לפי C</span></div>
+<div class="line"><span>4 · תמלוגים</span><span class="num">אחוז המדרגה × מחזור ללא מע"מ</span></div>
+<div class="line"><span>5 · שיווק</span><span class="num">1% × מחזור ללא מע"מ</span></div>
+<div class="line sum"><span>לחשבונית</span><span class="num">(תמלוגים + שיווק) × 1.18</span></div>
 </div>
-
-<h3>שיווק</h3>
-<p>1% מהמחזור. קבוע, זהה לכל הזכיינים, כל המותגים, כל הסניפים.</p>
-
-<h3>הנחות</h3>
-<p>ההנחה נשמרת <b>על החיוב של אותו חודש בלבד</b> ולא על הזכיין. כל חודש מתחיל מהמדרגות המקוריות, ואת מזינה מחדש.</p>
 
 <div class="box warn">
-<h3 style="margin-top:0">נקודה שכדאי לשים לב אליה — הקפיצה בין מדרגות</h3>
-<p>כשהאחוז נקבע לפי המדרגה וחל על כל המחזור, יש קפיצה חדה בדיוק על הגבול:</p>
+<h3 style="margin-top:0">הדבר האחד שהיה מפתיע, והוא באמת משנה כסף</h3>
+<p><b>המדרגה נבחרת לפי המחזור כולל מע"מ, אבל האחוז מוכפל במחזור ללא מע"מ.</b> אמרת לי שזה משתנה מזכיין לזכיין, אבל זה לא. זה אותו דבר אצל כל אחד ואחד. פשוט יש כאן שני תפקידים שונים: המחזור המלא קובע לאיזו מדרגה נכנסים, והמחזור בלי מע"מ הוא זה שמוכפל.</p>
+<p><b>דוגמה אמיתית מינואר, ויני חדרה־דארת':</b> המחזור כולל מע"מ היה <span class="num">739,638</span>, מעל 700,000, ולכן מדרגת 5%. אבל ללא מע"מ המחזור הוא <span class="num">626,812</span>, שהוא מתחת ל־700,000, ולפי אותו סולם היה נופל על 4.5%. האקסל מחשב <span class="num">31,340</span> ולא <span class="num">28,206</span>.</p>
+<p style="margin-bottom:0">סניף אחד, חודש אחד, הפרש של ₪3,134. בלי לפתוח את הנוסחאות היינו בונים את זה לא נכון, ואף אחד לא היה שם לב עד שזכיין היה מרים טלפון.</p>
+</div>
+
+<h3>מדרגת ה-0%</h3>
+<p>לרוב הסניפים יש <b>מדרגה תחתונה של אפס</b>: מתחת לרף מסוים לא משלמים תמלוגים בכלל. זה לא האחוז הכי נמוך, זה אפס. ויני חדרה מתחת ל־500,000, קינג נהריה מתחת ל־550,000, קינג רעננה מתחת ל־700,000. זה קיים ב־10 מתוך 12 הסניפים שיש להם נוסחה.</p>
+<p>בינואר אף סניף לא ירד מתחת לרף, אז אין שם תשובה לשאלה אחת: <b>בחודש כזה, גם דמי השיווק יורדים לאפס, או שהם נגבים תמיד?</b></p>
+
+<h3>המדרגות של כל סניף</h3>
+<p>הסכומים הם <b>מחזור כולל מע"מ</b>:</p>
 <table>
-<tr><th>מחזור</th><th>מדרגה</th><th>תמלוגים</th></tr>
-<tr><td class="num">700,000</td><td>3%</td><td class="num">21,000</td></tr>
-<tr><td class="num">700,001</td><td>5%</td><td class="num">35,000</td></tr>
+<tr><th style="width:34%">סניף</th><th>הסולם</th></tr>
+<tr><td>מינה טומיי יהוד</td><td>עד 700,000 ← 0% · מעל ← 5%</td></tr>
+<tr><td>מינה עין שמר</td><td>עד 700,000 ← 0% · עד 1,200,000 ← 3.5% · מעל ← 4%</td></tr>
+<tr><td>מינה שרונה</td><td>עד 1,200,000 ← 2.5% · מעל ← 3% <span class="small">(בלי מדרגת אפס)</span></td></tr>
+<tr><td>ויני חדרה · יהוד · נתניה · ק.אתא</td><td>עד 500,000 ← 0% · עד 600,000 ← 4% · עד 700,000 ← 4.5% · מעל ← 5%</td></tr>
+<tr><td>ויני כרמיאל · רגבה</td><td>עד 550,000 ← 0% · עד 700,000 ← 4% · מעל ← 4.5%</td></tr>
+<tr><td>קינג כרמיאל</td><td>עד 550,000 ← 0% · עד 1,000,000 ← 4.5% · מעל ← 5%</td></tr>
+<tr><td>קינג נהריה</td><td>עד 550,000 ← 0% · עד 850,000 ← 4.5% · מעל ← 5%</td></tr>
+<tr><td>קינג רעננה</td><td>עד 700,000 ← 0% · מעל ← 5%</td></tr>
+<tr><td>קינג עפולה</td><td>4.5% <span class="small">(לא היה בגיליון ינואר, נשלף מקבצי החשבשבת)</span></td></tr>
+<tr><td>מינה קסטרא · מינה קריון · ויני עזריאלי · קינג חדרה · קינג חורב · קינג ביג קריות</td><td>אין נוסחה, את מקלידה את האחוז ידנית. 3% אצל חמישה, 4% בקריון.</td></tr>
+<tr><td>נתנזון · פט ויני חיפה</td><td>0% תמלוגים, 0% שיווק</td></tr>
 </table>
-<p style="margin-bottom:0">שקל אחד של מחזור מייצר הפרש של כ-₪14,000. זה נובע ישירות משיטת המדרגות הנוכחית, וכך זה גם עובד היום באקסל — רק שווה שתדעי מזה מראש ולא תיתקלי בזה בפעם הראשונה מול זכיין.</p>
-</div>
-
-<h2>שאלות פתוחות</h2>
-<p>צריך את התשובות לפני שמתחילים לבנות.</p>
+<p class="small">ששת הסניפים בלי נוסחה כבר לא שאלה פתוחה. אמרת בהקלטה שתזיני בעצמך את המדרגות לכל הזכיינים, אז פשוט תזיני להם מה שנכון.</p>
 
 <div class="box q">
-<p><span class="qnum">1</span><b>מע"מ</b> <span class="tag">חוסם</span></p>
-<p>המחזור שמגיע מטאבית הוא סכום התקבולים — <b>כולל מע"מ</b>.</p>
-<p style="margin-bottom:0">המדרגות שלך (3% / 5% / 6%) מחושבות על המחזור כולל מע"מ, או שצריך קודם להוריד את המע"מ ורק אז להחיל את האחוז? זה משנה כל מספר בכל חיוב, בערך 17%. האקסל שלך יענה על זה מיד.</p>
+<h3 style="margin-top:0">הסולמות ייכנסו מוכנים, אבל את חייבת לאשר כל אחד</h3>
+<p>אין סיבה שתקלידי מחדש 12 סולמות שכבר חילצתי מהאקסל שלך, אז הם ייכנסו למערכת מוכנים. אבל <b>הם ייכנסו מסומנים "טרם אושר", והחישוב לא ירוץ על זכיין עד שתאשרי אותו.</b></p>
+<p>הסיבה: מה שחילצתי הוא לא בדיוק מה שכתוב אצלך. <b>בשישה מהסולמות היה טווח שאף מדרגה לא כיסתה</b>, ואני סגרתי אותו לפי מה שנראה לי הגיוני. וגם הקונבנציה של "עד" לא היתה אחידה אצלך: מינה עבדה בשיטה אחת, ויני וקינג בשנייה. יישרתי את זה.</p>
+<p style="margin-bottom:0">אלה שינויים קטנים שכנראה לא ישפיעו על שקל, אבל הם <b>הפרשנות שלי לחוזים שלך</b>. אם תאשרי אותם במעבר עין, הפרשנות שלי הופכת להסכם בשקט. לכן בכל מקום שנרמלתי משהו, המסך יגיד לך בדיוק מה שיניתי, ותחליטי.</p>
 </div>
 
-<div class="box q">
-<p><span class="qnum">2</span><b>המדרגות המלאות</b> <span class="tag">חוסם</span></p>
-<p style="margin-bottom:0">צריך את הרשימה המלאה — <b>לכל זכיין, המדרגות שלו</b>. אמרת שאת שולחת את האקסל; זה מה שחסר כדי להתחיל.</p>
+<div class="box warn">
+<h3 style="margin-top:0">הקפיצה בין מדרגות</h3>
+<p>האחוז של המדרגה חל על כל המחזור, אז בדיוק על הגבול יש קפיצה חדה. קינג נהריה, גבול 850,000:</p>
+<table>
+<tr><th>מחזור כולל מע"מ</th><th>מדרגה</th><th>תמלוגים</th></tr>
+<tr><td class="num">850,000</td><td>4.5%</td><td class="num">32,415</td></tr>
+<tr><td class="num">850,001</td><td>5%</td><td class="num">36,017</td></tr>
+</table>
+<p style="margin-bottom:0">שקל אחד של מחזור, ₪3,600 הפרש. ככה זה עובד היום באקסל ואנחנו נשמור על זה בדיוק. רק שווה שתדעי מזה מראש.</p>
 </div>
 
-<div class="box q">
-<p><span class="qnum">3</span><b>מעל המדרגה הגבוהה ביותר</b></p>
-<p style="margin-bottom:0">אם המדרגות של זכיין נגמרות ב-900,000 — מה קורה בחודש שהוא עשה 1.2 מיליון? נשארים על האחוז האחרון, או שיש מדרגה נוספת? (רלוונטי לכל זכיין — יכול להיכנס יחד עם האקסל.)</p>
+<h2>ההנחה, פוענחה מקבצי החשבשבת</h2>
+<div class="box ok">
+<p>בהקלטה אמרת "אני מקלידה הנחה, אחוז, חצי אחוז". הקבצים מוכיחים את זה מספרית: <b>ההנחה נגרעת מהתעריף עצמו, לפני החישוב.</b></p>
+<table>
+<tr><th>סניף</th><th>המדרגה שלו</th><th>נגבה בפועל</th><th>ההנחה</th></tr>
+<tr><td>אודון <span class="small">(קריון)</span></td><td>4%</td><td>3%</td><td>1 נק' אחוז</td></tr>
+<tr><td>ויני חדרה</td><td>4.5%</td><td>3.5%</td><td>1 נק' אחוז</td></tr>
+<tr><td>טמפר <span class="small">(ויני יהוד)</span></td><td>4.5%</td><td>3.5%</td><td>1 נק' אחוז</td></tr>
+<tr><td>סידיוס <span class="small">(ויני נתניה)</span></td><td>5%</td><td>4.5%</td><td>חצי נק' אחוז</td></tr>
+</table>
+<p style="margin-bottom:0">כל 14 הסניפים האחרים באותם קבצים נופלים על המדרגה שלהם בדיוק. ועוד דבר שיוצא מהמספרים: <b>דמי השיווק לא מוזלים לעולם</b>, הם נשארים 1% מלא גם אצל הארבעה האלה. במערכת תקלידי נקודות אחוז, בדיוק כמו היום.</p>
 </div>
 
-<div class="box q">
-<p><span class="qnum">4</span><b>המיילים לזכיינים</b></p>
-<p>למי המייל צריך להגיע — הבעלים? הנהלת החשבונות? שניהם?</p>
-<p style="margin-bottom:0">בנוסף, צריך לעבור על רשימת הכתובות ולוודא שהיא מעודכנת לפני שיוצא מייל ראשון.</p>
+<h3>הסכום שנדחה נשמר ומצטבר <span class="tag t-new">חדש</span></h3>
+<div class="box">
+<p>כיוון שזו דחייה ולא ויתור, המערכת <b>תשמור את שווי הדחייה בשקלים</b> לכל זכיין, ותצבור אותו. אם היינו צריכים לחייב זכיין ב־₪10,000 ובפועל חייבנו ₪9,000, ה־₪1,000 נשמרים בצד.</p>
+<p style="margin-bottom:0">ככה בכל רגע יש תשובה לשאלה "כמה בסך הכל דחינו לזכיין הזה", ואם תחליטו בעתיד לחייב אותו על זה, הסכום כבר מחכה מוכן. זה גם מה שיזין את <b>דוח ערך ההנחות</b> שביקשת.</p>
 </div>
 
-<div class="box q">
-<p><span class="qnum">5</span><b>חודש עם זיכויים</b></p>
-<p style="margin-bottom:0">אם מחזור של סניף יוצא שלילי — מזכים תמלוגים בהתאם, או שהחיוב פשוט מתאפס?</p>
-</div>
+<h2>המייל לזכיין, לאישור</h2>
+<p>יוצא רק כשיש שינוי בחיוב, ולבעלים בלבד. המילה "הנחה" לא מופיעה בו בשום מקום.</p>
 
-<h2>שתי החלטות שכדאי שתאשרי</h2>
+<div class="calc" style="font-family:inherit">
+<div class="hd">נושא: חיוב תמלוגים ושיווק · {סניף} · {חודש} {שנה}</div>
+<p style="margin:.6rem 0">שלום {שם},</p>
+<p style="margin:.6rem 0">להלן החיוב של {סניף} לחודש {חודש} {שנה}.</p>
+<div class="line"><span>מחזור כולל מע"מ</span><span class="num">{מחזור_ברוטו}</span></div>
+<div class="line"><span>מחזור ללא מע"מ</span><span class="num">{מחזור_נטו}</span></div>
+<div class="line"><span>תמלוגים לפי הסכם, {אחוז_מדרגה}%</span><span class="num">{תמלוגים_מלא}</span></div>
+<div class="line"><span><b>דחיית חיוב, {נקודות_אחוז} נק' אחוז</b></span><span class="num">−{סכום_הדחייה}</span></div>
+<div class="line"><span>תמלוגים לחיוב, {אחוז_בפועל}%</span><span class="num">{תמלוגים_לחיוב}</span></div>
+<div class="line"><span>דמי שיווק 1%</span><span class="num">{שיווק}</span></div>
+<div class="line"><span>סה"כ לפני מע"מ</span><span class="num">{סכום_ביניים}</span></div>
+<div class="line sum"><span>לתשלום כולל מע"מ</span><span class="num">{לתשלום}</span></div>
+<p style="margin:.9rem 0 .6rem">הסכום שנדחה אינו מבוטל. נעדכן אתכם לגבי מועד חיובו.</p>
+<p style="margin:.6rem 0">החשבונית תגיע בנפרד.</p>
+<p style="margin:.6rem 0 0">בברכה,<br>רעות<br>לה טייבל ניהול</p>
+</div>
+<p class="small">אם את מעדיפה שהזכיין לא יראה את התעריף המלא ואת גודל הדחייה, אפשר להשאיר רק שורת "לתשלום". אני ממליץ להשאיר את הפירוט: זה בדיוק מה שמונע את שיחת הטלפון "למה חייבתם אותי ככה".</p>
 
 <div class="box">
-<h3 style="margin-top:0">המייל יישלח אחרי אישור, לא אוטומטית</h3>
-<p style="margin-bottom:0">ביקשת שהמערכת תשלח מייל אוטומטית. בפועל עדיף שהשליחה תהיה מאחורי כפתור <b>אשר ושלח</b>: את ממילא יושבת מול הטבלה באותו רגע, וזו לחיצה אחת. מייל שיצא בטעות לזכיין — עם סכום שגוי או לפני שסיימת את ההנחות — הוא בלתי הפיך. אם בכל זאת חשוב לך שזה יהיה אוטומטי לחלוטין, נבנה כך.</p>
+<p style="margin-top:0"><b>למי זה נשלח, ואיך את שולטת בזה</b></p>
+<p style="margin-bottom:0">ברירת המחדל היא <b>כל הבעלים הרשומים שיש להם כתובת מייל</b>. בדקתי, ולכל 21 הזכיינים יש לפחות אחד; לרובם שניים, ולויני חדרה ארבעה. לפני השליחה יוצג לך מסך עם רשימת הנמענים לאותו זכיין ותוכלי להוריד מי שלא צריך לקבל. שליחה היא בלתי הפיכה, ואת ממילא יושבת שם באותו רגע, אז זו נקודת עצירה אחת ולא שדה נוסף שצריך לתחזק.</p>
 </div>
 
-<div class="box">
-<h3 style="margin-top:0">העלאה חוזרת של אותו חודש לא תמחק את ההנחות</h3>
-<p style="margin-bottom:0">אם תעלי שוב קובץ טאבית מתוקן לאותו חודש, המחזורים יתעדכנו אבל <b>ההנחות שהזנת יישארו</b>. חיוב שכבר אושר לא יזוז בכלל.</p>
+<h2>ארבעת הדוחות</h2>
+<table>
+<tr><th style="width:32%">הדוח</th><th>החתך</th></tr>
+<tr><td>תמלוגים</td><td>לפי חודש, לפי סניף</td></tr>
+<tr><td>מחזורים</td><td>כולל מע"מ ולפני מע"מ, לפי חודש, לפי סניף</td></tr>
+<tr><td>גבייה</td><td>כמה תמלוגים וכמה שיווק</td></tr>
+<tr><td>ערך הנחות</td><td>כמה כסף נדחה, לכל זכיין, מצטבר</td></tr>
+</table>
+<p>אותה טבלה בארבעה חתכים, אז מסך אחד עם ארבע תצוגות וייצוא לאקסל מכל אחת.</p>
+<p class="small"><b>לגבי "כמה גביתי":</b> ברגע שהחיוב יצא בקובץ חשבשבת, המערכת סופרת אותו כנגבה. אם תשני נתון ותייצאי מחדש, זה יירשם כתיקון. המערכת לא רואה תשלומים בפועל בבנק, אז "מי חייב לי כסף" זה משהו אחר שנדבר עליו בנפרד אם תרצי.</p>
+
+<h2>קבצי חשבשבת</h2>
+<p>הפורמט ששלחת הוא בדיוק מה שנייצר: קובץ לכל מותג ולכל סוג פריט, שישה קבצים, עם <code>הכנסותת</code> לתמלוגים ו<code>שיווק</code> לשיווק.</p>
+
+<div class="box warn">
+<h3 style="margin-top:0">שלושה דברים שראיתי בקבצים שלך</h3>
+<ul style="margin-bottom:0">
+  <li><b>בקובץ השיווק של מינה, מספר מסמך 5000 מופיע פעמיים</b> (5000, 5000, 5001, 5002, 5003), וכל הקובץ מוסט באחד מול קובץ התמלוגים. אצל ויני וקינג זה תקין. במערכת המספור יהיה אוטומטי ורציף.</li>
+  <li><b>קינג מ (מוצקין) יוצא עם כמות 2 וסכום 0.</b> שורות של אפס בכלל לא צריכות להיווצר, והמערכת פשוט לא תייצר אותן.</li>
+  <li><b>בקובץ התמלוגים של קינג חסרה עמודת "פרטים"</b> שקיימת בשלושת האחרים.</li>
+</ul>
 </div>
 
-<h2>איך נוודא שזה נכון</h2>
-<p>בהרצה הראשונה נשווה ידנית מול האקסל שלך — סניף אחד שאת כבר יודעת את המספר שלו בעל פה. עד שהמספר לא מתלבש בדיוק, לא ממשיכים.</p>
+<h2 id="need">מה שאני צריך ממך</h2>
+<ol class="qlist">
+
+<li>
+<b>הטיפים <span class="tag t-block">חוסם</span></b>
+המנגנון ברור: מי שמסומן כולל טיפים, נסכם לו תקבולים + טיפ. מי שלא, נחשב על התקבולים בלבד. את הסימון עצמו תעשי בכרטיס הזכיין.<br>
+מה שחסר זו שאלה אחת: <b>האם <span class="num">סה"כ תקבולים</span> כבר כולל בתוכו את הטיפ, או שאלה שני מספרים נפרדים?</b> אם הוא כבר כולל, אז לחבר את הטיפ פעם שנייה זה לחייב פעמיים על אותו כסף.<br>
+ולמה זה לא שאלה תיאורטית: <b>12 מתוך 21 הסניפים מדווחים אפס טיפים או כמעט אפס</b> (ויני חדרה, יהוד, כרמיאל, נתניה, קריות, מינה יהוד, קריון, תל אביב, קינג כרמיאל, נהריה, מוצקין, רעננה). ובאלה שכן מדווחים, הטיפ יוצא בין 2% ל-5.4% מהמחזור, שזה נמוך מדי לטיפים אמיתיים במסעדה. נראה לי שהעמודה קולטת רק ערוץ תשלום מסוים ולא את כל הטיפים.<br>
+<span class="small">איך המערכת תתמודד עם זה בכל מקרה: סניף שמסומן כולל טיפים ומגיע עם טיפ אפסי ייחסם בפעם הראשונה. תאשרי פעם אחת שזה תקין אצלו, ומשם הוא יעבור בשקט.</span>
+</li>
+
+<li>
+<b>ייצוא טאבית לפי חודש</b>
+שלושת הקבצים ששלחת מסוננים על 03/04/2026 עד 02/07/2026 ומקובצים לפי <b>שנה</b> בלבד, בלי פירוק לחודשים. בטאבית יש אפשרות לקבץ לפי "שנה וחודש" (זה מה שמגיע היום למערכת בייצוא אחר). בלי זה אין דוח חודשי. אם תוציאי ככה, קובץ אחד יכסה כמה חודשים בבת אחת.
+</li>
+
+<li>
+<b>דוח טאבית של נתנזון</b>
+עדיין חסר.
+</li>
+
+<li>
+<b>מפתחות החשבון: אימתתי מול המערכת, רק תעברי לאישור</b>
+לא צריך שתעבדי על זה. בדקתי את מפתחות החשבון מול הכינויים שכבר קיימים במערכת, וכולם אושרו משם: <code>אושיבה בע"מ</code> רשום כבר על מינה טומאיי יהוד, <code>ק.ק מסעדה אסייתית רעננה</code> על קינג קונג רעננה, <code>אודון</code> על קריון ו<code>טמפר הסעדה</code> על ויני יהוד. אלה היו ארבעת אלה שלא הייתי בטוח בהם, וכולם יצאו נכון. מעבר עין מספיק:
+<table style="margin-top:.6rem">
+<tr><th>מפתח חשבון</th><th>הסניף שאני מניח</th></tr>
+<tr><td>אושיבה</td><td>מינה טומיי יהוד</td></tr>
+<tr><td>מינה</td><td>מינה קסטרא</td></tr>
+<tr><td>אודון</td><td>מינה קריון</td></tr>
+<tr><td>טמפר</td><td>ויני יהוד</td></tr>
+<tr><td>סידיוס</td><td>ויני נתניה</td></tr>
+<tr><td>מיאמוטו</td><td>ויני ק.אתא</td></tr>
+<tr><td>פט ויני ע</td><td>ויני עזריאלי חיפה</td></tr>
+<tr><td>קינג ח</td><td>קינג חדרה</td></tr>
+<tr><td>קינג ג</td><td>קינג נהריה</td></tr>
+<tr><td>קינג ב</td><td>קינג ביג קריות</td></tr>
+<tr><td>קינג מ</td><td>קינג מוצקין</td></tr>
+<tr><td>ק.ק מסעדה</td><td>קינג רעננה</td></tr>
+</table>
+</li>
+
+<li>
+<b>שורה בלי שם סניף בקינג קונג, עם ₪2,694,724</b>
+בקובץ של קינג יש שורה שהשם שלה ריק והמחזור שלה כמעט 2.7 מיליון. באותו קובץ קריית מוצקין מופיעה עם ₪92,717 בלבד לרבעון שלם, שנראה נמוך מדי לסניף פעיל. יכול להיות שזאת אותה שורה שנשברה. מי זה?
+</li>
+
+<li>
+<b>מדרגות לעפולה ולמוצקין</b>
+שניהם מופיעים בייצוא של טאבית אבל לא בגיליון של ינואר. לעפולה שחזרתי 4.5% מקבצי החשבשבת, למוצקין אין כלום.
+</li>
+
+<li>
+<b>מדרגת ה-0% ודמי השיווק</b>
+בחודש שסניף לא עבר את הרף ולא משלם תמלוגים בכלל, הוא עדיין משלם 1% שיווק, או שגם זה יורד לאפס?
+</li>
+
+<li>
+<b>עמודת "פרטים" בקובץ חשבשבת</b>
+מה חשבשבת באמת מצפה לקבל, 8 עמודות או 9? נייצר תמיד את אותו מבנה.
+</li>
+
+<li>
+<b>מספר מסמך בחשבשבת</b>
+בכל ששת הקבצים שלך המספור מתחיל מ-5000 מחדש, כלומר באותו חודש המספר 5000 מופיע שש פעמים. אני מניח מזה שחשבשבת מקצה מספר מסמך משלה בייבוא, ושהעמודה הזאת היא רק מספר שורה. אם זה נכון, נשחזר את ההתנהגות בדיוק. אם חשבשבת כן דורשת מספר ייחודי, תגידי לי ונשמור מונה רציף.
+<br><span class="small">(בקובץ השיווק של מינה 5000 מופיע פעמיים באותו קובץ. את זה נסגור בכל מקרה.)</span>
+</li>
+
+<li>
+<b>אישור נוסח המייל</b>
+כמו שהוא למעלה, או עם שינויים.
+</li>
+
+</ol>
+
+<div class="box ok">
+<p style="margin-top:0"><b>שתי שאלות שהיו כאן וירדו</b></p>
+<p style="margin-bottom:0">מיפוי מפתחות החשבון נפתר מהנתונים שכבר במערכת. ושאלת "עד 700,000, כולל או לא" ירדה גם: מחזור שנוחת בדיוק על מספר עגול הוא מקרה שלא קורה, ואף אחת מ-37 השורות שראיתי לא קרובה לגבול. נקבע קונבנציה אחת, והמסך יכתוב "עד 700,000 (כולל)" ו"מעל 700,000" במפורש כדי שלא יהיה ספק מה הזנת.</p>
+</div>
 
 <h2>מה הלאה</h2>
 <div class="flow">
 <ol>
-  <li>תשובות ל-5 השאלות הפתוחות</li>
-  <li><b>האקסל</b> + <b>קובץ טאבית לדוגמה</b></li>
+  <li>תשובה על סעיף 1 (הטיפים). כל השאר לא עוצר אותנו</li>
+  <li>ייצוא טאבית לפי שנה וחודש, ודוח נתנזון</li>
+  <li>אני כותב תוכנית ביצוע מפורטת</li>
   <li>בנייה</li>
 </ol>
 </div>
-<p class="small">האקסל הוא הצוואר של הבקבוק — הוא גם מקור המדרגות וגם התשובה לשאלת המע"מ.</p>
+<p class="small">האקסל שלך פתר את החלק הקשה. מה שנשאר זה בעיקר לוודא שאנחנו לא מחשבים על מספר שכולל טיפים כשלא צריך.</p>
 
 </div>
 </body>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>פירוק למשימות · חיוב תמלוגים ושיווק לזכיינים</title>
+<style>
+  * { box-sizing:border-box; }
+  body { font-family:"Rubik","Assistant","Segoe UI",Arial,sans-serif; line-height:1.7;
+         margin:0; padding:2rem 1rem 5rem; background:#f4f6f9; color:#1c2230; font-size:15.5px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  header { background:#0f172a; color:#e8edf5; border-radius:14px; padding:1.7rem 1.9rem; margin-bottom:1.5rem; }
+  header h1 { font-size:1.5rem; margin:0 0 .35rem; color:#fff; }
+  header .sub { color:#94a3b8; font-size:.87rem; margin:0; }
+  h2 { font-size:1.18rem; margin:2.5rem 0 .8rem; color:#1d4ed8; border-right:4px solid #2563eb; padding-right:.65rem; }
+  p { margin:.65rem 0; }
+  table { border-collapse:collapse; width:100%; margin:.9rem 0; background:#fff;
+          box-shadow:0 1px 5px rgba(15,30,60,.07); border-radius:8px; overflow:hidden; }
+  th,td { border-bottom:1px solid #e8edf3; padding:.55rem .75rem; text-align:right; vertical-align:top; font-size:.89rem; }
+  th { background:#2563eb; color:#fff; font-weight:600; border-bottom:none; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafbfd; }
+  code { background:#eef2f7; padding:.08rem .35rem; border-radius:4px; font-size:.9em; font-family:"SF Mono",Menlo,monospace; }
+  .file { font-family:"SF Mono",Menlo,monospace; direction:ltr; display:inline-block;
+          background:#fff7e0; padding:.05rem .35rem; border-radius:4px; font-size:.83em; }
+  .box { background:#fff; border-radius:10px; padding:1rem 1.3rem; margin:1rem 0; box-shadow:0 1px 5px rgba(15,30,60,.07); }
+  .box > :first-child { margin-top:0; } .box > :last-child { margin-bottom:0; }
+  .warn { border-right:5px solid #f59e0b; }
+  .ok { border-right:5px solid #16a34a; }
+  ul,ol { padding-right:1.3rem; margin:.5rem 0; }
+  li { margin:.25rem 0; }
+  .small { color:#64748b; font-size:.85rem; }
+  .task { background:#fff; border-radius:11px; margin:1rem 0; overflow:hidden; box-shadow:0 2px 8px rgba(15,30,60,.08); }
+  .task > .hd { background:#1e293b; color:#fff; padding:.7rem 1.2rem; display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
+  .task > .hd .n { background:#2563eb; padding:.1rem .55rem; border-radius:6px; font-weight:700; font-size:.82rem; }
+  .task > .hd .t { font-weight:600; }
+  .task > .hd .m { margin-inline-start:auto; font-size:.77rem; color:#94a3b8; }
+  .task > .bd { padding:.9rem 1.25rem 1rem; }
+  .task > .bd > :first-child { margin-top:0; }
+  .task dt { font-size:.8rem; color:#64748b; text-transform:uppercase; letter-spacing:.04em; margin-top:.7rem; }
+  .task dt:first-child { margin-top:0; }
+  .task dd { margin:.2rem 0 0; }
+  .free { background:#16a34a; }
+  .gate { background:#dc2626; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>פירוק למשימות · סוכן נקי לכל משימה</h1>
+  <p class="sub">30/07/2026 · 11 משימות · הבריפים ב-plan/agent-briefs/ · הפרוטוקול ב-AGENT-RUNBOOK.html</p>
+</header>
+
+<div class="box">
+<p style="margin-top:0"><b>איך המסמך הזה מתחבר לשאר.</b> <span class="file">…-execution.html</span> הוא ההנדסה: המפרט, מודל הנתונים ו-14 ההחלטות. כאן הפירוק לפיסות שסוכן אחד יכול לסיים בהרצה אחת. <span class="file">AGENT-RUNBOOK.html</span> הוא איך מריצים.</p>
+<p style="margin-bottom:0"><b>העיקרון בחיתוך:</b> משימה היא יחידה שסוכן נקי יכול לסיים בלי להחזיק את כל הפרויקט בראש, עם דיף חסום, ועם תנאי סיום שאפשר להריץ ולראות. משימה שדורשת "וגם תזכור מה עשית במשימה הקודמת" חתוכה לא נכון.</p>
+</div>
+
+<h2>מה מחכה למה</h2>
+<table>
+<tr><th style="width:7%">#</th><th style="width:30%">משימה</th><th style="width:13%">תלוי ב</th><th>למה שם בסדר</th></tr>
+<tr><td>T01</td><td>מנוע החישוב</td><td><span class="small">אין</span></td><td>הדבר היחיד שאפשר להוכיח מול מספרי אמת בלי שום תשתית. הוא גם האורקל שכל השאר נמדד מולו.</td></tr>
+<tr><td>T02</td><td>סכימה ומיגרציה</td><td><span class="small">אין</span></td><td>פותח את T03 ואת T04 במקביל.</td></tr>
+<tr><td>T03</td><td>זריעת קונפיגורציה</td><td>T02</td><td>בלי הנתונים המוזרעים אין מה להראות בעורך.</td></tr>
+<tr><td>T04</td><td>עורך המדרגות</td><td>T02</td><td><b>מקדימים אותו בכוונה.</b> ברגע שהוא קיים, הלקוחה מאשרת 21 סולמות בזמן שאנחנו בונים.</td></tr>
+<tr><td>T05</td><td>פרסר מחזור וטיפים</td><td><span class="small">אין</span></td><td>אין לו תלות בקוד, רק בקובץ שהלקוחה תשלח.</td></tr>
+<tr><td>T06</td><td>קליטה וחישוב</td><td>T01 T02 T05</td><td>המפגש הראשון בין השלושה. כאן נמצאות כל האנומליות.</td></tr>
+<tr><td>T07</td><td>מסך החיוב</td><td>T06</td><td>צריך שורות אמיתיות להציג.</td></tr>
+<tr><td>T08</td><td>אישור, ליג'ר, מייל</td><td>T07</td><td>האישור הוא פעולה על שורה שנערכה במסך.</td></tr>
+<tr><td>T09</td><td>ייצוא חשבשבת</td><td>T08</td><td>מייצא רק מאושרים, וקורא את צילום המצב שהאישור כתב.</td></tr>
+<tr><td>T10</td><td>ארבעת הדוחות</td><td>T09</td><td>דוח הגבייה נשען על <code>exportedAt</code>.</td></tr>
+<tr><td>T11</td><td>הרצת קבלה</td><td>T09</td><td>משווה קבצים מיוצרים לקבצים של הלקוחה.</td></tr>
+</table>
+<div class="box ok">
+<p style="margin:0"><b>T01, T02 ו-T05 פנויים לחלוטין.</b> אף אחד מהם לא מחכה לתשובה מהלקוחה, והם החלק הגדול והמסוכן. שם מתחילים, ובלי לחכות לכלום.</p>
+</div>
+
+<h2>המשימות</h2>
+
+<div class="task">
+<div class="hd"><span class="n">T01</span><span class="t">מנוע החישוב</span><span class="m"><span class="n free">פנוי</span> · effort: high</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/01-royalty-engine.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/lib/royalty.ts</span> · <span class="file">src/lib/__tests__/royalty.test.ts</span></dd>
+<dt>גמור כאשר</dt><dd><code>npm test src/lib/__tests__/royalty.test.ts</code> עובר עם 37 שורות אמיתיות בפנים, והמספרים זהים לקבצים של הלקוחה.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>האם ה-fixtures הם באמת 19 שורות ינואר ו-18 שורות החשבשבת, או מספרים שהומצאו. ואם יש בדיקה שרק מעתיקה את הנוסחה מהקוד במקום לבדוק התנהגות.</dd>
+<dt>הסיכון האמיתי</dt><dd>סוכן שיראה "רף על ברוטו, אחוז על נטו" ויחשוב שזה באג. הבריף אומר את זה במפורש ודורש הערה בקוד.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T02</span><span class="t">סכימה ומיגרציה</span><span class="m"><span class="n free">פנוי</span></span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/02-schema-migration.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/db/schema.ts</span> · <span class="file">drizzle/00XX_franchisee_billing.sql</span> · <span class="file">drizzle/meta/_journal.json</span></dd>
+<dt>גמור כאשר</dt><dd>lint עובר, ה-SQL תקין, ה-journal מעודכן. <b>המיגרציה לא הורצה.</b> אדם מריץ ומאמת ב-psql ישיר.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>עמודות כסף שאינן <code>numeric(16,6)</code>. נגיעה ב-<code>settlement_period</code>. חוסר האינדקס הייחודי. הרצה בפועל של <code>db:migrate</code>.</dd>
+<dt>הסיכון האמיתי</dt><dd>סוכן שירצה "לעזור" ויריץ את המיגרציה על פרודקשן.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T03</span><span class="t">סקריפט זריעת קונפיגורציה</span><span class="m">תלוי ב-T02</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/03-seed-config.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/scripts/seed-royalty-config.ts</span></dd>
+<dt>גמור כאשר</dt><dd>הרצה בלי דגלים מדפיסה תוכנית שלמה ולא כותבת כלום. כתיבה רק ב-<code>--apply</code>. אידמפוטנטי.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>כתיבה בברירת מחדל. דריסת זכיין עם <code>royaltyTiersConfirmed = true</code>. ובעיקר: האם <code>royaltyTiersConfirmed</code> נזרע <b>false</b> לכולם. ולו זכיין אחד עם <code>true</code> שובר את כל הרעיון.</dd>
+<dt>הסיכון האמיתי</dt><dd>מיפוי מפתח חשבון שגוי לזכיין. הבריף דורש אימות של כל שורה מול הכינויים ב-DB לפני כתיבה, ודיווח על מה שלא התאמת.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T04</span><span class="t">עורך המדרגות</span><span class="m">תלוי ב-T02 · הקריטי ב-UX</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/04-tier-editor.md</span></dd>
+<dt>היקף</dt><dd>מסך הזכיין הקיים ורכיביו · Zod schema ב-<span class="file">src/schemas/</span> · route לשמירה</dd>
+<dt>גמור כאשר</dt><dd>אפשר להזין ולקרוא חזרה את 12 הסולמות הידועים, זהים. <b>ניסיון להזין חור נחסם על ידי צורת המסך ולא על ידי הודעת שגיאה.</b></dd>
+<dt>מה הבודק יחפש קודם</dt><dd>שדה <code>מ-</code> שניתן לעריכה, או שורה אחרונה שאפשר למחוק. שניהם מחזירים את היכולת לבטא חור.</dd>
+<dt>הסיכון האמיתי</dt><dd>סוכן שיבנה <code>{min,max}</code> עם ולידציה, כי זה הדבר המובן מאליו. זה בדיוק מה שמשחזר את שישה הסולמות השבורים של הלקוחה בממשק מלוטש.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T05</span><span class="t">פרסר מחזור וטיפים</span><span class="m"><span class="n free">פנוי</span> · <span class="n gate">קובץ חסר</span></span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/05-tabit-parser.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/lib/client-parsers/royalty-revenue-parser.ts</span> + fixtures</dd>
+<dt>גמור כאשר</dt><dd>שלושת הקבצים הקיימים נפרסים בשני סדרי העמודות, בלי שורות זבל, והשורה בלי השם חוזרת מסומנת ולא מושלכת.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>אינדקס עמודה מקודד קשיח. סינון שמשליך את השורה בלי השם. ניחוש חודש מטווח המסננים.</dd>
+<dt>הסיכון האמיתי</dt><dd>הלקוחה עוד לא שלחה ייצוא מקובץ לפי חודש. הפרסר חייב <b>להיכשל במפורש</b> על קובץ שנתי, לא להשלים חודש מהמשתמש ולהמשיך.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T06</span><span class="t">קליטה, חישוב, שורות טיוטה</span><span class="m">תלוי ב-T01 T02 T05 · effort: high</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/06-ingestion.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/data-access/franchisee-billing.ts</span> · <code>processRoyaltyRevenueUpload</code> · route להעלאה</dd>
+<dt>גמור כאשר</dt><dd>העלאה כפולה לא מייצרת כפל חיוב, לא מוחקת דחיות, ולא נוגעת בשורה מאושרת. שבע האנומליות מכוסות בבדיקות.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>delete-then-insert. <code>discountRatePoints</code> בתוך ה-<code>set</code> של ה-upsert. חוסר <code>setWhere</code>. וכל ענף שמחזיר 0 או עושה <code>continue</code> במקום לחסום.</dd>
+<dt>הסיכון האמיתי</dt><dd>המשימה הכי צפופה בכשלים שקטים. סוכן שיסכם שתי שורות שנפתרות לאותו זכיין, או שיסמן "אין מחזור" אוטומטית, ייצר בדיוק את הבאג שכל התוכנית נבנתה כדי למנוע.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T07</span><span class="t">מסך החיוב</span><span class="m">תלוי ב-T06</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/07-billing-screen.md</span></dd>
+<dt>גמור כאשר</dt><dd>הזנת דחייה בנקודות אחוז, השווי בשקלים מתעדכן, רענון והדחייה שם.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>שדה דחייה שמקבל שקלים במקום נקודות אחוז. חוסר <code>dir="rtl"</code> על Radix. מספרים בלי <code>direction: ltr</code>, שקופצים בעברית.</dd>
+<dt>הסיכון האמיתי</dt><dd>שיטוח הדחייה לשקלים "כי זה יותר אינטואיטיבי". זה מנתק את המסך מהמודל ומהאקסל של הלקוחה.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T08</span><span class="t">אישור, ליג'ר, מייל</span><span class="m">תלוי ב-T07 · effort: high</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/08-approve-email-ledger.md</span></dd>
+<dt>גמור כאשר</dt><dd>אישור עם שתי דחיות שולח שני מיילים, כותב שתי שורות ליג'ר, ויתרה נכונה. אישור חוזר לא כותב פעמיים. בדיקה לכל אחת.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>המילה "הנחה" בגוף המייל. אידמפוטנטיות שנשמרת בקליינט ולא בטרנזקציה. חמשת שדות הצילום שלא נכתבו. שליחה לנמען שאינו בעל של הזכיין הזה.</dd>
+<dt>הסיכון האמיתי</dt><dd>נוסח המייל. סוכן ינסח מחדש טקסט עברי כי הוא "נשמע יותר טוב", והנוסח הזה כבר עבר אישור. הבריף מכיל אותו מילה במילה עם דרישה לא לגעת.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T09</span><span class="t">ייצוא חשבשבת</span><span class="m">תלוי ב-T08 · effort: high</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/09-hashavshevet-export.md</span></dd>
+<dt>גמור כאשר</dt><dd>הקבצים המיוצרים זהים לקבצים ב-<span class="file">raw_data/תמלוגים זכיינים/חשבשבת/</span> בעמודות, בסדר, במספור ובערכים, ויש בדיקה שמשווה מולם.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>"תיקון" של <code>הכנסותת</code> ל-<code>הכנסות</code>. עיגול של <code>מחיר</code>. מספור גלובלי במקום 5000 לכל קובץ. מפתח חשבון שנקרא מהזכיין ולא מהצילום. חוסר שער השלמות.</dd>
+<dt>הסיכון האמיתי</dt><dd>שתי "שגיאות" שהן לא שגיאות: הטיפו לכאורה ב-<code>הכנסותת</code>, והמספור שחוזר ל-5000. סוכן סביר יתקן את שתיהן ויפיל את הייבוא של הלקוחה.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T10</span><span class="t">ארבעת הדוחות</span><span class="m">תלוי ב-T09</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/10-reports.md</span></dd>
+<dt>גמור כאשר</dt><dd>ארבע תצוגות נכונות לחודש נבחר, ייצוא לאקסל מכל אחת.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>דוח ערך הנחות שמחשב <code>points × netBase</code> בזמן שאילתה במקום לקרוא את <code>discountValue</code> השמור. דוח גבייה שנשען על <code>approvedAt</code> במקום <code>exportedAt</code>.</dd>
+<dt>הסיכון האמיתי</dt><dd>חישוב בזמן שאילתה נראה נקי יותר, ומייצר דוח שמשתנה למפרע כשמדרגות נערכות.</dd>
+</dl>
+</div>
+</div>
+
+<div class="task">
+<div class="hd"><span class="n">T11</span><span class="t">הרצת קבלה</span><span class="m">תלוי ב-T09</span></div>
+<div class="bd">
+<dl>
+<dt>בריף</dt><dd><span class="file">plan/agent-briefs/11-acceptance-run.md</span></dd>
+<dt>היקף</dt><dd><span class="file">src/scripts/verify-royalty-against-excel.ts</span> · קריאה בלבד</dd>
+<dt>גמור כאשר</dt><dd>מדפיס טבלת תואם/פער/חסר עם שני המספרים והדלתא לכל פער, ומחזיר קוד יציאה נכון. <b>הוא לא חייב לעבור בהרצה ראשונה</b>, הוא חייב להראות בבירור מה לא תואם.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>השוואה עם <code>toFixed(2)</code> או עיגול, שמסתירה פערי אגורות.</dd>
+<dt>הסיכון האמיתי</dt><dd>סקריפט שמדווח "הכל תואם" כי הוא משווה מעוגל. <code>branch.total</code> מטאבית מעולם לא הושווה לשום דבר בפרויקט הזה, וכאן הפערים אמורים להתגלות.</dd>
+</dl>
+</div>
+</div>
+
+<h2>מה בכוונה לא משימה</h2>
+<ul>
+  <li><b>הרצת המיגרציה.</b> אדם, ביד, אחרי קריאת ה-SQL. <code>DATABASE_URL</code> הוא פרודקשן.</li>
+  <li><b>הרצת סקריפט הזריעה עם <code>--apply</code>.</b> אותו נימוק.</li>
+  <li><b>אישור הסולמות.</b> זו עבודה של הלקוחה, וזו כל הסיבה ש-<code>royaltyTiersConfirmed</code> קיים.</li>
+  <li><b>הרצת הבדיקות אצל הבודק.</b> Claude מריץ. זה מה שמאפשר לבודק להיות <code>read-only</code>, ולכן לא לגעת בעץ.</li>
+</ul>
+
+<div class="box warn">
+<h3 style="margin-top:0">מה שהלקוחה עוד לא ענתה, ומה זה עוצר</h3>
+<table>
+<tr><th style="width:46%">פתוח</th><th>עוצר</th></tr>
+<tr><td>האם <code>סה"כ תקבולים</code> כולל את הטיפ</td><td>סמנטיקת T06. המנגנון נבנה, הפרשנות תוכרע.</td></tr>
+<tr><td>ייצוא טאבית מקובץ לפי שנה וחודש</td><td>T05 נבנה על הקבצים הקיימים ונכשל במפורש על קובץ שנתי.</td></tr>
+<tr><td>עמודת <code>פרטים</code>, 8 או 9</td><td>T09 נבנה עם 9. זה מה שיש בשלושה מארבעת הקבצים.</td></tr>
+<tr><td>ששת הסניפים בלי נוסחה, אישור סולמות, מדרגות לעפולה ולמוצקין</td><td>לא עוצר קוד. הזנה במסך של T04.</td></tr>
+</table>
+<p style="margin-bottom:0">אף אחד מהם לא עוצר את T01, T02 ו-T05.</p>
+</div>
+
+</div>
+</body>
+</html>

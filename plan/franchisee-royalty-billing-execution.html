@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>תוכנית ביצוע · חיוב תמלוגים ושיווק לזכיינים</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family:"Rubik","Assistant","Segoe UI",Arial,sans-serif; line-height:1.7;
+         margin:0; padding:2rem 1rem 5rem; background:#f4f6f9; color:#1c2230; font-size:15.5px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+
+  header { background:#0f172a; color:#e8edf5; border-radius:14px; padding:1.7rem 1.9rem;
+           margin-bottom:1.5rem; }
+  header h1 { font-size:1.55rem; margin:0 0 .35rem; color:#fff; }
+  header .sub { color:#94a3b8; font-size:.87rem; margin:0; }
+
+  h2 { font-size:1.2rem; margin:2.6rem 0 .8rem; color:#1d4ed8;
+       border-right:4px solid #2563eb; padding-right:.65rem; }
+  h3 { font-size:1rem; margin:1.5rem 0 .45rem; color:#334155; }
+  p { margin:.65rem 0; }
+
+  table { border-collapse:collapse; width:100%; margin:.9rem 0; background:#fff;
+          box-shadow:0 1px 5px rgba(15,30,60,.07); border-radius:8px; overflow:hidden; }
+  th,td { border-bottom:1px solid #e8edf3; padding:.55rem .75rem; text-align:right;
+          vertical-align:top; font-size:.89rem; }
+  th { background:#2563eb; color:#fff; font-weight:600; border-bottom:none; }
+  tr:last-child td { border-bottom:none; }
+  tr:nth-child(even) td { background:#fafbfd; }
+
+  pre { background:#0f172a; color:#e2e8f0; padding:1rem 1.1rem; border-radius:9px;
+        overflow-x:auto; direction:ltr; text-align:left; font-size:.83rem; line-height:1.6; }
+  pre code { background:none; color:inherit; padding:0; }
+  code { background:#eef2f7; padding:.08rem .35rem; border-radius:4px; font-size:.9em;
+         font-family:"SF Mono",Menlo,monospace; }
+  .file { font-family:"SF Mono",Menlo,monospace; direction:ltr; display:inline-block;
+          background:#fff7e0; padding:.05rem .35rem; border-radius:4px; font-size:.83em; }
+
+  .box { background:#fff; border-radius:10px; padding:1rem 1.3rem; margin:1rem 0;
+         box-shadow:0 1px 5px rgba(15,30,60,.07); }
+  .box > :first-child { margin-top:0; }
+  .box > :last-child { margin-bottom:0; }
+  .crit { border-right:5px solid #dc2626; }
+  .ok   { border-right:5px solid #16a34a; }
+  .warn { border-right:5px solid #f59e0b; }
+
+  .phase { background:#fff; border-radius:12px; margin:1.2rem 0; overflow:hidden;
+           box-shadow:0 2px 8px rgba(15,30,60,.08); }
+  .phase > .ph { background:#1e293b; color:#fff; padding:.75rem 1.2rem; display:flex;
+                 align-items:center; gap:.7rem; flex-wrap:wrap; }
+  .phase > .ph .n { background:#2563eb; width:1.9rem; height:1.9rem; border-radius:50%;
+                    display:grid; place-items:center; font-weight:700; font-size:.9rem;
+                    flex:0 0 auto; }
+  .phase > .ph .t { font-weight:600; font-size:1.02rem; }
+  .phase > .ph .meta { margin-inline-start:auto; font-size:.78rem; color:#94a3b8; }
+  .phase > .body { padding:1rem 1.3rem 1.15rem; }
+  .phase > .body > :first-child { margin-top:0; }
+  .phase h4 { margin:1rem 0 .3rem; font-size:.87rem; color:#64748b;
+              text-transform:uppercase; letter-spacing:.04em; }
+  .phase h4:first-child { margin-top:0; }
+
+  .tag { display:inline-block; border-radius:5px; padding:.06rem .45rem; font-size:.73rem;
+         font-weight:600; color:#fff; vertical-align:middle; }
+  .t-gate { background:#dc2626; }
+  .t-par  { background:#0891b2; }
+  .t-none { background:#16a34a; }
+  .d { display:inline-block; background:#7c3aed; color:#fff; border-radius:4px;
+       padding:.02rem .38rem; font-size:.74rem; font-weight:600; }
+
+  ul,ol { padding-right:1.3rem; margin:.5rem 0; }
+  li { margin:.22rem 0; }
+  .small { color:#64748b; font-size:.85rem; }
+  .num { direction:ltr; unicode-bidi:embed; font-variant-numeric:tabular-nums; }
+  .done { background:#f0fdf4; border-radius:7px; padding:.5rem .8rem; margin:.4rem 0;
+          font-size:.88rem; border-right:3px solid #16a34a; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>תוכנית ביצוע · חיוב תמלוגים ושיווק לזכיינים</h1>
+  <p class="sub">30/07/2026 · אחרי סבב תשאול · 14 החלטות סגורות · לצוות הפיתוח</p>
+</header>
+
+<div class="box">
+<p style="margin-top:0"><b>מה המסמך הזה ומה הוא לא.</b> הממצאים מהקבצים ב-<span class="file">plan/franchisee-royalty-billing.html</span>, המסמך ללקוחה ב-<span class="file">…-reut.html</span>. כאן סדר העבודה וההכרעות התכנוניות.</p>
+<p style="margin-bottom:0"><b>עקרון הסידור:</b> מנוע החישוב ראשון, כי הוא היחיד שאפשר להוכיח מול מספרים אמיתיים בלי שום תשתית. אחריו הסכימה ועורך המדרגות, כדי שרעות תתחיל להזין נתונים בזמן שאנחנו בונים את השאר. <span class="d">החלטה N</span> מפנה ליומן ההחלטות בסוף.</p>
+</div>
+
+<h2>עובדות שנבדקו מול הפרודקשן</h2>
+<p>כל אלה נבדקו ולא הונחו. הן שינו את התוכנית, ולכן הן כאן ולא בהערת שוליים.</p>
+<table>
+<tr><th style="width:44%">הממצא</th><th>ההשלכה</th></tr>
+<tr><td><b>זכיין = סניף = ישות משפטית.</b> 21 פעילים, 2 לא-פעילים, לכל אחד ח.פ משלו</td><td>"לפי סניף" ו"לפי זכיין" זהים. אין צורך בצבירה.</td></tr>
+<tr><td><b>19 מתוך 20 שמות הסניפים בטאבית מתאימים היום בהתאמה מדויקת</b> לשם או לכינוי קיים</td><td>ההתאמה בשלב 5 כמעט חינם. היחיד שנופל: <code>קינג קונג קריית מוצקין</code>.</td></tr>
+<tr><td><b>מפתחות החשבון קיימים ככינויים:</b> <code>אושיבה בע"מ</code>←מינה יהוד · <code>ק.ק מסעדה אסייתית רעננה</code>←רעננה · <code>אודון</code>←קריון · <code>טמפר הסעדה</code>←ויני יהוד</td><td>ארבע ההשערות אושרו מהנתונים. יורד מרשימת החסמים.</td></tr>
+<tr><td><b><code>client_document</code> מחזיק 33%–78% מהמחזור בלבד</b> (רגבה 33%, עין שמר 36%, קסטרא 78%)</td><td>רק פלטפורמות ממופות, בלי אשראי ומזומן, ביחס משתנה. לא יכול לשמש מקור.</td></tr>
+<tr><td><b><code>vat_rate</code> קיימת, שורה אחת</b>, <code>2000-01-01 → 0.1800</code></td><td>שער נקרא מהטבלה, כשבר ולא כאחוז.</td></tr>
+<tr><td><b><code>calculateNetFromGross</code> קיים</b> ב-<span class="file">file-processor.ts:93</span></td><td>לא כותבים חילוק משלנו.</td></tr>
+<tr><td><b><code>franchisee.marketingFeeRate</code> קיימת ו-NULL אצל כל 21</b></td><td>העמודה הדרושה כבר בסכימה.</td></tr>
+<tr><td><b>כל 5 המשתמשים בפרודקשן <code>super_user</code></b></td><td><code>requireSuperUser</code> על האישור לא נועל את רעות.</td></tr>
+<tr><td><b>לכל 21 הפעילים יש מייל בעלים, ואף מייל לא משותף בין זכיינים</b></td><td>אין בעיית אגרגציה בשליחה.</td></tr>
+<tr><td><b>ספירה לפי מותג:</b> ויני 7/7 · מינה 5/5 · קינג <b>8 + שורה בלי שם</b> · נתנזון 1, בלי קובץ</td><td>בדיקת שלמות זמינה בחינם, והשורה התשיעית בקינג היא חריגה אמיתית.</td></tr>
+</table>
+
+<h2>מפרט החישוב · החוזה</h2>
+<p>ההגדרה המחייבת. כל שינוי כאן מחייב עדכון של הבדיקות בשלב 1.</p>
+
+<pre><code>// ── קלט ───────────────────────────────────────────────────────
+receipts            // סה"כ תקבולים מטאבית, כולל מע"מ
+tips                // סה"כ טיפ מטאבית
+includeTips         // franchisee.royaltyIncludeTips
+tiers[]             // [{ upTo: number|null, rate: number }]   upTo כולל
+tierBasis           // 'gross' | 'net'  ← באיזה בסיס הוקלדו הרפים
+marketingRate       // franchisee.marketingFeeRate  (אחוזים)
+discountRatePoints  // נקודות אחוז, 0 כברירת מחדל
+vat                 // vat_rate.rate לתקופה, שבר. היום 0.18
+
+// ── חישוב ─────────────────────────────────────────────────────
+grossBase = receipts + (includeTips ? tips : 0)
+netBase   = calculateNetFromGross(grossBase, vat)
+
+// הרף מומר לברוטו, הבדיקה תמיד מול הברוטו
+threshold(t) = tierBasis === 'net' ? t.upTo * (1 + vat) : t.upTo
+tierRate     = tiers.find(t => t.upTo === null || grossBase <= threshold(t)).rate
+
+effectiveRate = max(0, tierRate - discountRatePoints)
+
+royaltyFull   = netBase * tierRate      / 100
+royalty       = netBase * effectiveRate / 100
+discountValue = royaltyFull - royalty
+marketing     = netBase * marketingRate / 100
+
+subtotal = royalty + marketing
+total    = subtotal * (1 + vat)</code></pre>
+
+<div class="box crit">
+<h3 style="margin-top:0">ארבע נקודות שאסור לפספס במימוש</h3>
+<ol style="margin-bottom:0">
+  <li><b>הרף נבדק מול הברוטו, האחוז מוכפל בנטו.</b> זה נראה כמו באג ולכן מישהו "יתקן" את זה. הנוסחאות של רעות מוכיחות: ויני חדרה, ינואר, ברוטו <span class="num">739,638</span> בוחר 5%, והאחוז מוכפל בנטו <span class="num">626,812</span> ומייצר <span class="num">31,340</span>. בדיקה על המקרה הזה, עם הערה בקוד.</li>
+  <li><b>ההנחה נגרעת מהתעריף, לא מהסכום.</b> <code>netBase × (tierRate − points)</code> ולא <code>royalty × (1 − points)</code>. רק הראשונה מייצרת את קבצי החשבשבת של רעות.</li>
+  <li><b>ההמרה של רף נטו קורית בזמן חישוב, לא בשמירה.</b> <span class="d">החלטה 1</span> רף שנכתב בחוזה בנטו הוא רף תלוי-מע"מ. המרה בשמירה מקפיאה את שער היום לתוך הנתון, ובשנה שאחרי שינוי מע"מ הרף יהיה שגוי בלי שאף אחד נגע בו.</li>
+  <li><b>אין עיגול.</b> ה-<code>מחיר</code> בקבצי חשבשבת של רעות נושא 11 ספרות אחרי הנקודה (<span class="num">48228.82838983051</span>). עמודות <code>numeric(16,6)</code>, ייצוא של הערך כמו שהוא. <code>roundAmount</code> מ-<span class="file">file-processor.ts:95</span> אסור לשימוש כאן.</li>
+</ol>
+</div>
+
+<div class="box ok">
+<p style="margin:0"><b>גבול המדרגה כולל.</b> <span class="d">החלטה 6</span> <code>upTo</code> כולל, קונבנציה יחידה. באקסל של רעות מינה השתמשה ב-<code>&lt;=</code> וויני וקינג ב-<code>&lt;</code>, אבל מחזור שנוחת בדיוק על מספר עגול הוא מקרה שלא קורה, ואף אחת מ-37 השורות האמיתיות לא קרובה לגבול. במקום להוציא על זה מהקשב של רעות, המסך כותב "עד X (כולל)" ו"מעל X" במפורש.</p>
+</div>
+
+<h2>מודל הנתונים</h2>
+
+<h3>עמודות חדשות על <code>franchisee</code></h3>
+<pre><code>royaltyTiers            jsonb     // [{ upTo: number|null, rate: number }]
+royaltyTierBasis        text      // 'gross' | 'net'   ברירת מחדל 'gross'
+royaltyTiersConfirmed   boolean   // ברירת מחדל false   ← חוסם חישוב
+royaltyIncludeTips      boolean   // ברירת מחדל false
+tipsAbsenceAcknowledged boolean   // ברירת מחדל false   ← סוגר את התרעת הטיפים
+hashavshevetAccountKey  text      // אושיבה, טמפר, קינג ג …
+
+// ממוחזרת, לא חדשה:
+marketingFeeRate        decimal(5,2)   // מיגרציה: 1.00 לכולם, 0 לנתנזון</code></pre>
+<p><b>סולם חסמים עליונים ולא <code>{min,max}</code>:</b> חורים וחפיפות הופכים בלתי ניתנים לביטוי. באקסל של רעות שישה סולמות עם חורים, כולל קינג רעננה שאין לו מדרגה מעל 7 מיליון. הקידוד מונע את זה מראש ולא מסתמך על ולידציה.</p>
+<p><b><code>royaltyTiersConfirmed</code>:</b> <span class="d">החלטה 12</span> הסולמות נזרעים מהנוסחאות, אבל מה שנזרע אינו הנתונים של רעות אלא <b>הפרשנות שלנו לנתונים שלה</b>: נרמלנו חורים והמרנו <code>&lt;</code> ל-<code>&lt;=</code> בשליש מהמקרים. בלי דגל אישור פרטני, הפרשנות הזאת הופכת לחוזה במעבר עין.</p>
+<p><b><code>royaltyRate</code> נשאר ללא שימוש</b>, לא יכול לבטא מדרגות. <code>marketingFeeRate</code> כן ממוחזר <span class="d">החלטה 2</span>, כי הוא בדיוק הטיפוס והשם הנכונים. קבוע גלובלי עם חריג קשיח לנתנזון הוא בדיוק הדפוס ש-<span class="file">schema.ts:779</span> מתעד שכבר הוחלף פעם אחת בפרויקט הזה.</p>
+
+<h3>טבלה חדשה <code>franchisee_billing</code></h3>
+<pre><code>id, franchiseeId, periodYear, periodMonth
+receipts, tips, includeTips              // צילום הקלט
+grossBase, netBase
+tierRate, discountRatePoints, effectiveRate
+royaltyFull, royalty, discountValue, marketing, subtotal, total
+-- צילום מצב, נכתב באישור (החלטה 3):
+tiersSnapshot jsonb, tierBasisSnapshot, marketingRateSnapshot,
+vatRateSnapshot, accountKeySnapshot
+sourceFileId, status ('draft'|'approved'), approvedAt, approvedBy
+exportedAt, exportBatchId
+noRevenueReason text                     // סימון ידני בלבד (החלטה 8)
+UNIQUE (franchiseeId, periodYear, periodMonth)</code></pre>
+<p><b>צילום מצב באישור</b> <span class="d">החלטה 3</span> קינג קונג רעננה כבר החליפה ישות משפטית: הקוד הנוכחי <code>517234605</code>, ובכינויים יושבים <code>אטפה בע"מ</code> ו-<code>516549102</code>. מסמך חשבשבת הוא רשומה כספית של חודש מסוים, והישות שהפעילה את הסניף באותו חודש היא זו שחייבת עליו. וחוץ מזה, "ייצוא חוזר = תיקון" מחזיק רק אם הייצוא החוזר מייצר את אותו מסמך פרט למה שתוקן.</p>
+<p><b>טבלה חדשה ולא מיחזור של <code>settlement_period</code>:</b> <span class="file">settlement-simple.ts:339</span> מצמיד התאמת ספק ל"תקופה הפתוחה הראשונה שנמצאה", כך שהתאמה של ספק היתה נוחתת בשקט על שורת חיוב של זכיין. עוד שלוש שאילתות חיות עושות <code>where(status='open').limit(1)</code>.</p>
+
+<h3>טבלה חדשה <code>franchisee_deferral_ledger</code></h3>
+<pre><code>id, franchiseeId, amount numeric(16,6),   // חיובי = נדחה, שלילי = נגבה
+billingId, note, createdAt, createdBy</code></pre>
+<p><span class="d">החלטה 5</span> פנקס פנימי בלבד: לא נכנס לחשבשבת, אין לו מסמך ואין לו מע"מ, ואין בגרסה הראשונה פעולת גבייה. היתרה היא <code>SUM(amount)</code>. <b>אין עמודת <code>direction</code></b>, סכום עם סימן עושה את אותו דבר בלי enum. <b>ולא <code>SUM()</code> על <code>franchisee_billing</code></b>, כי ביום שיגבו את הצבירה צריך להקטין את היתרה, ושורת חיוב של חודש שנסגר היא רשומה שאסור לשכתב.</p>
+
+<h3>טבלה חדשה <code>franchisee_billing_export</code></h3>
+<pre><code>id, brandId, itemType ('royalty'|'marketing'), periodYear, periodMonth,
+exportedAt, exportedBy, rowCount, blobUrl</code></pre>
+<p>אצווה אחת לכל קובץ. זה מה שהופך "נגבה" למדיד ומאפשר להראות מה השתנה בין ייצוא לייצוא.</p>
+
+<h2>השלבים</h2>
+<p class="small"><span class="tag t-gate">חסום</span> ממתין לתשובה · <span class="tag t-par">מקביל</span> אפשר במקביל · <span class="tag t-none">פנוי</span> אין תלות.</p>
+
+<div class="phase">
+  <div class="ph"><span class="n">1</span><span class="t">מנוע החישוב</span>
+    <span class="meta"><span class="tag t-none">פנוי</span> · טהור, בלי DB</span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p><span class="file">src/lib/royalty.ts</span>. פונקציה טהורה אחת לפי המפרט. בלי I/O, בלי Drizzle, בלי <code>Date</code>. שער המע"מ מגיע כפרמטר, לא נקרא מבפנים.</p>
+    <h4>הבדיקות, כאן ההוכחה</h4>
+    <p><span class="file">src/lib/__tests__/royalty.test.ts</span>, שתי מערכות fixtures מנתוני אמת:</p>
+    <ul>
+      <li><b>19 השורות של גיליון ינואר</b>: ברוטו, סולם, ותוצאה מצופה לתמלוגים ולשיווק.</li>
+      <li><b>18 השורות מקבצי החשבשבת</b>, כולל ארבע השורות עם ההנחה (אודון −1, ויני חדרה −1, טמפר −1, סידיוס −0.5). הן הבדיקה היחידה שמכסה את מסלול ההנחה.</li>
+    </ul>
+    <p>ובנוסף: גבולות מדרגה משני הצדדים · מדרגת 0% · בסיס מתחת לרף התחתון · <b><code>tierBasis='net'</code> מול <code>'gross'</code> על אותו בסיס, חייבים לצאת שונים</b> · אותו רף נטו בשני שערי מע"מ שונים, חייב לייצר שתי מדרגות שונות · כולל טיפים מול בלי · הנחה גדולה מהתעריף נחתכת ל-0 · <code>marketingRate = 0</code> · <code>subtotal === royalty + marketing</code> תמיד.</p>
+    <h4>גמור כאשר</h4>
+    <div class="done">37 שורות אמיתיות עוברות, וההרצה מייצרת את אותם מספרים שבקבצים של רעות.</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">2</span><span class="t">סכימה, מיגרציה וזריעה</span>
+    <span class="meta"><span class="tag t-none">פנוי</span></span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p>שש עמודות על <code>franchisee</code>, שלוש טבלאות חדשות, אינדקס ייחודי על <code>(franchiseeId, periodYear, periodMonth)</code>. ובנוסף <b>זריעת נתונים</b>:</p>
+    <ul>
+      <li><code>marketingFeeRate</code> = 1.00 לכל 21, ו-0 לנתנזון.</li>
+      <li><code>hashavshevetAccountKey</code> ל-13 הזכיינים שהמיפוי שלהם אושר מהכינויים.</li>
+      <li><code>royaltyTiers</code> ל-12 הסולמות שחולצו מהנוסחאות, ול-6 האחוזים הידניים כ-<code>[{upTo:null, rate:X}]</code>, ולעפולה 4.5% מקבצי החשבשבת. <b>כולם עם <code>royaltyTiersConfirmed = false</code>.</b></li>
+      <li>מוצקין נשאר בלי סולם.</li>
+    </ul>
+    <h4>גמור כאשר</h4>
+    <div class="done"><code>\d franchisee_billing</code> ו-<code>\d franchisee</code> ב-psql ישיר מול Neon מראים את מה שהמיגרציה הצהירה, והזריעה מאומתת בשאילתה.</div>
+    <h4>סיכון</h4>
+    <p style="margin-bottom:0"><b>Drizzle משקר "applied" כשה-journal נסחף.</b> קרה כאן פעמיים. לא לסמוך על <code>npm run db:migrate</code>, לאמת ב-SQL ישיר. האינדקס הייחודי הוא הגנת הכפל-חיוב.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">3</span><span class="t">עורך המדרגות בכרטיס הזכיין</span>
+    <span class="meta"><span class="tag t-par">מקביל ל-4</span> · הקריטי מכולם</span></div>
+  <div class="body">
+    <h4>למה שלישי ולא שביעי</h4>
+    <p>ברגע שהמסך קיים, רעות מאשרת 21 סולמות בזמן שאנחנו בונים את הפרסר. וזה גם הפיצ'ר האמיתי כאן. היא אמרה במפורש <i>"אני אעשה את זה, זה לא העבודה שלך"</i>.</p>
+    <h4>מה</h4>
+    <p>בתוך מסך הזכיין הקיים: טבלת מדרגות, בורר בסיס, סימון כולל טיפים, מפתח חשבון, ואחוז שיווק.</p>
+    <h4>הכלל שהמסך אוכף</h4>
+    <p>המשתמשת מזינה רק <code>עד</code> ו<code>אחוז</code>. <code>מ-</code> מוצג ומחושב מהשורה הקודמת, לא נערך. השורה האחרונה היא <code>עד: ∞</code> ואינה נמחקת. <b>כך חור או חפיפה אינם ניתנים לביטוי במסך</b>, ולא בזכות ולידציה שאפשר לעקוף.</p>
+    <p>לצד כל רף מוצג החיווי בבסיס השני: <span class="small">"עד 700,000 ללא מע"מ ≈ 826,000 כולל"</span>. וכל שורה נושאת "כולל" או "מעל" במפורש.</p>
+    <h4>אישור פרטני</h4>
+    <p><span class="d">החלטה 12</span> סולם שנזרע מוצג עם באנר "טרם אושר, חולץ מהאקסל של ינואר", ואם נרמלנו לו חור, <b>הבאנר אומר בדיוק מה שינינו</b>. עד לחיצה על "אשר את הסולם", החישוב לזכיין הזה מסרב לרוץ.</p>
+    <h4>גמור כאשר</h4>
+    <div class="done">אפשר להזין ולקרוא חזרה את כל 12 הסולמות הידועים, זהים. ניסיון להזין חור נחסם על ידי צורת המסך. זכיין לא-מאושר חוסם חישוב.</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">4</span><span class="t">פרסר ומסלול קליטה</span>
+    <span class="meta"><span class="tag t-gate">חסום: ייצוא חודשי</span></span></div>
+  <div class="body">
+    <h4>מסלול נפרד</h4>
+    <p><span class="d">החלטה 9</span> <code>processRoyaltyRevenueUpload</code> משלו ופרסר משלו, שקוראים ל-<code>uploadDocument</code> ו-<code>matchFranchiseeName</code> הקיימים. <b>לא מרחיבים את <code>processTabitUpload</code>.</b> הן חולקות צינורות ואפס לוגיקה עסקית, וקוראות שני דוחות שונים מאותה מערכת. נקודת כניסה אחת שמנחשת איזה דוח הגיע היא בדיוק ה-gotcha המתועד על שני מבני הייצוא של טאבית.</p>
+    <h4>מה ידוע על המבנה</h4>
+    <ul>
+      <li>שורה 0 <code>["שנה", 2026, …]</code>, שורה 1 כותרות משנה, ומשם נתונים.</li>
+      <li><b>סדר העמודות משתנה בין הקבצים.</b> ויני ומינה: <code>סה"כ טיפ</code> ואז <code>סה"כ תקבולים</code>. קינג: הפוך. <b>מונחה כותרות בלבד</b>, אף אינדקס לא מקודד.</li>
+      <li>קובץ לכל מותג. העלאה מרובה.</li>
+      <li>שורות זבל: <code>סניף מסוף רישתי</code>, <code>Total</code>, שורת "מסננים שהוחלו".</li>
+    </ul>
+    <h4>למה חסום</h4>
+    <p>הקבצים שהגיעו מקובצים לפי <b>שנה</b> בלבד, עם טווח רבעוני קבור בשורת המסננים. הפרסר חייב לקרוא חודש לכל שורה, ואי אפשר לכתוב אותו מול מבנה שלא ראינו.</p>
+    <h4>סיכונים מהעבר של הפרויקט</h4>
+    <ul style="margin-bottom:0">
+      <li><b><code>XLSX.SSF</code> הוא <code>undefined</code> תחת <code>import * as XLSX</code></b>. עוזרי serial→Date מחזירים <code>null</code> בשקט.</li>
+      <li><b>cp1255 חייב רישום גם בדפדפן וגם בשרת.</b> ריצה מקומית מוצלחת אינה הוכחה.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">5</span><span class="t">העלאה, חישוב, שורות טיוטה</span>
+    <span class="meta">תלוי ב-1, 2, 4</span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p><span class="file">src/data-access/franchisee-billing.ts</span>. זיהוי סניף לזכיין, חישוב, upsert.</p>
+    <p><b>אין צבירה לפי זכיין.</b> זכיין הוא סניף יחיד, ו-19 מ-20 השמות מתאימים בהתאמה מדויקת. במקום צבירה יש <b>חסימה</b>: אם שתי שורות בקובץ נפתרות לאותו זכיין, זו אנומליה ולא סכימה שקטה.</p>
+    <h4>upsert, לא delete-then-insert</h4>
+    <p><code>calculateBatchCommissions</code> (<span class="file">commissions.ts:1415</span>) עובד ב-delete-then-reinsert; העתקת הדפוס תמחק את הדחיות שרעות הקלידה בכל העלאה חוזרת. במקום: <code>onConflictDoUpdate</code> שמשמיט את <code>discountRatePoints</code> מה-<code>set</code>, ועם <code>setWhere: status = 'draft'</code>.</p>
+    <h4>קובץ מתוקן לחודש מאושר</h4>
+    <p><span class="d">החלטה 11</span> ה-<code>setWhere</code> מגן על השורה, אבל לבד הוא הופך את ההעלאה לזריקה שקטה. ולכן המערכת מחשבת מה הקובץ החדש היה מייצר, משווה למאושר, ואם יש פער <b>מציגה אותו ומחכה</b>. רעות בוחרת לפתוח מחדש או להשאיר. <b>בלי פתיחה אוטומטית</b>: שורה שיצאה לחשבשבת וחוזרת לטיוטה לבד תשבש את דוח הגבייה ועלולה להתייצא פעמיים.</p>
+    <h4>אנומליות שחוסמות, לא מחושבות</h4>
+    <table>
+      <tr><th style="width:38%">מצב</th><th>מה קורה</th></tr>
+      <tr><td>סניף לא מזוהה</td><td>באנר. רעות מוסיפה כינוי ומעלה מחדש.</td></tr>
+      <tr><td><b>שורה שנפתרת לזכיין לא-פעיל</b></td><td><span class="d">החלטה 14</span> חוסמת. השער סופר פעילים, אבל דילוג שקט היה מעלים את השורה בלי שם עם ₪2,694,724 מול לוח ירוק. רעות מחליטה: להפעיל מחדש ולחייב, או לאשר דילוג עם סיבה.</td></tr>
+      <tr><td>זכיין בלי סולם, או עם סולם לא מאושר</td><td>באנר. לא להניח שום אחוז.</td></tr>
+      <tr><td>שתי שורות לאותו זכיין</td><td>באנר. לא לסכם ולא לדרוס.</td></tr>
+      <tr><td>בסיס שלילי</td><td>באנר. רעות אמרה שזה לא קורה, ולכן זו שגיאה.</td></tr>
+      <tr><td>שם סניף ריק עם סכום</td><td>באנר.</td></tr>
+      <tr><td><b>מסומן "כולל טיפים" והיחס טיפ/מחזור מתחת ל-1%</b></td><td>ראה למטה.</td></tr>
+    </table>
+    <div class="box warn" style="margin:.7rem 0">
+      <p style="margin-top:0"><b>התרעת הטיפים ביחס, לא באפס, וניתנת לסגירה לצמיתות.</b> <span class="d">החלטה 7</span></p>
+      <p><code>tips === 0</code> שביר: <code>VINNI יהוד</code> מדווחת ₪18 על ₪2,192,380, כלומר 0.0008%. הרף הוא <b>1%</b>, והנתונים תומכים: הסניפים המדווחים נעים בין 2.0% ל-5.4%, והשאר על אפס ממש. הרווח בין שתי האוכלוסיות רחב.</p>
+      <p style="margin-bottom:0">12 מתוך 21 הסניפים יורדים מתחת לרף. באנר שנורה 12 פעמים בחודש הוא באנר שאף אחד לא קורא, ולפרויקט הזה יש היסטוריה בדיוק בזה. לכן <code>tipsAbsenceAcknowledged</code> לכל זכיין: רעות מאשרת פעם אחת, ומשם הסניף עובר בשקט עד שהמצב ישתנה.</p>
+    </div>
+    <h4>אין סימון "אין מחזור" אוטומטי</h4>
+    <p style="margin-bottom:0"><span class="d">החלטה 8</span> סניף לא-מותאם וסניף סגור נראים זהים למערכת. <code>קינג קונג קריית מוצקין</code> לא מתאים לאף כינוי היום, ואם המערכת תסמן לו "אין מחזור" לבד, השער יישאר ירוק וכשל התאמה יהפוך לדילוג קבוע. הסימון ידני בלבד, עם סיבה.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">6</span><span class="t">מסך החיוב</span>
+    <span class="meta">תלוי ב-5</span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p><span class="file">src/app/(protected)/admin/franchisee-billing/page.tsx</span>. טבלה לחודש נבחר, חישוב מחדש מיידי בהקלדה. <b>אין מסך תצוגה מקדימה נפרד</b>. טבלת הדחיות היא התצוגה המקדימה.</p>
+    <h4>פרטים שמשנים בשימוש</h4>
+    <ul style="margin-bottom:0">
+      <li>שדה הדחייה מקבל <b>נקודות אחוז</b>, עם השווי בשקלים לצידו. רעות חושבת באחוזים ומדווחת בשקלים.</li>
+      <li>יתרת הדחיות המצטברת של הזכיין מוצגת בשורה. זו בדיוק ההחלטה שהיא מקבלת מול שרון.</li>
+      <li>דחייה גדולה מהתעריף נחסמת בהזנה.</li>
+      <li>ארבעה מצבים: טעינה, נתונים, שגיאה, ואין חודש שהועלה. הודעות בעברית.</li>
+      <li>Radix Tabs/Dialog עם <code>dir="rtl"</code> מפורש. ברירת המחדל ltr.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">7</span><span class="t">אישור: צילום, ליג'ר, מייל</span>
+    <span class="meta">תלוי ב-6 · <span class="tag t-gate">חסום: אישור נוסח</span></span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p><code>POST /api/franchisee-billing/approve</code> ב-<code>requireSuperUser</code> דרך <span class="file">@/lib/api-middleware</span>. בטרנזקציה אחת: כתיבת חמשת שדות הצילום, <code>status='approved'</code>, שורת ליג'ר לכל דחייה, ואז המיילים.</p>
+    <h4>המיילים</h4>
+    <ul>
+      <li><b>רק כאשר <code>discountValue &gt; 0</code>.</b> זכיין בתעריף מלא לא מקבל כלום.</li>
+      <li><span class="d">החלטה 10</span> <b>כל הבעלים עם כתובת</b>, והרשימה מוצגת על מסך האישור וניתנת לעריכה לפני שליחה. שליחה בלתי הפיכה, רעות ממילא שם באותו רגע, ואין צורך בשדה "בעל ראשי" שאף אחד לא אצר.</li>
+      <li>הטקסט כותב <b>דחיית חיוב</b>. בקוד ובדוחות הפנימיים השדה נקרא <code>discount</code>, וזה בכוונה.</li>
+      <li><code>sendDirectEmail</code> → <code>email_log</code>. בלי צרופת PDF. שליחה מאחורי לחיצת האישור, לא אוטומטית.</li>
+    </ul>
+    <h4>סיכון</h4>
+    <p style="margin-bottom:0"><b>אישור חייב להיות אידמפוטנטי.</b> לחיצה כפולה או retry אחרי timeout לא יכולים לייצר שורת ליג'ר כפולה או מייל שני. בדיקה על <code>status</code> בתוך הטרנזקציה, לא בקליינט.</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">8</span><span class="t">ייצוא חשבשבת</span>
+    <span class="meta">תלוי ב-7 · <span class="tag t-gate">חסום: עמודת פרטים</span></span></div>
+  <div class="body">
+    <h4>מה</h4>
+    <p><b>שישה קבצים: מותג × סוג פריט.</b> מבוסס על <span class="file">hashavshevet/export/route.ts:94-102</span> שכבר מייצר בדיוק את העמודות האלה.</p>
+    <pre><code>מפתח חשבון | שם | מפתח פריט | שם פריט | כמות | מחיר | סוג המסמך | מספר מסמך | פרטים
+אושיבה     | "" | הכנסותת   | ""      | 1    | 48228.82838983051 | 11 | 5000 | ""</code></pre>
+    <ul>
+      <li><code>מפתח פריט</code>: <code>הכנסותת</code> לתמלוגים, <code>שיווק</code> לשיווק. <b>לא שגיאת הקלדה</b>, אלא אותה מוסכמת סיומות שמתועדת ב-<span class="file">schema.ts:782</span>. שני קבועים.</li>
+      <li><code>מפתח חשבון</code> מהצילום שעל השורה, לא מהזכיין.</li>
+      <li><code>סוג המסמך</code> = <code>"11"</code> כמחרוזת. <code>כמות</code> = 1. <code>מחיר</code> ללא מע"מ, לא מעוגל.</li>
+      <li><b>שורות ₪0 לא נוצרות.</b> <code>קינג מ</code> יצא אצלה בכמות 2 וסכום 0. ייצוא הלקוחות הקיים כבר מסנן <code>price !== 0</code>.</li>
+      <li>הייצוא כותב <code>exportedAt</code> ו-<code>exportBatchId</code>, ושורה ב-<code>franchisee_billing_export</code>. זה מה שהופך שורה ל"נגבתה".</li>
+    </ul>
+    <h4>מספור, משחזרים את שלה</h4>
+    <p><span class="d">החלטה 13</span> <b>כל קובץ מתחיל ב-5000 ועולה ב-1.</b> בכל ששת הקבצים שלה המספור מתחיל מ-5000 מחדש, כלומר בחודש אחד המספר 5000 מופיע שש פעמים. אם חשבשבת השתמשה בו כמפתח, הייבוא שלה היה נשבר מזמן. הכפילות היחידה שנסגרת היא 5000 פעמיים <b>באותו קובץ</b> (מינה שיווק), שהיא שגיאה ברורה. להפוך את המספרים לייחודיים בין קבצים ובין חודשים זה שינוי לא מבוקש בפורמט שעובד שנים.</p>
+    <h4>שער השלמות</h4>
+    <p style="margin-bottom:0"><span class="d">החלטה 4</span> כפתור הייצוא של מותג מושבת עד שלכל זכיין פעיל שלו יש שורה מאושרת או סימון "אין מחזור". קובץ עם 7 שורות במקום 8 נראה תקין, נכנס לחשבשבת בלי תלונה, וסניף אחד פשוט לא מחויב. הלוח מציג בדיוק מי חסר.</p>
+    <h4>גמור כאשר</h4>
+    <div class="done">ששת הקבצים שנוצרים על נתוני אותו חודש זהים לקבצים של רעות בעמודות, בסדר, במספור ובערכים.</div>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">9</span><span class="t">ארבעת הדוחות</span>
+    <span class="meta">תלוי ב-8</span></div>
+  <div class="body">
+    <p>מסך אחד, ארבע תצוגות, ייצוא לאקסל מכל אחת.</p>
+    <table>
+      <tr><th>הדוח</th><th>חתך</th><th>מקור</th></tr>
+      <tr><td>תמלוגים</td><td>חודש × סניף</td><td><code>franchisee_billing</code></td></tr>
+      <tr><td>מחזורים</td><td>חודש × סניף, <code>grossBase</code> ו-<code>netBase</code></td><td><code>franchisee_billing</code></td></tr>
+      <tr><td>גבייה</td><td>מצטבר, תמלוגים ושיווק בנפרד</td><td><code>exportedAt IS NOT NULL</code></td></tr>
+      <tr><td>ערך הנחות</td><td>לפי זכיין, מצטבר</td><td><code>franchisee_deferral_ledger</code></td></tr>
+    </table>
+    <ul style="margin-bottom:0">
+      <li><b>דוח ערך ההנחות קורא את <code>discountValue</code> השמור</b>, לא מחשב <code>points × netBase</code> בזמן השאילתה. אחרת עריכת מדרגות בעוד חצי שנה תשנה למפרע כמה נדחה במרץ.</li>
+      <li><b>דוח הגבייה מסתמך על הייצוא, לא על האישור.</b> "נגבה" הוגדר כ"יצא בחשבשבת", וייצוא חוזר הוא תיקון.</li>
+      <li>נתנזון מופיע בדוח המחזורים ולא בדוחות הכסף, כי האחוזים שלו 0. בלי חריג בקוד.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="ph"><span class="n">10</span><span class="t">הרצת קבלה מקבילה</span>
+    <span class="meta">לפני שרעות מפסיקה עם האקסל</span></div>
+  <div class="body">
+    <p>חודש שרעות כבר סיימה ידנית, מורץ במלואו ומושווה שורה מול שורה. לא סניף אחד לדוגמה, אלא <b>כל הסניפים</b>, ועד האגורה.</p>
+    <div class="done">ששת קבצי החשבשבת של המערכת זהים לששת הקבצים של רעות לאותו חודש. עד אז האקסל נשאר מקור האמת.</div>
+    <p style="margin-bottom:0"><b>למה זה שלב ולא הערה:</b> <code>branch.total</code> מטאבית מעולם לא הושווה לשום דבר בפרויקט הזה. הפעם הראשונה שמישהו משווה מספר של טאבית למספר של רעות היא כאן.</p>
+  </div>
+</div>
+
+<h2>יומן ההחלטות</h2>
+<table>
+<tr><th style="width:4%">#</th><th style="width:30%">ההחלטה</th><th>הנימוק המכריע</th></tr>
+<tr><td>1</td><td>רף נשמר כמו שהוקלד + דגל בסיס, ההמרה בזמן חישוב</td><td>רף שנכתב בנטו הוא תלוי-מע"מ. המרה בשמירה מקפיאה את שער היום ומייצרת רף שגוי אחרי שינוי מע"מ, בלי שאף אחד נגע בו.</td></tr>
+<tr><td>2</td><td>אחוז שיווק על <code>franchisee.marketingFeeRate</code></td><td>נתנזון על 0. קבוע גלובלי עם חריג קשיח הוא הדפוס ש-<span class="file">schema.ts:779</span> מתעד שכבר הוחלף פעם בפרויקט הזה.</td></tr>
+<tr><td>3</td><td>צילום מצב מלא באישור</td><td>רעננה כבר החליפה ישות. מסמך של חודש שייך לישות שהפעילה אז, ו"ייצוא חוזר = תיקון" מחזיק רק אם הוא משחזר את המקור.</td></tr>
+<tr><td>4</td><td>אישור לשורה, ייצוא למותג עם שער שלמות</td><td>קובץ חסר שורה נראה תקין ונכנס בלי תלונה. אישור אטומי לחודש נשבר בפעם הראשונה שקובץ מאחר, וזה המצב הרגיל.</td></tr>
+<tr><td>5</td><td>ליג'ר פנימי, סכום עם סימן, בלי <code>direction</code></td><td>הדחייה היא הערה פנימית ולא חוב מדווח. סכום עם סימן נותן את אותה סמנטיקה בלי enum.</td></tr>
+<tr><td>6</td><td>גבול כולל, מתווה במסך</td><td>מחזור שנוחת בדיוק על מספר עגול לא קורה. מה שכן קורה הוא הזנה עמומה, וזה נפתר בתווית ולא בהחלטה עסקית.</td></tr>
+<tr><td>7</td><td>התרעת טיפים ביחס, חוסמת, ניתנת לסגירה לצמיתות</td><td>₪18 על ₪2.19M אינם אפס אבל הם אפס. ו-12 חסימות חודשיות קבועות הופכות לקליק אוטומטי תוך חודשיים.</td></tr>
+<tr><td>8</td><td>אין סימון "אין מחזור" אוטומטי</td><td>סניף לא-מותאם וסניף סגור נראים זהים. אוטומציה הופכת כשל התאמה לדילוג קבוע מול לוח ירוק.</td></tr>
+<tr><td>9</td><td>מסלול קליטה נפרד, ממחזר חלקים</td><td>אפס לוגיקה עסקית משותפת, ושני דוחות שונים מאותה מערכת. נקודת כניסה שמנחשת מבנה היא ה-gotcha הקיים בהתחלה שלו.</td></tr>
+<tr><td>10</td><td>מייל לכל הבעלים, רשימה נערכת באישור</td><td>אין דגל "בעל ראשי", והמצאת אחד מחייבת אצירה של 21 שדות לפני המייל הראשון. הבקרה ניתנת ברגע שהיא ממילא שם.</td></tr>
+<tr><td>11</td><td>קובץ מתוקן אחרי אישור: מזהה, מציג, מחכה</td><td>ה-<code>setWhere</code> לבדו הופך את ההעלאה לזריקה שקטה. פתיחה אוטומטית משבשת את דוח הגבייה ומזמינה ייצוא כפול.</td></tr>
+<tr><td>12</td><td>זריעה כ"טרם אושר", חישוב חסום</td><td>מה שנזרע אינו הנתונים של רעות אלא הפרשנות שלנו: נרמלנו שישה חורים והמרנו <code>&lt;</code> ל-<code>&lt;=</code> בשליש מהמקרים.</td></tr>
+<tr><td>13</td><td>מספור משחזר את שלה, 5000 לכל קובץ</td><td>5000 מופיע שש פעמים בחודש אצלה והייבוא עובד. "שיפור" בפורמט חשבונאי שעובד שנים הוא בדיוק מה שמפיל ייבוא.</td></tr>
+<tr><td>14</td><td>שורה שנפתרת ללא-פעיל חוסמת</td><td><code>is_active</code> אינו אמין כאן; יש gotcha מתועד על ספק שסימונו כלא-פעיל איפס נתונים בשקט. והשורה בלי שם עם ₪2.69M היא בדיוק התרחיש.</td></tr>
+</table>
+
+<h2>מה במכוון לא נבנה</h2>
+<ul>
+  <li><b>חשבוניות, מספור, PDF</b>. חשבשבת מנפיקה.</li>
+  <li><b>ייבוא האקסל של רעות</b>. היא מאשרת ומזינה בעצמה.</li>
+  <li><b>גבייה בפועל</b>. אין נתוני תשלום. "נגבה" הוא "יצא בחשבשבת".</li>
+  <li><b>חיוב יתרת הדחיות</b>. הליג'ר צובר ומדווח; מי גובה ומתי הוא דיון עסקי.</li>
+  <li><b>מודאל אנומליות</b>. באנר מספיק.</li>
+  <li><b>עמודת <code>total</code> שנשמרת וגם מחושבת</b>. נגזרת.</li>
+  <li><b>שליחה אוטומטית של מיילים</b>. מאחורי לחיצת אישור.</li>
+</ul>
+
+<h2>מה חוסם מה</h2>
+<table>
+<tr><th style="width:44%">פתוח</th><th>חוסם</th></tr>
+<tr><td><b>האם <code>סה"כ תקבולים</code> כולל את הטיפ</b></td><td>סמנטיקת שלב 5. המנגנון הוכרע, הפרשנות לא.</td></tr>
+<tr><td>ייצוא טאבית מקובץ לפי שנה וחודש</td><td>שלב 4</td></tr>
+<tr><td>עמודת <code>פרטים</code>, 8 או 9</td><td>שלב 8</td></tr>
+<tr><td>האם חשבשבת דורשת מספר מסמך ייחודי</td><td>שלב 8, לאימות בלבד</td></tr>
+<tr><td>אישור נוסח המייל</td><td>שלב 7</td></tr>
+<tr><td>ששת הסניפים בלי נוסחה: חוזי או חודשי</td><td>שלב 3, הזנה</td></tr>
+<tr><td>האם השיווק יורד ל-0 עם מדרגת ה-0%</td><td>שלב 3, הזנה</td></tr>
+<tr><td>מדרגות לעפולה ולמוצקין</td><td>שלב 3, הזנה</td></tr>
+<tr><td>השורה בלי שם ומוצקין ב-₪92K</td><td>שלב 5, באנר</td></tr>
+<tr><td>דוח טאבית של נתנזון</td><td>שלב 10 בלבד</td></tr>
+</table>
+<p><b>אף אחד מהם לא חוסם את שלבים 1, 2 ו-3</b>, שהם החלק הכי גדול והכי מסוכן.</p>
+
+<div class="box warn">
+<h3 style="margin-top:0">באג קיים שנחשף ואינו בתחום</h3>
+<p style="margin:0"><code>getNextInvoiceNumber</code> (<span class="file">src/data-access/managementCompanies.ts:163</span>) קורא ואז מעדכן בשתי פקודות נפרדות, בלי טרנזקציה ובלי נעילה. שתי קריאות מקבילות יקבלו <b>אותו מספר חשבונית</b>. לא נוגע לפיצ'ר הזה כי חשבשבת מנפיקה. התיקון הוא <code>UPDATE … RETURNING</code> אטומי, ארבע שורות.</p>
+</div>
+
+</div>
+</body>
+</html>
