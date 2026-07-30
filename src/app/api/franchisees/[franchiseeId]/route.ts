@@ -14,6 +14,8 @@ import {
   type UpdateFranchiseeDataWithStatusChange,
 } from "@/data-access/franchisees";
 import { createAuditContext } from "@/data-access/auditLog";
+import { franchiseeRoyaltyPatchSchema } from "@/schemas/franchisee-royalty";
+import { z } from "zod";
 
 interface RouteContext {
   params: Promise<{ franchiseeId: string }>;
@@ -58,6 +60,24 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     const { franchiseeId } = await context.params;
     const body = await request.json();
+    const containsRoyaltyPatch = [
+      "royaltyTiers",
+      "royaltyTierBasis",
+      "royaltyTiersConfirmed",
+      "royaltyIncludeTips",
+      "hashavshevetAccountKey",
+      "marketingFeeRate",
+    ].some((field) => field in body);
+    const royaltyPatch = containsRoyaltyPatch
+      ? franchiseeRoyaltyPatchSchema.parse({
+          royaltyTiers: body.royaltyTiers,
+          royaltyTierBasis: body.royaltyTierBasis,
+          royaltyTiersConfirmed: body.royaltyTiersConfirmed,
+          royaltyIncludeTips: body.royaltyIncludeTips,
+          hashavshevetAccountKey: body.hashavshevetAccountKey,
+          marketingFeeRate: body.marketingFeeRate,
+        })
+      : null;
     const {
       brandId,
       name,
@@ -160,6 +180,16 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     }
     if (isActive !== undefined) updateData.isActive = isActive;
     if (isKosher !== undefined) updateData.isKosher = isKosher;
+    if (royaltyPatch) {
+      updateData.royaltyTiers = royaltyPatch.royaltyTiers;
+      updateData.royaltyTierBasis = royaltyPatch.royaltyTierBasis;
+      updateData.royaltyTiersConfirmed = royaltyPatch.royaltyTiersConfirmed;
+      updateData.royaltyIncludeTips = royaltyPatch.royaltyIncludeTips;
+      updateData.hashavshevetAccountKey =
+        royaltyPatch.hashavshevetAccountKey;
+      updateData.marketingFeeRate =
+        royaltyPatch.marketingFeeRate.toString();
+    }
 
     // Include status change logging fields if provided
     if (statusChangeReason !== undefined) updateData.statusChangeReason = statusChangeReason;
@@ -182,6 +212,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ franchisee: updatedFranchisee });
   } catch (error) {
     console.error("Error updating franchisee:", error);
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: "נתוני התמלוגים אינם תקינים. יש לבדוק את המדרגות ולנסות שוב.",
+          issues: error.issues.map((issue) => ({
+            path: issue.path,
+            message: issue.message,
+          })),
+        },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

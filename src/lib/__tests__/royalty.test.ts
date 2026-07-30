@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { calculateRoyalty, type RoyaltyTier } from "@/lib/royalty";
+import {
+  franchiseeRoyaltyPatchSchema,
+  serializeFranchiseeRoyaltyPatch,
+} from "@/schemas/franchisee-royalty";
 
 const VAT = 0.18;
 
@@ -23,6 +27,20 @@ const KING_NAHARIYA = [
   { upTo: null, rate: 5 },
 ] as const;
 const KING_RAANANA = [{ upTo: 700_000, rate: 0 }, { upTo: null, rate: 5 }] as const;
+
+const KNOWN_ROYALTY_TIER_SCALES = [
+  { name: "FIXED_ZERO", tiers: FIXED_ZERO },
+  { name: "FIXED_THREE", tiers: FIXED_THREE },
+  { name: "FIXED_FOUR", tiers: FIXED_FOUR },
+  { name: "MINA_YEHUD", tiers: MINA_YEHUD },
+  { name: "MINA_EIN_SHEMER", tiers: MINA_EIN_SHEMER },
+  { name: "MINA_SHARONA", tiers: MINA_SHARONA },
+  { name: "VINI_STANDARD", tiers: VINI_STANDARD },
+  { name: "VINI_CARMIEL", tiers: VINI_CARMIEL },
+  { name: "KING_CARMIEL", tiers: KING_CARMIEL },
+  { name: "KING_NAHARIYA", tiers: KING_NAHARIYA },
+  { name: "KING_RAANANA", tiers: KING_RAANANA },
+] as const;
 
 interface RealFixture {
   readonly name: string;
@@ -431,5 +449,85 @@ describe("calculateRoyalty contract", () => {
 
     expect(result.subtotal).toBe(result.royalty + result.marketing);
     expect(result.total).toBe(result.subtotal * (1 + VAT));
+  });
+});
+
+describe("franchisee royalty PATCH contract", () => {
+  it.each(KNOWN_ROYALTY_TIER_SCALES)(
+    "round-trips $name through serialization and server parsing",
+    ({ tiers }) => {
+      const input = {
+        royaltyTiers: tiers.map((tier) => ({ ...tier })),
+        royaltyTierBasis: "gross",
+        royaltyTiersConfirmed: false,
+        royaltyIncludeTips: false,
+        hashavshevetAccountKey: "מפתח בדיקה",
+        marketingFeeRate: 1,
+      } as const;
+
+      const serialized = serializeFranchiseeRoyaltyPatch(input);
+      const parsed = franchiseeRoyaltyPatchSchema.parse(
+        JSON.parse(serialized),
+      );
+
+      expect(parsed).toEqual(input);
+    },
+  );
+
+  it.each([
+    {
+      name: "an unsorted scale",
+      tiers: [
+        { upTo: 700_000, rate: 3 },
+        { upTo: 600_000, rate: 4 },
+        { upTo: null, rate: 5 },
+      ],
+    },
+    {
+      name: "duplicate thresholds",
+      tiers: [
+        { upTo: 700_000, rate: 3 },
+        { upTo: 700_000, rate: 4 },
+        { upTo: null, rate: 5 },
+      ],
+    },
+    {
+      name: "a finite final tier",
+      tiers: [
+        { upTo: 700_000, rate: 3 },
+        { upTo: 800_000, rate: 5 },
+      ],
+    },
+    {
+      name: "an infinite tier before the end",
+      tiers: [
+        { upTo: null, rate: 3 },
+        { upTo: null, rate: 5 },
+      ],
+    },
+  ])("rejects $name", ({ tiers }) => {
+    const result = franchiseeRoyaltyPatchSchema.safeParse({
+      royaltyTiers: tiers,
+      royaltyTierBasis: "gross",
+      royaltyTiersConfirmed: false,
+      royaltyIncludeTips: false,
+      hashavshevetAccountKey: null,
+      marketingFeeRate: 1,
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it.each([-0.01, 100.01])("rejects an out-of-range rate of %s", (rate) => {
+    const result = franchiseeRoyaltyPatchSchema.safeParse({
+      royaltyTiers: [{ upTo: null, rate }],
+      royaltyTierBasis: "gross",
+      royaltyTiersConfirmed: false,
+      royaltyIncludeTips: false,
+      hashavshevetAccountKey: null,
+      marketingFeeRate: 1,
+    });
+
+    expect(result.success).toBe(false);
   });
 });

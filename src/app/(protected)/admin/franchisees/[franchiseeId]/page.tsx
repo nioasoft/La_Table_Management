@@ -60,6 +60,7 @@ import {
   Trash2,
   Save,
   ChevronDown,
+  Percent,
 } from "lucide-react";
 import type {
   FranchiseeStatus,
@@ -76,6 +77,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { DocumentManager } from "@/components/document-manager";
+import { FranchiseeRoyaltyTierEditor } from "@/components/franchisee-royalty-tier-editor";
 import { formatCurrency } from "@/lib/translations";
 import { he } from "@/lib/translations/he";
 
@@ -681,14 +683,21 @@ export default function FranchiseeDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+      <Tabs dir="rtl" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger
             value="overview"
             className="flex items-center gap-1.5"
           >
             <Building2 className="h-4 w-4" />
             <span className="hidden sm:inline">סקירה</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="royalties"
+            className="flex items-center gap-1.5"
+          >
+            <Percent className="h-4 w-4" />
+            <span className="hidden sm:inline">תמלוגים</span>
           </TabsTrigger>
           <TabsTrigger
             value="contacts"
@@ -971,6 +980,43 @@ export default function FranchiseeDetailPage() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* Royalty Settings Tab */}
+          <TabsContent value="royalties" className="mt-0">
+            <FranchiseeRoyaltyTierEditor
+              key={franchisee.id}
+              franchiseeId={franchisee.id}
+              initialSettings={{
+                royaltyTiers: franchisee.royaltyTiers ?? null,
+                royaltyTierBasis: franchisee.royaltyTierBasis,
+                royaltyTiersConfirmed: franchisee.royaltyTiersConfirmed,
+                royaltyIncludeTips: franchisee.royaltyIncludeTips,
+                hashavshevetAccountKey:
+                  franchisee.hashavshevetAccountKey ?? null,
+                marketingFeeRate: franchisee.marketingFeeRate ?? null,
+              }}
+              normalizationNotes={
+                franchisee.notes &&
+                (/נרמול|נרמל|חור/.test(franchisee.notes) ||
+                  (/מדרגות|תמלוגים/.test(franchisee.notes) &&
+                    /אקסל/.test(franchisee.notes)))
+                  ? franchisee.notes
+                  : null
+              }
+              onSaved={(settings) =>
+                setFranchisee((current) =>
+                  current
+                    ? {
+                        ...current,
+                        ...settings,
+                        marketingFeeRate:
+                          settings.marketingFeeRate.toString(),
+                      }
+                    : current,
+                )
+              }
+            />
           </TabsContent>
 
           {/* Contacts & Owners Tab */}
