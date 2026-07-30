@@ -297,7 +297,17 @@ cd "$WT" && codex exec resume "$(cat "$RUN/impl.sid")" \
 <pre><code>npm test && npm run lint
 git add -A && git commit -m "feat(royalty): &lt;מה נבנה&gt;"</code></pre>
 <p><b>commit לכל משימה בנפרד.</b> זו נקודת החזרה למשימה הבאה, ובלעדיה אין לאן לחזור.</p>
-<p style="margin-bottom:0"><b>מיגרציות:</b> אם המשימה יצרה קובץ SQL, הוא <b>לא הורץ</b>. קרא אותו, הרץ ביד, ואמת ב-psql ישיר. Drizzle מדווח "applied" גם כשה-journal נסחף. קרה בפרויקט הזה פעמיים.</p>
+<p><b>מיגרציות:</b> אם המשימה יצרה קובץ SQL, הוא <b>לא הורץ על ידי הסוכן</b>, וזה נשאר איסור מוחלט בבריף. <b>Claude מריץ אותו, בהרשאה עומדת מ-30/07/2026</b>, אחרי הרצף הזה ולא בלעדיו:</p>
+<pre><code># 1. preflight, קריאה בלבד. אל תניח שהעמודות לא קיימות — Neon נסחף מה-journal פעמיים.
+#    האם הטבלאות והעמודות כבר קיימות · האם יעדי ה-FK קיימים ובאותו טיפוס
+psql "$DB" -qAt -c "SELECT ... information_schema ..."
+
+# 2. הרצה בטרנזקציה אחת. כשל באמצע לא משאיר סכימה חצי-בנויה.
+{ echo "BEGIN;"; cat drizzle/00XX_*.sql; echo; echo "COMMIT;"; } \
+  | psql "$DB" -v ON_ERROR_STOP=1
+
+# 3. אימות ב-SQL ישיר, לא ב-Drizzle, ומראים למשתמש את הפלט עצמו.</code></pre>
+<p style="margin-bottom:0"><b>למה SQL ישיר ולא <code>db:migrate</code>:</b> Drizzle מדווח "applied" גם כשה-journal נסחף, וכאן הוא נסחף ב-39 מתוך 72 קבצים. `--> statement-breakpoint` מתחיל ב-<code>--</code> ולכן psql מתייחס אליו כהערה, ואפשר להאכיל את הקובץ כמו שהוא. <b>סקריפט זריעה שכותב שורות נתונים אינו מיגרציה</b> וההרשאה הזאת אינה חלה עליו — בקש אישור נפרד.</p>
 </div>
 </div>
 
