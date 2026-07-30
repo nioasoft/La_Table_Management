@@ -232,6 +232,13 @@
       "when": 1746432000000,
       "tag": "0056_backfill_submitted_file_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1785369600000,
+      "tag": "0070_franchisee_billing",
+      "breakpoints": true
     }
   ]
 }

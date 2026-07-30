@@ -10,8 +10,10 @@ import {
   date,
   jsonb,
   uniqueIndex,
+  check,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
 
 // ============================================================================
 // ENUMS
@@ -765,6 +767,21 @@ export const franchisee = pgTable(
     // Financial
     royaltyRate: decimal("royalty_rate", { precision: 5, scale: 2 }),
     marketingFeeRate: decimal("marketing_fee_rate", { precision: 5, scale: 2 }),
+    royaltyTiers: jsonb("royalty_tiers").$type<RoyaltyTier[]>(),
+    royaltyTierBasis: text("royalty_tier_basis")
+      .$type<RoyaltyTierBasis>()
+      .default("gross")
+      .notNull(),
+    royaltyTiersConfirmed: boolean("royalty_tiers_confirmed")
+      .default(false)
+      .notNull(),
+    royaltyIncludeTips: boolean("royalty_include_tips")
+      .default(false)
+      .notNull(),
+    tipsAbsenceAcknowledged: boolean("tips_absence_acknowledged")
+      .default(false)
+      .notNull(),
+    hashavshevetAccountKey: text("hashavshevet_account_key"),
     // Status and notes
     status: franchiseeStatusEnum("status")
       .$default(() => "pending")
@@ -808,6 +825,10 @@ export const franchisee = pgTable(
     index("idx_franchisee_brand_active").on(table.brandId, table.isActive),
     // Composite index for filtering regular franchisees
     index("idx_franchisee_category_active").on(table.category, table.isActive),
+    check(
+      "franchisee_royalty_tier_basis_check",
+      sql`${table.royaltyTierBasis} IN ('gross', 'net')`,
+    ),
   ]
 );
 
@@ -1080,6 +1101,199 @@ export const uploadedFile = pgTable(
     index("idx_uploaded_file_period").on(table.periodStartDate, table.periodEndDate),
   ]
 );
+
+export type FranchiseeBillingItemType = "royalty" | "marketing";
+export type FranchiseeBillingStatus = "draft" | "approved";
+
+// One export batch per generated Hashavshevet file.
+export const franchiseeBillingExport = pgTable(
+  "franchisee_billing_export",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    brandId: text("brand_id")
+      .notNull()
+      .references(() => brand.id, { onDelete: "restrict" }),
+    itemType: text("item_type").$type<FranchiseeBillingItemType>().notNull(),
+    periodYear: integer("period_year").notNull(),
+    periodMonth: integer("period_month").notNull(),
+    exportedAt: timestamp("exported_at").defaultNow().notNull(),
+    exportedBy: text("exported_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    rowCount: integer("row_count").notNull(),
+    blobUrl: text("blob_url").notNull(),
+  },
+  (table) => [
+    index("idx_franchisee_billing_export_brand_period").on(
+      table.brandId,
+      table.periodYear,
+      table.periodMonth,
+    ),
+    check(
+      "franchisee_billing_export_item_type_check",
+      sql`${table.itemType} IN ('royalty', 'marketing')`,
+    ),
+    check(
+      "franchisee_billing_export_period_month_check",
+      sql`${table.periodMonth} BETWEEN 1 AND 12`,
+    ),
+    check(
+      "franchisee_billing_export_row_count_check",
+      sql`${table.rowCount} >= 0`,
+    ),
+  ],
+);
+
+// One monthly royalty and marketing charge per franchisee.
+export const franchiseeBilling = pgTable(
+  "franchisee_billing",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "restrict" }),
+    periodYear: integer("period_year").notNull(),
+    periodMonth: integer("period_month").notNull(),
+    receipts: decimal("receipts", { precision: 16, scale: 6 }).notNull(),
+    tips: decimal("tips", { precision: 16, scale: 6 }).notNull(),
+    includeTips: boolean("include_tips").notNull(),
+    grossBase: decimal("gross_base", { precision: 16, scale: 6 }).notNull(),
+    netBase: decimal("net_base", { precision: 16, scale: 6 }).notNull(),
+    tierRate: decimal("tier_rate", { precision: 5, scale: 2 }).notNull(),
+    discountRatePoints: decimal("discount_rate_points", {
+      precision: 5,
+      scale: 2,
+    })
+      .default("0")
+      .notNull(),
+    effectiveRate: decimal("effective_rate", {
+      precision: 5,
+      scale: 2,
+    }).notNull(),
+    royaltyFull: decimal("royalty_full", {
+      precision: 16,
+      scale: 6,
+    }).notNull(),
+    royalty: decimal("royalty", { precision: 16, scale: 6 }).notNull(),
+    discountValue: decimal("discount_value", {
+      precision: 16,
+      scale: 6,
+    }).notNull(),
+    marketing: decimal("marketing", { precision: 16, scale: 6 }).notNull(),
+    subtotal: decimal("subtotal", { precision: 16, scale: 6 }).notNull(),
+    total: decimal("total", { precision: 16, scale: 6 }).notNull(),
+    tiersSnapshot: jsonb("tiers_snapshot").$type<RoyaltyTier[]>(),
+    tierBasisSnapshot: text("tier_basis_snapshot").$type<RoyaltyTierBasis>(),
+    marketingRateSnapshot: decimal("marketing_rate_snapshot", {
+      precision: 5,
+      scale: 2,
+    }),
+    vatRateSnapshot: decimal("vat_rate_snapshot", {
+      precision: 5,
+      scale: 4,
+    }),
+    accountKeySnapshot: text("account_key_snapshot"),
+    sourceFileId: text("source_file_id").references(() => uploadedFile.id, {
+      onDelete: "set null",
+    }),
+    status: text("status")
+      .$type<FranchiseeBillingStatus>()
+      .default("draft")
+      .notNull(),
+    approvedAt: timestamp("approved_at"),
+    approvedBy: text("approved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    royaltyExportedAt: timestamp("royalty_exported_at"),
+    royaltyExportBatchId: text("royalty_export_batch_id").references(
+      () => franchiseeBillingExport.id,
+      { onDelete: "restrict" },
+    ),
+    marketingExportedAt: timestamp("marketing_exported_at"),
+    marketingExportBatchId: text("marketing_export_batch_id").references(
+      () => franchiseeBillingExport.id,
+      { onDelete: "restrict" },
+    ),
+    noRevenueReason: text("no_revenue_reason"),
+  },
+  (table) => [
+    uniqueIndex("idx_franchisee_billing_unique_period").on(
+      table.franchiseeId,
+      table.periodYear,
+      table.periodMonth,
+    ),
+    index("idx_franchisee_billing_period").on(
+      table.periodYear,
+      table.periodMonth,
+    ),
+    index("idx_franchisee_billing_status").on(table.status),
+    index("idx_franchisee_billing_royalty_export_batch").on(
+      table.royaltyExportBatchId,
+    ),
+    index("idx_franchisee_billing_marketing_export_batch").on(
+      table.marketingExportBatchId,
+    ),
+    check(
+      "franchisee_billing_period_month_check",
+      sql`${table.periodMonth} BETWEEN 1 AND 12`,
+    ),
+    check(
+      "franchisee_billing_status_check",
+      sql`${table.status} IN ('draft', 'approved')`,
+    ),
+    check(
+      "franchisee_billing_tier_basis_snapshot_check",
+      sql`${table.tierBasisSnapshot} IS NULL OR ${table.tierBasisSnapshot} IN ('gross', 'net')`,
+    ),
+    check(
+      "franchisee_billing_discount_rate_check",
+      sql`${table.discountRatePoints} >= 0`,
+    ),
+  ],
+);
+
+// Signed ledger: positive amounts defer a charge; negative amounts collect it.
+export const franchiseeDeferralLedger = pgTable(
+  "franchisee_deferral_ledger",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    franchiseeId: text("franchisee_id")
+      .notNull()
+      .references(() => franchisee.id, { onDelete: "restrict" }),
+    amount: decimal("amount", { precision: 16, scale: 6 }).notNull(),
+    billingId: text("billing_id").references(() => franchiseeBilling.id, {
+      onDelete: "restrict",
+    }),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    createdBy: text("created_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    index("idx_franchisee_deferral_ledger_franchisee").on(table.franchiseeId),
+    index("idx_franchisee_deferral_ledger_billing").on(table.billingId),
+    index("idx_franchisee_deferral_ledger_created_at").on(table.createdAt),
+  ],
+);
+
+export type FranchiseeBillingExport =
+  typeof franchiseeBillingExport.$inferSelect;
+export type CreateFranchiseeBillingExportData =
+  typeof franchiseeBillingExport.$inferInsert;
+export type FranchiseeBilling = typeof franchiseeBilling.$inferSelect;
+export type CreateFranchiseeBillingData =
+  typeof franchiseeBilling.$inferInsert;
+export type FranchiseeDeferralLedger =
+  typeof franchiseeDeferralLedger.$inferSelect;
+export type CreateFranchiseeDeferralLedgerData =
+  typeof franchiseeDeferralLedger.$inferInsert;
 
 // BKMV Blacklist table - Names to exclude from supplier matching
 // These are names that appear in BKMVDATA files but are not actual suppliers
@@ -2156,6 +2370,7 @@ export const managementCompanyRelations = relations(managementCompany, ({ one, m
 export const brandRelations = relations(brand, ({ many, one }) => ({
   franchisees: many(franchisee),
   supplierBrands: many(supplierBrand),
+  franchiseeBillingExports: many(franchiseeBillingExport),
   createdByUser: one(user, {
     fields: [brand.createdBy],
     references: [user.id],
@@ -2202,6 +2417,8 @@ export const franchiseeRelations = relations(franchisee, ({ one, many }) => ({
   reminders: many(franchiseeReminder),
   importantDates: many(franchiseeImportantDate),
   revenueCodes: many(franchiseeRevenueCode),
+  billings: many(franchiseeBilling),
+  deferralLedgerEntries: many(franchiseeDeferralLedger),
   createdByUser: one(user, {
     fields: [franchisee.createdBy],
     references: [user.id],
@@ -2275,7 +2492,7 @@ export const uploadLinkRelations = relations(uploadLink, ({ one, many }) => ({
 }));
 
 // Uploaded File relations
-export const uploadedFileRelations = relations(uploadedFile, ({ one }) => ({
+export const uploadedFileRelations = relations(uploadedFile, ({ one, many }) => ({
   uploadLink: one(uploadLink, {
     fields: [uploadedFile.uploadLinkId],
     references: [uploadLink.id],
@@ -2284,7 +2501,78 @@ export const uploadedFileRelations = relations(uploadedFile, ({ one }) => ({
     fields: [uploadedFile.franchiseeId],
     references: [franchisee.id],
   }),
+  franchiseeBillings: many(franchiseeBilling),
 }));
+
+export const franchiseeBillingExportRelations = relations(
+  franchiseeBillingExport,
+  ({ one, many }) => ({
+    brand: one(brand, {
+      fields: [franchiseeBillingExport.brandId],
+      references: [brand.id],
+    }),
+    royaltyBillings: many(franchiseeBilling, {
+      relationName: "royaltyExportBatch",
+    }),
+    marketingBillings: many(franchiseeBilling, {
+      relationName: "marketingExportBatch",
+    }),
+    exportedByUser: one(user, {
+      fields: [franchiseeBillingExport.exportedBy],
+      references: [user.id],
+      relationName: "franchiseeBillingExports",
+    }),
+  }),
+);
+
+export const franchiseeBillingRelations = relations(
+  franchiseeBilling,
+  ({ one, many }) => ({
+    franchisee: one(franchisee, {
+      fields: [franchiseeBilling.franchiseeId],
+      references: [franchisee.id],
+    }),
+    sourceFile: one(uploadedFile, {
+      fields: [franchiseeBilling.sourceFileId],
+      references: [uploadedFile.id],
+    }),
+    approvedByUser: one(user, {
+      fields: [franchiseeBilling.approvedBy],
+      references: [user.id],
+      relationName: "approvedFranchiseeBillings",
+    }),
+    royaltyExportBatch: one(franchiseeBillingExport, {
+      fields: [franchiseeBilling.royaltyExportBatchId],
+      references: [franchiseeBillingExport.id],
+      relationName: "royaltyExportBatch",
+    }),
+    marketingExportBatch: one(franchiseeBillingExport, {
+      fields: [franchiseeBilling.marketingExportBatchId],
+      references: [franchiseeBillingExport.id],
+      relationName: "marketingExportBatch",
+    }),
+    deferralLedgerEntries: many(franchiseeDeferralLedger),
+  }),
+);
+
+export const franchiseeDeferralLedgerRelations = relations(
+  franchiseeDeferralLedger,
+  ({ one }) => ({
+    franchisee: one(franchisee, {
+      fields: [franchiseeDeferralLedger.franchiseeId],
+      references: [franchisee.id],
+    }),
+    billing: one(franchiseeBilling, {
+      fields: [franchiseeDeferralLedger.billingId],
+      references: [franchiseeBilling.id],
+    }),
+    createdByUser: one(user, {
+      fields: [franchiseeDeferralLedger.createdBy],
+      references: [user.id],
+      relationName: "createdFranchiseeDeferrals",
+    }),
+  }),
+);
 
 // Settlement Period relations
 export const settlementPeriodRelations = relations(
