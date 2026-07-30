@@ -104,9 +104,18 @@ WT="$(dirname "$MAIN")/lt-wt-$T"
 git worktree add -b "$BR" "$WT" HEAD
 ln -s "$MAIN/node_modules" "$WT/node_modules"
 
+# קבצי הלקוחה. raw_data/ ב-gitignore, ולכן התיקיות שלו לא נולדות ב-worktree.
+mkdir -p "$WT/raw_data"
+cp -R "$MAIN/raw_data/תמלוגים זכיינים" "$WT/raw_data/"
+chmod -R a-w "$WT/raw_data/תמלוגים זכיינים"
+
 # שער הבידוד. אם זה נכשל, אל תריץ סוכן.
 test ! -e "$WT/.env" && echo "isolated: no .env" || { echo "ABORT: .env leaked"; }</code></pre>
 <p><code>.env</code> נמצא ב-<code>.gitignore</code> (שורה 15), ולכן worktree חדש נולד בלעדיו. זה לא טריק אלא תוצאה ישרה של איך שהפרויקט מוגדר.</p>
+<div class="box crit">
+<p style="margin-top:0"><b><code>raw_data/</code> גם הוא ב-<code>.gitignore</code> (שורה 70), וזו מלכודת אחרת לגמרי.</b> חלק מהקבצים שם <b>כן</b> במעקב כי הם נוספו לפני שהכלל נכתב (82 קבצים, בהם <code>BKMVDATA.txt</code> ו-<code>raw_files_suppliers/</code>) — ולכן <code>raw_data/</code> <b>קיים</b> ב-worktree, אבל התיקיות שאינן במעקב חסרות בו. ביניהן <code>תמלוגים זכיינים/</code>, כלומר בדיוק קבצי המקור של T01 ושל T05.</p>
+<p style="margin-bottom:0">סוכן ב-worktree בלי ההעתקה הזאת ימצא <code>raw_data/</code> קיים אבל בלי התיקייה שהבריף מפנה אליו, ואין לו שום דרך לדעת שזאת תקלת סביבה ולא מציאות. 120KB, מועתק ב-<code>a-w</code> כדי שלא יכתוב על נתוני הלקוחה.</p>
+</div>
 <p><b>ה-worktree יושב מחוץ ל-repo</b> (<code>../lt-wt-…</code>), כדי שלא יופיע ב-<code>git status</code> של הראשי ולא יבלבל את הדיף.</p>
 <p><code>node_modules</code> הוא סימלינק ולא העתקה. 986MB, ואין סיבה לשכפל אותם.</p>
 
@@ -124,16 +133,28 @@ test ! -e "$WT/.env" && echo "isolated: no .env" || { echo "ABORT: .env leaked";
 <p style="margin-bottom:0">הבודק רץ גם הוא עם <code>-C "$WT"</code>, אחרת הוא יסתכל על דיף ריק ב-repo הראשי ויאשר כלום.</p>
 
 <h3>מיזוג בחזרה וניקוי</h3>
-<pre><code># commit בתוך ה-worktree, אחרי שהבדיקות והבודק עברו
-cd "$WT" && git add -A && git commit -m "feat(royalty): &lt;מה נבנה&gt;"
+<pre><code># commit בתוך ה-worktree, אחרי שהבדיקות והבודק עברו.
+# קבצים מפורשים ולא add -A: raw_data שהעתקת פנימה מוגן ב-gitignore, אבל אין סיבה להישען על זה.
+cd "$WT" && git add &lt;הקבצים בהיקף&gt; && git commit -m "feat(royalty): &lt;מה נבנה&gt;"
+
+# אם הראשי זז מאז שנוצר ה-worktree, ff-only יסרב. rebase של המשימה עליו, ואז ff.
+cd "$WT" && git rebase master
 
 # מיזוג לראשי. ff-only מכריח שהראשי לא זז מתחתינו.
 cd "$MAIN" && git merge --ff-only "$BR"
 
 # ניקוי. קודם הסימלינק, אחרת git מנסה למחוק 986MB.
 rm -f "$WT/node_modules"
+
+# ואז רק התיקייה שהעתקת. לא raw_data כולו — יש בו קבצים במעקב.
+chmod -R u+w "$WT/raw_data/תמלוגים זכיינים" && rm -rf "$WT/raw_data/תמלוגים זכיינים"
+
 git worktree remove "$WT" && git branch -d "$BR"</code></pre>
-<p style="margin-bottom:0"><b><code>rm -f "$WT/node_modules"</code> לפני <code>worktree remove</code>, בסדר הזה.</b> ואם עבדת בתוך ה-worktree וה-shell עוד נמצא שם כשמוחקים אותו, כל פקודה אחריה נכשלת ב-<code>Unable to read current working directory</code>. <code>cd "$MAIN"</code> קודם, ואם זה קרה, <code>git worktree prune</code> מסדר את הרישום.</p>
+<p><b><code>rm -f "$WT/node_modules"</code> לפני <code>worktree remove</code>, בסדר הזה.</b> ואם עבדת בתוך ה-worktree וה-shell עוד נמצא שם כשמוחקים אותו, כל פקודה אחריה נכשלת ב-<code>Unable to read current working directory</code>. <code>cd "$MAIN"</code> קודם, ואם זה קרה, <code>git worktree prune</code> מסדר את הרישום.</p>
+<div class="box warn">
+<p style="margin-top:0"><b><code>rm -rf "$WT/raw_data"</code> מוחק 81 קבצים שכן במעקב</b>, ואז <code>worktree remove</code> מסרב עם <code>contains modified or untracked files</code>. מוחקים את התיקייה שהעתקת בשמה, לא את ההורה.</p>
+<p style="margin-bottom:0"><b>ואם זה כבר קרה:</b> הראשי הוא checkout נפרד ולא נפגע. אמת ב-<code>git -C "$MAIN" status --porcelain</code> (חייב להיות ריק) ורק אז <code>git worktree remove --force</code>. שים לב ש-<code>git ls-files</code> מחזיר שמות עבריים ב-escape אוקטלי, ולכן לופ אימות תמים על הפלט שלו ידווח על קבצים חסרים שכן קיימים. <code>-z</code> ו-<code>read -d ''</code>.</p>
+</div>
 
 <h2>הלופ, משימה אחת</h2>
 
@@ -186,7 +207,16 @@ echo "$IMPL_SID" | tee "$RUN/impl.sid"</code></pre>
 <div class="box crit" style="margin:.7rem 0">
 <p style="margin:0"><b>זה השלב שקל לדלג עליו וזה שובר את הלופ.</b> ההרצה של הבודק יוצרת session חדש באותו cwd, ומאותו רגע <code>codex exec resume --last</code> מחזיר את <b>הבודק</b> ולא את המיישם. הממצאים יגיעו לסוכן שאין לו את הקוד בהקשר, והוא יתחיל לנחש. תופסים את ה-id לפני, ומשתמשים בו במפורש.</p>
 </div>
-<p style="margin-bottom:0" class="small">ה-id מוטבע בשם קובץ ה-session: <code>rollout-&lt;timestamp&gt;-&lt;uuid&gt;.jsonl</code>. אומת בפועל שגם החילוץ וגם <code>resume</code> לפי id מפורש שומרים הקשר.</p>
+<p class="small">ה-id מוטבע בשם קובץ ה-session: <code>rollout-&lt;timestamp&gt;-&lt;uuid&gt;.jsonl</code>. אומת בפועל שגם החילוץ וגם <code>resume</code> לפי id מפורש שומרים הקשר.</p>
+<p><b>ואם דילגת בכל זאת</b> — זה לא אל-חזור. שני ה-sessions נבדלים בתוכן, ואפשר לסמן אותם לפי חתימה:</p>
+<pre><code>for f in $(ls -t $(find ~/.codex/sessions -name '*.jsonl' -newermt '&lt;לפני ההרצה&gt;')); do
+  sid=$(echo "$f" | sed -E 's/.*-([0-9a-f-]{36})\.jsonl$/\1/')
+  role="?"
+  grep -q '&lt;כותרת הבריף, למשל: T01 — מנוע החישוב&gt;' "$f" && role="IMPL"
+  grep -q 'אל תוסיף מידע על מה שהסוכן הראשון' "$f" && role="REVIEW"
+  echo "$role  $sid"
+done</code></pre>
+<p style="margin-bottom:0" class="small">המחרוזת השנייה היא מ-<code>_REVIEW-TEMPLATE.md</code> ומופיעה רק בסשן של הבודק. עלות השחזור היא קריאה אחת, אבל זה עדיין זול יותר לתפוס את ה-id מראש.</p>
 </div>
 </div>
 
@@ -244,13 +274,19 @@ codex exec -C "$PWD" -s read-only \
 <div class="hd"><span class="n">8</span><span class="t">חזרה למיישם, לפי id מפורש</span></div>
 <div class="bd">
 <p>כתוב ל-<code>$RUN/fix.md</code> את הממצאים <b>שהכרעת שהם אמיתיים</b>, ממוספרים, כל אחד עם קובץ:שורה ומה הנכון. בלי "הבודק אמר ש". אתה מזמין את התיקון.</p>
-<pre><code>cd "$PWD" && codex exec resume "$(cat "$RUN/impl.sid")" \
+<pre><code># במצב מבודד: cd "$WT". אחרת cd "$MAIN".
+cd "$WT" && codex exec resume "$(cat "$RUN/impl.sid")" \
   -c sandbox_mode="workspace-write" \
   -c sandbox_workspace_write.network_access=true \
+  -c sandbox_workspace_write.writable_roots="[\"$MAIN/node_modules\"]" \
   -o "$RUN/last-r2.md" \
   - &lt; "$RUN/fix.md" &gt; "$RUN/run-r2.log" 2&gt;&1</code></pre>
+<div class="box crit">
+<p style="margin-top:0"><b><code>codex exec resume</code> מקבל קבוצת דגלים אחרת מ-<code>codex exec</code>.</b> יש לו <code>-c</code>, <code>-o</code>, <code>-m</code>, <code>--last</code> — ו<b>אין</b> לו <code>-C</code>, <code>-s</code> או <code>--add-dir</code>. כל אחד מהשלושה מפיל את הפקודה על פירוק ארגומנטים <b>לפני</b> שהסוכן מקבל את הבריף, וההודעה יושבת רק ב-<code>run-r2.log</code>.</p>
+<p style="margin-bottom:0">לכן: את ה-cwd קובעים ב-<code>cd</code>, את הסנדבוק ב-<code>-c sandbox_mode</code>, ואת ההרשאה ל-<code>node_modules</code> ב-<code>-c sandbox_workspace_write.writable_roots</code>. זה השקול ל-<code>--add-dir</code> משלב 2, ובלעדיו vitest נחסם בשקט בכתיבת cache — אותה מלכודת, שם אחר.</p>
+</div>
 <p><b>לא לתקן בעצמך.</b> תיקון ב-Claude מייבא בחזרה בדיוק את העלות שהעברנו.</p>
-<p><b>ב-<code>resume</code>, קוד יציאה 0 אינו אומר שהסבב קרה.</b> דגל שגוי גורם ל-Codex לצאת 0 כשהשגיאה יושבת רק ב-<code>run-r2.log</code>. אמת ב-<code>git diff</code>, ואם העץ לא זז, <code>tail -5 "$RUN/run-r2.log"</code>.</p>
+<p><b>ב-<code>resume</code>, קוד יציאה 0 אינו אומר שהסבב קרה.</b> דגל שגוי גורם ל-Codex לצאת 0 כשהשגיאה יושבת רק ב-<code>run-r2.log</code>. <b>אמת שהעץ זז</b> — <code>git status</code> ו-<code>wc -l</code> על קבצי ההיקף לפני ואחרי — ואם לא, <code>tail -5 "$RUN/run-r2.log"</code>. הרצה שנפלה על דגלים <b>אינה נספרת כסבב</b>: הסוכן לא ראה את הבריף.</p>
 <p style="margin-bottom:0"><b>מקסימום שני סבבים.</b> אחרי שניים, אם עוד יש ממצא חוסם, זה סימן שהבריף לא היה מדויק ולא שהסוכן חלש. תקן את הבריף והתחל את המשימה מאפס. אחרי שלב 8 חוזרים ל-4.</p>
 </div>
 </div>
