@@ -54,6 +54,7 @@ function billingRowSelection(activeSourceFileId: string | null) {
     isStaleSource: isStale,
     isApprovalBlocked: isStale,
     status: billing.status,
+    owners: schema.franchisee.owners,
   };
 }
 

@@ -95,6 +95,10 @@ const billingScreenRowSchema = z.object({
   isStaleSource: z.boolean(),
   isApprovalBlocked: z.boolean(),
   status: z.enum(["draft", "approved"]),
+  owners: z.array(z.object({
+    name: z.string(),
+    email: z.string(),
+  }).passthrough()).nullable().optional(),
 });
 
 export const franchiseeBillingScreenDataSchema = z.object({

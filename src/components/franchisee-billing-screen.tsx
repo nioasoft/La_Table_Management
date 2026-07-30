@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 
 import { FranchiseeBillingAlerts } from "@/components/franchisee-billing-alerts";
+import { FranchiseeBillingApproval } from "@/components/franchisee-billing-approval";
 import { FranchiseeBillingTable } from "@/components/franchisee-billing-table";
 import { FranchiseeBillingUpload } from "@/components/franchisee-billing-upload";
 import { Button } from "@/components/ui/button";
@@ -377,6 +378,12 @@ export function FranchiseeBillingScreen() {
             staleRows={data.rows.filter((row) => row.isStaleSource)}
             approvedDifferences={data.approvedDifferences}
             onResolveDifference={resolveDifference}
+          />
+          <FranchiseeBillingApproval
+            key={`approval-${period.year}-${period.month}`}
+            data={data}
+            period={period}
+            onApproved={() => query.refetch()}
           />
           {data.rows.length > 0 ? (
             <FranchiseeBillingTable

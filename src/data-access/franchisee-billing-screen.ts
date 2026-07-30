@@ -1,4 +1,7 @@
-import type { FranchiseeBillingStatus } from "@/db/schema";
+import type {
+  FranchiseeBillingStatus,
+  FranchiseeOwner,
+} from "@/db/schema";
 import {
   franchiseeBillingSourceReviewSchema,
   type FranchiseeBillingPeriod,
@@ -28,6 +31,7 @@ export interface BillingScreenRow {
   readonly isStaleSource: boolean;
   readonly isApprovalBlocked: boolean;
   readonly status: FranchiseeBillingStatus;
+  readonly owners?: readonly FranchiseeOwner[] | null;
 }
 
 export interface BillingSourceReviewRecord {
