@@ -122,6 +122,14 @@ const reportCards: ReportCardData[] = [
     color: "text-amber-600 dark:text-amber-400",
   },
   {
+    title: "דוחות חיוב זכיינים",
+    description: "תמלוגים, מחזורים, גבייה וערך הנחות לפי חודש וזכיין, עם ייצוא לאקסל.",
+    href: "/admin/reports/franchisee-billing",
+    icon: <Coins className="h-6 w-6" />,
+    status: "active",
+    color: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
     title: "אחוז קניות ממחזור",
     description: "השוואת קניות מספקים מול מחזור זכיינים - אחוז קניות מסך המחזור",
     href: "/admin/reports/commission-revenue",
