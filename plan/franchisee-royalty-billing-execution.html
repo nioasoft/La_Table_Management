@@ -175,9 +175,12 @@ royaltyFull, royalty, discountValue, marketing, subtotal, total
 tiersSnapshot jsonb, tierBasisSnapshot, marketingRateSnapshot,
 vatRateSnapshot, accountKeySnapshot
 sourceFileId, status ('draft'|'approved'), approvedAt, approvedBy
-exportedAt, exportBatchId
+-- מעקב ייצוא, זוג לכל סוג פריט (החלטה 15):
+royaltyExportedAt,   royaltyExportBatchId
+marketingExportedAt, marketingExportBatchId
 noRevenueReason text                     // סימון ידני בלבד (החלטה 8)
 UNIQUE (franchiseeId, periodYear, periodMonth)</code></pre>
+<p><b>שני זוגות ולא אחד</b> <span class="d">החלטה 15</span> שורת חיוב מחזיקה גם <code>royalty</code> וגם <code>marketing</code>, ו-<code>franchisee_billing_export</code> ממופתחת ב-<code>itemType</code> — כלומר אותה שורה נכנסת לשני קבצים, <code>&lt;מותג&gt; תמלוגים זכיינים.xlsx</code> ו-<code>&lt;מותג&gt; שיווק זכיינים.xlsx</code>. <code>exportedAt</code> ו-<code>exportBatchId</code> בודדים היו נותנים לייצוא השני לדרוס את הקישור של הראשון, וייצוא של סוג אחד היה מסמן לכאורה את שני הסכומים כנגבו. דוח הגבייה נשען על <code>exportedAt</code>, ולכן הוא זה שהיה מדווח שקר. החלופה, טבלת קישור <code>franchisee_billing_export_line</code>, מוסיפה טבלה ו-join לכל דוח בשביל אותה תוצאה.</p>
 <p><b>צילום מצב באישור</b> <span class="d">החלטה 3</span> קינג קונג רעננה כבר החליפה ישות משפטית: הקוד הנוכחי <code>517234605</code>, ובכינויים יושבים <code>אטפה בע"מ</code> ו-<code>516549102</code>. מסמך חשבשבת הוא רשומה כספית של חודש מסוים, והישות שהפעילה את הסניף באותו חודש היא זו שחייבת עליו. וחוץ מזה, "ייצוא חוזר = תיקון" מחזיק רק אם הייצוא החוזר מייצר את אותו מסמך פרט למה שתוקן.</p>
 <p><b>טבלה חדשה ולא מיחזור של <code>settlement_period</code>:</b> <span class="file">settlement-simple.ts:339</span> מצמיד התאמת ספק ל"תקופה הפתוחה הראשונה שנמצאה", כך שהתאמה של ספק היתה נוחתת בשקט על שורת חיוב של זכיין. עוד שלוש שאילתות חיות עושות <code>where(status='open').limit(1)</code>.</p>
 
@@ -352,7 +355,7 @@ exportedAt, exportedBy, rowCount, blobUrl</code></pre>
       <li><code>מפתח חשבון</code> מהצילום שעל השורה, לא מהזכיין.</li>
       <li><code>סוג המסמך</code> = <code>"11"</code> כמחרוזת. <code>כמות</code> = 1. <code>מחיר</code> ללא מע"מ, לא מעוגל.</li>
       <li><b>שורות ₪0 לא נוצרות.</b> <code>קינג מ</code> יצא אצלה בכמות 2 וסכום 0. ייצוא הלקוחות הקיים כבר מסנן <code>price !== 0</code>.</li>
-      <li>הייצוא כותב <code>exportedAt</code> ו-<code>exportBatchId</code>, ושורה ב-<code>franchisee_billing_export</code>. זה מה שהופך שורה ל"נגבתה".</li>
+      <li>הייצוא כותב את זוג העמודות <b>של סוג הפריט שיוצא</b> — <code>royaltyExportedAt</code>+<code>royaltyExportBatchId</code> או <code>marketingExportedAt</code>+<code>marketingExportBatchId</code> — ושורה ב-<code>franchisee_billing_export</code>. זה מה שהופך את אותו סכום ל"נגבה". ייצוא תמלוגים אינו נוגע בעמודות השיווק.</li>
     </ul>
     <h4>מספור, משחזרים את שלה</h4>
     <p><span class="d">החלטה 13</span> <b>כל קובץ מתחיל ב-5000 ועולה ב-1.</b> בכל ששת הקבצים שלה המספור מתחיל מ-5000 מחדש, כלומר בחודש אחד המספר 5000 מופיע שש פעמים. אם חשבשבת השתמשה בו כמפתח, הייבוא שלה היה נשבר מזמן. הכפילות היחידה שנסגרת היא 5000 פעמיים <b>באותו קובץ</b> (מינה שיווק), שהיא שגיאה ברורה. להפוך את המספרים לייחודיים בין קבצים ובין חודשים זה שינוי לא מבוקש בפורמט שעובד שנים.</p>
@@ -372,7 +375,7 @@ exportedAt, exportedBy, rowCount, blobUrl</code></pre>
       <tr><th>הדוח</th><th>חתך</th><th>מקור</th></tr>
       <tr><td>תמלוגים</td><td>חודש × סניף</td><td><code>franchisee_billing</code></td></tr>
       <tr><td>מחזורים</td><td>חודש × סניף, <code>grossBase</code> ו-<code>netBase</code></td><td><code>franchisee_billing</code></td></tr>
-      <tr><td>גבייה</td><td>מצטבר, תמלוגים ושיווק בנפרד</td><td><code>exportedAt IS NOT NULL</code></td></tr>
+      <tr><td>גבייה</td><td>מצטבר, תמלוגים ושיווק בנפרד</td><td><code>royaltyExportedAt IS NOT NULL</code> ו-<code>marketingExportedAt IS NOT NULL</code> בנפרד</td></tr>
       <tr><td>ערך הנחות</td><td>לפי זכיין, מצטבר</td><td><code>franchisee_deferral_ledger</code></td></tr>
     </table>
     <ul style="margin-bottom:0">

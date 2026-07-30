@@ -12,7 +12,7 @@
 |---|---|---|
 | תמלוגים | חודש × סניף | `franchisee_billing` |
 | מחזורים | חודש × סניף, `grossBase` ו-`netBase` זה לצד זה | `franchisee_billing` |
-| גבייה | מצטבר, תמלוגים ושיווק **בנפרד** | `franchisee_billing` עם `exportedAt IS NOT NULL` |
+| גבייה | מצטבר, תמלוגים ושיווק **בנפרד** | `franchisee_billing`: תמלוגים לפי `royaltyExportedAt IS NOT NULL`, שיווק לפי `marketingExportedAt IS NOT NULL`. שני התנאים בנפרד, לא אחד. |
 | ערך הנחות | לפי זכיין, מצטבר | `franchisee_deferral_ledger` |
 
 ## שתי נקודות שמשנות נכונות

@@ -69,7 +69,7 @@
 <tr><td>T07</td><td>מסך החיוב</td><td>T06</td><td>צריך שורות אמיתיות להציג.</td></tr>
 <tr><td>T08</td><td>אישור, ליג'ר, מייל</td><td>T07</td><td>האישור הוא פעולה על שורה שנערכה במסך.</td></tr>
 <tr><td>T09</td><td>ייצוא חשבשבת</td><td>T08</td><td>מייצא רק מאושרים, וקורא את צילום המצב שהאישור כתב.</td></tr>
-<tr><td>T10</td><td>ארבעת הדוחות</td><td>T09</td><td>דוח הגבייה נשען על <code>exportedAt</code>.</td></tr>
+<tr><td>T10</td><td>ארבעת הדוחות</td><td>T09</td><td>דוח הגבייה נשען על <code>royaltyExportedAt</code> ו-<code>marketingExportedAt</code> בנפרד.</td></tr>
 <tr><td>T11</td><td>הרצת קבלה</td><td>T09</td><td>משווה קבצים מיוצרים לקבצים של הלקוחה.</td></tr>
 </table>
 <div class="box ok">
@@ -198,7 +198,7 @@
 <dl>
 <dt>בריף</dt><dd><span class="file">plan/agent-briefs/10-reports.md</span></dd>
 <dt>גמור כאשר</dt><dd>ארבע תצוגות נכונות לחודש נבחר, ייצוא לאקסל מכל אחת.</dd>
-<dt>מה הבודק יחפש קודם</dt><dd>דוח ערך הנחות שמחשב <code>points × netBase</code> בזמן שאילתה במקום לקרוא את <code>discountValue</code> השמור. דוח גבייה שנשען על <code>approvedAt</code> במקום <code>exportedAt</code>.</dd>
+<dt>מה הבודק יחפש קודם</dt><dd>דוח ערך הנחות שמחשב <code>points × netBase</code> בזמן שאילתה במקום לקרוא את <code>discountValue</code> השמור. דוח גבייה שנשען על <code>approvedAt</code> במקום על עמודות הייצוא, או שמאחד את שני סוגי הפריט לתנאי אחד.</dd>
 <dt>הסיכון האמיתי</dt><dd>חישוב בזמן שאילתה נראה נקי יותר, ומייצר דוח שמשתנה למפרע כשמדרגות נערכות.</dd>
 </dl>
 </div>
