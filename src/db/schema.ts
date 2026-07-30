@@ -775,6 +775,7 @@ export const franchisee = pgTable(
     royaltyTiersConfirmed: boolean("royalty_tiers_confirmed")
       .default(false)
       .notNull(),
+    royaltyTiersNote: text("royalty_tiers_note"),
     royaltyIncludeTips: boolean("royalty_include_tips")
       .default(false)
       .notNull(),

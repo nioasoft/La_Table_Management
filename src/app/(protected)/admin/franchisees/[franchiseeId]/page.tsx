@@ -996,14 +996,7 @@ export default function FranchiseeDetailPage() {
                   franchisee.hashavshevetAccountKey ?? null,
                 marketingFeeRate: franchisee.marketingFeeRate ?? null,
               }}
-              normalizationNotes={
-                franchisee.notes &&
-                (/נרמול|נרמל|חור/.test(franchisee.notes) ||
-                  (/מדרגות|תמלוגים/.test(franchisee.notes) &&
-                    /אקסל/.test(franchisee.notes)))
-                  ? franchisee.notes
-                  : null
-              }
+              normalizationNotes={franchisee.royaltyTiersNote ?? null}
               onSaved={(settings) =>
                 setFranchisee((current) =>
                   current

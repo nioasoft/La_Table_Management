@@ -239,6 +239,13 @@
       "when": 1785369600000,
       "tag": "0070_franchisee_billing",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1785456000000,
+      "tag": "0071_franchisee_royalty_tiers_note",
+      "breakpoints": true
     }
   ]
 }
