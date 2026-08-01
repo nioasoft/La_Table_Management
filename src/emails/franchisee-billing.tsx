@@ -58,8 +58,20 @@ function formatExactDecimal(value: string): string {
   return `${sign}${integer}${fraction ? `.${fraction}` : ""}`;
 }
 
+/**
+ * The owner reads shekels, not the six decimals the column stores. Rounding is
+ * for display only — the stored amount and the Hashavshevet export keep their
+ * full precision.
+ */
 function money(value: string): string {
-  return `₪\u00a0${formatExactDecimal(value)}`;
+  const amount = Number(value);
+  const shown = Number.isFinite(amount)
+    ? amount.toLocaleString("he-IL", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : formatExactDecimal(value);
+  return `₪\u00a0${shown}`;
 }
 
 function rate(value: string): string {

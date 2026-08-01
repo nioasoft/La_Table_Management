@@ -58,7 +58,12 @@ describe("FranchiseeBillingEmail", () => {
     const text = await render(FranchiseeBillingEmail(props), {
       plainText: true,
     });
-    const amount = (value: string) => `₪ ${displayDecimal(value)}`;
+    // Amounts render in agorot; percentages keep their exact digits.
+    const amount = (value: string) =>
+      `₪\u00a0${Number(value).toLocaleString("he-IL", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
     const expected = [
       "שלום דנה,",
       "",
@@ -93,13 +98,21 @@ describe("FranchiseeBillingEmail", () => {
     expect(text).toBe(expected);
   });
 
-  it("preserves every stored decimal digit in the rendered money", async () => {
+  it("renders money in agorot, not in the six decimals the column stores", async () => {
+    // Calculation and storage keep full precision; a document a franchisee
+    // owner reads must not. This once sent ₪626,812.118644 to four owners.
     const text = await render(FranchiseeBillingEmail(props), {
       plainText: true,
     });
+    const agorot = (value: string) =>
+      Number(value).toLocaleString("he-IL", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
 
-    expect(text).toContain(`₪ ${displayDecimal(props.grossBase)}`);
-    expect(text).toContain(`₪ ${displayDecimal(props.discountValue)}`);
-    expect(text).toContain(`₪ ${displayDecimal(props.total)}`);
+    expect(text).toContain(`₪\u00a0${agorot(props.grossBase)}`);
+    expect(text).toContain(`₪\u00a0${agorot(props.discountValue)}`);
+    expect(text).toContain(`₪\u00a0${agorot(props.total)}`);
+    expect(text).not.toMatch(/₪\u00a0[\d,]+\.\d{3,}/);
   });
 });
