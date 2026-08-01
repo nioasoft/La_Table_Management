@@ -48,15 +48,38 @@ vi.mock("@/lib/api-middleware", () => ({
 }));
 
 const PERIOD = { year: 2026, month: 6 } as const;
-const SOURCE: ApprovalSourceReview = {
-  id: "source-current",
-  fileName: "יוני.xlsx",
-  metadata: {
-    documentType: "franchisee_royalty_revenue",
-    anomalies: [],
-    approvedDifferences: [],
-  },
-};
+function sourceReview(
+  id: string,
+  fileName: string,
+): ApprovalSourceReview {
+  return {
+    id,
+    fileName,
+    metadata: {
+      documentType: "franchisee_royalty_revenue",
+      anomalies: [],
+      approvedDifferences: [],
+    },
+  };
+}
+
+const SOURCE_BY_BRAND = new Map([
+  ["brand-vini", sourceReview("source-vini", "ויני.xlsx")],
+  ["brand-mina", sourceReview("source-mina", "מינה.xlsx")],
+  ["brand-king-kong", sourceReview("source-king-kong", "קינג קונג.xlsx")],
+]);
+
+const SOURCE = sourceReview("source-vini", "ויני.xlsx");
+
+function reviewedSource(
+  source: ApprovalSourceReview,
+  metadata: ApprovalSourceReview["metadata"],
+): ApprovalSourceReview {
+  return {
+    ...source,
+    metadata,
+  };
+}
 
 interface CalculatedFixture {
   readonly row: ApprovalBillingRow;
@@ -70,6 +93,8 @@ function calculatedFixture(
   ownerName: string,
   ownerEmail: string,
   discountRatePoints: number,
+  brandId: string,
+  sourceFileId: string,
 ): CalculatedFixture {
   const inputs = {
     receipts: 1180.123456,
@@ -102,6 +127,7 @@ function calculatedFixture(
       id,
       franchiseeId,
       franchiseeName,
+      brandId,
       periodYear: PERIOD.year,
       periodMonth: PERIOD.month,
       receipts: money(inputs.receipts),
@@ -109,7 +135,7 @@ function calculatedFixture(
       includeTips: inputs.includeTips,
       discountRatePoints: rate(discountRatePoints),
       ...calculated,
-      sourceFileId: SOURCE.id,
+      sourceFileId,
       status: "draft",
       royaltyTiers: [...inputs.tiers],
       royaltyTierBasis: inputs.tierBasis,
@@ -139,7 +165,7 @@ class TransactionalApprovalHarness
   approvals: PersistBillingApprovalInput[] = [];
   sent: ApprovalEmailMessage[] = [];
   logs: ApprovalEmailLog[] = [];
-  source: ApprovalSourceReview | null = SOURCE;
+  sourcesByBrand: ReadonlyMap<string, ApprovalSourceReview> = SOURCE_BY_BRAND;
   failLedger = false;
   failingEmails = new Set<string>();
   private transactionTail: Promise<void> = Promise.resolve();
@@ -152,6 +178,8 @@ class TransactionalApprovalHarness
       "דנה",
       "Dana@Example.com",
       1,
+      "brand-vini",
+      "source-vini",
     ),
     calculatedFixture(
       "billing-2",
@@ -160,6 +188,8 @@ class TransactionalApprovalHarness
       "יואב",
       "yoav@example.com",
       1,
+      "brand-mina",
+      "source-mina",
     ),
     calculatedFixture(
       "billing-3",
@@ -168,6 +198,8 @@ class TransactionalApprovalHarness
       "נועה",
       "noa@example.com",
       0,
+      "brand-king-kong",
+      "source-king-kong",
     ),
   ]) {
     this.rows = fixtures.map(({ row }) => ({ ...row }));
@@ -209,7 +241,7 @@ class TransactionalApprovalHarness
   ): ApprovalStore {
     return {
       loadRowsForUpdate: async () => rows,
-      loadLatestSource: async () => this.source,
+      loadLatestSources: async () => this.sourcesByBrand,
       loadVatRate: async () => "0.1800",
       persistApproval: async (input) => {
         const index = rows.findIndex((row) => row.id === input.billingId);
@@ -299,7 +331,7 @@ function postRequest(body: FranchiseeBillingApprovalInput): NextRequest {
 describe("POST /api/franchisee-billing/approve", () => {
   beforeEach(() => requireSuperUser.mockClear());
 
-  it("writes the two calculated deferrals and sends exactly two emails", async () => {
+  it("approves three brands with three live files and no stale rows", async () => {
     const operations = new TransactionalApprovalHarness();
 
     const response = await handleApproveFranchiseeBilling(
@@ -334,6 +366,41 @@ describe("POST /api/franchisee-billing/approve", () => {
       0,
     );
     expect(ledgerBalance).toBe(calculatedBalance);
+  });
+
+  it("approves two brands when each row points to its own live file", async () => {
+    const allFixtures = new TransactionalApprovalHarness().fixtures;
+    const operations = new TransactionalApprovalHarness(allFixtures.slice(0, 2));
+    const input = approvalBody();
+
+    const response = await handleApproveFranchiseeBilling(
+      postRequest({ ...input, recipients: input.recipients.slice(0, 2) }),
+      operations,
+    );
+
+    expect(response.status).toBe(200);
+    expect(operations.approvals).toHaveLength(2);
+  });
+
+  it("blocks only an old row from the re-uploaded brand", async () => {
+    const operations = new TransactionalApprovalHarness();
+    const first = operations.rows[0];
+    if (!first) throw new Error("Missing fixture");
+    operations.rows[0] = { ...first, sourceFileId: "source-vini-old" };
+
+    const response = await handleApproveFranchiseeBilling(
+      postRequest(approvalBody()),
+      operations,
+    );
+    const body: unknown = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      success: false,
+      error: expect.stringMatching(/ויני יהוד/u),
+    });
+    expect(JSON.stringify(body)).not.toMatch(/מינה קריות|קינג עפולה/u);
+    expect(operations.approvals).toHaveLength(0);
   });
 
   it("blocks a stored financial mismatch and names the field and difference", async () => {
@@ -379,19 +446,11 @@ describe("POST /api/franchisee-billing/approve", () => {
 
   it.each([
     {
-      name: "stale source",
-      mutate: (operations: TransactionalApprovalHarness) => {
-        const first = operations.rows[0];
-        if (first) operations.rows[0] = { ...first, sourceFileId: "old-source" };
-      },
-      error: /קובץ ישן/u,
-    },
-    {
       name: "blocking anomaly",
       mutate: (operations: TransactionalApprovalHarness) => {
-        operations.source = {
-          ...SOURCE,
-          metadata: {
+        operations.sourcesByBrand = new Map([
+          ...operations.sourcesByBrand,
+          ["brand-vini", reviewedSource(SOURCE, {
             documentType: "franchisee_royalty_revenue",
             anomalies: [{
               code: "missing",
@@ -400,17 +459,17 @@ describe("POST /api/franchisee-billing/approve", () => {
               message: "חסר זכיין",
             }],
             approvedDifferences: [],
-          },
-        };
+          })],
+        ]);
       },
       error: /חריגות חוסמות/u,
     },
     {
       name: "unresolved approved difference",
       mutate: (operations: TransactionalApprovalHarness) => {
-        operations.source = {
-          ...SOURCE,
-          metadata: {
+        operations.sourcesByBrand = new Map([
+          ...operations.sourcesByBrand,
+          ["brand-vini", reviewedSource(SOURCE, {
             documentType: "franchisee_royalty_revenue",
             anomalies: [],
             approvedDifferences: [{
@@ -422,8 +481,8 @@ describe("POST /api/franchisee-billing/approve", () => {
                 uploadedValue: 2,
               }],
             }],
-          },
-        };
+          })],
+        ]);
       },
       error: /פערים שטרם נפתרו/u,
     },
@@ -534,7 +593,7 @@ describe("approval SQL", () => {
     const query = createLockedApprovalRowsQuery(database, PERIOD).toSQL();
 
     expect(query.sql).toBe(
-      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"receipts\", \"franchisee_billing\".\"tips\", \"franchisee_billing\".\"include_tips\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"effective_rate\", \"franchisee_billing\".\"royalty_full\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"source_file_id\", \"franchisee_billing\".\"status\", \"franchisee\".\"royalty_tiers\", \"franchisee\".\"royalty_tier_basis\", \"franchisee\".\"royalty_tiers_confirmed\", \"franchisee\".\"marketing_fee_rate\", \"franchisee\".\"hashavshevet_account_key\", \"franchisee\".\"owners\", \"franchisee_billing\".\"tiers_snapshot\", \"franchisee_billing\".\"tier_basis_snapshot\", \"franchisee_billing\".\"marketing_rate_snapshot\", \"franchisee_billing\".\"vat_rate_snapshot\", \"franchisee_billing\".\"account_key_snapshot\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" where (\"franchisee_billing\".\"period_year\" = $1 and \"franchisee_billing\".\"period_month\" = $2) for update",
+      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee\".\"brand_id\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"receipts\", \"franchisee_billing\".\"tips\", \"franchisee_billing\".\"include_tips\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"effective_rate\", \"franchisee_billing\".\"royalty_full\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"source_file_id\", \"franchisee_billing\".\"status\", \"franchisee\".\"royalty_tiers\", \"franchisee\".\"royalty_tier_basis\", \"franchisee\".\"royalty_tiers_confirmed\", \"franchisee\".\"marketing_fee_rate\", \"franchisee\".\"hashavshevet_account_key\", \"franchisee\".\"owners\", \"franchisee_billing\".\"tiers_snapshot\", \"franchisee_billing\".\"tier_basis_snapshot\", \"franchisee_billing\".\"marketing_rate_snapshot\", \"franchisee_billing\".\"vat_rate_snapshot\", \"franchisee_billing\".\"account_key_snapshot\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" where (\"franchisee_billing\".\"period_year\" = $1 and \"franchisee_billing\".\"period_month\" = $2) for update",
     );
     expect(query.params).toEqual([PERIOD.year, PERIOD.month]);
   });

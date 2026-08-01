@@ -1,14 +1,16 @@
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "@/db/schema";
 import {
   createDeleteBillingLedgerQuery,
+  createLatestSourceReviewsQuery,
   createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
   formatBillingPeriodDate,
+  mapLatestSourceReviewsByBrand,
 } from "@/data-access/franchisee-billing-screen-queries";
 import type {
   BillingDiscountContext,
@@ -16,6 +18,7 @@ import type {
   BillingScreenOperations,
   BillingScreenRow,
   BillingSourceReviewRecord,
+  BillingSourceReviewsByBrand,
   DifferenceResolutionContext,
   PersistDifferenceResolutionInput,
   PersistDifferenceResolutionResult,
@@ -28,10 +31,12 @@ import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-scree
 
 export {
   createDeleteBillingLedgerQuery,
+  createLatestSourceReviewsQuery,
   createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
+  mapLatestSourceReviewsByBrand,
 } from "@/data-access/franchisee-billing-screen-queries";
 
 async function loadDatabaseRuntime() {
@@ -43,40 +48,29 @@ type BillingDatabase = Awaited<
 >["database"];
 type BillingReadDatabase = Pick<NodePgDatabase<typeof schema>, "select">;
 
+export function resolveLiveSourceReview(
+  sourcesByBrand: BillingSourceReviewsByBrand,
+  brandId: string,
+  requestedSourceFileId: string,
+): BillingSourceReviewRecord | null {
+  const source = sourcesByBrand.get(brandId);
+  return source?.id === requestedSourceFileId ? source : null;
+}
+
 async function readPeriodRows(
   database: BillingReadDatabase,
   period: FranchiseeBillingPeriod,
-  activeSourceFileId: string | null,
+  sourcesByBrand: BillingSourceReviewsByBrand,
 ): Promise<readonly BillingScreenRow[]> {
-  return createPeriodRowsQuery(database, period, activeSourceFileId);
+  return createPeriodRowsQuery(database, period, sourcesByBrand);
 }
 
 async function readLatestSourceReview(
   database: BillingReadDatabase,
   period: FranchiseeBillingPeriod,
-): Promise<BillingSourceReviewRecord | null> {
-  const [source] = await database
-    .select({
-      id: schema.uploadedFile.id,
-      fileName: schema.uploadedFile.originalFileName,
-      metadata: schema.uploadedFile.metadata,
-    })
-    .from(schema.uploadedFile)
-    .where(
-      and(
-        eq(
-          schema.uploadedFile.periodStartDate,
-          formatBillingPeriodDate(period.year, period.month, 1),
-        ),
-        sql`${schema.uploadedFile.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
-      ),
-    )
-    .orderBy(
-      desc(schema.uploadedFile.createdAt),
-      desc(schema.uploadedFile.id),
-    )
-    .limit(1);
-  return source ?? null;
+): Promise<BillingSourceReviewsByBrand> {
+  const sources = await createLatestSourceReviewsQuery(database, period);
+  return mapLatestSourceReviewsByBrand(sources);
 }
 
 async function readPeriodSnapshot(
@@ -85,9 +79,9 @@ async function readPeriodSnapshot(
 ) {
   return database.transaction(
     async (tx) => {
-      const source = await readLatestSourceReview(tx, period);
-      const rows = await readPeriodRows(tx, period, source?.id ?? null);
-      return { rows, source };
+      const sourcesByBrand = await readLatestSourceReview(tx, period);
+      const rows = await readPeriodRows(tx, period, sourcesByBrand);
+      return { rows, sourcesByBrand };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );
@@ -261,15 +255,35 @@ async function readRequestedSourcePeriod(
   return parsePeriodStart(source?.periodStartDate ?? null);
 }
 
+async function readFranchiseeBrandId(
+  database: BillingReadDatabase,
+  franchiseeId: string,
+): Promise<string | null> {
+  const [franchisee] = await database
+    .select({ brandId: schema.franchisee.brandId })
+    .from(schema.franchisee)
+    .where(eq(schema.franchisee.id, franchiseeId))
+    .limit(1);
+  return franchisee?.brandId ?? null;
+}
+
 async function readLiveDifferenceContext(
   database: BillingReadDatabase,
   sourceFileId: string,
   franchiseeId: string,
 ): Promise<DifferenceResolutionContext | null> {
-  const period = await readRequestedSourcePeriod(database, sourceFileId);
-  if (!period) return null;
-  const source = await readLatestSourceReview(database, period);
-  if (!source || source.id !== sourceFileId) return null;
+  const [period, brandId] = await Promise.all([
+    readRequestedSourcePeriod(database, sourceFileId),
+    readFranchiseeBrandId(database, franchiseeId),
+  ]);
+  if (!period || !brandId) return null;
+  const sourcesByBrand = await readLatestSourceReview(database, period);
+  const source = resolveLiveSourceReview(
+    sourcesByBrand,
+    brandId,
+    sourceFileId,
+  );
+  if (!source) return null;
   const billing = await readApprovedBilling(database, franchiseeId, period);
   return billing ? { source, billing } : null;
 }

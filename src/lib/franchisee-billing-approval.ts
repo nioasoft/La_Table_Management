@@ -19,6 +19,7 @@ export interface ApprovalBillingRow extends ApprovalCalculationRow {
   readonly id: string;
   readonly franchiseeId: string;
   readonly franchiseeName: string;
+  readonly brandId: string;
   readonly periodYear: number;
   readonly periodMonth: number;
   readonly sourceFileId: string | null;
@@ -72,7 +73,9 @@ export interface ApprovalStore {
   loadRowsForUpdate(
     period: ApprovalPeriod,
   ): Promise<readonly ApprovalBillingRow[]>;
-  loadLatestSource(period: ApprovalPeriod): Promise<ApprovalSourceReview | null>;
+  loadLatestSources(
+    period: ApprovalPeriod,
+  ): Promise<ReadonlyMap<string, ApprovalSourceReview>>;
   loadVatRate(period: ApprovalPeriod): Promise<string | null>;
   persistApproval(input: PersistBillingApprovalInput): Promise<boolean>;
   insertLedger(entries: readonly LedgerEntryInput[]): Promise<void>;

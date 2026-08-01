@@ -151,7 +151,9 @@ function differenceContext(
 
 class MemoryOperations implements BillingScreenOperations {
   rows: BillingScreenRow[] = [screenRow()];
-  source: BillingSourceReviewRecord | null = sourceReview();
+  sourcesByBrand: ReadonlyMap<string, BillingSourceReviewRecord> = new Map([
+    ["brand-vini", sourceReview()],
+  ]);
   context: BillingDiscountContext | null = discountContext();
   vat = 0.18;
   persistedDiscount: PersistDiscountInput | null = null;
@@ -168,7 +170,7 @@ class MemoryOperations implements BillingScreenOperations {
   resolutionResult: "success" | "conflict" | "exported" = "success";
 
   async readPeriodSnapshot() {
-    return { rows: this.rows, source: this.source };
+    return { rows: this.rows, sourcesByBrand: this.sourcesByBrand };
   }
 
   async readDiscountContext(): Promise<BillingDiscountContext | null> {
@@ -302,13 +304,13 @@ describe("loadFranchiseeBillingScreen", () => {
   it("returns a true no-upload empty state", async () => {
     const operations = new MemoryOperations();
     operations.rows = [];
-    operations.source = null;
+    operations.sourcesByBrand = new Map();
 
     await expect(
       loadFranchiseeBillingScreen(PERIOD, operations),
     ).resolves.toEqual({
       period: PERIOD,
-      sourceFile: null,
+      sourceFiles: [],
       rows: [],
       anomalies: [],
       approvedDifferences: [],
@@ -319,7 +321,7 @@ describe("loadFranchiseeBillingScreen", () => {
 
   it("enriches persisted anomalies and approved differences with row names", async () => {
     const operations = new MemoryOperations();
-    operations.source = sourceReview({
+    operations.sourcesByBrand = new Map([["brand-vini", sourceReview({
       metadata: {
         documentType: "franchisee_royalty_revenue",
         anomalies: [{
@@ -341,7 +343,7 @@ describe("loadFranchiseeBillingScreen", () => {
         warnings: ["נמצאה הערת מקור"],
         draftsWritten: 0,
       },
-    });
+    })]]);
 
     const result = await loadFranchiseeBillingScreen(PERIOD, operations);
 
@@ -359,10 +361,16 @@ describe("loadFranchiseeBillingScreen", () => {
 
   it("marks a row from the previous file as stale and approval-blocked", async () => {
     const operations = new MemoryOperations();
-    operations.source = sourceReview({
-      id: "source-2",
-      fileName: "יוני-מתוקן.xlsx",
-    });
+    operations.sourcesByBrand = new Map([
+      ["brand-vini", sourceReview({
+        id: "source-2",
+        fileName: "ויני-יוני-מתוקן.xlsx",
+      })],
+      ["brand-mina", sourceReview({
+        id: "source-mina",
+        fileName: "מינה-יוני.xlsx",
+      })],
+    ]);
     operations.rows = [
       screenRow({
         id: "billing-live",
@@ -372,7 +380,7 @@ describe("loadFranchiseeBillingScreen", () => {
       screenRow({
         id: "billing-stale",
         franchiseeId: "franchisee-2",
-        franchiseeName: "מינה קריות",
+        franchiseeName: "ויני נתניה",
         sourceFileId: "source-1",
         sourceFileName: "יוני.xlsx",
         isStaleSource: true,
@@ -389,6 +397,43 @@ describe("loadFranchiseeBillingScreen", () => {
       isApprovalBlocked: true,
     });
     expect(result.hasBlockingIssues).toBe(true);
+  });
+
+  it("combines three live brand reviews without marking any row stale", async () => {
+    const operations = new MemoryOperations();
+    operations.sourcesByBrand = new Map([
+      ["brand-vini", sourceReview({ id: "source-vini", fileName: "ויני.xlsx" })],
+      ["brand-mina", sourceReview({ id: "source-mina", fileName: "מינה.xlsx" })],
+      ["brand-king-kong", sourceReview({
+        id: "source-king-kong",
+        fileName: "קינג קונג.xlsx",
+      })],
+    ]);
+    operations.rows = [
+      screenRow({ sourceFileId: "source-vini" }),
+      screenRow({
+        id: "billing-2",
+        franchiseeId: "franchisee-2",
+        franchiseeName: "מינה קריות",
+        sourceFileId: "source-mina",
+      }),
+      screenRow({
+        id: "billing-3",
+        franchiseeId: "franchisee-3",
+        franchiseeName: "קינג עפולה",
+        sourceFileId: "source-king-kong",
+      }),
+    ];
+
+    const result = await loadFranchiseeBillingScreen(PERIOD, operations);
+
+    expect(result.sourceFiles.map(({ fileName }) => fileName)).toEqual([
+      "ויני.xlsx",
+      "מינה.xlsx",
+      "קינג קונג.xlsx",
+    ]);
+    expect(result.rows.every((row) => !row.isStaleSource)).toBe(true);
+    expect(result.hasBlockingIssues).toBe(false);
   });
 });
 

@@ -1,10 +1,12 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type {
   PersistDifferenceResolutionInput,
   PersistNoRevenueReasonInput,
   ReopenedBillingValues,
+  BillingSourceReviewRow,
+  BillingSourceReviewsByBrand,
 } from "@/data-access/franchisee-billing-screen";
 import * as schema from "@/db/schema";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
@@ -25,11 +27,72 @@ export function formatBillingPeriodDate(
   ].join("-");
 }
 
-function billingRowSelection(activeSourceFileId: string | null) {
+export function mapLatestSourceReviewsByBrand(
+  orderedSources: readonly BillingSourceReviewRow[],
+): BillingSourceReviewsByBrand {
+  const newestSources = orderedSources.filter(
+    (source, index) =>
+      orderedSources.findIndex(
+        (candidate) => candidate.brandId === source.brandId,
+      ) === index,
+  );
+  return new Map(
+    newestSources.map(({ brandId, ...source }) => [brandId, source]),
+  );
+}
+
+export function createLatestSourceReviewsQuery(
+  database: BillingReadDatabase,
+  period: FranchiseeBillingPeriod,
+) {
+  const billing = schema.franchiseeBilling;
+  const source = schema.uploadedFile;
+  return database
+    .select({
+      brandId: schema.franchisee.brandId,
+      id: source.id,
+      fileName: source.originalFileName,
+      metadata: source.metadata,
+    })
+    .from(source)
+    .innerJoin(billing, eq(source.id, billing.sourceFileId))
+    .innerJoin(
+      schema.franchisee,
+      eq(billing.franchiseeId, schema.franchisee.id),
+    )
+    .where(
+      and(
+        eq(billing.periodYear, period.year),
+        eq(billing.periodMonth, period.month),
+        sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+      ),
+    )
+    .orderBy(
+      asc(schema.franchisee.brandId),
+      desc(source.createdAt),
+      desc(source.id),
+    );
+}
+
+function activeSourceFileIdByBrand(
+  sourcesByBrand: BillingSourceReviewsByBrand,
+) {
+  const branches = [...sourcesByBrand].map(([brandId, source]) =>
+    sql`when ${brandId} then ${source.id}`,
+  );
+  return sql<string | null>`case ${schema.franchisee.brandId} ${sql.join(
+    branches,
+    sql.raw(" "),
+  )} else null end`;
+}
+
+function billingRowSelection(
+  sourcesByBrand: BillingSourceReviewsByBrand,
+) {
   const billing = schema.franchiseeBilling;
   const ledger = schema.franchiseeDeferralLedger;
-  const isStale =
-    sql<boolean>`${billing.sourceFileId} is distinct from ${activeSourceFileId}`;
+  const activeSourceFileId = activeSourceFileIdByBrand(sourcesByBrand);
+  const isStale = sql<boolean>`${billing.sourceFileId} is distinct from ${activeSourceFileId}`;
   return {
     id: billing.id,
     franchiseeId: billing.franchiseeId,
@@ -63,11 +126,11 @@ function billingRowSelection(activeSourceFileId: string | null) {
 export function createPeriodRowsQuery(
   database: BillingReadDatabase,
   period: FranchiseeBillingPeriod,
-  activeSourceFileId: string | null,
+  sourcesByBrand: BillingSourceReviewsByBrand,
 ) {
   const billing = schema.franchiseeBilling;
   return database
-    .select(billingRowSelection(activeSourceFileId))
+    .select(billingRowSelection(sourcesByBrand))
     .from(billing)
     .innerJoin(
       schema.franchisee,
@@ -180,8 +243,19 @@ function liveSourceCondition(input: PersistDifferenceResolutionInput) {
   return sql`${schema.uploadedFile.id} = (
     select live_source.id
     from ${schema.uploadedFile} as live_source
+    inner join ${schema.franchiseeBilling} as live_billing
+      on live_billing.source_file_id = live_source.id
+    inner join ${schema.franchisee} as live_franchisee
+      on live_franchisee.id = live_billing.franchisee_id
     where live_source.period_start_date = ${periodStart}
       and live_source.metadata->>'documentType' = ${"franchisee_royalty_revenue"}
+      and live_billing.period_year = ${input.periodYear}
+      and live_billing.period_month = ${input.periodMonth}
+      and live_franchisee.brand_id = (
+        select requested_franchisee.brand_id
+        from ${schema.franchisee} as requested_franchisee
+        where requested_franchisee.id = ${input.franchiseeId}
+      )
     order by live_source.created_at desc, live_source.id desc
     limit 1
   )`;

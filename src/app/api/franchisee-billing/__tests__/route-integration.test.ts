@@ -64,7 +64,7 @@ class RouteMemoryOperations implements BillingScreenOperations {
   async readPeriodSnapshot() {
     return {
       rows: [this.row],
-      source: {
+      sourcesByBrand: new Map([["brand-vini", {
         id: "source-1",
         fileName: "יוני.xlsx",
         metadata: {
@@ -74,7 +74,7 @@ class RouteMemoryOperations implements BillingScreenOperations {
           warnings: [],
           draftsWritten: 1,
         },
-      },
+      }]]),
     };
   }
 

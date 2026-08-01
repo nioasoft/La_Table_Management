@@ -7,6 +7,8 @@ import {
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
+  mapLatestSourceReviewsByBrand,
+  resolveLiveSourceReview,
 } from "@/data-access/franchisee-billing-screen-runtime";
 import type {
   PersistDifferenceResolutionInput,
@@ -69,21 +71,96 @@ function resolutionInput(): PersistDifferenceResolutionInput {
 }
 
 describe("franchisee billing reopen SQL", () => {
-  it("marks rows from the first upload stale against the second live upload", () => {
+  it("keeps the newest ordered source independently for every brand", () => {
+    const sources = mapLatestSourceReviewsByBrand([
+      {
+        brandId: "brand-mina",
+        id: "mina-new",
+        fileName: "מינה-מתוקן.xlsx",
+        metadata: { version: 2 },
+      },
+      {
+        brandId: "brand-mina",
+        id: "mina-old",
+        fileName: "מינה.xlsx",
+        metadata: { version: 1 },
+      },
+      {
+        brandId: "brand-vini",
+        id: "vini-live",
+        fileName: "ויני.xlsx",
+        metadata: { version: 1 },
+      },
+    ]);
+
+    expect([...sources]).toEqual([
+      ["brand-mina", {
+        id: "mina-new",
+        fileName: "מינה-מתוקן.xlsx",
+        metadata: { version: 2 },
+      }],
+      ["brand-vini", {
+        id: "vini-live",
+        fileName: "ויני.xlsx",
+        metadata: { version: 1 },
+      }],
+    ]);
+  });
+
+  it("resolves a requested source only against the franchisee brand", () => {
+    const sources = new Map([
+      ["brand-vini", {
+        id: "vini-new",
+        fileName: "ויני-מתוקן.xlsx",
+        metadata: {},
+      }],
+      ["brand-mina", {
+        id: "mina-live",
+        fileName: "מינה.xlsx",
+        metadata: {},
+      }],
+    ]);
+
+    expect(resolveLiveSourceReview(sources, "brand-mina", "mina-live"))
+      .toMatchObject({ id: "mina-live" });
+    expect(resolveLiveSourceReview(sources, "brand-vini", "vini-old"))
+      .toBeNull();
+  });
+
+  it("compares every row with the live source of its own brand using the exact SQL", () => {
     const database = drizzle.mock({ schema });
     const query = createPeriodRowsQuery(
       database,
       { year: 2026, month: 6 },
-      "source-2",
+      new Map([
+        ["brand-vini", {
+          id: "source-vini",
+          fileName: "ויני.xlsx",
+          metadata: {},
+        }],
+        ["brand-mina", {
+          id: "source-mina",
+          fileName: "מינה.xlsx",
+          metadata: {},
+        }],
+      ]),
     ).toSQL();
 
-    expect(query.sql).toContain('"source_file_id" is distinct from $1');
-    expect(query.sql).toContain(
-      'left join "uploaded_file" on "franchisee_billing"."source_file_id" = "uploaded_file"."id"',
+    expect(query.sql).toBe(
+      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"no_revenue_reason\", coalesce((\n      select sum(\"franchisee_deferral_ledger\".\"amount\")\n      from \"franchisee_deferral_ledger\"\n      where \"franchisee_deferral_ledger\".\"franchisee_id\" = \"franchisee_billing\".\"franchisee_id\"\n    ), 0)::text, \"franchisee_billing\".\"source_file_id\", \"uploaded_file\".\"original_file_name\", \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $1 then $2 when $3 then $4 else null end, \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $5 then $6 when $7 then $8 else null end, \"franchisee_billing\".\"status\", \"franchisee\".\"owners\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" left join \"uploaded_file\" on \"franchisee_billing\".\"source_file_id\" = \"uploaded_file\".\"id\" where (\"franchisee_billing\".\"period_year\" = $9 and \"franchisee_billing\".\"period_month\" = $10) order by \"franchisee\".\"name\" asc",
     );
-    expect(
-      query.params.filter((parameter) => parameter === "source-2"),
-    ).toHaveLength(2);
+    expect(query.params).toEqual([
+      "brand-vini",
+      "source-vini",
+      "brand-mina",
+      "source-mina",
+      "brand-vini",
+      "source-vini",
+      "brand-mina",
+      "source-mina",
+      2026,
+      6,
+    ]);
   });
 
   it("blocks every partial or complete Hashavshevet export marker", () => {
@@ -133,7 +210,7 @@ describe("franchisee billing reopen SQL", () => {
     expect(query.params).toEqual(["billing-1"]);
   });
 
-  it("updates source metadata only when the semantic JSON version still matches", () => {
+  it("updates source metadata only when it is still live for the franchisee brand", () => {
     const database = drizzle.mock({ schema });
     const input = resolutionInput();
     const query = createSourceReviewUpdateQuery(
@@ -142,11 +219,19 @@ describe("franchisee billing reopen SQL", () => {
       false,
     ).toSQL();
 
-    expect(query.sql).toContain('"uploaded_file"."metadata" =');
-    expect(query.sql).toContain("::jsonb");
-    expect(query.sql).toContain("select live_source.id");
-    expect(query.sql).toContain("order by live_source.created_at desc");
-    expect(query.params).toContain(JSON.stringify(input.expectedMetadata));
-    expect(query.params).toContain("source-1");
+    expect(query.sql).toBe(
+      "update \"uploaded_file\" set \"metadata\" = $1, \"processing_status\" = $2 where (\"uploaded_file\".\"id\" = $3 and \"uploaded_file\".\"metadata\" = $4::jsonb and \"uploaded_file\".\"id\" = (\n    select live_source.id\n    from \"uploaded_file\" as live_source\n    inner join \"franchisee_billing\" as live_billing\n      on live_billing.source_file_id = live_source.id\n    inner join \"franchisee\" as live_franchisee\n      on live_franchisee.id = live_billing.franchisee_id\n    where live_source.period_start_date = $5\n      and live_source.metadata->>'documentType' = $6\n      and live_billing.period_year = $7\n      and live_billing.period_month = $8\n      and live_franchisee.brand_id = (\n        select requested_franchisee.brand_id\n        from \"franchisee\" as requested_franchisee\n        where requested_franchisee.id = $9\n      )\n    order by live_source.created_at desc, live_source.id desc\n    limit 1\n  ))",
+    );
+    expect(query.params).toEqual([
+      JSON.stringify(input.updatedMetadata),
+      "auto_approved",
+      "source-1",
+      JSON.stringify(input.expectedMetadata),
+      "2026-06-01",
+      "franchisee_royalty_revenue",
+      2026,
+      6,
+      "franchisee-1",
+    ]);
   });
 });

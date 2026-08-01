@@ -41,6 +41,15 @@ export interface BillingSourceReviewRecord {
   readonly metadata: unknown;
 }
 
+export interface BillingSourceReviewRow extends BillingSourceReviewRecord {
+  readonly brandId: string;
+}
+
+export type BillingSourceReviewsByBrand = ReadonlyMap<
+  string,
+  BillingSourceReviewRecord
+>;
+
 export interface BillingDiscountContext {
   readonly id: string;
   readonly periodYear: number;
@@ -145,7 +154,7 @@ export interface PersistDifferenceResolutionInput {
 
 export interface BillingPeriodSnapshot {
   readonly rows: readonly BillingScreenRow[];
-  readonly source: BillingSourceReviewRecord | null;
+  readonly sourcesByBrand: BillingSourceReviewsByBrand;
 }
 
 export type PersistDifferenceResolutionResult =
@@ -201,10 +210,11 @@ export interface BillingScreenApprovedDifference {
 
 export interface FranchiseeBillingScreenData {
   readonly period: FranchiseeBillingPeriod;
-  readonly sourceFile: {
+  readonly sourceFiles: readonly {
+    readonly brandId: string;
     readonly id: string;
     readonly fileName: string;
-  } | null;
+  }[];
   readonly rows: readonly BillingScreenRow[];
   readonly anomalies: readonly BillingScreenAnomaly[];
   readonly approvedDifferences: readonly BillingScreenApprovedDifference[];
@@ -239,6 +249,42 @@ function parseReview(metadata: unknown): FranchiseeBillingSourceReview {
   return franchiseeBillingSourceReviewSchema.parse(metadata);
 }
 
+type ReviewProjection = Pick<
+  FranchiseeBillingScreenData,
+  "anomalies" | "approvedDifferences" | "warnings"
+>;
+
+function projectSourceReviews(
+  rows: readonly BillingScreenRow[],
+  sourcesByBrand: BillingSourceReviewsByBrand,
+): ReviewProjection {
+  const reviews = [...sourcesByBrand.values()].map((source) => ({
+    source,
+    review: parseReview(source.metadata),
+  }));
+  const names = new Map(
+    rows.map((row) => [row.franchiseeId, row.franchiseeName]),
+  );
+  return {
+    anomalies: reviews.flatMap(({ review }) =>
+      review.anomalies.map((finding) => ({
+        ...finding,
+        ...(finding.franchiseeId && names.has(finding.franchiseeId)
+          ? { franchiseeName: names.get(finding.franchiseeId) }
+          : {}),
+      }))),
+    approvedDifferences: reviews.flatMap(({ source, review }) =>
+      review.approvedDifferences.map((difference) => ({
+        franchiseeId: difference.franchiseeId,
+        franchiseeName:
+          names.get(difference.franchiseeId) ?? "זכיין לא מזוהה",
+        sourceFileId: source.id,
+        differences: difference.differences,
+      }))),
+    warnings: reviews.flatMap(({ review }) => review.warnings),
+  };
+}
+
 export function calculateDiscountAmounts(
   billing: BillingDiscountContext,
   discountRatePoints: number,
@@ -267,12 +313,17 @@ export async function loadFranchiseeBillingScreen(
   operations?: BillingScreenOperations,
 ): Promise<FranchiseeBillingScreenData> {
   const activeOperations = operations ?? await defaultOperations();
-  const { rows, source } =
+  const { rows, sourcesByBrand } =
     await activeOperations.readPeriodSnapshot(period);
-  if (!source) {
+  const sourceFiles = [...sourcesByBrand].map(([brandId, source]) => ({
+    brandId,
+    id: source.id,
+    fileName: source.fileName,
+  }));
+  if (sourcesByBrand.size === 0) {
     return {
       period,
-      sourceFile: null,
+      sourceFiles,
       rows,
       anomalies: [],
       approvedDifferences: [],
@@ -280,31 +331,15 @@ export async function loadFranchiseeBillingScreen(
       hasBlockingIssues: rows.some((row) => row.isApprovalBlocked),
     };
   }
-  const review = parseReview(source.metadata);
-  const names = new Map(
-    rows.map((row) => [row.franchiseeId, row.franchiseeName]),
-  );
+  const reviewProjection = projectSourceReviews(rows, sourcesByBrand);
   return {
     period,
-    sourceFile: { id: source.id, fileName: source.fileName },
+    sourceFiles,
     rows,
-    anomalies: review.anomalies.map((finding) => ({
-      ...finding,
-      ...(finding.franchiseeId && names.has(finding.franchiseeId)
-        ? { franchiseeName: names.get(finding.franchiseeId) }
-        : {}),
-    })),
-    approvedDifferences: review.approvedDifferences.map((difference) => ({
-      franchiseeId: difference.franchiseeId,
-      franchiseeName:
-        names.get(difference.franchiseeId) ?? "זכיין לא מזוהה",
-      sourceFileId: source.id,
-      differences: difference.differences,
-    })),
-    warnings: review.warnings,
+    ...reviewProjection,
     hasBlockingIssues:
-      review.anomalies.length > 0 ||
-      review.approvedDifferences.length > 0 ||
+      reviewProjection.anomalies.length > 0 ||
+      reviewProjection.approvedDifferences.length > 0 ||
       rows.some((row) => row.isApprovalBlocked),
   };
 }

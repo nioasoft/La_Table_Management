@@ -71,7 +71,7 @@ describe("GET /api/franchisee-billing", () => {
   it("returns the persisted screen projection for a valid period", async () => {
     loadScreen.mockResolvedValue({
       period: { year: 2026, month: 6 },
-      sourceFile: null,
+      sourceFiles: [],
       rows: [],
       anomalies: [],
       approvedDifferences: [],

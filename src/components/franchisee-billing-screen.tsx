@@ -371,9 +371,16 @@ export function FranchiseeBillingScreen() {
         <section className="space-y-5" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
             <p className="text-muted-foreground">
-              {data.sourceFile ? (
+              {data.sourceFiles.length > 0 ? (
                 <>
-                  קובץ אחרון: <bdi>{data.sourceFile.fileName}</bdi>
+                  קבצים אחרונים לפי מותג: {data.sourceFiles.map(
+                    (source, index) => (
+                      <span key={source.brandId}>
+                        {index > 0 ? " · " : ""}
+                        <bdi>{source.fileName}</bdi>
+                      </span>
+                    ),
+                  )}
                 </>
               ) : (
                 "אין קובץ מקור לחודש שנבחר"
@@ -416,7 +423,7 @@ export function FranchiseeBillingScreen() {
               onSaveNoRevenueReason={saveNoRevenueReason}
             />
           ) : (
-            <BillingEmptyState hasSource={Boolean(data.sourceFile)} />
+            <BillingEmptyState hasSource={data.sourceFiles.length > 0} />
           )}
         </section>
       )}

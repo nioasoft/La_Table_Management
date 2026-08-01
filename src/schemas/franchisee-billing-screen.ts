@@ -143,10 +143,11 @@ const billingScreenRowSchema = z.object({
 
 export const franchiseeBillingScreenDataSchema = z.object({
   period: franchiseeBillingPeriodSchema,
-  sourceFile: z.object({
+  sourceFiles: z.array(z.object({
+    brandId: z.string(),
     id: z.string(),
     fileName: z.string(),
-  }).nullable(),
+  })),
   rows: z.array(billingScreenRowSchema),
   anomalies: z.array(storedAnomalySchema.extend({
     franchiseeName: z.string().optional(),

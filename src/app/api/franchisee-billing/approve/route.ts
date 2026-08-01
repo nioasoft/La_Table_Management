@@ -1,9 +1,13 @@
 import { render } from "@react-email/components";
-import { and, desc, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { NextRequest, NextResponse } from "next/server";
 
 import * as schema from "@/db/schema";
+import {
+  createLatestSourceReviewsQuery,
+  mapLatestSourceReviewsByBrand,
+} from "@/data-access/franchisee-billing-screen-queries";
 import {
   FranchiseeBillingEmail,
   franchiseeBillingEmailSubject,
@@ -133,20 +137,37 @@ function validateRecipients(
 }
 function sourceBlockReason(
   rows: readonly ApprovalBillingRow[],
-  source: ApprovalSourceReview | null,
+  sourcesByBrand: ReadonlyMap<string, ApprovalSourceReview>,
 ): string | null {
-  if (!source) return "אין קובץ מקור פעיל לחודש שנבחר";
-  const parsed = franchiseeBillingSourceReviewSchema.safeParse(source.metadata);
-  if (!parsed.success) return "בדיקת קובץ המקור אינה תקינה";
-  const stale = rows.filter((row) => row.sourceFileId !== source.id);
+  if (sourcesByBrand.size === 0) {
+    return "אין קובץ מקור פעיל לחודש שנבחר";
+  }
+  const reviews = [...sourcesByBrand.values()].map((source) =>
+    franchiseeBillingSourceReviewSchema.safeParse(source.metadata),
+  );
+  if (reviews.some((review) => !review.success)) {
+    return "בדיקת אחד מקובצי המקור אינה תקינה";
+  }
+  const stale = rows.filter(
+    (row) => row.sourceFileId !== sourcesByBrand.get(row.brandId)?.id,
+  );
   if (stale.length > 0) {
     return `יש ${stale.length} שורות שמבוססות על קובץ ישן: ${stale.map((row) => row.franchiseeName).join(", ")}`;
   }
-  if (parsed.data.anomalies.length > 0) {
-    return `יש ${parsed.data.anomalies.length} חריגות חוסמות בקובץ האחרון`;
+  const anomalyCount = reviews.reduce(
+    (count, review) => count + (review.success ? review.data.anomalies.length : 0),
+    0,
+  );
+  if (anomalyCount > 0) {
+    return `יש ${anomalyCount} חריגות חוסמות בקבצים האחרונים`;
   }
-  if (parsed.data.approvedDifferences.length > 0) {
-    return `יש ${parsed.data.approvedDifferences.length} פערים שטרם נפתרו מול חיובים מאושרים`;
+  const differenceCount = reviews.reduce(
+    (count, review) =>
+      count + (review.success ? review.data.approvedDifferences.length : 0),
+    0,
+  );
+  if (differenceCount > 0) {
+    return `יש ${differenceCount} פערים שטרם נפתרו מול חיובים מאושרים`;
   }
   return null;
 }
@@ -227,7 +248,7 @@ async function approveWithinTransaction(
   }
   const sourceReason = sourceBlockReason(
     rows,
-    await store.loadLatestSource(period),
+    await store.loadLatestSources(period),
   );
   if (sourceReason) return { kind: "blocked", error: sourceReason };
   const recipients = validateRecipients(rows, input);
@@ -333,6 +354,7 @@ export function createLockedApprovalRowsQuery(
     id: billing.id,
     franchiseeId: billing.franchiseeId,
     franchiseeName: franchisee.name,
+    brandId: franchisee.brandId,
     periodYear: billing.periodYear,
     periodMonth: billing.periodMonth,
     receipts: billing.receipts,
@@ -392,22 +414,12 @@ function approvalStore(database: ApprovalDatabase): ApprovalStore {
   return {
     loadRowsForUpdate: (period) =>
       createLockedApprovalRowsQuery(database, period),
-    loadLatestSource: async (period) => {
-      const [source] = await database.select({
-        id: schema.uploadedFile.id,
-        fileName: schema.uploadedFile.originalFileName,
-        metadata: schema.uploadedFile.metadata,
-      }).from(schema.uploadedFile).where(and(
-        eq(
-          schema.uploadedFile.periodStartDate,
-          `${period.year}-${String(period.month).padStart(2, "0")}-01`,
-        ),
-        sql`${schema.uploadedFile.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
-      )).orderBy(
-        desc(schema.uploadedFile.createdAt),
-        desc(schema.uploadedFile.id),
-      ).limit(1).for("share");
-      return source ?? null;
+    loadLatestSources: async (period) => {
+      const sources = await createLatestSourceReviewsQuery(
+        database,
+        period,
+      ).for("share");
+      return mapLatestSourceReviewsByBrand(sources);
     },
     loadVatRate: async (period) => {
       const periodStart = `${period.year}-${String(period.month).padStart(2, "0")}-01`;
