@@ -73,6 +73,9 @@ export interface DraftBillingCandidate {
   readonly total: number;
   readonly sourceFileId: string;
   readonly vat: number;
+  readonly tiers: readonly RoyaltyTier[];
+  readonly tierBasis: RoyaltyTierBasis;
+  readonly marketingRate: number;
 }
 
 export interface ApprovedFieldDifference {
@@ -356,6 +359,9 @@ function buildDraft(
     discountRatePoints,
     sourceFileId: input.sourceFileId,
     vat: input.vat,
+    tiers: franchisee.royaltyTiers,
+    tierBasis: franchisee.royaltyTierBasis,
+    marketingRate: Number(franchisee.marketingFeeRate),
   };
 }
 
@@ -526,6 +532,7 @@ type BillingRuntime = Awaited<ReturnType<typeof loadBillingRuntime>>;
 type BillingDatabase = BillingRuntime[0]["database"];
 type UploadDocument = BillingRuntime[1]["uploadDocument"];
 type BillingInsertDatabase = Pick<NodePgDatabase<typeof schema>, "insert">;
+type BillingUpsertDatabase = Pick<NodePgDatabase<typeof schema>, "insert" | "select">;
 
 function excludedColumn(column: { readonly name: string }) {
   return sql.raw(`excluded.${column.name}`);
@@ -563,10 +570,6 @@ export function createDraftBillingUpsertQuery(
   const { franchiseeBilling } = schema;
   const excluded = (column: { readonly name: string }) =>
     excludedColumn(column);
-  const effectiveRate = sql`greatest(0, ${excluded(franchiseeBilling.tierRate)} - ${franchiseeBilling.discountRatePoints})`;
-  const royalty = sql`${excluded(franchiseeBilling.netBase)} * ${effectiveRate} / 100`;
-  const discountValue = sql`${excluded(franchiseeBilling.royaltyFull)} - ${royalty}`;
-  const subtotal = sql`${royalty} + ${excluded(franchiseeBilling.marketing)}`;
   return database
     .insert(franchiseeBilling)
     .values(draftInsertValues(draft))
@@ -583,29 +586,52 @@ export function createDraftBillingUpsertQuery(
         grossBase: excluded(franchiseeBilling.grossBase),
         netBase: excluded(franchiseeBilling.netBase),
         tierRate: excluded(franchiseeBilling.tierRate),
-        effectiveRate,
+        effectiveRate: excluded(franchiseeBilling.effectiveRate),
         royaltyFull: excluded(franchiseeBilling.royaltyFull),
-        royalty,
-        discountValue,
+        royalty: excluded(franchiseeBilling.royalty),
+        discountValue: excluded(franchiseeBilling.discountValue),
         marketing: excluded(franchiseeBilling.marketing),
-        subtotal,
-        // The ::numeric cast is required. Without it Postgres infers the
-        // parameter type from the integer literal 1 and rejects 0.18 with
-        // "invalid input syntax for type integer".
-        total: sql`(${subtotal}) * (1 + ${draft.vat}::numeric)`,
+        subtotal: excluded(franchiseeBilling.subtotal),
+        total: excluded(franchiseeBilling.total),
         sourceFileId: excluded(franchiseeBilling.sourceFileId),
       },
       setWhere: eq(franchiseeBilling.status, "draft"),
     });
 }
 
-async function upsertDraft(
-  tx: BillingInsertDatabase,
-  draft: DraftBillingCandidate,
-): Promise<boolean> {
-  const [result] = await createDraftBillingUpsertQuery(tx, draft).returning({
-    id: schema.franchiseeBilling.id,
-  });
+async function readLockedDiscountRatePoints(tx: BillingUpsertDatabase, draft: DraftBillingCandidate): Promise<number> {
+  const { franchiseeBilling } = schema;
+  const [stored] = await tx
+    .select({ discountRatePoints: franchiseeBilling.discountRatePoints })
+    .from(franchiseeBilling)
+    .where(and(
+      eq(franchiseeBilling.franchiseeId, draft.franchiseeId),
+      eq(franchiseeBilling.periodYear, draft.periodYear),
+      eq(franchiseeBilling.periodMonth, draft.periodMonth),
+    ))
+    .for("update")
+    .limit(1);
+  return Number(stored?.discountRatePoints ?? 0);
+}
+
+function recalculateDraft(draft: DraftBillingCandidate, discountRatePoints: number): DraftBillingCandidate {
+  const { receipts, tips, includeTips, tiers, tierBasis } = draft;
+  const { marketingRate, vat } = draft;
+  return {
+    ...draft,
+    ...calculateRoyalty({
+      receipts, tips, includeTips, tiers, tierBasis,
+      marketingRate, discountRatePoints, vat,
+    }),
+    discountRatePoints,
+  };
+}
+
+async function upsertDraft(tx: BillingUpsertDatabase, draft: DraftBillingCandidate): Promise<boolean> {
+  const discountRatePoints = await readLockedDiscountRatePoints(tx, draft);
+  const recalculated = recalculateDraft(draft, discountRatePoints);
+  const [result] = await createDraftBillingUpsertQuery(tx, recalculated)
+    .returning({ id: schema.franchiseeBilling.id });
   return Boolean(result);
 }
 

@@ -14,6 +14,8 @@ import type {
   RoyaltyRevenueParseResult,
   RoyaltyRevenueRow,
 } from "@/lib/client-parsers/royalty-revenue-parser";
+import { calculateRoyalty } from "@/lib/royalty";
+import { validateApprovalCalculation } from "@/lib/franchisee-billing-approval";
 
 const PERIOD = { year: 2026, month: 6 } as const;
 
@@ -243,6 +245,22 @@ const UPLOAD = {
   uploadedByEmail: "admin@example.com",
 } as const;
 
+async function uploadWithStoredDiscount(): Promise<StoredFranchiseeBilling> {
+  const operations = new MemoryBillingOperations();
+  const row = parsedRow(100_004);
+  await processRoyaltyRevenueUpload(UPLOAD, dependencies(operations, row));
+  const uploaded = operations.billings.get("franchisee-1");
+  if (!uploaded) throw new Error("Expected the first upload to create a draft");
+  operations.billings.set("franchisee-1", {
+    ...uploaded,
+    discountRatePoints: "1.00",
+  });
+  await processRoyaltyRevenueUpload(UPLOAD, dependencies(operations, row));
+  const stored = operations.billings.get("franchisee-1");
+  if (!stored) throw new Error("Expected the repeated upload to keep the draft");
+  return stored;
+}
+
 describe("processRoyaltyRevenueUpload", () => {
   it("keeps one billing row after uploading the same file twice", async () => {
     const operations = new MemoryBillingOperations();
@@ -268,6 +286,45 @@ describe("processRoyaltyRevenueUpload", () => {
       royalty: "3",
       total: "4.72",
     });
+  });
+
+  it("keeps the exact JavaScript calculation after upload, deferral, and re-upload", async () => {
+    const stored = await uploadWithStoredDiscount();
+    const calculation = calculateRoyalty({
+      receipts: 100_004,
+      tips: 0,
+      includeTips: false,
+      tiers: [{ upTo: null, rate: 4 }],
+      tierBasis: "gross",
+      marketingRate: 1,
+      discountRatePoints: 1,
+      vat: 0.18,
+    });
+    expect(stored).toMatchObject({
+      discountRatePoints: "1.00",
+      grossBase: String(calculation.grossBase),
+      netBase: String(calculation.netBase),
+      tierRate: String(calculation.tierRate),
+      effectiveRate: String(calculation.effectiveRate),
+      royaltyFull: String(calculation.royaltyFull),
+      royalty: String(calculation.royalty),
+      discountValue: String(calculation.discountValue),
+      marketing: String(calculation.marketing),
+      subtotal: String(calculation.subtotal),
+      total: String(calculation.total),
+    });
+    expect(Number(stored.total).toFixed(6)).toBe("4000.160000");
+  });
+
+  it("allows approval after recalculating a repeated upload", async () => {
+    const stored = await uploadWithStoredDiscount();
+
+    expect(validateApprovalCalculation(stored, {
+      tiers: [{ upTo: null, rate: 4 }],
+      tierBasis: "gross",
+      marketingRate: 1,
+      vat: 0.18,
+    })).toMatchObject({ success: true });
   });
 
   it("does not modify an approved row and returns the corrected-file delta", async () => {

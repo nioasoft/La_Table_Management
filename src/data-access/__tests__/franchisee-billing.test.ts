@@ -359,7 +359,7 @@ describe("sourceReviewProcessingStatus", () => {
 });
 
 describe("createDraftBillingUpsertQuery", () => {
-  it("uses the complete stored-discount arithmetic for every derived money field", () => {
+  it("writes every precomputed value without a second arithmetic path", () => {
     const database = drizzle.mock({ schema });
     const query = createDraftBillingUpsertQuery(
       database,
@@ -367,34 +367,24 @@ describe("createDraftBillingUpsertQuery", () => {
     ).toSQL();
     const conflictSql = query.sql.slice(query.sql.indexOf("on conflict"));
 
-    // Keep this exact: fragments can pass while a sign, operand, or grouping
-    // regression silently changes billed amounts in the real Drizzle query.
+    // Keep this exact: arithmetic here would recreate the precision split
+    // between JavaScript uploads and PostgreSQL conflict updates.
     expect(conflictSql).toBe([
       'on conflict ("franchisee_id","period_year","period_month") do update',
       'set "receipts" = excluded.receipts, "tips" = excluded.tips,',
       '"include_tips" = excluded.include_tips,',
       '"gross_base" = excluded.gross_base, "net_base" = excluded.net_base,',
       '"tier_rate" = excluded.tier_rate,',
-      '"effective_rate" = greatest(0, excluded.tier_rate -',
-      '"franchisee_billing"."discount_rate_points"),',
+      '"effective_rate" = excluded.effective_rate,',
       '"royalty_full" = excluded.royalty_full,',
-      '"royalty" = excluded.net_base * greatest(0, excluded.tier_rate -',
-      '"franchisee_billing"."discount_rate_points") / 100,',
-      '"discount_value" = excluded.royalty_full - excluded.net_base *',
-      'greatest(0, excluded.tier_rate -',
-      '"franchisee_billing"."discount_rate_points") / 100,',
+      '"royalty" = excluded.royalty,',
+      '"discount_value" = excluded.discount_value,',
       '"marketing" = excluded.marketing,',
-      '"subtotal" = excluded.net_base * greatest(0, excluded.tier_rate -',
-      '"franchisee_billing"."discount_rate_points") / 100 +',
-      'excluded.marketing, "total" = (excluded.net_base * greatest(0,',
-      'excluded.tier_rate - "franchisee_billing"."discount_rate_points")',
-      // ::numeric is load-bearing: without it Postgres types the parameter
-      // from the literal 1 and rejects a VAT rate of 0.18 at runtime.
-      '/ 100 + excluded.marketing) * (1 + $20::numeric),',
+      '"subtotal" = excluded.subtotal, "total" = excluded.total,',
       '"source_file_id" = excluded.source_file_id',
-      'where "franchisee_billing"."status" = $21',
+      'where "franchisee_billing"."status" = $20',
     ].join(" "));
-    expect(query.params.slice(-2)).toEqual([0.18, "draft"]);
+    expect(query.params.at(-1)).toBe("draft");
   });
 });
 
@@ -449,5 +439,8 @@ function draftCandidate(): DraftBillingCandidate {
     total: 5.9,
     sourceFileId: "file-1",
     vat: 0.18,
+    tiers: [{ upTo: null, rate: 4 }],
+    tierBasis: "gross",
+    marketingRate: 1,
   };
 }
