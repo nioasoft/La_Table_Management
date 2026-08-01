@@ -199,6 +199,11 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
             ],
           },
           {
+            label: "חיוב תמלוגים ושיווק",
+            href: "/admin/franchisee-billing",
+            icon: <Coins className="h-5 w-5" />,
+          },
+          {
             label: he.sidebar.navigation.files,
             icon: <Files className="h-5 w-5" />,
             children: [

@@ -589,7 +589,10 @@ export function createDraftBillingUpsertQuery(
         discountValue,
         marketing: excluded(franchiseeBilling.marketing),
         subtotal,
-        total: sql`(${subtotal}) * (1 + ${draft.vat})`,
+        // The ::numeric cast is required. Without it Postgres infers the
+        // parameter type from the integer literal 1 and rejects 0.18 with
+        // "invalid input syntax for type integer".
+        total: sql`(${subtotal}) * (1 + ${draft.vat}::numeric)`,
         sourceFileId: excluded(franchiseeBilling.sourceFileId),
       },
       setWhere: eq(franchiseeBilling.status, "draft"),

@@ -96,6 +96,20 @@ function resultMessage(result: FranchiseeBillingApprovalResponse): string {
   return "החיובים אושרו והמיילים נשלחו בהצלחה";
 }
 
+/**
+ * Decides what the approval panel shows. Extracted so the empty-month case is
+ * testable: `some` over zero rows is false, which once made an untouched month
+ * report itself as already approved.
+ */
+export function approvalPanelState(
+  rows: readonly { readonly status: string }[],
+  emailFailureCount: number,
+): "hidden" | "already-approved" | "form" {
+  if (rows.length === 0 && emailFailureCount === 0) return "hidden";
+  if (rows.some((row) => row.status === "draft")) return "form";
+  return emailFailureCount > 0 ? "form" : "already-approved";
+}
+
 export function FranchiseeBillingApproval({
   data,
   period,
@@ -112,11 +126,13 @@ export function FranchiseeBillingApproval({
   const [result, setResult] =
     useState<FranchiseeBillingApprovalResponse | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const hasDrafts = data.rows.some((row) => row.status === "draft");
   const failures = result?.data?.emailFailures ?? [];
+  const hasDrafts = data.rows.some((row) => row.status === "draft");
+  const panelState = approvalPanelState(data.rows, failures.length);
 
   if (isSessionPending || userRole !== "super_user") return null;
-  if (!hasDrafts && failures.length === 0) {
+  if (panelState === "hidden") return null;
+  if (panelState === "already-approved") {
     return (
       <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
         <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />

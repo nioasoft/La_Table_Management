@@ -759,4 +759,11 @@ export async function handleApproveFranchiseeBilling(
   }
 }
 
-export const POST = handleApproveFranchiseeBilling;
+/**
+ * Next passes a route context as the second argument. Aliasing POST directly to
+ * the handler fed that context into the tests-only operations parameter, so
+ * every real approval crashed on operations.withTransaction.
+ */
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  return handleApproveFranchiseeBilling(request);
+}

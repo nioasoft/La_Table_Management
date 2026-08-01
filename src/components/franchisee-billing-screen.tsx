@@ -247,7 +247,7 @@ export function FranchiseeBillingScreen() {
 
   const data = query.data;
   return (
-    <main dir="rtl" className="space-y-6">
+    <main dir="rtl" className="container mx-auto py-6 space-y-6">
       <header className="flex flex-col gap-4 border-b pb-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <p className="mb-1 flex items-center gap-2 text-sm font-medium text-primary">
@@ -258,7 +258,7 @@ export function FranchiseeBillingScreen() {
             תמלוגים ושיווק
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            עברי על הטיוטה עם שרון, הזיני דחיות בנקודות אחוז ושמרי כל שורה.
+            עברי על הטיוטה, הזיני דחיות בנקודות אחוז ושמרי כל שורה.
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">

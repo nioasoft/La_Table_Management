@@ -388,7 +388,9 @@ describe("createDraftBillingUpsertQuery", () => {
       '"franchisee_billing"."discount_rate_points") / 100 +',
       'excluded.marketing, "total" = (excluded.net_base * greatest(0,',
       'excluded.tier_rate - "franchisee_billing"."discount_rate_points")',
-      '/ 100 + excluded.marketing) * (1 + $20),',
+      // ::numeric is load-bearing: without it Postgres types the parameter
+      // from the literal 1 and rejects a VAT rate of 0.18 at runtime.
+      '/ 100 + excluded.marketing) * (1 + $20::numeric),',
       '"source_file_id" = excluded.source_file_id',
       'where "franchisee_billing"."status" = $21',
     ].join(" "));

@@ -52,7 +52,7 @@ export function FranchiseeBillingTable({
   };
 
   return (
-    <div className="rounded-xl border bg-background shadow-sm">
+    <div className="overflow-x-auto rounded-xl border bg-background shadow-sm">
       <Table className="min-w-[1700px]">
         <TableCaption className="pb-4">
           סכומי החיוב מוצגים כפי שנשמרו, ללא חישוב מחדש במסך.

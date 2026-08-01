@@ -547,7 +547,8 @@ async function statusResponse(
   });
   return NextResponse.json({
     success: true,
-    data: { period, brands: summaries },
+    // `mode` is a request detail, not part of the period the client validates.
+    data: { period: { year: period.year, month: period.month }, brands: summaries },
     requestId: context.requestId,
   });
 }
@@ -618,4 +619,11 @@ export async function handleHashavshevetExport(
   }
 }
 
-export const GET = handleHashavshevetExport;
+/**
+ * Next passes a route context as the second argument. Aliasing the export
+ * straight to the handler fed that context into the tests-only operations
+ * parameter, and every real request crashed on a missing operations method.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  return handleHashavshevetExport(request);
+}

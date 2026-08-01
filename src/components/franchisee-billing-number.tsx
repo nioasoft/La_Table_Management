@@ -1,10 +1,13 @@
 "use client";
 
+// Display rounds to agorot. The stored numeric(16,6) value and the
+// Hashavshevet export keep full precision — this only affects what is read
+// on screen, where six decimals is noise.
 const currencyFormatter = new Intl.NumberFormat("he-IL", {
   style: "currency",
   currency: "ILS",
   minimumFractionDigits: 2,
-  maximumFractionDigits: 6,
+  maximumFractionDigits: 2,
 });
 
 const numberFormatter = new Intl.NumberFormat("he-IL", {

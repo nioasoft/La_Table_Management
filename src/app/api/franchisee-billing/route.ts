@@ -237,5 +237,15 @@ export async function handlePatchFranchiseeBilling(
   }
 }
 
-export const GET = handleGetFranchiseeBilling;
-export const PATCH = handlePatchFranchiseeBilling;
+/**
+ * Next passes a route context as the second argument. Aliasing the export
+ * straight to the handler fed that context into the tests-only operations
+ * parameter, and every real request crashed on a missing operations method.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  return handleGetFranchiseeBilling(request);
+}
+
+export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  return handlePatchFranchiseeBilling(request);
+}
