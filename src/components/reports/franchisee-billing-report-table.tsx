@@ -20,10 +20,12 @@ interface FranchiseeBillingReportTableProps {
   readonly report: FranchiseeBillingReportPayload;
 }
 
+// Reports are read, not reconciled cell by cell — agorot is what a person can
+// use. The stored value and the Hashavshevet export keep six decimals.
 function amount(value: string): React.ReactNode {
   const formatted = new Intl.NumberFormat("he-IL", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 6,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(Number(value));
   return <bdi>{formatted} ₪</bdi>;
 }

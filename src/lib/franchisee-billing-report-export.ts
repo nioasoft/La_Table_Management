@@ -8,7 +8,9 @@ import type {
   TurnoverReportRow,
 } from "@/schemas/franchisee-billing-reports";
 
-const MONEY_FORMAT = "#,##0.000000";
+// Display format only — Excel keeps the full stored value in the cell, so
+// nothing is lost by showing agorot to whoever opens the report.
+const MONEY_FORMAT = "#,##0.00";
 const RATE_FORMAT = "0.00";
 
 interface ExportTable {
