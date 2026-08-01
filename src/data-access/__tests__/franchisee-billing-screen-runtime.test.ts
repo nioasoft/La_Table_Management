@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 
 import {
   createDeleteBillingLedgerQuery,
+  createDiscountContextQuery,
   createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
   createReopenBillingQuery,
@@ -71,6 +72,20 @@ function resolutionInput(): PersistDifferenceResolutionInput {
 }
 
 describe("franchisee billing reopen SQL", () => {
+  it("loads discount inputs from the source row and live franchisee config", () => {
+    const database = drizzle.mock({ schema });
+    const query = createDiscountContextQuery(database, "billing-1").toSQL();
+
+    expect(query.sql).toContain('"franchisee_billing"."receipts"');
+    expect(query.sql).toContain('"franchisee_billing"."tips"');
+    expect(query.sql).toContain('"franchisee_billing"."include_tips"');
+    expect(query.sql).toContain('"franchisee"."royalty_tiers"');
+    expect(query.sql).toContain('"franchisee"."royalty_tier_basis"');
+    expect(query.sql).toContain('"franchisee"."marketing_fee_rate"');
+    expect(query.sql).not.toContain('"franchisee_billing"."net_base"');
+    expect(query.params).toEqual(["billing-1", 1]);
+  });
+
   it("keeps the newest ordered source independently for every brand", () => {
     const sources = mapLatestSourceReviewsByBrand([
       {

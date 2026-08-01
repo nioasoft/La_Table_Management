@@ -152,6 +152,33 @@ export function createPeriodRowsQuery(
     .orderBy(asc(schema.franchisee.name));
 }
 
+export function createDiscountContextQuery(
+  database: BillingReadDatabase,
+  billingId: string,
+) {
+  const billing = schema.franchiseeBilling;
+  return database
+    .select({
+      id: billing.id,
+      periodYear: billing.periodYear,
+      periodMonth: billing.periodMonth,
+      receipts: billing.receipts,
+      tips: billing.tips,
+      includeTips: billing.includeTips,
+      tiers: schema.franchisee.royaltyTiers,
+      tierBasis: schema.franchisee.royaltyTierBasis,
+      marketingRate: schema.franchisee.marketingFeeRate,
+      status: billing.status,
+    })
+    .from(billing)
+    .innerJoin(
+      schema.franchisee,
+      eq(billing.franchiseeId, schema.franchisee.id),
+    )
+    .where(eq(billing.id, billingId))
+    .limit(1);
+}
+
 export function createNoRevenueReasonUpdateQuery(
   database: BillingUpdateDatabase,
   input: PersistNoRevenueReasonInput,

@@ -4,6 +4,7 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@/db/schema";
 import {
   createDeleteBillingLedgerQuery,
+  createDiscountContextQuery,
   createLatestSourceReviewsQuery,
   createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
@@ -31,6 +32,7 @@ import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-scree
 
 export {
   createDeleteBillingLedgerQuery,
+  createDiscountContextQuery,
   createLatestSourceReviewsQuery,
   createNoRevenueReasonUpdateQuery,
   createPeriodRowsQuery,
@@ -91,22 +93,13 @@ async function readDiscountContext(
   database: BillingDatabase,
   billingId: string,
 ): Promise<BillingDiscountContext | null> {
-  const billing = schema.franchiseeBilling;
-  const [row] = await database
-    .select({
-      id: billing.id,
-      periodYear: billing.periodYear,
-      periodMonth: billing.periodMonth,
-      tierRate: billing.tierRate,
-      netBase: billing.netBase,
-      royaltyFull: billing.royaltyFull,
-      marketing: billing.marketing,
-      status: billing.status,
-    })
-    .from(billing)
-    .where(eq(billing.id, billingId))
-    .limit(1);
-  return row ?? null;
+  const [row] = await createDiscountContextQuery(database, billingId);
+  if (!row?.tiers || row.marketingRate === null) return null;
+  return {
+    ...row,
+    tiers: row.tiers,
+    marketingRate: row.marketingRate,
+  };
 }
 
 async function readVatRate(

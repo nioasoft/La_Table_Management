@@ -83,10 +83,12 @@ class RouteMemoryOperations implements BillingScreenOperations {
       id: this.row.id,
       periodYear: this.row.periodYear,
       periodMonth: this.row.periodMonth,
-      tierRate: this.row.tierRate,
-      netBase: this.row.netBase,
-      royaltyFull: "4",
-      marketing: this.row.marketing,
+      receipts: "118",
+      tips: "0",
+      includeTips: false,
+      tiers: [{ upTo: null, rate: 4 }],
+      tierBasis: "gross",
+      marketingRate: "1",
       status: this.row.status,
     };
   }

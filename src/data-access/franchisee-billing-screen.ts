@@ -8,7 +8,11 @@ import {
   type FranchiseeBillingSourceReview,
 } from "@/schemas/franchisee-billing-screen";
 import { buildReopenedBilling } from "@/lib/franchisee-billing-reopen";
-import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
+import {
+  calculateRoyalty,
+  type RoyaltyTier,
+  type RoyaltyTierBasis,
+} from "@/lib/royalty";
 
 export interface BillingScreenRow {
   readonly id: string;
@@ -54,10 +58,12 @@ export interface BillingDiscountContext {
   readonly id: string;
   readonly periodYear: number;
   readonly periodMonth: number;
-  readonly tierRate: string;
-  readonly netBase: string;
-  readonly royaltyFull: string;
-  readonly marketing: string;
+  readonly receipts: string;
+  readonly tips: string;
+  readonly includeTips: boolean;
+  readonly tiers: readonly RoyaltyTier[];
+  readonly tierBasis: RoyaltyTierBasis;
+  readonly marketingRate: string;
   readonly status: FranchiseeBillingStatus;
 }
 
@@ -69,18 +75,26 @@ export interface BillingNoRevenueContext {
   readonly total: string;
 }
 
-export interface ReopenableBilling extends BillingDiscountContext {
+export interface ReopenableBilling {
+  readonly id: string;
   readonly franchiseeId: string;
+  readonly periodYear: number;
+  readonly periodMonth: number;
   readonly receipts: string;
   readonly tips: string;
   readonly includeTips: boolean;
   readonly grossBase: string;
+  readonly netBase: string;
+  readonly tierRate: string;
   readonly discountRatePoints: string;
   readonly effectiveRate: string;
+  readonly royaltyFull: string;
   readonly royalty: string;
   readonly discountValue: string;
+  readonly marketing: string;
   readonly subtotal: string;
   readonly total: string;
+  readonly status: FranchiseeBillingStatus;
   readonly tiersSnapshot: readonly RoyaltyTier[] | null;
   readonly tierBasisSnapshot: RoyaltyTierBasis | null;
   readonly marketingRateSnapshot: string | null;
@@ -290,21 +304,26 @@ export function calculateDiscountAmounts(
   discountRatePoints: number,
   vat: number,
 ): DiscountAmounts {
-  const tierRate = Number(billing.tierRate);
-  if (discountRatePoints > tierRate) {
+  const calculation = calculateRoyalty({
+    receipts: Number(billing.receipts),
+    tips: Number(billing.tips),
+    includeTips: billing.includeTips,
+    tiers: billing.tiers,
+    tierBasis: billing.tierBasis,
+    marketingRate: Number(billing.marketingRate),
+    discountRatePoints,
+    vat,
+  });
+  if (discountRatePoints > calculation.tierRate) {
     throw new Error("הדחייה לא יכולה להיות גבוהה מתעריף המדרגה");
   }
-  const effectiveRate = Math.max(0, tierRate - discountRatePoints);
-  const royalty = Number(billing.netBase) * effectiveRate / 100;
-  const discountValue = Number(billing.royaltyFull) - royalty;
-  const subtotal = royalty + Number(billing.marketing);
   return {
     discountRatePoints,
-    effectiveRate,
-    royalty,
-    discountValue,
-    subtotal,
-    total: subtotal * (1 + vat),
+    effectiveRate: calculation.effectiveRate,
+    royalty: calculation.royalty,
+    discountValue: calculation.discountValue,
+    subtotal: calculation.subtotal,
+    total: calculation.total,
   };
 }
 
