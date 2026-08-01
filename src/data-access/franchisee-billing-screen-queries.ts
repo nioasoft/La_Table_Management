@@ -80,6 +80,9 @@ function activeSourceFileIdByBrand(
   const branches = [...sourcesByBrand].map(([brandId, source]) =>
     sql`when ${brandId} then ${source.id}`,
   );
+  // A month with no uploads at all leaves no branches, and `case x else null
+  // end` is a Postgres syntax error. Every row is then stale by definition.
+  if (branches.length === 0) return sql<string | null>`null`;
   return sql<string | null>`case ${schema.franchisee.brandId} ${sql.join(
     branches,
     sql.raw(" "),

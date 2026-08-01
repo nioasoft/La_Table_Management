@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -189,9 +190,34 @@ function BillingEmptyState({ hasSource }: { readonly hasSource: boolean }) {
   );
 }
 
+function readPeriod(params: URLSearchParams): FranchiseeBillingPeriod {
+  const year = Number(params.get("year"));
+  const month = Number(params.get("month"));
+  const valid =
+    Number.isInteger(year) &&
+    Number.isInteger(month) &&
+    month >= 1 &&
+    month <= 12 &&
+    year >= 2000;
+  return valid ? { year, month } : INITIAL_PERIOD;
+}
+
 export function FranchiseeBillingScreen() {
-  const [period, setPeriod] =
-    useState<FranchiseeBillingPeriod>(INITIAL_PERIOD);
+  // The period lives in the URL so a refresh keeps the month Reut is working
+  // on and a link to a specific month can be shared.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const period = readPeriod(new URLSearchParams(searchParams.toString()));
+  const setPeriod = useCallback(
+    (next: FranchiseeBillingPeriod) => {
+      router.replace(
+        `${pathname}?year=${next.year}&month=${next.month}`,
+        { scroll: false },
+      );
+    },
+    [pathname, router],
+  );
   const query = useQuery({
     queryKey: ["franchisee-billing-screen", period.year, period.month],
     queryFn: () => fetchBillingScreen(period),
@@ -270,10 +296,7 @@ export function FranchiseeBillingScreen() {
               dir="rtl"
               value={String(period.month)}
               onValueChange={(value) =>
-                setPeriod((current) => ({
-                  ...current,
-                  month: Number(value),
-                }))
+                setPeriod({ ...period, month: Number(value) })
               }
             >
               <SelectTrigger
@@ -305,10 +328,7 @@ export function FranchiseeBillingScreen() {
               dir="rtl"
               value={String(period.year)}
               onValueChange={(value) =>
-                setPeriod((current) => ({
-                  ...current,
-                  year: Number(value),
-                }))
+                setPeriod({ ...period, year: Number(value) })
               }
             >
               <SelectTrigger

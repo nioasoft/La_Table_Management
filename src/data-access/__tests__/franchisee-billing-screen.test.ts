@@ -1,4 +1,8 @@
+import { drizzle } from "drizzle-orm/node-postgres";
 import { describe, expect, it } from "vitest";
+
+import * as schema from "@/db/schema";
+import { createPeriodRowsQuery } from "@/data-access/franchisee-billing-screen-queries";
 import { calculateRoyalty } from "@/lib/royalty";
 
 import {
@@ -718,5 +722,20 @@ describe("resolveApprovedBillingDifference", () => {
       error: "הפער השתנה ולא נשמר. רענני את העמוד ונסי שוב",
     });
     expect(operations.persistedResolution?.expectedMetadata).toEqual(metadata);
+  });
+});
+
+describe("createPeriodRowsQuery with no uploaded files", () => {
+  it("emits valid SQL when the month has no source files at all", () => {
+    // `case brand_id else null end` is a Postgres syntax error, so an untouched
+    // month used to return 500 instead of an empty screen.
+    const { sql: text } = createPeriodRowsQuery(
+      drizzle.mock({ schema }),
+      { year: 2026, month: 8 },
+      new Map(),
+    ).toSQL();
+
+    expect(text).not.toContain("case");
+    expect(text).toContain('"franchisee_billing"."source_file_id" is distinct from null');
   });
 });
