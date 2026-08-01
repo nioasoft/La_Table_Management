@@ -35,21 +35,6 @@ interface FranchiseeBillingApprovalProps {
 
 type RecipientSelection = Readonly<Record<string, readonly string[]>>;
 
-function defaultSelection(
-  data: FranchiseeBillingScreenPayload,
-): RecipientSelection {
-  return Object.fromEntries(
-    data.rows
-      .filter((row) => row.status === "draft" && Number(row.discountValue) > 0)
-      .map((row) => [
-        row.franchiseeId,
-        (row.owners ?? [])
-          .map((owner) => owner.email.trim())
-          .filter(Boolean),
-      ]),
-  );
-}
-
 async function postApproval(
   input: FranchiseeBillingApprovalInput,
 ): Promise<FranchiseeBillingApprovalResponse> {
@@ -101,6 +86,22 @@ function resultMessage(result: FranchiseeBillingApprovalResponse): string {
  * testable: `some` over zero rows is false, which once made an untouched month
  * report itself as already approved.
  */
+/**
+ * Which owner addresses an approval will send to. Absence of an entry means the
+ * franchisee was never touched, which must resolve to every owner — see the
+ * regression note in the test.
+ */
+export function recipientsFor(
+  selection: Readonly<Record<string, readonly string[]>>,
+  franchiseeId: string,
+  owners: readonly { readonly email: string }[],
+): readonly string[] {
+  return (
+    selection[franchiseeId] ??
+    owners.map((owner) => owner.email.trim()).filter(Boolean)
+  );
+}
+
 export function approvalPanelState(
   rows: readonly { readonly status: string }[],
   emailFailureCount: number,
@@ -120,8 +121,15 @@ export function FranchiseeBillingApproval({
     ? (session.user as { readonly role?: string }).role
     : undefined;
   const groups = useMemo(() => recipientGroups(data), [data]);
-  const [selection, setSelection] = useState<RecipientSelection>(() =>
-    defaultSelection(data));
+  // Absence of an entry means the user has not touched this franchisee yet, so
+  // it resolves to every owner. Initialising the map once left the recipients
+  // empty whenever the deferral was entered after the screen had loaded, and
+  // the month was approved without sending anything.
+  const [selection, setSelection] = useState<RecipientSelection>({});
+  const selectedFor = (
+    franchiseeId: string,
+    owners: readonly { email: string }[],
+  ) => recipientsFor(selection, franchiseeId, owners);
   const [pending, setPending] = useState(false);
   const [result, setResult] =
     useState<FranchiseeBillingApprovalResponse | null>(null);
@@ -165,9 +173,12 @@ export function FranchiseeBillingApproval({
         action: "approve",
         periodYear: period.year,
         periodMonth: period.month,
-        recipients: Object.entries(selection).map(
-          ([franchiseeId, emails]) => ({ franchiseeId, emails: [...emails] }),
-        ),
+        // Built from the groups on screen, not from `selection`: an untouched
+        // franchisee has no entry there and would silently receive nothing.
+        recipients: groups.map((group) => ({
+          franchiseeId: group.franchiseeId,
+          emails: [...selectedFor(group.franchiseeId, group.owners)],
+        })),
       });
       setResult(response);
       if (response.data?.approvalCommitted || response.data?.alreadyApproved) {
@@ -249,7 +260,7 @@ export function FranchiseeBillingApproval({
                       <label key={id} htmlFor={id} className="flex items-center gap-2 text-sm">
                         <Checkbox
                           id={id}
-                          checked={(selection[group.franchiseeId] ?? []).includes(owner.email)}
+                          checked={selectedFor(group.franchiseeId, group.owners).includes(owner.email)}
                           onCheckedChange={(checked) =>
                             toggleRecipient(
                               group.franchiseeId,
