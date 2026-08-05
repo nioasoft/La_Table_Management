@@ -51,6 +51,8 @@ interface ReviewDialogProps {
     fileName: string | null;
     proposedFranchiseeId: string | null;
     proposedDocumentType: string | null;
+    /** Amount + document number — the decisive detail when rows look alike. */
+    parsedData: { totalAmount: string | null; invoiceNumber: string | null } | null;
     franchiseeAlternatives:
       | Array<{ id: string; name: string; confidence: number }>
       | null;
@@ -231,6 +233,27 @@ export function ReviewDialog({
         )}
 
         <div className="space-y-3">
+          {(entry.parsedData?.totalAmount || entry.parsedData?.invoiceNumber) && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">סכום / מס׳ מסמך</span>
+              <span className="font-medium tabular-nums">
+                {[
+                  entry.parsedData.totalAmount
+                    ? Number(entry.parsedData.totalAmount).toLocaleString("he-IL", {
+                        style: "currency",
+                        currency: "ILS",
+                        maximumFractionDigits: 0,
+                      })
+                    : null,
+                  entry.parsedData.invoiceNumber
+                    ? `#${entry.parsedData.invoiceNumber}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">קובץ מצורף</span>
             {entry.fileUrl ? (

@@ -60,6 +60,8 @@ interface InboundReviewEntry {
   fileName: string | null;
   mimeType: string | null;
   fileSize: number | null;
+  /** Amount + document number — often the only thing telling two rows apart. */
+  parsedData: { totalAmount: string | null; invoiceNumber: string | null } | null;
   status: InboundReviewStatus;
   failureReason: string | null;
   committedClientDocumentId: string | null;
@@ -119,6 +121,31 @@ function formatDateTime(iso: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/**
+ * Amount (+ document number) for the review table. HAAT relays two EasyCount
+ * invoices a month whose rows are identical in every other column — supplier,
+ * subject, file name, proposed franchisee, confidence, failure reason — so
+ * without the amount there is nothing to choose between them.
+ */
+function formatParsedIdentifiers(
+  parsed: { totalAmount: string | null; invoiceNumber: string | null } | null,
+): string {
+  if (!parsed) return "—";
+  const amount = parsed.totalAmount ? Number(parsed.totalAmount) : null;
+  const parts: string[] = [];
+  if (amount != null && !Number.isNaN(amount)) {
+    parts.push(
+      amount.toLocaleString("he-IL", {
+        style: "currency",
+        currency: "ILS",
+        maximumFractionDigits: 0,
+      }),
+    );
+  }
+  if (parsed.invoiceNumber) parts.push(`#${parsed.invoiceNumber}`);
+  return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
 function formatConfidence(value: string | null): string {
@@ -311,6 +338,7 @@ export default function InboundReviewPage() {
                 <TableHead className="text-right">ספק</TableHead>
                 <TableHead className="text-right">נושא</TableHead>
                 <TableHead className="text-right">סוג</TableHead>
+                <TableHead className="text-right">סכום / מס׳ מסמך</TableHead>
                 <TableHead className="text-right">זכיין מוצע</TableHead>
                 <TableHead className="text-right">ביטחון</TableHead>
                 <TableHead className="text-right">סיבת כשל</TableHead>
@@ -320,7 +348,7 @@ export default function InboundReviewPage() {
             <TableBody>
               {isLoading && (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center py-8">
+                  <TableCell colSpan={10} className="text-center py-8">
                     טוען...
                   </TableCell>
                 </TableRow>
@@ -328,7 +356,7 @@ export default function InboundReviewPage() {
               {!isLoading && entries.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center py-8 text-muted-foreground"
                   >
                     אין מיילים בטווח שנבחר
@@ -359,6 +387,9 @@ export default function InboundReviewPage() {
                       ? DOC_TYPE_LABELS[e.proposedDocumentType] ??
                         e.proposedDocumentType
                       : "—"}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-xs tabular-nums">
+                    {formatParsedIdentifiers(e.parsedData)}
                   </TableCell>
                   <TableCell
                     className="max-w-[200px] truncate text-xs"
@@ -413,6 +444,7 @@ export default function InboundReviewPage() {
               fileName: reviewEntry.fileName,
               proposedFranchiseeId: reviewEntry.proposedFranchiseeId,
               proposedDocumentType: reviewEntry.proposedDocumentType,
+              parsedData: reviewEntry.parsedData,
               franchiseeAlternatives: reviewEntry.franchiseeAlternatives,
               failureReason: reviewEntry.failureReason,
               status: reviewEntry.status,

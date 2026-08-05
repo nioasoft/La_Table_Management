@@ -31,6 +31,7 @@ import { createInboundReviewEntry } from "@/data-access/inbound-review-queue";
 import { uploadDocument } from "@/lib/storage";
 import type { InboundReviewStatus } from "@/db/schema";
 import type { ProcessClientDocumentResult } from "@/lib/client-document-processor";
+import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
 import {
   classifyWoltEzcountAttachment,
   isWoltEzcountCandidate,
@@ -1071,6 +1072,53 @@ async function uploadForReviewQueue(args: {
   }
 }
 
+/**
+ * The few facts that let an admin tell two otherwise-identical queue rows
+ * apart: the amount and the document number.
+ *
+ * HAAT relays two EasyCount invoices a month for the Azrieli pair whose PDFs
+ * are byte-identical except number and amount — same issuer, same ח.פ, same
+ * "לכבוד", no מס. לקוח. Both park with the SAME proposed franchisee, so every
+ * visible column in the review table matched and there was literally nothing
+ * to choose between them (Reut, 2026-08-05). `parsed_data` had been hardcoded
+ * to null since the queue was introduced, so the amount — the one field that
+ * distinguishes them — was never stored.
+ *
+ * Committed rows read it off the created document; failed rows re-parse the
+ * buffer. The extra parse only runs on the failure path (a couple of dozen
+ * rows a week) and never blocks the webhook — on any error we store null and
+ * carry on, exactly as before.
+ */
+async function extractReviewIdentifiers(args: {
+  processResult: ProcessClientDocumentResult | null;
+  fileContext?: { buffer: Buffer; fileName: string; mimeType: string } | null;
+  clientCode: string | null;
+  documentType: "client_report" | "commission_invoice" | "tabit_report";
+}): Promise<{ totalAmount: string | null; invoiceNumber: string | null } | null> {
+  const doc = args.processResult?.document;
+  if (doc) {
+    return { totalAmount: doc.totalAmount, invoiceNumber: doc.invoiceNumber };
+  }
+  if (!args.fileContext || !args.clientCode) return null;
+  try {
+    const parser =
+      args.documentType === "commission_invoice"
+        ? getInvoiceParser(args.clientCode)
+        : getClientParser(args.clientCode);
+    if (!parser) return null;
+    const parsed = await parser(args.fileContext.buffer, args.fileContext.mimeType);
+    if (!parsed.success || !parsed.data) return null;
+    return {
+      totalAmount:
+        parsed.data.totalAmount != null ? String(parsed.data.totalAmount) : null,
+      invoiceNumber: parsed.data.invoiceNumber ?? null,
+    };
+  } catch (err) {
+    console.warn("[email-inbound] review-queue identifier parse failed:", err);
+    return null;
+  }
+}
+
 async function recordInboundReviewOutcome(args: {
   syncLogId: string;
   emailId: string;
@@ -1209,7 +1257,12 @@ async function recordInboundReviewOutcome(args: {
       fileName,
       mimeType,
       fileSize,
-      parsedData: null,
+      parsedData: await extractReviewIdentifiers({
+        processResult: args.processResult,
+        fileContext: args.fileContext,
+        clientCode: args.clientCode,
+        documentType: args.documentType,
+      }),
       periodMonth: args.periodMonth ?? null,
       periodYear: args.periodYear ?? null,
       status,
