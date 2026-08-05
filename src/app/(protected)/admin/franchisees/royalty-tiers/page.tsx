@@ -1,12 +1,21 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, Loader2, ShieldCheck } from "lucide-react";
+import { AlertCircle, Check, Loader2, Pencil, ShieldCheck } from "lucide-react";
+import { useState } from "react";
 
+import { FranchiseeRoyaltyTierEditor } from "@/components/franchisee-royalty-tier-editor";
 import { ReportLayout } from "@/components/reports/report-layout";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -88,8 +97,54 @@ function StatusCell({ row }: { readonly row: RoyaltyBoardRow }) {
   );
 }
 
+/** The per-franchisee editor, reached without leaving the board. */
+function RoyaltyEditorDialog({
+  row,
+  onClose,
+  onSaved,
+}: {
+  readonly row: RoyaltyBoardRow | null;
+  readonly onClose: () => void;
+  readonly onSaved: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(row)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        dir="rtl"
+        className="max-h-[90vh] overflow-y-auto sm:max-w-3xl"
+      >
+        <DialogHeader>
+          <DialogTitle>
+            סולם התמלוגים של <bdi>{row?.name}</bdi>
+          </DialogTitle>
+          <DialogDescription>
+            שינוי הסולם מבטל את האישור עד שתאשרי אותו מחדש.
+          </DialogDescription>
+        </DialogHeader>
+        {row && (
+          <FranchiseeRoyaltyTierEditor
+            key={row.id}
+            franchiseeId={row.id}
+            initialSettings={{
+              royaltyTiers: row.royaltyTiers,
+              royaltyTierBasis: row.royaltyTierBasis ?? "gross",
+              royaltyTiersConfirmed: row.royaltyTiersConfirmed,
+              royaltyIncludeTips: row.royaltyIncludeTips,
+              hashavshevetAccountKey: row.hashavshevetAccountKey ?? null,
+              marketingFeeRate: row.marketingFeeRate,
+            }}
+            normalizationNotes={row.royaltyTiersNote ?? null}
+            onSaved={onSaved}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function FranchiseeRoyaltyTiersPage() {
   const queryClient = useQueryClient();
+  const [editing, setEditing] = useState<RoyaltyBoardRow | null>(null);
   const query = useQuery({ queryKey: QUERY_KEY, queryFn: loadRows });
   const confirm = useMutation({
     mutationFn: confirmRow,
@@ -211,21 +266,35 @@ export default function FranchiseeRoyaltyTiersPage() {
                     <StatusCell row={row} />
                   </TableCell>
                   <TableCell>
-                    {!row.royaltyTiersConfirmed && (
+                    <div className="flex flex-wrap gap-2">
+                      {!row.royaltyTiersConfirmed && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={Boolean(blocked) || confirm.isPending}
+                          onClick={() => confirm.mutate(row)}
+                        >
+                          {isPending ? (
+                            <Loader2
+                              className="animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <ShieldCheck aria-hidden="true" />
+                          )}
+                          אשרי סולם
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         size="sm"
-                        disabled={Boolean(blocked) || confirm.isPending}
-                        onClick={() => confirm.mutate(row)}
+                        variant="outline"
+                        onClick={() => setEditing(row)}
                       >
-                        {isPending ? (
-                          <Loader2 className="animate-spin" aria-hidden="true" />
-                        ) : (
-                          <ShieldCheck aria-hidden="true" />
-                        )}
-                        אשרי סולם
+                        <Pencil aria-hidden="true" />
+                        {blocked ? "הגדירי סולם" : "ערכי"}
                       </Button>
-                    )}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -233,6 +302,15 @@ export default function FranchiseeRoyaltyTiersPage() {
           </TableBody>
         </Table>
       )}
+
+      <RoyaltyEditorDialog
+        row={editing}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+        }}
+      />
     </ReportLayout>
   );
 }
