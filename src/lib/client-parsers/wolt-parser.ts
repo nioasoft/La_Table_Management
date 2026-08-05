@@ -167,6 +167,32 @@ export async function isWoltEzcountFileB(
 }
 
 /**
+ * Is this attachment one of Wolt's two ezcount PDFs (File A / File B)?
+ *
+ * Wolt emails carry exactly four PDFs: the two ezcount invoices plus the
+ * `sales_report` / `netting_report` breakdowns, which are excluded by name.
+ * Everything else that is a PDF is an ezcount candidate — the CONTENT scorer
+ * (`classifyWoltEzcountAttachment`) decides which is File A and which File B.
+ *
+ * This deliberately does NOT look at the branch name. Until 2026-07-16 Wolt
+ * prefixed every filename with the Hebrew branch
+ * ("ויני_רגבה_2026-06-30_…_<hash>.pdf") and both call sites required a leading
+ * Hebrew token. Wolt then started ASCII-sanitising filenames
+ * ("2026-07-31_00:00:00.000_<hash>.pdf"), the test matched nothing, and every
+ * Wolt commission invoice for July 2026 silently vanished — the emails still
+ * logged `completed` because the `sales_report` fallback kept producing a
+ * client_report. Shared here so the webhook and the replay route cannot drift
+ * apart again.
+ */
+export function isWoltEzcountCandidate(attachment: {
+  filename: string;
+  contentType: string;
+}): boolean {
+  if (attachment.contentType !== "application/pdf") return false;
+  return !/sales_report|netting|commission/.test(attachment.filename.toLowerCase());
+}
+
+/**
  * Full classification helper for callers that need to distinguish
  * "definitely File A" / "definitely File B" / "ambiguous → mark for review".
  */

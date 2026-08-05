@@ -39,7 +39,10 @@ import {
   resolvePeriod,
 } from "@/lib/email/inbound";
 import { processClientDocument } from "@/lib/client-document-processor";
-import { isWoltEzcountFileB } from "@/lib/client-parsers/wolt-parser";
+import {
+  isWoltEzcountCandidate,
+  isWoltEzcountFileB,
+} from "@/lib/client-parsers/wolt-parser";
 import { isRfc822Attachment, unwrapRfc822 } from "@/lib/email/unwrap-rfc822";
 import { detectDocumentType } from "@/lib/email/classify-document-type";
 import {
@@ -426,12 +429,7 @@ export async function POST(request: NextRequest) {
           }> = [];
 
           if (identifiedClient.clientCode === "WOLT") {
-            const ezcountCandidates = docAtts.filter((a) => {
-              if (a.contentType !== "application/pdf") return false;
-              const lower = a.filename.toLowerCase();
-              if (/sales_report|netting|commission/.test(lower)) return false;
-              return /^[֐-׿][֐-׿ ]*_(?!_)/.test(a.filename);
-            });
+            const ezcountCandidates = docAtts.filter(isWoltEzcountCandidate);
             let fileA: typeof ezcountCandidates[number] | null = null;
             let fileB: typeof ezcountCandidates[number] | null = null;
             const buffers = new Map<string, Buffer>();

@@ -33,6 +33,7 @@ import type { InboundReviewStatus } from "@/db/schema";
 import type { ProcessClientDocumentResult } from "@/lib/client-document-processor";
 import {
   classifyWoltEzcountAttachment,
+  isWoltEzcountCandidate,
   isWoltEzcountFileB,
 } from "@/lib/client-parsers/wolt-parser";
 import {
@@ -1397,15 +1398,9 @@ async function filterAttachments(
 ): Promise<Attachment[]> {
   if (clientCode !== "WOLT") return attachments;
 
-  // Candidate ezcount PDFs: Hebrew-first single-underscore filename, not a
-  // report/netting/commission doc.
-  const ezcountCandidates = attachments.filter((a) => {
-    if (a.contentType !== "application/pdf") return false;
-    const lower = a.filename.toLowerCase();
-    if (/sales_report|netting|commission/.test(lower)) return false;
-    // Hebrew token followed by a single underscore (not "__")
-    return /^[\u0590-\u05FF][\u0590-\u05FF ]*_(?!_)/.test(a.filename);
-  });
+  // Candidate ezcount PDFs \u2014 any PDF that is not a report/netting doc.
+  // See isWoltEzcountCandidate for why the filename must not be trusted.
+  const ezcountCandidates = attachments.filter(isWoltEzcountCandidate);
 
   // Score every candidate. With the new content-rich classifier we get a
   // verdict (`fileA` / `fileB` / `unknown`) plus the underlying scores so

@@ -462,8 +462,22 @@ function matchFranchiseeFromSubject(
     .replace(/EasyCount\s+Invoice\s+for\s+\w+/gi, "")
     .trim();
 
-  // Split by common delimiters and try each part
-  const parts = cleanedSubject.split(/\s*[-–—|,]\s*/);
+  // Split by common delimiters and try each part.
+  //
+  // "|" is a delimiter for most senders but sits INSIDE the branch name for
+  // Wolt ("ויני | רגבה - Wolt payout report …", "נתנזון | NATANZON | חיפה - …").
+  // Splitting on it hands the matcher two half-names: each half can miss the
+  // acceptance gate (קינג קונג ביג scored 0.84), and a brand-only leading half
+  // can match a SIBLING branch outright — "קינג קונג | חדרה הכשר" matched
+  // קינג קונג חורב, and July 2026's חדרה report was written onto חורב.
+  // So try the pipe-JOINED form first, and only then fall back to treating
+  // "|" as a delimiter (which other senders still rely on).
+  const parts = [
+    ...cleanedSubject
+      .split(/\s*[-–—,]\s*/)
+      .map((p) => p.replace(/\s*\|\s*/g, " ").trim()),
+    ...cleanedSubject.split(/\s*[-–—|,]\s*/),
+  ];
 
   for (const part of parts) {
     const trimmed = part.trim();
