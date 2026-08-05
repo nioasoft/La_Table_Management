@@ -114,6 +114,20 @@ function findColumns(headers: readonly unknown[]): ColumnMap | null {
   return { branch, receipts, tips, period: findPeriodColumn(headers) };
 }
 
+/**
+ * A Tabit export filtered to one branch is usually grouped by month instead,
+ * which drops the branch name from the workbook entirely. The amounts alone
+ * prove it is a revenue export, so the message points at the real fix.
+ */
+function missingHeaderError(rows: readonly (readonly unknown[])[]): string {
+  const hasAmountHeader = rows.some((row) =>
+    row.map(normalizeHeader).includes("סהכ תקבולים"),
+  );
+  return hasAmountHeader
+    ? "הקובץ אינו מקובץ לפי סניף — ייצאי מטאבית בקיבוץ לפי סניף"
+    : 'לא נמצאו כותרות "סניף", "סה״כ תקבולים" ו"סה״כ טיפ"';
+}
+
 function findHeaderRow(
   rows: readonly (readonly unknown[])[],
 ): { index: number; columns: ColumnMap } | null {
@@ -322,7 +336,7 @@ function parseWorksheet(
     return {
       success: false,
       data: null,
-      errors: ['לא נמצאו כותרות "סניף", "סה״כ תקבולים" ו"סה״כ טיפ"'],
+      errors: [missingHeaderError(sourceRows)],
       warnings,
     };
   }

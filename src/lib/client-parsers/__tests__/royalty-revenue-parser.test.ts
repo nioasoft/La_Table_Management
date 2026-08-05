@@ -349,6 +349,33 @@ describe("parseRoyaltyRevenueFile", () => {
     expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
   });
 
+  it("names the missing branch grouping when the export is grouped by month", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["חודש בשנה", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["יולי", 347897.2, 0],
+      ["Total", 347897.2, 0],
+      ["מסננים שהוחלו:\r\nfromDate הוא 2026-07-01\r\ntoDate הוא 2026-07-31"],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toEqual([
+      "הקובץ אינו מקובץ לפי סניף — ייצאי מטאבית בקיבוץ לפי סניף",
+    ]);
+  });
+
+  it("keeps the generic header error when no known column is present", () => {
+    const buffer = workbookBuffer([["כותרת עליונה"], ["בלי כלום"]]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.errors).toEqual([
+      'לא נמצאו כותרות "סניף", "סה״כ תקבולים" ו"סה״כ טיפ"',
+    ]);
+  });
+
   it("keeps explicit zero amounts valid and unflagged", () => {
     const buffer = workbookBuffer([
       ["סניף", 'סה"כ טיפ', "שנה וחודש", 'סה"כ תקבולים'],
