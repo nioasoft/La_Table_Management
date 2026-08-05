@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -9,6 +10,7 @@ import {
   FileX2,
   Loader2,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 
 import { FranchiseeBillingAlerts } from "@/components/franchisee-billing-alerts";
@@ -357,6 +359,12 @@ export function FranchiseeBillingScreen() {
               </SelectContent>
             </Select>
           </div>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/admin/franchisees/royalty-tiers">
+              <ShieldCheck aria-hidden="true" />
+              אישור סולמות
+            </Link>
+          </Button>
           <Button
             type="button"
             variant="outline"
