@@ -72,6 +72,7 @@ describe("detectDocumentType", () => {
         'חשבונית מס 10078 מאת נתנזון בורגר חיפה בע"מ',
         "franchisee invoice, Natanzon operating brand",
       ],
+      ["דו''ח חודשי למסעדה", "Tnbis monthly report, gershayim spelling"],
     ])('classifies %j as client_report (%s)', (subject) => {
       expect(detectDocumentType(subject)).toBe("client_report");
     });
@@ -86,6 +87,23 @@ describe("detectDocumentType", () => {
 
   it("empty/missing subject defaults to client_report", () => {
     expect(detectDocumentType("")).toBe("client_report");
+  });
+
+  // Regression: 2026-07-31 — 10bis replaced the body of its monthly-report
+  // email with an HYP announcement that says an invoice "has already been
+  // issued for you". The body fallback read those invoice keywords and typed
+  // the REPORT as commission_invoice; it was then parsed by the invoice parser
+  // (which extracts no period), filed under the previous month, and 10bis's
+  // real commission invoice found the slot taken. 5 of 6 franchisees lost
+  // their July report. The subject must win over the body here.
+  it("10bis monthly report stays a report despite an invoice-flavoured body", () => {
+    const subject = "דוח חודשי מתן ביס לקסטרא טומאיי בע''מ";
+    const hypBody =
+      '<html dir="rtl"><body><strong>פרטנרים יקרים,</strong><br /> ' +
+      "שמחים לעדכן אתכם שמעתה אנו חוסכים לכם זמן יקר!<br /> " +
+      "מכיוון שהינכם רשומים כבר לשירות HYP, מהיום כבר לא צריך להקליק, " +
+      "חשבונית מס עבור עסקאות החודש כבר הופקה עבורכם.<br /></body></html>";
+    expect(detectDocumentType(subject, hypBody)).toBe("client_report");
   });
 
   // Regression: 2026-05-10 — Reut reported a חשבונית הכנסה (franchisee

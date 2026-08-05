@@ -55,6 +55,20 @@ export const CLIENT_REPORT_OVERRIDE_PATTERNS: readonly RegExp[] = [
   // real "חשבונית מרכזת SI..." overwrote them a day later — the May 2026
   // "המערכת קלטה פירוט ולא דוח" incident (Reut 2026-06-11).
   /easycount\s+invoice|ezcount\s+invoice/i,
+  // 10bis monthly report ("דוח חודשי מתן ביס ל<זכיין>", "דו''ח חודשי למסעדה").
+  // On 2026-07-31 10bis replaced the body of this email with an HYP
+  // announcement — "מכיוון שהינכם רשומים כבר לשירות HYP ... חשבונית עבור
+  // עסקאות החודש כבר הופקה עבורכם" — and the body fallback below read those
+  // invoice keywords and flipped the monthly REPORT to commission_invoice.
+  // Two things then broke at once: the report was parsed by the INVOICE
+  // parser, which extracts no period, so it fell back to "previous month of
+  // the email date" and July's report was filed under June (₪26,473.96 landed
+  // in ויני עזריאלי's June commission-invoice slot); and 10bis's real
+  // commission invoice, arriving separately from invoice-one.com, then hit the
+  // occupied slot and failed. 5 of 6 franchisees lost their July report —
+  // only קינג קונג חורב survived, because 10bis still sent him the old body.
+  // The subject is unambiguous: a "דוח חודשי" is always the report.
+  /דו[״"'’]{0,2}ח\s*חודשי/,
 ];
 
 /**
