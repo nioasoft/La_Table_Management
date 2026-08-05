@@ -160,6 +160,7 @@ class MemoryOperations implements BillingScreenOperations {
   sourcesByBrand: ReadonlyMap<string, BillingSourceReviewRecord> = new Map([
     ["brand-vini", sourceReview()],
   ]);
+  unlinkedSources: readonly BillingSourceReviewRecord[] = [];
   context: BillingDiscountContext | null = discountContext();
   vat = 0.18;
   persistedDiscount: PersistDiscountInput | null = null;
@@ -176,7 +177,11 @@ class MemoryOperations implements BillingScreenOperations {
   resolutionResult: "success" | "conflict" | "exported" = "success";
 
   async readPeriodSnapshot() {
-    return { rows: this.rows, sourcesByBrand: this.sourcesByBrand };
+    return {
+      rows: this.rows,
+      sourcesByBrand: this.sourcesByBrand,
+      unlinkedSources: this.unlinkedSources,
+    };
   }
 
   async readDiscountContext(): Promise<BillingDiscountContext | null> {
@@ -323,6 +328,43 @@ describe("loadFranchiseeBillingScreen", () => {
       warnings: [],
       hasBlockingIssues: false,
     });
+  });
+
+  it("surfaces a file that produced no billing rows at all", async () => {
+    const operations = new MemoryOperations();
+    operations.rows = [];
+    operations.sourcesByBrand = new Map();
+    operations.unlinkedSources = [sourceReview({
+      id: "source-orphan",
+      fileName: "יולי.xlsx",
+      metadata: {
+        documentType: "franchisee_royalty_revenue",
+        anomalies: [{
+          code: "unconfirmed_tiers",
+          rowIndex: 1,
+          branchName: "ויני יהוד",
+          franchiseeId: "franchisee-1",
+          message: "סולם התמלוגים טרם אושר",
+        }],
+        approvedDifferences: [],
+        warnings: [],
+        draftsWritten: 0,
+      },
+    })];
+
+    const result = await loadFranchiseeBillingScreen(PERIOD, operations);
+
+    expect(result.sourceFiles).toEqual([
+      { brandId: null, id: "source-orphan", fileName: "יולי.xlsx" },
+    ]);
+    expect(result.anomalies).toEqual([{
+      code: "unconfirmed_tiers",
+      rowIndex: 1,
+      branchName: "ויני יהוד",
+      franchiseeId: "franchisee-1",
+      message: "סולם התמלוגים טרם אושר",
+    }]);
+    expect(result.hasBlockingIssues).toBe(true);
   });
 
   it("enriches persisted anomalies and approved differences with row names", async () => {

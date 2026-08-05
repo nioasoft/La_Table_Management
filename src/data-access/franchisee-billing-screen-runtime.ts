@@ -10,6 +10,7 @@ import {
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
+  createUnlinkedSourcesQuery,
   formatBillingPeriodDate,
   mapLatestSourceReviewsByBrand,
 } from "@/data-access/franchisee-billing-screen-queries";
@@ -38,6 +39,7 @@ export {
   createPeriodRowsQuery,
   createReopenBillingQuery,
   createSourceReviewUpdateQuery,
+  createUnlinkedSourcesQuery,
   mapLatestSourceReviewsByBrand,
 } from "@/data-access/franchisee-billing-screen-queries";
 
@@ -83,7 +85,8 @@ async function readPeriodSnapshot(
     async (tx) => {
       const sourcesByBrand = await readLatestSourceReview(tx, period);
       const rows = await readPeriodRows(tx, period, sourcesByBrand);
-      return { rows, sourcesByBrand };
+      const unlinkedSources = await createUnlinkedSourcesQuery(tx, period);
+      return { rows, sourcesByBrand, unlinkedSources };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },
   );

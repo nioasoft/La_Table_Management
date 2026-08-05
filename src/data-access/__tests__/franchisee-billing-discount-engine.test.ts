@@ -65,7 +65,11 @@ function expectedCalculation(
 function operationsFor(context: CompleteDiscountContext) {
   let persisted: PersistDiscountInput | null = null;
   const operations: BillingScreenOperations = {
-    readPeriodSnapshot: async () => ({ rows: [], sourcesByBrand: new Map() }),
+    readPeriodSnapshot: async () => ({
+      rows: [],
+      sourcesByBrand: new Map(),
+      unlinkedSources: [],
+    }),
     readDiscountContext: async () => context,
     readVatRate: async () => VAT,
     persistDiscount: async (input) => {

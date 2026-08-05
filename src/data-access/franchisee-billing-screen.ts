@@ -169,6 +169,12 @@ export interface PersistDifferenceResolutionInput {
 export interface BillingPeriodSnapshot {
   readonly rows: readonly BillingScreenRow[];
   readonly sourcesByBrand: BillingSourceReviewsByBrand;
+  /**
+   * Uploads that produced no billing row at all — every row was blocked by an
+   * anomaly. They have no brand to be grouped under, and without them the
+   * screen would report the month as never uploaded.
+   */
+  readonly unlinkedSources: readonly BillingSourceReviewRecord[];
 }
 
 export type PersistDifferenceResolutionResult =
@@ -225,7 +231,8 @@ export interface BillingScreenApprovedDifference {
 export interface FranchiseeBillingScreenData {
   readonly period: FranchiseeBillingPeriod;
   readonly sourceFiles: readonly {
-    readonly brandId: string;
+    /** Null for an upload that produced no billing row to attach a brand to. */
+    readonly brandId: string | null;
     readonly id: string;
     readonly fileName: string;
   }[];
@@ -270,9 +277,9 @@ type ReviewProjection = Pick<
 
 function projectSourceReviews(
   rows: readonly BillingScreenRow[],
-  sourcesByBrand: BillingSourceReviewsByBrand,
+  sources: readonly BillingSourceReviewRecord[],
 ): ReviewProjection {
-  const reviews = [...sourcesByBrand.values()].map((source) => ({
+  const reviews = sources.map((source) => ({
     source,
     review: parseReview(source.metadata),
   }));
@@ -332,25 +339,24 @@ export async function loadFranchiseeBillingScreen(
   operations?: BillingScreenOperations,
 ): Promise<FranchiseeBillingScreenData> {
   const activeOperations = operations ?? await defaultOperations();
-  const { rows, sourcesByBrand } =
+  const { rows, sourcesByBrand, unlinkedSources } =
     await activeOperations.readPeriodSnapshot(period);
-  const sourceFiles = [...sourcesByBrand].map(([brandId, source]) => ({
-    brandId,
-    id: source.id,
-    fileName: source.fileName,
-  }));
-  if (sourcesByBrand.size === 0) {
-    return {
-      period,
-      sourceFiles,
-      rows,
-      anomalies: [],
-      approvedDifferences: [],
-      warnings: [],
-      hasBlockingIssues: rows.some((row) => row.isApprovalBlocked),
-    };
-  }
-  const reviewProjection = projectSourceReviews(rows, sourcesByBrand);
+  const sourceFiles = [
+    ...[...sourcesByBrand].map(([brandId, source]) => ({
+      brandId: brandId as string | null,
+      id: source.id,
+      fileName: source.fileName,
+    })),
+    ...unlinkedSources.map((source) => ({
+      brandId: null,
+      id: source.id,
+      fileName: source.fileName,
+    })),
+  ];
+  const reviewProjection = projectSourceReviews(rows, [
+    ...sourcesByBrand.values(),
+    ...unlinkedSources,
+  ]);
   return {
     period,
     sourceFiles,

@@ -75,6 +75,7 @@ class RouteMemoryOperations implements BillingScreenOperations {
           draftsWritten: 1,
         },
       }]]),
+      unlinkedSources: [],
     };
   }
 

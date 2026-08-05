@@ -393,9 +393,9 @@ export function FranchiseeBillingScreen() {
             <p className="text-muted-foreground">
               {data.sourceFiles.length > 0 ? (
                 <>
-                  קבצים אחרונים לפי מותג: {data.sourceFiles.map(
+                  קבצי מקור לחודש: {data.sourceFiles.map(
                     (source, index) => (
-                      <span key={source.brandId}>
+                      <span key={source.id}>
                         {index > 0 ? " · " : ""}
                         <bdi>{source.fileName}</bdi>
                       </span>

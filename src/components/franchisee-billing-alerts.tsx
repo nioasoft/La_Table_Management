@@ -210,8 +210,9 @@ export function FranchiseeBillingAlerts({
           <AlertTitle>לא ניתן לאשר את החודש</AlertTitle>
           <AlertDescription>
             <ul className="mt-2 list-disc space-y-1 ps-5">
-              {anomalies.map((finding) => (
-                <li key={`${finding.code}-${finding.rowIndex}`}>
+              {anomalies.map((finding, index) => (
+                // Row indexes repeat across source files, so they cannot key alone.
+                <li key={`${finding.code}-${finding.rowIndex}-${index}`}>
                   <span className="font-medium">
                     {finding.franchiseeName || finding.branchName || "שורה ללא שם"}
                     :

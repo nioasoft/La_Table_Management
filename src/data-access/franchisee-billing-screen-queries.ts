@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notExists, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type {
@@ -72,6 +72,42 @@ export function createLatestSourceReviewsQuery(
       desc(source.createdAt),
       desc(source.id),
     );
+}
+
+/**
+ * Royalty uploads for the period that no billing row points at. The brand-keyed
+ * query above reaches files through `franchisee_billing`, so a file whose rows
+ * were all blocked is invisible to it.
+ */
+export function createUnlinkedSourcesQuery(
+  database: BillingReadDatabase,
+  period: FranchiseeBillingPeriod,
+) {
+  const source = schema.uploadedFile;
+  const billing = schema.franchiseeBilling;
+  return database
+    .select({
+      id: source.id,
+      fileName: source.originalFileName,
+      metadata: source.metadata,
+    })
+    .from(source)
+    .where(
+      and(
+        eq(
+          source.periodStartDate,
+          formatBillingPeriodDate(period.year, period.month, 1),
+        ),
+        sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(billing)
+            .where(eq(billing.sourceFileId, source.id)),
+        ),
+      ),
+    )
+    .orderBy(desc(source.createdAt), desc(source.id));
 }
 
 function activeSourceFileIdByBrand(

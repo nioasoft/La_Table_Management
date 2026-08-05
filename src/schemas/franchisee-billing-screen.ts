@@ -144,7 +144,7 @@ const billingScreenRowSchema = z.object({
 export const franchiseeBillingScreenDataSchema = z.object({
   period: franchiseeBillingPeriodSchema,
   sourceFiles: z.array(z.object({
-    brandId: z.string(),
+    brandId: z.string().nullable(),
     id: z.string(),
     fileName: z.string(),
   })),
