@@ -25,7 +25,9 @@ describe("parseRoyaltyRevenueFile", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
+    expect(result.errors).toContain(
+      "הקובץ מכסה 03/04/2026–02/07/2026 — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד",
+    );
     expect(
       result.data?.rows.map(
         ({ branchName, receipts, tips, missingBranchName }) => ({
@@ -89,7 +91,9 @@ describe("parseRoyaltyRevenueFile", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
+    expect(result.errors).toContain(
+      "הקובץ מכסה 03/04/2026–02/07/2026 — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד",
+    );
     expect(
       result.data?.rows.map(({ branchName, receipts, tips }) => ({
         branchName,
@@ -120,7 +124,9 @@ describe("parseRoyaltyRevenueFile", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
+    expect(result.errors).toContain(
+      "הקובץ מכסה 03/04/2026–02/07/2026 — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד",
+    );
     expect(
       result.data?.rows.map(
         ({ branchName, receipts, tips, missingBranchName }) => ({
@@ -276,6 +282,71 @@ describe("parseRoyaltyRevenueFile", () => {
     expect(row?.tips).toBeNull();
     expect(row?.missingReceipts).toBe(false);
     expect(row?.missingTips).toBe(true);
+  });
+
+  it("takes the month from the applied-filters footer when the export is grouped by year", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["סניף", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["סניף א", 1200, 12],
+      ["סניף ב", 1500, 15],
+      [
+        "מסננים שהוחלו:\r\nfromDate הוא 2026-07-01\r\ntoDate הוא 2026-07-31\r\n_id בשעה 01/07/2026 00:00:00 או אחריה",
+      ],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.data?.rows.map((row) => row.period)).toEqual([
+      { year: 2026, month: 7 },
+      { year: 2026, month: 7 },
+    ]);
+  });
+
+  it("treats a first-of-next-month end date as the same single month", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["סניף", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["סניף א", 1200, 12],
+      ["מסננים שהוחלו:\r\nfromDate הוא 2026-07-01\r\ntoDate הוא 2026-08-01"],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.rows[0].period).toEqual({ year: 2026, month: 7 });
+  });
+
+  it("blocks a footer range that spans more than one month", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["סניף", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["סניף א", 1200, 12],
+      ["מסננים שהוחלו:\r\nfromDate הוא 2026-04-03\r\ntoDate הוא 2026-07-02"],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toContain(
+      "הקובץ מכסה 03/04/2026–02/07/2026 — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד",
+    );
+    expect(result.data?.rows[0].period).toBeNull();
+  });
+
+  it("keeps the missing-month error when the export has no footer at all", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["סניף", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["סניף א", 1200, 12],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
   });
 
   it("keeps explicit zero amounts valid and unflagged", () => {

@@ -179,10 +179,63 @@ function parsePeriod(value: unknown): RoyaltyRevenuePeriod | null {
   return parseNumericPeriod(text);
 }
 
+const FILTER_ROW_MARKER = "מסננים שהוחלו";
+
+function rowText(row: readonly unknown[]): string {
+  return row.map((value) => String(value ?? "")).join(" ");
+}
+
+/** dd/mm/yyyy — the format Reut reads, built without touching UTC. */
+function formatIsoDate(iso: string): string {
+  const [year, month, day] = iso.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+function findFilterRange(
+  rows: readonly (readonly unknown[])[],
+): { from: string; to: string } | null {
+  const text = rows
+    .filter((row) => rowText(row).includes(FILTER_ROW_MARKER))
+    .map(rowText)
+    .join(" ");
+  const from = text.match(/fromDate\D*(\d{4}-\d{2}-\d{2})/)?.[1];
+  const to = text.match(/toDate\D*(\d{4}-\d{2}-\d{2})/)?.[1];
+  return from && to ? { from, to } : null;
+}
+
+/**
+ * Tabit's year-grouped export carries its real range only in the applied-filters
+ * footer. A range that leaves the month is rejected rather than guessed: the
+ * totals are already aggregated, so a quarter billed as a month is invisible.
+ */
+function resolveFilterPeriod(rows: readonly (readonly unknown[])[]): {
+  period: RoyaltyRevenuePeriod | null;
+  error: string | null;
+} {
+  const range = findFilterRange(rows);
+  if (!range) {
+    return { period: null, error: "הקובץ אינו מקובץ לפי חודש" };
+  }
+
+  const [fromYear, fromMonth] = range.from.split("-").map(Number);
+  const [toYear, toMonth, toDay] = range.to.split("-").map(Number);
+  const monthsApart = (toYear - fromYear) * 12 + (toMonth - fromMonth);
+  const isSingleMonth =
+    monthsApart === 0 || (monthsApart === 1 && toDay === 1);
+
+  if (!isSingleMonth) {
+    return {
+      period: null,
+      error: `הקובץ מכסה ${formatIsoDate(range.from)}–${formatIsoDate(range.to)} — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד`,
+    };
+  }
+
+  return { period: { year: fromYear, month: fromMonth }, error: null };
+}
+
 function isMetadataRow(row: readonly unknown[], branchName: string): boolean {
-  const rowText = row.map((value) => String(value ?? "")).join(" ");
   return (
-    rowText.includes("מסננים שהוחלו") ||
+    rowText(row).includes(FILTER_ROW_MARKER) ||
     branchName.toLowerCase() === "total" ||
     branchName.includes("סניף מסוף רישתי")
   );
@@ -275,15 +328,21 @@ function parseWorksheet(
   }
 
   const parsed = parseRows(sourceRows, header.index, header.columns);
+  const fallback =
+    header.columns.period === null ? resolveFilterPeriod(sourceRows) : null;
+  const filePeriod = fallback?.period ?? null;
+  const rows = filePeriod
+    ? parsed.rows.map((row) => ({ ...row, period: filePeriod }))
+    : parsed.rows;
   const errors = [
-    ...(header.columns.period === null ? ["הקובץ אינו מקובץ לפי חודש"] : []),
+    ...(fallback?.error ? [fallback.error] : []),
     ...parsed.errors,
-    ...(parsed.rows.length === 0 ? ["לא נמצאו שורות נתונים בקובץ"] : []),
+    ...(rows.length === 0 ? ["לא נמצאו שורות נתונים בקובץ"] : []),
   ];
 
   return {
     success: errors.length === 0,
-    data: { rows: parsed.rows },
+    data: { rows },
     errors,
     warnings,
   };

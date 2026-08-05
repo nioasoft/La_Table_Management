@@ -16,6 +16,14 @@ interface FranchiseeBillingUploadProps {
   readonly onUploaded: (period: FranchiseeBillingPeriod) => Promise<void>;
 }
 
+/** "יולי 2026" — so the month the file was read as is visible before approval. */
+function formatPeriod({ year, month }: FranchiseeBillingPeriod): string {
+  return new Intl.DateTimeFormat("he-IL", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+}
+
 function apiErrorMessage(value: unknown): string | null {
   if (
     typeof value === "object" &&
@@ -75,7 +83,9 @@ export function FranchiseeBillingUpload({
       await onUploaded(parsed.data.data.period);
       setFile(null);
       setInputKey((current) => current + 1);
-      setSuccess("הקובץ נקלט ושורות הטיוטה עודכנו");
+      setSuccess(
+        `הקובץ נקלט כחודש ${formatPeriod(parsed.data.data.period)} ושורות הטיוטה עודכנו. ודאי שזו התקופה הנכונה לפני אישור.`,
+      );
     } catch (uploadError: unknown) {
       console.error("Failed to upload franchisee billing file:", uploadError);
       setError(
