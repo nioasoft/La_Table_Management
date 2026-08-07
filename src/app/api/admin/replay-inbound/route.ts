@@ -388,10 +388,20 @@ export async function POST(request: NextRequest) {
 
           for (let i = 0; i < downloaded.length; i++) {
             const f = downloaded[i];
+            // ezcount "[העתק]" copies arrive as a DOWNLOAD LINK, not an
+            // attachment, so this is the branch that actually handles them —
+            // the re-route has to happen here too, not only on the
+            // attachment path.
+            const fileClient = await resolveFileClient(
+              identifiedClient,
+              f.buffer,
+              documentType,
+              f.fileName,
+            );
             const franchiseeId = await resolveOrTrace(
               f.buffer,
               "application/pdf",
-              identifiedClient.parserCode,
+              fileClient.parserCode,
               email.subject,
               f.fileName,
               documentType,
@@ -402,8 +412,8 @@ export async function POST(request: NextRequest) {
               buffer: f.buffer,
               fileName: f.fileName,
               mimeType: "application/pdf",
-              clientId: identifiedClient.clientId,
-              parserCode: identifiedClient.parserCode,
+              clientId: fileClient.clientId,
+              parserCode: fileClient.parserCode,
               franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,
