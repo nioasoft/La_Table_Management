@@ -1,6 +1,13 @@
 /**
  * Custom parser for ימה וקדמה (YAMA_VEKADMA) supplier files
  *
+ * The supplier sends two unrelated formats; this entry point sniffs the buffer
+ * and dispatches:
+ *   1. "ניתוח מכירות תקופתי" — a UTF-16LE HTML table disguised as .xls.
+ *      SheetJS *does* parse it, but as mojibake, so detection must come first.
+ *      See ./yama-vekadma-sales-report.ts.
+ *   2. The Sheilta per-customer ledger (כרטסת) described below.
+ *
  * File structure (Sheilta per-customer ledger export, format updated May 2026):
  *   The file contains one block per franchisee. Each block looks like:
  *
@@ -41,6 +48,11 @@ import {
   type FileProcessingError,
   createFileProcessingError,
 } from "../file-processing-errors";
+import {
+  decodeSalesReport,
+  isSalesReport,
+  parseYamaVekadmaSalesReport,
+} from "./yama-vekadma-sales-report";
 
 // Column indices (0-based) within data rows
 const DATE_COL = 0; // תאריך מסמך
@@ -130,6 +142,11 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
   const data: ParsedRowData[] = [];
 
   try {
+    const decoded = decodeSalesReport(buffer);
+    if (isSalesReport(decoded)) {
+      return parseYamaVekadmaSalesReport(decoded);
+    }
+
     const workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
     const sheetName = workbook.SheetNames[0];
     if (!sheetName) {
