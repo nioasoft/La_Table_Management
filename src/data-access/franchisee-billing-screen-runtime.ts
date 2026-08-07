@@ -13,6 +13,7 @@ import {
   createUnlinkedSourcesQuery,
   formatBillingPeriodDate,
   mapLatestSourceReviewsByBrand,
+  selectLiveUnlinkedSources,
 } from "@/data-access/franchisee-billing-screen-queries";
 import type {
   BillingDiscountContext,
@@ -41,6 +42,7 @@ export {
   createSourceReviewUpdateQuery,
   createUnlinkedSourcesQuery,
   mapLatestSourceReviewsByBrand,
+  selectLiveUnlinkedSources,
 } from "@/data-access/franchisee-billing-screen-queries";
 
 async function loadDatabaseRuntime() {
@@ -83,9 +85,13 @@ async function readPeriodSnapshot(
 ) {
   return database.transaction(
     async (tx) => {
-      const sourcesByBrand = await readLatestSourceReview(tx, period);
+      const orderedLinked = await createLatestSourceReviewsQuery(tx, period);
+      const sourcesByBrand = mapLatestSourceReviewsByBrand(orderedLinked);
       const rows = await readPeriodRows(tx, period, sourcesByBrand);
-      const unlinkedSources = await createUnlinkedSourcesQuery(tx, period);
+      const unlinkedSources = selectLiveUnlinkedSources(
+        await createUnlinkedSourcesQuery(tx, period),
+        orderedLinked,
+      );
       return { rows, sourcesByBrand, unlinkedSources };
     },
     { isolationLevel: "repeatable read", accessMode: "read only" },

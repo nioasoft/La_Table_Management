@@ -5,8 +5,10 @@ import type {
   PersistDifferenceResolutionInput,
   PersistNoRevenueReasonInput,
   ReopenedBillingValues,
+  BillingSourceReviewRecord,
   BillingSourceReviewRow,
   BillingSourceReviewsByBrand,
+  BillingUnlinkedSourceRow,
 } from "@/data-access/franchisee-billing-screen";
 import * as schema from "@/db/schema";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
@@ -37,8 +39,51 @@ export function mapLatestSourceReviewsByBrand(
       ) === index,
   );
   return new Map(
-    newestSources.map(({ brandId, ...source }) => [brandId, source]),
+    newestSources.map((source) => [
+      source.brandId,
+      { id: source.id, fileName: source.fileName, metadata: source.metadata },
+    ]),
   );
+}
+
+/**
+ * Keeps only the newest unlinked upload per brand, and drops any that a later
+ * upload of the same brand has already replaced.
+ *
+ * Re-uploading a month re-points its billing rows at the new file, so every
+ * earlier attempt becomes unlinked and stays that way. Without this filter each
+ * one keeps replaying the anomalies frozen into it at upload time, and the
+ * month can never be approved however many times it is fixed and re-uploaded.
+ */
+export function selectLiveUnlinkedSources(
+  orderedUnlinked: readonly BillingUnlinkedSourceRow[],
+  orderedLinked: readonly BillingSourceReviewRow[],
+): readonly BillingSourceReviewRecord[] {
+  const newestLinkedByBrand = new Map<string, Date>();
+  for (const linked of orderedLinked) {
+    const known = newestLinkedByBrand.get(linked.brandId);
+    if (!known || linked.createdAt > known) {
+      newestLinkedByBrand.set(linked.brandId, linked.createdAt);
+    }
+  }
+  // A null brand means no anomaly named a franchisee we could resolve. Those
+  // still supersede each other, they just share one bucket.
+  const seenBrands = new Set<string | null>();
+  return orderedUnlinked
+    .filter((source) => {
+      if (seenBrands.has(source.brandId)) return false;
+      seenBrands.add(source.brandId);
+      const linkedAt =
+        source.brandId === null
+          ? undefined
+          : newestLinkedByBrand.get(source.brandId);
+      return !linkedAt || source.createdAt > linkedAt;
+    })
+    .map((source) => ({
+      id: source.id,
+      fileName: source.fileName,
+      metadata: source.metadata,
+    }));
 }
 
 export function createLatestSourceReviewsQuery(
@@ -53,6 +98,7 @@ export function createLatestSourceReviewsQuery(
       id: source.id,
       fileName: source.originalFileName,
       metadata: source.metadata,
+      createdAt: source.createdAt,
     })
     .from(source)
     .innerJoin(billing, eq(source.id, billing.sourceFileId))
@@ -78,6 +124,10 @@ export function createLatestSourceReviewsQuery(
  * Royalty uploads for the period that no billing row points at. The brand-keyed
  * query above reaches files through `franchisee_billing`, so a file whose rows
  * were all blocked is invisible to it.
+ *
+ * The brand comes from the first anomaly that names a franchisee, since a file
+ * with no billing rows has nothing else tying it to one. It is what lets
+ * `selectLiveUnlinkedSources` tell a superseded attempt from a live one.
  */
 export function createUnlinkedSourcesQuery(
   database: BillingReadDatabase,
@@ -90,6 +140,16 @@ export function createUnlinkedSourcesQuery(
       id: source.id,
       fileName: source.originalFileName,
       metadata: source.metadata,
+      createdAt: source.createdAt,
+      brandId: sql<string | null>`(
+        SELECT ${schema.franchisee.brandId}
+        FROM jsonb_array_elements(
+          COALESCE(${source.metadata}->'anomalies', '[]'::jsonb)
+        ) AS anomaly
+        JOIN ${schema.franchisee}
+          ON ${schema.franchisee.id} = anomaly->>'franchiseeId'
+        LIMIT 1
+      )`,
     })
     .from(source)
     .where(

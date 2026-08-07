@@ -47,6 +47,13 @@ export interface BillingSourceReviewRecord {
 
 export interface BillingSourceReviewRow extends BillingSourceReviewRecord {
   readonly brandId: string;
+  readonly createdAt: Date;
+}
+
+/** An upload with no billing row: its brand is inferred from its anomalies. */
+export interface BillingUnlinkedSourceRow extends BillingSourceReviewRecord {
+  readonly brandId: string | null;
+  readonly createdAt: Date;
 }
 
 export type BillingSourceReviewsByBrand = ReadonlyMap<

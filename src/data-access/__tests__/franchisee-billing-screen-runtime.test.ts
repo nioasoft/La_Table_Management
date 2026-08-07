@@ -10,6 +10,7 @@ import {
   createSourceReviewUpdateQuery,
   mapLatestSourceReviewsByBrand,
   resolveLiveSourceReview,
+  selectLiveUnlinkedSources,
 } from "@/data-access/franchisee-billing-screen-runtime";
 import type {
   PersistDifferenceResolutionInput,
@@ -91,18 +92,21 @@ describe("franchisee billing reopen SQL", () => {
       {
         brandId: "brand-mina",
         id: "mina-new",
+        createdAt: new Date("2026-08-06T10:00:00Z"),
         fileName: "מינה-מתוקן.xlsx",
         metadata: { version: 2 },
       },
       {
         brandId: "brand-mina",
         id: "mina-old",
+        createdAt: new Date("2026-08-05T10:00:00Z"),
         fileName: "מינה.xlsx",
         metadata: { version: 1 },
       },
       {
         brandId: "brand-vini",
         id: "vini-live",
+        createdAt: new Date("2026-08-05T11:00:00Z"),
         fileName: "ויני.xlsx",
         metadata: { version: 1 },
       },
@@ -248,5 +252,88 @@ describe("franchisee billing reopen SQL", () => {
       6,
       "franchisee-1",
     ]);
+  });
+});
+
+describe("selectLiveUnlinkedSources", () => {
+  const unlinked = (
+    id: string,
+    brandId: string | null,
+    createdAt: string,
+  ) => ({ id, brandId, createdAt: new Date(createdAt), fileName: `${id}.xlsx`, metadata: { id } });
+  const linked = (id: string, brandId: string, createdAt: string) => ({
+    id, brandId, createdAt: new Date(createdAt), fileName: `${id}.xlsx`, metadata: { id },
+  });
+
+  it("keeps only the newest failed attempt per brand", () => {
+    // Reut re-uploaded the same month three times; only the last one is live.
+    const live = selectLiveUnlinkedSources(
+      [
+        unlinked("king-3", "brand-king", "2026-08-06T14:18:00Z"),
+        unlinked("king-2", "brand-king", "2026-08-05T07:57:00Z"),
+        unlinked("king-1", "brand-king", "2026-08-05T07:49:00Z"),
+      ],
+      [],
+    );
+
+    expect(live.map((source) => source.id)).toEqual(["king-3"]);
+  });
+
+  it("keeps one live attempt per brand", () => {
+    const live = selectLiveUnlinkedSources(
+      [
+        unlinked("king", "brand-king", "2026-08-05T07:57:00Z"),
+        unlinked("vini", "brand-vini", "2026-08-05T07:54:00Z"),
+        unlinked("mina", "brand-mina", "2026-08-05T07:49:00Z"),
+      ],
+      [],
+    );
+
+    expect(live.map((source) => source.id)).toEqual(["king", "vini", "mina"]);
+  });
+
+  it("drops an attempt that a later successful upload replaced", () => {
+    const live = selectLiveUnlinkedSources(
+      [unlinked("king-old", "brand-king", "2026-08-06T14:18:00Z")],
+      [linked("king-new", "brand-king", "2026-08-07T04:12:00Z")],
+    );
+
+    expect(live).toEqual([]);
+  });
+
+  it("keeps an attempt newer than the last successful upload", () => {
+    // A wholly blocked re-upload still has to surface its anomalies, even
+    // though an older file is the one holding the billing rows.
+    const live = selectLiveUnlinkedSources(
+      [unlinked("king-new", "brand-king", "2026-08-08T09:00:00Z")],
+      [linked("king-old", "brand-king", "2026-08-07T04:12:00Z")],
+    );
+
+    expect(live.map((source) => source.id)).toEqual(["king-new"]);
+  });
+
+  it("supersedes unresolvable brands within their own bucket", () => {
+    const live = selectLiveUnlinkedSources(
+      [
+        unlinked("nameless-2", null, "2026-08-06T14:18:00Z"),
+        unlinked("nameless-1", null, "2026-08-05T07:49:00Z"),
+      ],
+      [linked("king", "brand-king", "2026-08-07T04:12:00Z")],
+    );
+
+    expect(live.map((source) => source.id)).toEqual(["nameless-2"]);
+  });
+
+  it("drops the brandId and createdAt it filtered on", () => {
+    const [live] = selectLiveUnlinkedSources(
+      [unlinked("king", "brand-king", "2026-08-06T14:18:00Z")],
+      [],
+    );
+
+    expect(live).toEqual({
+      id: "king",
+      fileName: "king.xlsx",
+      metadata: { id: "king" },
+    });
   });
 });
