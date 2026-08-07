@@ -80,6 +80,7 @@ import { AnomalyReviewModal } from "@/components/supplier-files/anomaly-review-m
 import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 import type { Anomaly, AnomalyAction } from "@/types/file-anomalies";
+import { looksLikeHtmlTableFile } from "@/lib/html-table-file";
 
 /**
  * Convert XLS file to XLSX format in the browser. Vercel WAF blocks raw XLS
@@ -94,15 +95,28 @@ import type { Anomaly, AnomalyAction } from "@/types/file-anomalies";
  * map so the read step decodes correctly. (Node SSR has the codepage table
  * loaded by default, which is why this only manifests in production after
  * the browser-side conversion.)
+ *
+ * Files that are really HTML tables under a .xls name (ימה וקדמה) skip the
+ * re-encode entirely: SheetJS either throws on them or mangles their Hebrew,
+ * and the server parsers sniff content rather than the extension. The rename
+ * alone is what the WAF needs.
  */
 async function convertXlsToXlsx(file: File): Promise<File> {
+  const arrayBuffer = await file.arrayBuffer();
+  const newFileNameForHtml = file.name.replace(/\.xls$/i, ".xlsx");
+
+  if (looksLikeHtmlTableFile(arrayBuffer)) {
+    return new File([arrayBuffer], newFileNameForHtml, {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+  }
+
   const XLSX = await import("xlsx");
   // cpexcel.full.mjs ships without TS declarations
   // @ts-expect-error -- third-party codepage bundle (no .d.ts)
   const cptable = await import("xlsx/dist/cpexcel.full.mjs");
   XLSX.set_cptable(cptable);
 
-  const arrayBuffer = await file.arrayBuffer();
   const workbook = XLSX.read(arrayBuffer, { type: "array" });
   const xlsxData = XLSX.write(workbook, { type: "array", bookType: "xlsx" });
 

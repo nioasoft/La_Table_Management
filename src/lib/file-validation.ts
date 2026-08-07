@@ -1,4 +1,5 @@
 import { fileTypeFromBuffer } from "file-type";
+import { looksLikeHtmlTableFile } from "./html-table-file";
 
 /**
  * Mapping of allowed MIME types to file-type library extensions
@@ -25,6 +26,12 @@ const ALLOWED_FILE_SIGNATURES: Record<string, string[]> = {
   "image/png": ["png"],
   "image/gif": ["gif"],
 };
+
+/** MIME types under which an HTML-table export may legitimately arrive. */
+const EXCEL_MIME_TYPES = new Set([
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+]);
 
 export interface FileValidationResult {
   valid: boolean;
@@ -59,6 +66,17 @@ export async function validateFileType(
         valid: false,
         error: "File contains binary data, not valid text",
       };
+    }
+    return { valid: true, detectedMimeType: claimedMimeType };
+  }
+
+  // Spreadsheets that are really HTML tables (ימה וקדמה exports its sales
+  // report that way) have no magic bytes at all. Accept them only under an
+  // Excel MIME — they are stored and served as Excel, never as text/html, so
+  // the markup is never rendered.
+  if (EXCEL_MIME_TYPES.has(claimedMimeType) && looksLikeHtmlTableFile(buffer)) {
+    if (hasExecutableSignature(buffer)) {
+      return { valid: false, error: "File appears to be executable" };
     }
     return { valid: true, detectedMimeType: claimedMimeType };
   }
