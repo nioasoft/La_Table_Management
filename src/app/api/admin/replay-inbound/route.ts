@@ -50,6 +50,7 @@ import {
   isInactiveFranchiseeSkip,
 } from "@/lib/email/resolve-franchisee";
 import { extractAndDownloadLinks } from "@/lib/email/download-links";
+import { resolveFileClient } from "@/lib/email/resolve-file-client";
 import type { Franchisee } from "@/db/schema";
 
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
@@ -475,10 +476,20 @@ export async function POST(request: NextRequest) {
           }
 
           for (const a of attsToProcess) {
+            // Same per-file recipient re-route the live webhook does. Without
+            // it a replay faithfully recreates a misroute: July 2026's four
+            // 10bis-bound ezcount invoices went straight back into Mishloha's
+            // report slot on the first repair attempt.
+            const fileClient = await resolveFileClient(
+              identifiedClient,
+              a.buffer,
+              a.documentType,
+              a.filename,
+            );
             const franchiseeId = await resolveOrTrace(
               a.buffer,
               a.contentType,
-              identifiedClient.parserCode,
+              fileClient.parserCode,
               email.subject,
               a.filename,
               a.documentType,
@@ -489,8 +500,8 @@ export async function POST(request: NextRequest) {
               buffer: a.buffer,
               fileName: a.filename,
               mimeType: a.contentType,
-              clientId: identifiedClient.clientId,
-              parserCode: identifiedClient.parserCode,
+              clientId: fileClient.clientId,
+              parserCode: fileClient.parserCode,
               franchiseeId,
               periodMonth: period.month,
               periodYear: period.year,

@@ -52,7 +52,10 @@ import {
   type ResolveFranchiseeResult,
 } from "@/lib/email/resolve-franchisee";
 import { extractAndDownloadLinks } from "@/lib/email/download-links";
-import { detectRecipientClientCodeFromPdf } from "@/lib/email/detect-invoice-recipient";
+import {
+  resolveFileClient,
+  type FileClientIdentity,
+} from "@/lib/email/resolve-file-client";
 import { database } from "@/db";
 import { franchisee, client } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -959,78 +962,6 @@ export async function GET() {
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-
-/** Minimal client-identity shape shared by the channel client and per-file overrides. */
-interface FileClientIdentity {
-  clientId: string;
-  clientCode: string;
-  parserCode: string;
-}
-
-/**
- * Per-FILE client resolution. The channel-level client comes from
- * to-address/sender (identifyClientFromEmail), but ezcount "[העתק]" copy
- * emails all arrive at mishlocha@inbound regardless of who the invoice
- * was issued to — each franchisee runs ONE ezcount sequence that serves
- * both Mishloha and Haat. May 2026: חורב's Haat-bound invoice 10051
- * landed in (and overwrote) its Mishloha report slot this way.
- *
- * So for client_report files arriving on the MISHLOCHA channel we sniff
- * the actual recipient from the PDF's "לכבוד" line and re-route the file
- * to that client. Detection failure (image-only PDF etc.) keeps the
- * channel client — the processor's overwrite guard still prevents data
- * loss in that case.
- */
-async function resolveFileClient(
-  channelClient: FileClientIdentity,
-  buffer: Buffer,
-  documentType: "client_report" | "commission_invoice",
-  fileName: string,
-  errorDetails: string[],
-): Promise<FileClientIdentity> {
-  if (channelClient.clientCode.toUpperCase() !== "MISHLOCHA") {
-    return channelClient;
-  }
-  // Commission invoices on this channel are issued BY Mishloha to the
-  // franchisee — recipient is the franchisee, nothing to re-route.
-  if (documentType !== "client_report") {
-    return channelClient;
-  }
-
-  const recipientCode = await detectRecipientClientCodeFromPdf(buffer);
-  if (!recipientCode || recipientCode === channelClient.clientCode.toUpperCase()) {
-    return channelClient;
-  }
-
-  const [target] = await database
-    .select({
-      id: client.id,
-      code: client.code,
-      parserCode: client.parserCode,
-    })
-    .from(client)
-    .where(and(eq(client.isActive, true), eq(client.code, recipientCode)))
-    .limit(1);
-  if (!target) {
-    console.warn(
-      `[email-inbound] recipient sniff found "${recipientCode}" for "${fileName}" but no active client with that code — keeping ${channelClient.clientCode}`,
-    );
-    return channelClient;
-  }
-
-  console.log(
-    `[email-inbound] Re-routed "${fileName}" by invoice recipient: ${channelClient.clientCode} → ${recipientCode}`,
-  );
-  errorDetails.push(
-    `נותב מחדש לפי "לכבוד": "${fileName}" → ${recipientCode} (חשבונית שהזכיין הוציא ל-${recipientCode} והגיעה בערוץ משלוחה)`,
-  );
-  return {
-    clientId: target.id,
-    clientCode: target.code ?? recipientCode,
-    parserCode: target.parserCode ?? target.code ?? recipientCode,
-  };
-}
 
 
 /**
