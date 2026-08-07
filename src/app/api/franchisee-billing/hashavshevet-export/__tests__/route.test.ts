@@ -22,6 +22,7 @@ import {
   calculateCanonicalApproval,
   canonicalStoredDecimal,
 } from "@/lib/franchisee-billing-approval";
+import type { RoyaltyTier } from "@/lib/royalty";
 import { ROYALTY_SEED_CONFIGS } from "@/scripts/seed-royalty-config";
 
 const { requireAdminOrSuperUser } = vi.hoisted(() => ({
@@ -101,6 +102,8 @@ interface TurnoverFixture {
   readonly accountKey: string;
   readonly receipts: number;
   readonly discountRatePoints?: number;
+  /** Pins the scale January was actually billed under, when it has since changed. */
+  readonly tiers?: readonly RoyaltyTier[];
 }
 
 const TURNOVER_FIXTURES: readonly TurnoverFixture[] = [
@@ -120,7 +123,9 @@ const TURNOVER_FIXTURES: readonly TurnoverFixture[] = [
   { brandCode: "KING_KONG", configLabel: "קינג קונג חורב", accountKey: "קינג קונג חורב", receipts: 1_565_627.65 },
   { brandCode: "KING_KONG", configLabel: "קינג קונג כרמיאל", accountKey: "קינג כרמיאל", receipts: 1_183_354.3 },
   { brandCode: "KING_KONG", configLabel: "קינג קונג נהריה", accountKey: "קינג ג", receipts: 1_445_832 },
-  { brandCode: "KING_KONG", configLabel: "קינג קונג עפולה", accountKey: "קינג עפולה", receipts: 1_124_856.89 },
+  // Afula moved to a marginal scale after January; the client's workbook for
+  // that month was billed flat 4.5%, so parity is checked against that scale.
+  { brandCode: "KING_KONG", configLabel: "קינג קונג עפולה", accountKey: "קינג עפולה", receipts: 1_124_856.89, tiers: [{ upTo: null, rate: 4.5 }] },
   { brandCode: "KING_KONG", configLabel: "קינג קונג ביג קריות", accountKey: "קינג ב", receipts: 1_784_683 },
   { brandCode: "KING_KONG", configLabel: "קינג קונג רעננה", accountKey: "ק.ק מסעדה", receipts: 1_737_658.75 },
 ] as const;
@@ -151,7 +156,7 @@ function calculatedBillingRow(
     subtotal: "0",
     total: "0",
   }, {
-    tiers: config.royaltyTiers,
+    tiers: fixture.tiers ?? config.royaltyTiers,
     tierBasis: "gross",
     marketingRate: Number(config.marketingFeeRate),
     vat: 0.18,

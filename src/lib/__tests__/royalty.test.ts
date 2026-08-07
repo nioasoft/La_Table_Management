@@ -433,3 +433,122 @@ describe("calculateRoyalty contract", () => {
     expect(result.total).toBe(result.subtotal * (1 + VAT));
   });
 });
+
+const KING_AFULA = [
+  { upTo: 600_000, rate: 0 },
+  { upTo: 800_000, rate: 16, marginal: true },
+  { upTo: null, rate: 4.5, marginal: true },
+] as const;
+const KING_AFULA_FLAT_TOP = [
+  { upTo: 600_000, rate: 0 },
+  { upTo: 800_000, rate: 16, marginal: true },
+  { upTo: null, rate: 4.5 },
+] as const;
+
+function marginalResult(
+  receipts: number,
+  tiers: readonly RoyaltyTier[] = KING_AFULA,
+  overrides: Partial<Parameters<typeof calculateRoyalty>[0]> = {},
+) {
+  return calculateRoyalty({
+    receipts,
+    tips: 0,
+    includeTips: false,
+    tiers,
+    tierBasis: "gross",
+    marketingRate: 1,
+    discountRatePoints: 0,
+    vat: VAT,
+    ...overrides,
+  });
+}
+
+describe("marginal royalty tiers", () => {
+  it("charges nothing below the first band", () => {
+    const result = marginalResult(600_000);
+
+    expect(result.tierRate).toBe(0);
+    expect(result.royalty).toBe(0);
+    expect(result.marketing).toBeCloseTo(5_084.745762711865, 10);
+  });
+
+  it("charges a marginal band on the difference only", () => {
+    const result = marginalResult(700_000);
+
+    // 16% of the 100,000 above the 600,000 threshold, net of VAT.
+    expect(result.royalty).toBeCloseTo(13_559.322033898306, 10);
+    expect(result.tierRate).toBeCloseTo(2.285714285714286, 10);
+    expect(result.netBase).toBeCloseTo(593_220.3389830509, 10);
+  });
+
+  it("charges the full band at its inclusive upper bound", () => {
+    const result = marginalResult(800_000);
+
+    expect(result.royalty).toBeCloseTo(27_118.644067796612, 10);
+    expect(result.tierRate).toBeCloseTo(4, 10);
+  });
+
+  it("stacks an open-ended marginal band on top of the ones below it", () => {
+    const result = marginalResult(900_000);
+
+    expect(result.royalty).toBeCloseTo(30_932.20338983051, 10);
+    expect(result.tierRate).toBeCloseTo(4.055555555555556, 10);
+  });
+
+  it("charges a flat tier above a marginal band on the whole base", () => {
+    const result = marginalResult(900_000, KING_AFULA_FLAT_TOP);
+
+    expect(result.tierRate).toBe(4.5);
+    expect(result.royalty).toBeCloseTo(34_322.03389830509, 10);
+  });
+
+  it("keeps the discount as points off the blended rate", () => {
+    const result = marginalResult(700_000, KING_AFULA, {
+      discountRatePoints: 1,
+    });
+
+    expect(result.effectiveRate).toBeCloseTo(1.285714285714286, 10);
+    expect(result.royaltyFull).toBeCloseTo(13_559.322033898306, 10);
+    // A single point off is exactly 1% of the net base, marginal or not.
+    expect(result.discountValue).toBeCloseTo(5_932.203389830509, 10);
+  });
+
+  it("leaves no floating residue when there is no discount", () => {
+    // An undiscounted royalty must equal royaltyFull exactly, or the approval
+    // consistency gate rejects the row on a -1e-12 drift.
+    expect(marginalResult(700_000).discountValue).toBe(0);
+  });
+
+  it("selects on gross but charges band edges on net", () => {
+    const result = marginalResult(
+      708_000,
+      [
+        { upTo: 500_000, rate: 0 },
+        { upTo: 700_000, rate: 16, marginal: true },
+        { upTo: null, rate: 4 },
+      ],
+      { tierBasis: "net" },
+    );
+
+    expect(result.netBase).toBeCloseTo(600_000, 8);
+    expect(result.royalty).toBeCloseTo(16_000, 8);
+    expect(result.tierRate).toBeCloseTo(2.666666666666667, 10);
+  });
+
+  it("treats the flag on the first tier as a no-op", () => {
+    const result = marginalResult(300_000, [
+      { upTo: 600_000, rate: 5, marginal: true },
+      { upTo: null, rate: 6 },
+    ]);
+
+    expect(result.tierRate).toBeCloseTo(5, 10);
+    expect(result.royalty).toBeCloseTo(12_711.864406779661, 10);
+  });
+
+  it("falls back to the flat rate on a zero base", () => {
+    const result = marginalResult(0);
+
+    expect(result.tierRate).toBe(0);
+    expect(result.royalty).toBe(0);
+  });
+});

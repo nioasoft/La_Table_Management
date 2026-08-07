@@ -81,7 +81,11 @@ function royaltyTiers(value: unknown): readonly RoyaltyTier[] | null {
     if (rate === null || rate < 0 || (tier.upTo !== null && upTo === null)) {
       return null;
     }
-    return { upTo, rate };
+    // Strict `=== true` so junk JSON degrades to the flat default rather than
+    // silently switching a scale to marginal.
+    const marginal =
+      "marginal" in tier && tier.marginal === true ? { marginal: true } : {};
+    return { upTo, rate, ...marginal };
   });
   return parsed.every((tier): tier is RoyaltyTier => tier !== null)
     ? parsed
@@ -109,7 +113,9 @@ function sameTiers(left: unknown, right: unknown): boolean {
     leftTiers.every(
       (tier, index) =>
         tier.upTo === rightTiers[index]?.upTo &&
-        tier.rate === rightTiers[index]?.rate,
+        tier.rate === rightTiers[index]?.rate &&
+        // `?? false` — an absent key and an explicit false are the same scale.
+        (tier.marginal ?? false) === (rightTiers[index]?.marginal ?? false),
     )
   );
 }

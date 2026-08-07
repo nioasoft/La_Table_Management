@@ -242,7 +242,7 @@ function configurationAnomalies(
           "unconfirmed_tiers",
           row,
           rowIndex,
-          `סולם התמלוגים של "${franchisee.name}" חסר או טרם אושר`,
+          `מדרגות התמלוגים של "${franchisee.name}" חסרות או טרם אושרו`,
           franchisee.id,
         )]
       : []),
@@ -395,7 +395,11 @@ function sameTiers(
     left.length === right.length &&
     left.every(
       (tier, index) =>
-        tier.upTo === right[index]?.upTo && tier.rate === right[index]?.rate,
+        tier.upTo === right[index]?.upTo &&
+        tier.rate === right[index]?.rate &&
+        // `?? false` — an absent key and an explicit false are the same scale,
+        // otherwise every upload would report a phantom tiersSnapshot difference.
+        (tier.marginal ?? false) === (right[index]?.marginal ?? false),
     )
   );
 }

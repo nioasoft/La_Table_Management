@@ -1,8 +1,9 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { AlertCircle, Check, Loader2, Pencil, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { FranchiseeRoyaltyTierEditor } from "@/components/franchisee-royalty-tier-editor";
 import { ReportLayout } from "@/components/reports/report-layout";
@@ -16,6 +17,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -76,9 +86,11 @@ async function confirmRow(row: RoyaltyBoardRow): Promise<void> {
     }),
   });
   if (!response.ok) {
-    throw new Error(`אישור הסולם של "${row.name}" נכשל. נסי שוב.`);
+    throw new Error(`אישור המדרגות של "${row.name}" נכשל. נסי שוב.`);
   }
 }
+
+const ALL_BRANDS = "__all__";
 
 function StatusCell({ row }: { readonly row: RoyaltyBoardRow }) {
   const blocked = blockingReason(row);
@@ -115,10 +127,10 @@ function RoyaltyEditorDialog({
       >
         <DialogHeader>
           <DialogTitle>
-            סולם התמלוגים של <bdi>{row?.name}</bdi>
+            מדרגות התמלוגים של <bdi>{row?.name}</bdi>
           </DialogTitle>
           <DialogDescription>
-            שינוי הסולם מבטל את האישור עד שתאשרי אותו מחדש.
+            שמירה כאן גם מאשרת את המדרגות.
           </DialogDescription>
         </DialogHeader>
         {row && (
@@ -130,6 +142,7 @@ function RoyaltyEditorDialog({
               royaltyTierBasis: row.royaltyTierBasis ?? "gross",
               royaltyTiersConfirmed: row.royaltyTiersConfirmed,
               royaltyIncludeTips: row.royaltyIncludeTips,
+              tipsAbsenceAcknowledged: row.tipsAbsenceAcknowledged ?? false,
               hashavshevetAccountKey: row.hashavshevetAccountKey ?? null,
               marketingFeeRate: row.marketingFeeRate,
             }}
@@ -145,23 +158,41 @@ function RoyaltyEditorDialog({
 export default function FranchiseeRoyaltyTiersPage() {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<RoyaltyBoardRow | null>(null);
+  const [search, setSearch] = useState("");
+  const [brand, setBrand] = useState(ALL_BRANDS);
   const query = useQuery({ queryKey: QUERY_KEY, queryFn: loadRows });
   const confirm = useMutation({
     mutationFn: confirmRow,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 
-  const rows = query.data ?? [];
+  const rows = useMemo(() => query.data ?? [], [query.data]);
   const confirmedCount = rows.filter((row) => row.royaltyTiersConfirmed).length;
+  const brands = useMemo(
+    () =>
+      [...new Set(rows.map((row) => row.brand?.nameHe).filter(Boolean))].sort(
+        (first, second) => first!.localeCompare(second!, "he"),
+      ) as string[],
+    [rows],
+  );
+  // Filtering client-side over the rows already loaded — the board holds ~20.
+  const visibleRows = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return rows.filter(
+      (row) =>
+        (brand === ALL_BRANDS || row.brand?.nameHe === brand) &&
+        (term === "" || row.name.toLowerCase().includes(term)),
+    );
+  }, [rows, search, brand]);
 
   return (
     <ReportLayout
-      title="אישור סולמות תמלוגים"
-      description="עברי על הסולם של כל זכיין ואשרי אותו. עד לאישור, שורות החיוב של אותו זכיין נחסמות בקליטת קובץ טאבית."
+      title="אישור מדרגות תמלוגים"
+      description="עברי על המדרגות של כל זכיין ואשרי אותן. עד לאישור, שורות החיוב של אותו זכיין נחסמות בקליטת קובץ טאבית."
       breadcrumbs={[
         { label: "ניהול", href: "/admin" },
         { label: "זכיינים", href: "/admin/franchisees" },
-        { label: "אישור סולמות" },
+        { label: "אישור מדרגות" },
       ]}
       isLoading={query.isFetching}
       onRefresh={() => void query.refetch()}
@@ -215,19 +246,53 @@ export default function FranchiseeRoyaltyTiersPage() {
         </Alert>
       )}
 
-      {!query.isLoading && !query.isError && rows.length === 0 && (
-        <div className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
-          לא נמצאו זכיינים פעילים לחיוב.
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-56 flex-1 space-y-2">
+            <Label htmlFor="royalty-board-search">חיפוש זכיין</Label>
+            <Input
+              id="royalty-board-search"
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="שם הזכיין"
+              dir="auto"
+            />
+          </div>
+          <div className="min-w-48 space-y-2">
+            <Label htmlFor="royalty-board-brand">מותג</Label>
+            <Select dir="rtl" value={brand} onValueChange={setBrand}>
+              <SelectTrigger id="royalty-board-brand" dir="rtl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent dir="rtl">
+                <SelectItem value={ALL_BRANDS}>כל המותגים</SelectItem>
+                {brands.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       )}
 
-      {rows.length > 0 && (
+      {!query.isLoading && !query.isError && visibleRows.length === 0 && (
+        <div className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">
+          {rows.length === 0
+            ? "לא נמצאו זכיינים פעילים לחיוב."
+            : "אין זכיינים שמתאימים לחיפוש."}
+        </div>
+      )}
+
+      {visibleRows.length > 0 && (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>מותג</TableHead>
               <TableHead>זכיין</TableHead>
-              <TableHead>סולם תמלוגים</TableHead>
+              <TableHead>מדרגות תמלוגים</TableHead>
               <TableHead>בסיס</TableHead>
               <TableHead>שיווק</TableHead>
               <TableHead>טיפים בבסיס</TableHead>
@@ -236,7 +301,7 @@ export default function FranchiseeRoyaltyTiersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const blocked = blockingReason(row);
               const isPending =
                 confirm.isPending && confirm.variables?.id === row.id;
@@ -246,7 +311,12 @@ export default function FranchiseeRoyaltyTiersPage() {
                     {row.brand?.nameHe ?? "—"}
                   </TableCell>
                   <TableCell className="font-medium">
-                    <bdi>{row.name}</bdi>
+                    <Link
+                      href={`/admin/franchisees/${row.id}`}
+                      className="underline-offset-4 hover:underline"
+                    >
+                      <bdi>{row.name}</bdi>
+                    </Link>
                   </TableCell>
                   <TableCell>
                     {describeRoyaltyTiers(row) ?? (
@@ -282,7 +352,7 @@ export default function FranchiseeRoyaltyTiersPage() {
                           ) : (
                             <ShieldCheck aria-hidden="true" />
                           )}
-                          אשרי סולם
+                          אשרי מדרגות
                         </Button>
                       )}
                       <Button
@@ -292,7 +362,7 @@ export default function FranchiseeRoyaltyTiersPage() {
                         onClick={() => setEditing(row)}
                       >
                         <Pencil aria-hidden="true" />
-                        {blocked ? "הגדירי סולם" : "ערכי"}
+                        {blocked ? "הגדירי מדרגות" : "ערכי"}
                       </Button>
                     </div>
                   </TableCell>

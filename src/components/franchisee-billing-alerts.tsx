@@ -38,7 +38,7 @@ const fieldLabels: Readonly<Record<string, string>> = {
   marketing: "שיווק",
   subtotal: "סה״כ לפני מע״מ",
   total: "לתשלום כולל מע״מ",
-  tiersSnapshot: "סולם מדרגות",
+  tiersSnapshot: "מדרגות תמלוגים",
   tierBasisSnapshot: "בסיס המדרגות",
   marketingRateSnapshot: "אחוז שיווק",
   vatRateSnapshot: "שיעור מע״מ",

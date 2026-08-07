@@ -362,7 +362,7 @@ export function FranchiseeBillingScreen() {
           <Button type="button" variant="outline" asChild>
             <Link href="/admin/franchisees/royalty-tiers">
               <ShieldCheck aria-hidden="true" />
-              אישור סולמות
+              אישור מדרגות
             </Link>
           </Button>
           <Button

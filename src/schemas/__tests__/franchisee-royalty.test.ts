@@ -53,6 +53,11 @@ const KING_RAANANA = [
   { upTo: 700_000, rate: 0 },
   { upTo: null, rate: 5 },
 ] as const;
+const KING_AFULA = [
+  { upTo: 600_000, rate: 0 },
+  { upTo: 800_000, rate: 16, marginal: true },
+  { upTo: null, rate: 4.5, marginal: true },
+] as const;
 
 const KNOWN_ROYALTY_TIER_SCALES = [
   { name: "FIXED_ZERO", tiers: FIXED_ZERO },
@@ -66,6 +71,7 @@ const KNOWN_ROYALTY_TIER_SCALES = [
   { name: "KING_CARMIEL", tiers: KING_CARMIEL },
   { name: "KING_NAHARIYA", tiers: KING_NAHARIYA },
   { name: "KING_RAANANA", tiers: KING_RAANANA },
+  { name: "KING_AFULA", tiers: KING_AFULA },
 ] as const;
 
 function createValidPayload() {
@@ -94,6 +100,7 @@ describe("franchisee royalty editor round trip", () => {
       const expected = {
         ...initialSettings,
         marketingFeeRate: 1.25,
+        tipsAbsenceAcknowledged: false,
       };
 
       const draft = createDraft(initialSettings);

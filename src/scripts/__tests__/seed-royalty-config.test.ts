@@ -62,7 +62,11 @@ const EXPECTED_TIERS: Record<string, RoyaltyTier[] | null> = {
   "קינג קונג חדרה": [{ upTo: null, rate: 3 }],
   "קינג קונג חורב": [{ upTo: null, rate: 3 }],
   "קינג קונג ביג קריות": [{ upTo: null, rate: 3 }],
-  "קינג קונג עפולה": [{ upTo: null, rate: 4.5 }],
+  "קינג קונג עפולה": [
+    { upTo: 600_000, rate: 0 },
+    { upTo: 800_000, rate: 16, marginal: true },
+    { upTo: null, rate: 4.5, marginal: true },
+  ],
   "קינג קונג מוצקין": null,
   "נתנזון עזריאלי חיפה": [{ upTo: null, rate: 0 }],
 };
@@ -122,7 +126,7 @@ describe("royalty seed configuration", () => {
       ROYALTY_SEED_CONFIGS.filter(
         (config) => config.royaltyTiers && config.royaltyTiers.length > 1,
       ),
-    ).toHaveLength(12);
+    ).toHaveLength(13);
 
     const motzkin = ROYALTY_SEED_CONFIGS.find((config) =>
       config.label.includes("מוצקין"),
@@ -135,7 +139,11 @@ describe("royalty seed configuration", () => {
     );
 
     expect(motzkin?.royaltyTiers).toBeNull();
-    expect(afula?.royaltyTiers).toEqual([{ upTo: null, rate: 4.5 }]);
+    expect(afula?.royaltyTiers).toEqual([
+      { upTo: 600_000, rate: 0 },
+      { upTo: 800_000, rate: 16, marginal: true },
+      { upTo: null, rate: 4.5, marginal: true },
+    ]);
     expect(natanzon).toMatchObject({
       label: "נתנזון עזריאלי חיפה",
       marketingFeeRate: "0.00",
@@ -179,7 +187,10 @@ describe("royalty seed configuration", () => {
       ROYALTY_SEED_CONFIGS.map((config) => [
         config.label,
         config.royaltyTiers
-          ?.map((tier) => `${tier.upTo ?? "∞"}:${tier.rate}`)
+          ?.map(
+            (tier) =>
+              `${tier.upTo ?? "∞"}:${tier.rate}${tier.marginal ? "*" : ""}`,
+          )
           .join("|") ?? null,
       ]),
     );
@@ -203,7 +214,7 @@ describe("royalty seed configuration", () => {
       "קינג קונג חדרה": "∞:3",
       "קינג קונג חורב": "∞:3",
       "קינג קונג ביג קריות": "∞:3",
-      "קינג קונג עפולה": "∞:4.5",
+      "קינג קונג עפולה": "600000:0|800000:16*|∞:4.5*",
       "קינג קונג מוצקין": null,
       "נתנזון עזריאלי חיפה": "∞:0",
     });
@@ -339,6 +350,7 @@ describe("buildSeedPlan", () => {
       royaltyTiers:
         row.royaltyTiers?.map((tier) => ({
           rate: tier.rate,
+          ...(tier.marginal ? { marginal: true } : {}),
           upTo: tier.upTo,
         })) ?? null,
     }));

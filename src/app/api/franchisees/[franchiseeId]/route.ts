@@ -74,6 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           royaltyTierBasis: body.royaltyTierBasis,
           royaltyTiersConfirmed: body.royaltyTiersConfirmed,
           royaltyIncludeTips: body.royaltyIncludeTips,
+          tipsAbsenceAcknowledged: body.tipsAbsenceAcknowledged,
           hashavshevetAccountKey: body.hashavshevetAccountKey,
           marketingFeeRate: body.marketingFeeRate,
         })
@@ -185,6 +186,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.royaltyTierBasis = royaltyPatch.royaltyTierBasis;
       updateData.royaltyTiersConfirmed = royaltyPatch.royaltyTiersConfirmed;
       updateData.royaltyIncludeTips = royaltyPatch.royaltyIncludeTips;
+      if (royaltyPatch.tipsAbsenceAcknowledged !== undefined) {
+        updateData.tipsAbsenceAcknowledged =
+          royaltyPatch.tipsAbsenceAcknowledged;
+      }
       updateData.hashavshevetAccountKey =
         royaltyPatch.hashavshevetAccountKey;
       updateData.marketingFeeRate =

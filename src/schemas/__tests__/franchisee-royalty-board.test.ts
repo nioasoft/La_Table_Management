@@ -44,7 +44,7 @@ describe("blockingReason", () => {
 
   it("blocks a missing scale", () => {
     expect(blockingReason(row({ royaltyTiers: [] }))).toBe(
-      "לא הוגדר סולם תמלוגים",
+      "לא הוגדרו מדרגות תמלוגים",
     );
   });
 

@@ -7,6 +7,10 @@ import { z } from "zod";
 const royaltyBoardTierSchema = z.object({
   upTo: z.number().nullable(),
   rate: z.number(),
+  // Required: z.object strips unknown keys, and the board echoes these tiers
+  // straight back through the PATCH when confirming — omitting this would
+  // silently rewrite a marginal scale as a flat one.
+  marginal: z.boolean().optional(),
 });
 
 export const royaltyBoardRowSchema = z
@@ -18,6 +22,7 @@ export const royaltyBoardRowSchema = z
     royaltyTiersConfirmed: z.boolean(),
     royaltyTiersNote: z.string().nullable().optional(),
     royaltyIncludeTips: z.boolean(),
+    tipsAbsenceAcknowledged: z.boolean().nullable().optional(),
     marketingFeeRate: z.string().nullable(),
     hashavshevetAccountKey: z.string().nullable().optional(),
     brand: z
@@ -35,21 +40,25 @@ export type RoyaltyBoardRow = z.infer<typeof royaltyBoardRowSchema>;
 
 /** "0% עד 700,000 ₪ · 5% מעבר לכך" — the whole scale in one readable line. */
 export function describeRoyaltyTiers(row: RoyaltyBoardRow): string | null {
-  if (!row.royaltyTiers?.length) return null;
+  const tiers = row.royaltyTiers;
+  if (!tiers?.length) return null;
   // Plain grouping, not currency style: `style: "currency"` injects RLM marks.
   const amount = new Intl.NumberFormat("he-IL", { maximumFractionDigits: 0 });
-  return row.royaltyTiers
-    .map((tier) =>
-      tier.upTo === null
-        ? `${tier.rate}% מעבר לכך`
-        : `${tier.rate}% עד ${amount.format(tier.upTo)} ₪`,
-    )
+  // A lone open-ended tier has nothing to be "beyond", so say what it is.
+  if (tiers.length === 1) return `${tiers[0]!.rate}% מכל סכום`;
+  return tiers
+    .map((tier) => {
+      const scope = tier.marginal ? " על ההפרש" : "";
+      return tier.upTo === null
+        ? `${tier.rate}%${scope} מעבר לכך`
+        : `${tier.rate}%${scope} עד ${amount.format(tier.upTo)} ₪`;
+    })
     .join(" · ");
 }
 
 /** Why a scale cannot be confirmed yet, or null when it can. */
 export function blockingReason(row: RoyaltyBoardRow): string | null {
-  if (!row.royaltyTiers?.length) return "לא הוגדר סולם תמלוגים";
+  if (!row.royaltyTiers?.length) return "לא הוגדרו מדרגות תמלוגים";
   if (row.marketingFeeRate === null) return "לא הוגדר אחוז שיווק";
   return null;
 }

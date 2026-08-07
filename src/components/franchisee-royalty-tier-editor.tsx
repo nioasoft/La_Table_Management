@@ -49,6 +49,7 @@ interface InitialRoyaltySettings {
   royaltyTierBasis: RoyaltyTierBasis;
   royaltyTiersConfirmed: boolean;
   royaltyIncludeTips: boolean;
+  tipsAbsenceAcknowledged?: boolean;
   hashavshevetAccountKey: string | null;
   marketingFeeRate: string | null;
 }
@@ -64,6 +65,7 @@ interface FranchiseeRoyaltyTierEditorProps {
 interface DraftTier {
   upTo: string | null;
   rate: string;
+  marginal: boolean;
 }
 
 interface RoyaltyDraft {
@@ -71,6 +73,7 @@ interface RoyaltyDraft {
   basis: RoyaltyTierBasis;
   confirmed: boolean;
   includeTips: boolean;
+  tipsAbsent: boolean;
   accountKey: string;
   marketingRate: string;
 }
@@ -81,14 +84,16 @@ export function createDraft(settings: InitialRoyaltySettings): RoyaltyDraft {
       ? settings.royaltyTiers.map((tier) => ({
           upTo: tier.upTo === null ? null : String(tier.upTo),
           rate: String(tier.rate),
+          marginal: tier.marginal === true,
         }))
-      : [{ upTo: null, rate: "" }];
+      : [{ upTo: null, rate: "", marginal: false }];
 
   return {
     tiers,
     basis: settings.royaltyTierBasis,
     confirmed: settings.royaltyTiersConfirmed,
     includeTips: settings.royaltyIncludeTips,
+    tipsAbsent: settings.tipsAbsenceAcknowledged === true,
     accountKey: settings.hashavshevetAccountKey ?? "",
     marketingRate: settings.marketingFeeRate ?? "",
   };
@@ -106,10 +111,13 @@ export function createFranchiseeRoyaltyPatch(
     royaltyTiers: draft.tiers.map((tier) => ({
       upTo: tier.upTo === null ? null : parseNumber(tier.upTo),
       rate: parseNumber(tier.rate),
+      // Emit the key only when set, so legacy flat scales round-trip unchanged.
+      ...(tier.marginal ? { marginal: true } : {}),
     })),
     royaltyTierBasis: draft.basis,
     royaltyTiersConfirmed: confirmed,
     royaltyIncludeTips: draft.includeTips,
+    tipsAbsenceAcknowledged: draft.tipsAbsent,
     hashavshevetAccountKey:
       draft.accountKey.trim() === "" ? null : draft.accountKey.trim(),
     marketingFeeRate: parseNumber(draft.marketingRate),
@@ -225,7 +233,7 @@ export function FranchiseeRoyaltyTierEditor({
   const updateTier = (
     index: number,
     field: keyof DraftTier,
-    value: string | null,
+    value: string | boolean | null,
   ) => {
     updateDraft((current) => ({
       ...current,
@@ -242,10 +250,10 @@ export function FranchiseeRoyaltyTierEditor({
         finalTier?.upTo === null
           ? [
               ...current.tiers.slice(0, -1),
-              { upTo: "", rate: "" },
+              { upTo: "", rate: "", marginal: false },
               finalTier,
             ]
-          : [...current.tiers, { upTo: null, rate: "" }];
+          : [...current.tiers, { upTo: null, rate: "", marginal: false }];
 
       return { ...current, tiers };
     });
@@ -307,13 +315,14 @@ export function FranchiseeRoyaltyTierEditor({
         royaltyTierBasis: validation.data.royaltyTierBasis,
         royaltyTiersConfirmed: validation.data.royaltyTiersConfirmed,
         royaltyIncludeTips: validation.data.royaltyIncludeTips,
+        tipsAbsenceAcknowledged: validation.data.tipsAbsenceAcknowledged,
         hashavshevetAccountKey: validation.data.hashavshevetAccountKey,
         marketingFeeRate: validation.data.marketingFeeRate.toString(),
       }),
     );
     onSaved(validation.data);
     const message = confirmed
-      ? "סולם התמלוגים נשמר ואושר"
+      ? "מדרגות התמלוגים נשמרו ואושרו"
       : "הגדרות התמלוגים נשמרו";
     setSuccessMessage(message);
     setIsSaving(false);
@@ -344,7 +353,7 @@ export function FranchiseeRoyaltyTierEditor({
               ) : (
                 <CheckCircle2 className="me-2 h-4 w-4" />
               )}
-              אשר את הסולם
+              אשר את המדרגות
             </Button>
           </AlertDescription>
         </Alert>
@@ -352,7 +361,7 @@ export function FranchiseeRoyaltyTierEditor({
 
       {isEmpty && (
         <Alert>
-          <AlertTitle>עדיין לא הוגדר סולם תמלוגים</AlertTitle>
+          <AlertTitle>עדיין לא הוגדרו מדרגות תמלוגים</AlertTitle>
           <AlertDescription>
             הוסיפי את הרפים והאחוזים. המדרגה האחרונה ללא הגבלה כבר נוספה.
           </AlertDescription>
@@ -414,6 +423,7 @@ export function FranchiseeRoyaltyTierEditor({
                   <TableHead>מ־</TableHead>
                   <TableHead>עד</TableHead>
                   <TableHead>אחוז</TableHead>
+                  <TableHead>חישוב</TableHead>
                   <TableHead>חיווי בבסיס השני</TableHead>
                   <TableHead className="w-12">
                     <span className="sr-only">פעולות</span>
@@ -443,11 +453,13 @@ export function FranchiseeRoyaltyTierEditor({
                           "מ־0"
                         ) : (
                           <>
-                            מעל{" "}
+                            מ־
                             <bdi>
                               {previousUpTo
                                 ? numberFormatter.format(
-                                    parseNumber(previousUpTo),
+                                    // The previous רף is inclusive, so this
+                                    // tier really starts one agora above it.
+                                    parseNumber(previousUpTo) + 0.01,
                                   )
                                 : "—"}
                             </bdi>
@@ -518,9 +530,37 @@ export function FranchiseeRoyaltyTierEditor({
                           </span>
                         </div>
                       </TableCell>
+                      <TableCell className="min-w-56">
+                        {index === 0 ? (
+                          <span className="text-sm text-muted-foreground">
+                            על כל המחזור
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`royalty-tier-marginal-${index}`}
+                              checked={tier.marginal}
+                              onCheckedChange={(checked) =>
+                                updateTier(index, "marginal", checked)
+                              }
+                              disabled={isSaving}
+                            />
+                            <Label
+                              htmlFor={`royalty-tier-marginal-${index}`}
+                              className="text-sm font-normal"
+                            >
+                              {tier.marginal
+                                ? "רק על ההפרש"
+                                : "על כל המחזור"}
+                            </Label>
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="min-w-72 text-sm text-muted-foreground">
                         {hint ? (
                           <bdi>{hint}</bdi>
+                        ) : tier.marginal ? (
+                          "המדרגה חלה רק על ההפרש מהרף הקודם"
                         ) : (
                           "המדרגה חלה על כל מחזור שמעל הרף הקודם"
                         )}
@@ -596,31 +636,55 @@ export function FranchiseeRoyaltyTierEditor({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 rounded-md border p-4">
-            <Switch
-              id="royalty-include-tips"
-              checked={draft.includeTips}
-              onCheckedChange={(checked) =>
-                updateDraft((current) => ({
-                  ...current,
-                  includeTips: checked,
-                }))
-              }
-              disabled={isSaving}
-            />
-            <Label htmlFor="royalty-include-tips">מחויב כולל טיפים</Label>
+          <div className="space-y-3 rounded-md border p-4">
+            <div className="flex items-center gap-3">
+              <Switch
+                id="royalty-include-tips"
+                checked={draft.includeTips}
+                onCheckedChange={(checked) =>
+                  updateDraft((current) => ({
+                    ...current,
+                    includeTips: checked,
+                  }))
+                }
+                disabled={isSaving}
+              />
+              <Label htmlFor="royalty-include-tips">מחויב כולל טיפים</Label>
+            </div>
+            {draft.includeTips && (
+              <div className="flex items-center gap-3 border-t pt-3">
+                <Switch
+                  id="royalty-tips-absent"
+                  checked={draft.tipsAbsent}
+                  onCheckedChange={(checked) =>
+                    updateDraft((current) => ({
+                      ...current,
+                      tipsAbsent: checked,
+                    }))
+                  }
+                  disabled={isSaving}
+                />
+                <Label
+                  htmlFor="royalty-tips-absent"
+                  className="font-normal"
+                >
+                  אין טיפים בסניף הזה — לא להתריע על טיפים נמוכים
+                </Label>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">
-            <Button
-              type="button"
-              onClick={() => save(draft.confirmed)}
-              disabled={isSaving}
-            >
+            {/* ponytail: saving IS the approval. The separate confirm gate only
+                ever existed to fence values seeded from January's Excel, and the
+                warning banner above still covers "approve without editing". */}
+            <Button type="button" onClick={() => save(true)} disabled={isSaving}>
               {isSaving && (
                 <Loader2 className="me-2 h-4 w-4 animate-spin" />
               )}
-              שמירת הגדרות תמלוגים
+              {draft.confirmed
+                ? "שמירת הגדרות תמלוגים"
+                : "שמירה ואישור מדרגות"}
             </Button>
           </div>
         </CardContent>

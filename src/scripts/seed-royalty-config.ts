@@ -217,7 +217,12 @@ export const ROYALTY_SEED_CONFIGS: readonly RoyaltySeedConfig[] = [
     brandCode: "KING_KONG",
     matchNames: ["קינג קונג עפולה", "קינג עפולה"],
     marketingFeeRate: "1.00",
-    royaltyTiers: [{ upTo: null, rate: 4.5 }],
+    // Marginal scale: each band charged on its own slice only.
+    royaltyTiers: [
+      { upTo: 600_000, rate: 0 },
+      { upTo: 800_000, rate: 16, marginal: true },
+      { upTo: null, rate: 4.5, marginal: true },
+    ],
     account: account("קינג עפולה", "קינג עפולה"),
     normalizationNote: null,
   },
@@ -351,7 +356,9 @@ function sameTiers(
     current.length === target.length &&
     current.every(
       (tier, index) =>
-        tier.upTo === target[index].upTo && tier.rate === target[index].rate,
+        tier.upTo === target[index].upTo &&
+        tier.rate === target[index].rate &&
+        (tier.marginal ?? false) === (target[index].marginal ?? false),
     )
   );
 }
@@ -507,13 +514,14 @@ export function buildSeedDeltas(
 }
 
 function formatTiers(tiers: readonly RoyaltyTier[] | null): string {
-  if (tiers === null) return "ללא סולם";
+  if (tiers === null) return "ללא מדרגות";
   return tiers
-    .map((tier) =>
-      tier.upTo === null
-        ? `מעל: ${tier.rate}%`
-        : `עד ${tier.upTo.toLocaleString("he-IL")}: ${tier.rate}%`,
-    )
+    .map((tier) => {
+      const scope = tier.marginal ? " (על ההפרש)" : "";
+      return tier.upTo === null
+        ? `מעל: ${tier.rate}%${scope}`
+        : `עד ${tier.upTo.toLocaleString("he-IL")}: ${tier.rate}%${scope}`;
+    })
     .join(" | ");
 }
 
