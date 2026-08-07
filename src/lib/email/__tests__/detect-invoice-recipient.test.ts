@@ -34,6 +34,32 @@ describe("detectRecipientClientCodeFromText", () => {
     expect(detectRecipientClientCodeFromText(text)).toBeNull();
   });
 
+  // Regression: 10bis went self-billed in 07/2026, so franchisees began
+  // issuing ezcount invoices to it as well. With no TENBIS entry the detector
+  // returned null, the invoice kept the channel default (MISHLOCHA) and took
+  // Mishloha's report slot — then Mishloha's real invoice for the same
+  // franchisee+month bounced off the overwrite guard. Verbatim pdf-parse
+  // output from invoice 10062 (ויני רגבה, July 2026).
+  it("detects a 10bis-bound invoice — ויני רגבה 10062", () => {
+    const text =
+      "31/07/2026 :תאריך\nמסמך ממוחשב, חתום דיגיטלית\nלכבוד: תן ביס קו איל בע''מ\n512963489 :.פ/ת.ז.ח\nחשבונית מס מספר 10062";
+    expect(detectRecipientClientCodeFromText(text)).toBe("TENBIS");
+  });
+
+  it("still separates the Mishloha-bound sibling issued the same night — ביג 10057", () => {
+    const tenbis =
+      "לכבוד: תן ביס קו איל בע''מ\n512963489 :.פ/ת.ז.ח\nחשבונית מס מספר 10056";
+    const mishloha =
+      "לכבוד: משלוחה )דיב אנד רד פרוגקטס בעמ(\n514570290 :.פ/ת.ז.ח\nחשבונית מס מספר 10057";
+    expect(detectRecipientClientCodeFromText(tenbis)).toBe("TENBIS");
+    expect(detectRecipientClientCodeFromText(mishloha)).toBe("MISHLOCHA");
+  });
+
+  it("falls back to the recipient ח.פ when the Hebrew name is mangled", () => {
+    const text = "תילטיגיד םותח ,בשחוממ ךמסמ\n:דובכל\n512963489 :.פ/ת.ז.ח";
+    expect(detectRecipientClientCodeFromText(text)).toBe("TENBIS");
+  });
+
   it("handles fully RTL-reversed text (דובכל)", () => {
     const text = "תילטיגיד םותח ,בשחוממ ךמסמ\nירבליד טאאה :דובכל\n516136603";
     expect(detectRecipientClientCodeFromText(text)).toBe("HAAT");

@@ -36,15 +36,36 @@ const RECIPIENT_CLIENT_TOKENS: ReadonlyArray<{
 }> = [
   {
     code: "HAAT",
-    tokens: ["haat delivery", "האאט דילברי", "ירבליד טאאה"],
+    tokens: ["haat delivery", "האאט דילברי", "ירבליד טאאה", "516136603"],
   },
   {
     code: "MISHLOCHA",
-    tokens: ["משלוחה", "החולשמ", "דיב אנד רד", "דר דנא ביד"],
+    tokens: ["משלוחה", "החולשמ", "דיב אנד רד", "דר דנא ביד", "514570290"],
   },
   {
     code: "WOLT",
     tokens: ["wolt enterprises", "וולט אנטרפרייזס"],
+  },
+  {
+    // 10bis went self-billed in period 07/2026, so franchisees started
+    // issuing ezcount invoices to it too — "לכבוד: תן ביס קו איל בע''מ".
+    // Without this entry the detector returned null and every one of those
+    // invoices kept the channel default (MISHLOCHA) and took over Mishloha's
+    // report slot for that franchisee+month, which then bounced Mishloha's
+    // REAL invoice off the overwrite guard. July 2026: #10062 ויני רגבה,
+    // #10056 קינג קונג ביג, #10017 קינג קונג חדרה and #10002 קינג קונג מוצקין
+    // all landed as Mishloha reports carrying 10bis figures, and Mishloha's
+    // own #10064 / #10057 / #10018 / #10003 were rejected behind them.
+    // Kept qualified ("קו איל" / "בע") rather than a bare "תן ביס", per the
+    // rule above; the ח.פ is the RTL-proof anchor.
+    code: "TENBIS",
+    tokens: [
+      "תן ביס קו איל",
+      "ליא וק סיב ןת",
+      "תן ביס בע",
+      "עב סיב ןת",
+      "512963489",
+    ],
   },
 ];
 

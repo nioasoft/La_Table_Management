@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>לה טייבל — בעיות פתוחות והחלטות לשיחה עם רעות · 06/08/2026</title>
+<style>
+  :root {
+    --ink: #17202a;
+    --muted: #5b6b7c;
+    --line: #dfe5ec;
+    --bg: #f6f8fa;
+    --card: #ffffff;
+    --red: #b42318;
+    --red-bg: #fef3f2;
+    --amber: #a15c07;
+    --amber-bg: #fffaeb;
+    --green: #067647;
+    --green-bg: #ecfdf3;
+    --blue: #1849a9;
+    --blue-bg: #eff8ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 80px;
+    background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", "Assistant", "Rubik", system-ui, -apple-system, Arial, sans-serif;
+    font-size: 16px; line-height: 1.65;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+
+  header.doc {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px 28px; margin-bottom: 26px;
+  }
+  header.doc h1 { margin: 0 0 6px; font-size: 27px; letter-spacing: -0.2px; }
+  header.doc .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  .stamp {
+    display: inline-block; margin-top: 14px; padding: 5px 11px; border-radius: 999px;
+    background: var(--blue-bg); color: var(--blue); font-size: 13px; font-weight: 600;
+  }
+
+  .toc {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 28px; margin-bottom: 30px;
+  }
+  .toc h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+  .toc ol { margin: 0; padding-inline-start: 20px; }
+  .toc li { margin: 3px 0; }
+  .toc a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--line); }
+  .toc a:hover { border-color: var(--ink); }
+
+  h2.section {
+    font-size: 21px; margin: 38px 0 4px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--ink);
+  }
+  h2.section .n { color: var(--muted); font-weight: 500; }
+  .section-note { color: var(--muted); font-size: 14.5px; margin: 8px 0 20px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 24px; margin-bottom: 18px;
+  }
+  .card.critical { border-inline-start: 5px solid var(--red); }
+  .card.warn     { border-inline-start: 5px solid var(--amber); }
+  .card.info     { border-inline-start: 5px solid var(--blue); }
+  .card.done     { border-inline-start: 5px solid var(--green); }
+
+  .card h3 { margin: 0 0 4px; font-size: 18px; }
+  .card h3 .tag {
+    font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+    vertical-align: middle; margin-inline-start: 8px; letter-spacing: .3px;
+  }
+  .tag.red   { background: var(--red-bg);   color: var(--red); }
+  .tag.amber { background: var(--amber-bg); color: var(--amber); }
+  .tag.blue  { background: var(--blue-bg);  color: var(--blue); }
+  .tag.green { background: var(--green-bg); color: var(--green); }
+
+  .why { color: var(--muted); font-size: 14.5px; margin: 2px 0 14px; }
+
+  .decision {
+    background: var(--bg); border: 1px dashed var(--line); border-radius: 9px;
+    padding: 13px 16px; margin-top: 15px;
+  }
+  .decision .lbl {
+    font-size: 11.5px; font-weight: 700; letter-spacing: .8px;
+    color: var(--muted); text-transform: uppercase; display: block; margin-bottom: 7px;
+  }
+  .decision ul { margin: 0; padding-inline-start: 20px; }
+  .decision li { margin: 5px 0; }
+  .rec { font-weight: 600; }
+  .rec::after {
+    content: "מומלץ"; font-size: 11px; font-weight: 700; background: var(--green-bg);
+    color: var(--green); padding: 2px 7px; border-radius: 999px; margin-inline-start: 7px;
+  }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 4px; font-size: 14.5px; }
+  th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12.5px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 600; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.bad td { background: var(--red-bg); }
+  tr.good td { background: var(--green-bg); }
+  .tbl-wrap { overflow-x: auto; }
+
+  code {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+    padding: 1px 6px; font-size: 13.5px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    direction: ltr; display: inline-block;
+  }
+  .money { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hl { background: #fff3cd; padding: 0 3px; border-radius: 3px; }
+
+  ul.plain { margin: 10px 0; padding-inline-start: 20px; }
+  ul.plain li { margin: 6px 0; }
+
+  .callout {
+    background: var(--amber-bg); border: 1px solid #f5d59a; border-radius: 9px;
+    padding: 13px 16px; margin: 15px 0; font-size: 14.5px;
+  }
+  .callout strong { color: var(--amber); }
+
+  footer.doc {
+    margin-top: 46px; padding-top: 18px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 13.5px;
+  }
+  @media print {
+    body { background: #fff; padding: 0; font-size: 12pt; }
+    .card, header.doc, .toc { break-inside: avoid; border-radius: 0; }
+    .toc { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <h1>בעיות פתוחות והחלטות — שיחה עם רעות</h1>
+  <p class="sub">מיפוי מה נשבר ביולי 2026, מה כבר תוקן, ומה דורש הכרעה. כל מספר בדף אומת מול בסיס הנתונים.</p>
+  <span class="stamp">נכון ל-05/08/2026 · לקראת שיחת זום 06/08</span>
+</header>
+
+<nav class="toc">
+  <h2>סדר יום מוצע</h2>
+  <ol>
+    <li><a href="#d">חמש החלטות שצריך לקבל</a> — הליבה של השיחה</li>
+    <li><a href="#f">תקלות שממתינות לפעולה</a> — קצר, בעיקר ביצוע</li>
+    <li><a href="#c">שאלת הכיסוי הגדולה</a> — צריך את הידע העסקי של רעות</li>
+    <li><a href="#x">מה כבר תוקן</a> — רקע בלבד, לא לדיון</li>
+  </ol>
+</nav>
+
+<h2 class="section" id="d"><span class="n">1.</span> חמש החלטות שצריך לקבל</h2>
+<p class="section-note">מסודר לפי דחיפות. הראשונה היא היחידה עם כסף שחסר <em>עכשיו</em>.</p>
+
+<!-- D1 -->
+<div class="card critical">
+  <h3>החלטה 1 — מסמך שני לאותה תקופה <span class="tag red">₪114,404 חסרים כרגע</span></h3>
+  <p class="why">המערכת מאחסנת <strong>מסמך אחד בלבד</strong> לכל צירוף של זכיין × חודש × סוג מסמך (זו מגבלה קשיחה ב-DB). כשספק שולח שני מסמכים לאותו חודש — השני פשוט אין לו לאן להיכנס.</p>
+
+  <p><strong>המקרה החד ביותר — קינג קונג מוצקין, וולט, יולי:</strong></p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>מקור</th><th>תקופה</th><th class="num">מכירות</th><th class="num">עמלה</th><th>סטטוס</th></tr></thead>
+    <tbody>
+      <tr class="good"><td>קובץ א׳</td><td>01/07 – 16/07</td><td class="num">97,869</td><td class="num">24,652</td><td>נשמר ✓</td></tr>
+      <tr class="bad"><td>קובץ ב׳</td><td>16/07 – 01/08</td><td class="num">114,404</td><td class="num">22,570</td><td><strong>לא נשמר</strong></td></tr>
+      <tr><td><strong>סה״כ שני הקבצים</strong></td><td>כל יולי</td><td class="num"><strong>212,273</strong></td><td class="num"><strong>47,222</strong></td><td></td></tr>
+      <tr><td>טאביט (ערוץ וולט)</td><td>כל יולי</td><td class="num">212,266</td><td class="num">—</td><td>הצלבה</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="why">הפער בין סכום שני הקבצים לטאביט הוא <span class="hl">₪7</span>. כלומר: הפיצול אמיתי, הקפיצה אמיתית, ואנחנו מחזיקים כרגע <strong>46% מהחודש של מוצקין</strong>.</p>
+
+  <p><strong>אותה מגבלה מפילה גם שתי חשבוניות תן ביס:</strong></p>
+  <ul class="plain">
+    <li>חשבונית <code>400183008</code> — קסטרא, מאי, <span class="money">₪2,241</span>, נוספת לחשבונית מאי הקיימת (₪5,713)</li>
+    <li>חשבונית <code>400183172</code> — ויני עזריאלי, יולי, <span class="money">₪3,658</span>, נוספת לחשבונית יולי הקיימת (₪2,578)</li>
+  </ul>
+
+  <div class="decision">
+    <span class="lbl">ההחלטה</span>
+    <ul>
+      <li class="rec"><strong>לאפשר כמה מסמכים לתקופה, והמערכת תסכום אותם.</strong> פותר את כל המקרים לתמיד ולא תלוי בספקים. עבודת פיתוח: שינוי סכמה + עדכון כל מי שקורא את הנתונים.</li>
+      <li><strong>לבקש מהספקים לחזור למסמך אחד לחודש.</strong> ללא פיתוח, אבל תלוי ברצון טוב של וולט ותן ביס, ולא ימנע הישנות.</li>
+      <li><strong>מיזוג ידני בכל פעם.</strong> ללא פיתוח, אבל עבודה חוזרת כל חודש ונשענת על כך שמישהו יבחין.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- D2 -->
+<div class="card warn">
+  <h3>החלטה 2 — שיוך אוטומטי של זוג עזריאלי בהאט <span class="tag amber">חוזר כל חודש</span></h3>
+  <p class="why">ויני עזריאלי ונתנזון עזריאלי חולקים ישות משפטית וח.פ. אחד. האט שולחת כל חודש שתי חשבוניות שהן <strong>זהות לחלוטין</strong> — אותו מנפיק, אותו ח.פ, אותו «לכבוד», בלי מספר לקוח ובלי שם סניף. ההבדל היחיד הוא הסכום. המערכת חוסמת אותן בכוונה כדי לא לנחש.</p>
+  <p>מה שכן מכריע חד-משמעית — <strong>הסכום בטאביט לאותו חודש</strong>:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>חשבונית</th><th class="num">סכום</th><th class="num">טאביט יולי</th><th>⇒ הזכיין</th></tr></thead>
+    <tbody>
+      <tr><td>#10084</td><td class="num">4,569</td><td class="num">4,569</td><td>ויני עזריאלי חיפה</td></tr>
+      <tr><td>#10083</td><td class="num">4,733</td><td class="num">4,733</td><td>נתנזון עזריאלי חיפה</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="why">התאמה מדויקת לשקל. וזה לא מקרי — אצל שאר הסניפים דוח האט זהה לטאביט כמעט בדיוק (חורב 28,081 מול 28,081; קסטרא 35,322 מול 35,320).</p>
+
+  <div class="decision">
+    <span class="lbl">ההחלטה</span>
+    <ul>
+      <li class="rec"><strong>ידני — להשאיר כמו שזה.</strong> שתי קליקות בחודש, ורעות רואה מה היא מאשרת. מאז אתמול המסך מציג את הסכום, אז ההבחנה ברורה.</li>
+      <li><strong>אוטומטי לפי הצלבת טאביט.</strong> חוסך את ההתערבות, אבל מחייב שדוח טאביט יעלה <em>לפני</em> חשבונית האט — אחרת אין מול מה להצליב, וזה חוזר להיות ידני בלי שאף אחד ישים לב.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- D3 -->
+<div class="card info">
+  <h3>החלטה 3 — הרשאה לאישור מרחוק <span class="tag blue">תפעולי</span></h3>
+  <p class="why">אישור מסמך שנתקע דורש התחברות כמנהל למערכת. המשמעות: אסף לא יכול לסגור דברים כאלה מרחוק — כל פריט תקוע ממתין לרעות, גם כשהתשובה ידועה וברורה.</p>
+  <div class="decision">
+    <span class="lbl">ההחלטה</span>
+    <ul>
+      <li><strong>לאפשר אישור עם מפתח שירות</strong> כדי שאסף יוכל לסגור פריטים תקועים. מרחיב הרשאות על נתוני חיוב.</li>
+      <li class="rec"><strong>להשאיר כמו שזה.</strong> כל שינוי בנתוני חיוב עובר דרך רעות ומתועד על שמה. אם זה מעכב בפועל — לחזור לזה.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- D4 -->
+<div class="card info">
+  <h3>החלטה 4 — זיהוי תקופה לפי שם הקובץ <span class="tag blue">מניעתי</span></h3>
+  <p class="why">כשספק לא כותב את החודש בנושא המייל, המערכת מניחה «החודש הקודם לתאריך המייל». זו הנחה שגויה עבור תן ביס, ששולחים <strong>ביום האחרון של החודש המדווח</strong> — וזה בדיוק מה שהגלגל את דוחות יולי לתוך יוני. הבאג עצמו כבר תוקן, אבל ההנחה הזאת עדיין קיימת כרשת אחרונה.</p>
+  <p class="why">שמות הקבצים של תן ביס מכילים את הטווח במפורש: <code>21657_20260701_20260731.pdf</code>. אפשר להשתמש בזה כמקור אמת לפני הניחוש.</p>
+  <div class="decision">
+    <span class="lbl">ההחלטה</span>
+    <ul>
+      <li class="rec"><strong>להוסיף.</strong> עבודה קטנה, מונעת מחלקה שלמה של תקלות «המסמך נכנס לחודש הלא נכון».</li>
+      <li><strong>לא להוסיף.</strong> הבאג הנוכחי תוקן ויש עליו טסט; זה רק הידוק נוסף.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- D5 -->
+<div class="card critical">
+  <h3>החלטה 5 — סניפים עם מכירות בטאביט שמהם לא מגיע שום מסמך <span class="tag red">השאלה הגדולה ביותר</span></h3>
+  <p class="why">זו לא תקלה שאני יכול להכריע — צריך את הידע העסקי של רעות. טאביט מראה מכירות בערוצים האלה, אבל למערכת לא נכנס אף מסמך מהספק לאותם סניפים ביולי:</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>ספק</th><th>סניף</th><th class="num">מכירות בטאביט (יולי)</th></tr></thead>
+    <tbody>
+      <tr class="bad"><td>וולט</td><td>קינג קונג רעננה</td><td class="num">531,327</td></tr>
+      <tr class="bad"><td>וולט</td><td>מינה טומיי עין שמר</td><td class="num">430,822</td></tr>
+      <tr class="bad"><td>וולט</td><td>מינה טומאיי יהוד</td><td class="num">401,218</td></tr>
+      <tr class="bad"><td>וולט</td><td>מינה שרונה</td><td class="num">313,436</td></tr>
+      <tr class="bad"><td>וולט</td><td>קינג געתון</td><td class="num">239,993</td></tr>
+      <tr class="bad"><td>וולט</td><td>סידיוס</td><td class="num">211,799</td></tr>
+      <tr class="bad"><td>וולט</td><td>אודון ניהול ואחזקות</td><td class="num">206,134</td></tr>
+      <tr><td colspan="2">…ועוד 6 סניפים בוולט, וכן משלוחה / סיבוס / תן ביס בסניפים דומים</td><td class="num">—</td></tr>
+      <tr class="bad"><td>תן ביס</td><td>מינה טומאיי יהוד</td><td class="num">130,881</td></tr>
+      <tr class="bad"><td>משלוחה</td><td>קסטרא טומאיי</td><td class="num">46,114</td></tr>
+      <tr class="bad"><td>סיבוס</td><td>קסטרא טומאיי</td><td class="num">146,605</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="why">בדקתי את תיבת המייל מול Resend: מוולט מתקבלים דוחות עבור <strong>8 סניפים בלבד</strong>, באופן עקבי מאז פברואר. לשאר הסניפים פשוט לא נשלח אלינו כלום.</p>
+  <div class="callout">
+    <strong>שאלה לרעות:</strong> האם הסניפים האלה אמורים להישלח אלינו בכלל? ייתכן שהם תחת הסכם אחר, שהזכיין מטפל בהם ישירות, או שהם פשוט לא מוגדרים אצל הספק לשלוח למייל שלנו. אם התשובה היא «הם אמורים להגיע» — זו התקלה הגדולה ביותר בדף הזה, בהפרש ניכר.
+  </div>
+  <div class="decision">
+    <span class="lbl">מה צריך לצאת מהשיחה</span>
+    <ul>
+      <li>רשימה מוסכמת: איזה סניף אמור לשלוח לנו, מאיזה ספק. זה גם מה שיאפשר לבנות התראה על «סניף שאמור לשלוח ולא שלח».</li>
+    </ul>
+  </div>
+</div>
+
+<h2 class="section" id="f"><span class="n">2.</span> תקלות שממתינות לפעולה</h2>
+<p class="section-note">אלה לא דורשות דיון — רק החלטה מי עושה ומתי.</p>
+
+<div class="card warn">
+  <h3>שתי חשבוניות האט ממתינות לאישור רעות <span class="tag amber">2 דקות עבודה</span></h3>
+  <p class="why">שני סניפי עזריאלי קיבלו את חשבונית העמלה של האט ליולי — חסר להם רק הדוח, והוא ממתין בתור.</p>
+  <ul class="plain">
+    <li>תפריט: <strong>טיפול בלקוחות → תיבת מיילים נכנסים</strong>, סינון ספק = HAAT</li>
+    <li>בשורה של <span class="money">₪4,569</span> (#10084) → לבחור <strong>ויני עזריאלי חיפה</strong></li>
+    <li>בשורה של <span class="money">₪4,733</span> (#10083) → לבחור <strong>נתנזון עזריאלי חיפה</strong></li>
+  </ul>
+</div>
+
+<div class="card warn">
+  <h3>ויני עזריאלי — אין דוח תן ביס ליולי <span class="tag amber">לפנות לתן ביס</span></h3>
+  <p class="why">תן ביס שלחו דוח <strong>אחד בלבד</strong> לזוג עזריאלי: הוא הגיע תחת מזהה המסעדה של ויני (<code>21657</code>) אבל עם התוכן והשם של נתנזון. רעות אישרה שהדוח שייך לנתנזון. מסעדה <code>29896</code>, שהיא המזהה של נתנזון במאי וביוני, לא שלחה כלום ביולי.</p>
+  <p class="why">כלומר: או שתן ביס איחדו את המסעדות, או שהם שלחו קובץ שגוי. בכל מקרה — <strong>לוויני עזריאלי אין דוח תן ביס ליולי</strong> (ביוני: ₪16,866).</p>
+</div>
+
+<div class="card warn">
+  <h3>חשבוניות עמלה חסרות <span class="tag amber">לבדוק אם נשלחו</span></h3>
+  <ul class="plain">
+    <li><strong>תן ביס יולי</strong> — חורב, קסטרא, נתנזון</li>
+    <li><strong>תן ביס יוני</strong> — ויני עזריאלי, נתנזון · <strong>מאי</strong> — נתנזון</li>
+    <li><strong>האט יולי</strong> — ויני רגבה (הדוח כן נכנס, ₪7,275)</li>
+  </ul>
+  <p class="why">חלקן ייתכן שעוד בדרך — אנחנו ב-05/08 וחשבוניות מגיעות לאורך החודש. כדאי לוודא מול הספקים אילו כבר הונפקו.</p>
+</div>
+
+<h2 class="section" id="c"><span class="n">3.</span> מוצקין — שאלה נפרדת לוולט</h2>
+
+<div class="card info">
+  <h3>שלושה שינויים בחשבון של מוצקין בבת אחת</h3>
+  <ul class="plain">
+    <li><strong>מאי:</strong> נקרא «קינג קונג | קריות»</li>
+    <li><strong>יוני:</strong> הייצוא הגיע כקובץ <code>CUSTOM</code> בתוך ZIP, בניגוד לכל השאר</li>
+    <li><strong>יולי:</strong> נקרא «קינג קונג | קריית מוצקין», ופוצל לשני תשלומים</li>
+  </ul>
+  <p class="why">בנוסף, המחזור קפץ מ-<span class="money">₪34,707</span> ביוני ל-<span class="money">₪212,266</span> ביולי (שני המספרים מאושרים מול טאביט) — פי 6. הוא הסניף היחיד שפוצל; כל השאר נשארו חודשיים.</p>
+  <div class="callout">
+    <strong>שאלה לוולט:</strong> מה השתנה בחשבון של מוצקין, והאם הקפיצה אמיתית או שקובץ יוני כיסה תקופה חלקית. אם יוני היה חלקי — ייתכן שחסרות מכירות גם שם.
+  </div>
+</div>
+
+<h2 class="section" id="x"><span class="n">4.</span> מה כבר תוקן — רקע בלבד</h2>
+<p class="section-note">שלושה באגים אותרו ותוקנו השבוע, והנתונים שוחזרו. לא נדרשת החלטה.</p>
+
+<div class="card done">
+  <h3>וולט — שמות קבצים בלי שם הסניף <span class="tag green">תוקן ושוחזר</span></h3>
+  <p class="why">ב-16/07 וולט הפסיקה לכתוב את שם הסניף בעברית בשמות הקבצים. שני דברים נשענו על זה: זיהוי חשבונית העמלה (שנעלמה <strong>בשקט</strong> לכל הסניפים ביולי), וזיהוי הזכיין. בנוסף, פיצול נושא המייל על התו <code>|</code> — שוולט שמה <em>בתוך</em> שם הסניף — שלח את הדוח של קינג קונג חדרה (₪308,406) לקינג קונג חורב.</p>
+  <p class="why"><strong>אחרי התיקון:</strong> 8 זכיינים × 2 מסמכים ליולי, כולם מוצלבים מול טאביט בפער 0.2%–0.9%. חוץ ממוצקין — ראו החלטה 1.</p>
+</div>
+
+<div class="card done">
+  <h3>תן ביס — שינוי גוף המייל <span class="tag green">תוקן ושוחזר</span></h3>
+  <p class="why">ב-31/07 תן ביס החליפו את גוף המייל של הדוח החודשי להודעה על הנפקת חשבונית אוטומטית. המערכת קראה את מילות «חשבונית» וסיווגה את <strong>הדוח</strong> כחשבונית עמלה — ומשם הוא נכנס לחודש הקודם, וחסם את חשבונית העמלה האמיתית. 5 מתוך 6 זכיינים איבדו את דוח יולי.</p>
+  <p class="why"><strong>אחרי התיקון:</strong> דוחות יולי חזרו לרגבה, ביג, חדרה, חורב, קסטרא ונתנזון, וחשבונית יוני של ביג (₪3,242) שוחזרה.</p>
+</div>
+
+<div class="card done">
+  <h3>תיבת המיילים הנכנסים — הוספת עמודת סכום <span class="tag green">תוקן</span></h3>
+  <p class="why">שורות שנתקעו הוצגו בלי סכום ובלי מספר מסמך. בשתי החשבוניות של עזריאלי המשמעות הייתה ששתי השורות נראו <strong>זהות לחלוטין</strong> על המסך — אותו ספק, נושא, סוג, זכיין מוצע וקובץ — ולא הייתה שום דרך להחליט ביניהן. זו הסיבה שהמסך היה לא מובן.</p>
+  <p class="why"><strong>אחרי התיקון:</strong> עמודת «סכום / מס׳ מסמך» בטבלה ובחלונית האישור, ו-32 שורות פתוחות מולאו רטרואקטיבית.</p>
+</div>
+
+<footer class="doc">
+  הופק 05/08/2026 · כל הנתונים אומתו ישירות מול בסיס הנתונים של הייצור ומול תיבת המיילים הנכנסת.
+  סכומים בשקלים, ללא עיגול אלא אם צוין.
+</footer>
+
+</div>
+</body>
+</html>
