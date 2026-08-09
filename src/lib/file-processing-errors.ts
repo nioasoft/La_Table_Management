@@ -137,6 +137,14 @@ export const FILE_PROCESSING_ERROR_CODES = {
     message: 'The uploaded file is empty',
     suggestion: 'Please upload a file that contains data',
   },
+  EXCEL_WEB_PAGE_SHELL: {
+    code: 'EXCEL_WEB_PAGE_SHELL',
+    category: 'file_format' as const,
+    severity: 'error' as const,
+    message: 'הקובץ נשמר מאקסל כ"דף אינטרנט" והנתונים עצמם נשארו מאחור',
+    suggestion:
+      'שמירה כ"דף אינטרנט" מפצלת את הנתונים לתיקיית ‎.files נפרדת שלא נשלחת עם הקובץ. יש להעלות את הקובץ המקורי כפי שהתקבל מהספק, בלי לפתוח ולשמור אותו מחדש באקסל.',
+  },
   FILE_CORRUPTED: {
     code: 'FILE_CORRUPTED',
     category: 'file_format' as const,

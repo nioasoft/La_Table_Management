@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { looksLikeHtmlTableFile } from "../html-table-file";
+import { looksLikeHtmlTableFile, isExcelWebPageShell } from "../html-table-file";
 import { validateFileType } from "../file-validation";
+import { processSupplierFile } from "../file-processor";
 
 const fixturesDir = resolve(
   __dirname,
@@ -36,6 +37,33 @@ describe("looksLikeHtmlTableFile", () => {
     expect(looksLikeHtmlTableFile(Buffer.from("<html><p>hi</p></html>"))).toBe(false);
     expect(looksLikeHtmlTableFile(Buffer.from("a < b, so what"))).toBe(false);
     expect(looksLikeHtmlTableFile(Buffer.from(""))).toBe(false);
+  });
+});
+
+describe("isExcelWebPageShell", () => {
+  // The same Yama report after someone opened it in Excel and re-saved it as a
+  // web page: 20KB of tab-strip markup, every data row left in a .files folder.
+  const shell = readFileSync(resolve(fixturesDir, "excel-web-page-shell.xls"));
+
+  it("recognises the frameset shell", () => {
+    expect(isExcelWebPageShell(shell)).toBe(true);
+  });
+
+  it("does not fire on the real report or on real spreadsheets", () => {
+    expect(
+      isExcelWebPageShell(readFileSync(resolve(fixturesDir, "yama-vekadma-sales-report.xls")))
+    ).toBe(false);
+    expect(
+      isExcelWebPageShell(readFileSync(resolve(fixturesDir, "kill-bill-q2-2026.xlsx")))
+    ).toBe(false);
+  });
+
+  it("fails the upload with the real reason instead of 'file is empty'", async () => {
+    const r = await processSupplierFile(shell, null, false, undefined, "YAMA_VEKADMA");
+
+    expect(r.success).toBe(false);
+    expect(r.errors[0].code).toBe("EXCEL_WEB_PAGE_SHELL");
+    expect(r.errors[0].suggestion).toContain("המקורי");
   });
 });
 

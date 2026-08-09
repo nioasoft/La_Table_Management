@@ -7,6 +7,7 @@ import {
   markUploadLinkAsUsed,
   markUploadLinkAsActive,
   updateUploadedFileProcessingStatus,
+  setUploadedFilePeriod,
   deleteUploadedFile,
 } from "@/data-access/uploadLinks";
 import { getSuppliers, getSupplierById } from "@/data-access/suppliers";
@@ -330,10 +331,18 @@ export async function POST(
       ? forwardedFor.split(",")[0].trim()
       : request.headers.get("x-real-ip") || "unknown";
 
-    // Create uploaded file record
+    // Create uploaded file record.
+    //
+    // franchiseeId is stamped here even though the link already points at the
+    // franchisee: every consumer of uploaded_file — the חסרים dashboard,
+    // reconciliation V2, the revenue/commission reports, the upload-reminder
+    // crons — filters on `franchisee_id IS NOT NULL`. Leaving it null made a
+    // file the franchisee had genuinely sent look like it never arrived
+    // (מיאמוטו, 2026-07-29).
     const uploadedFileRecord = await createUploadedFile({
       id: randomUUID(),
       uploadLinkId: link.id,
+      franchiseeId: link.entityType === "franchisee" ? link.entityId : null,
       fileName: uploadResult.fileName,
       originalFileName: uploadResult.originalFileName,
       fileUrl: uploadResult.url,
@@ -375,6 +384,15 @@ export async function POST(
           // Format dates as YYYY-MM-DD
           const periodStartDate = formatDateAsLocal(dateRange.startDate);
           const periodEndDate = formatDateAsLocal(dateRange.endDate);
+
+          // Stamp the period columns before the heavy matching work, so a file
+          // stays discoverable by period even if a later step throws. Dashboards
+          // and reports query these columns, not bkmv_processing_result.dateRange.
+          await setUploadedFilePeriod(
+            uploadedFileRecord.id,
+            periodStartDate,
+            periodEndDate
+          );
 
           // Get all suppliers, blacklist, and small suppliers for matching
           const allSuppliers = await getSuppliers();

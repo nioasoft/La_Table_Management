@@ -23,6 +23,7 @@ import {
   FILE_PROCESSING_ERROR_CODES,
 } from "./file-processing-errors";
 import type { Anomaly } from "@/types/file-anomalies";
+import { isExcelWebPageShell } from "@/lib/html-table-file";
 import {
   getCurrentVatRate as getDbVatRate,
   getVatRateForDate as getDbVatRateForDate,
@@ -613,6 +614,28 @@ export async function processSupplierFile(
   vatProducts?: Set<string>,
   fileName?: string
 ): Promise<FileProcessingResult> {
+  // An Excel "Save as Web Page" shell holds no data at all — its rows live in a
+  // sibling .files folder that never travels with it. Caught here, before any
+  // parser, so every supplier gets the real reason instead of "הקובץ ריק".
+  if (isExcelWebPageShell(fileBuffer)) {
+    return {
+      success: false,
+      data: [],
+      errors: [createFileProcessingError('EXCEL_WEB_PAGE_SHELL')],
+      warnings: [],
+      legacyErrors: ['File is an Excel "Save as Web Page" shell with no data'],
+      legacyWarnings: [],
+      summary: {
+        totalRows: 0,
+        processedRows: 0,
+        skippedRows: 0,
+        totalGrossAmount: 0,
+        totalNetAmount: 0,
+        vatAdjusted: false,
+      },
+    };
+  }
+
   // First, check if supplier has a custom parser (regardless of fileMapping)
   if (supplierCode) {
     const { getCustomParser } = await import("./custom-parsers");

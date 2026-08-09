@@ -314,6 +314,25 @@ export async function createUploadedFile(
 }
 
 /**
+ * Stamp the period an uploaded file covers.
+ *
+ * Dashboards, reconciliation and the reminder crons filter on the
+ * `period_start_date` / `period_end_date` columns — not on the date range
+ * buried in `bkmv_processing_result` — so a file whose columns stay null is
+ * invisible to all of them no matter how well it parsed.
+ */
+export async function setUploadedFilePeriod(
+  fileId: string,
+  periodStartDate: string,
+  periodEndDate: string
+): Promise<void> {
+  await database
+    .update(uploadedFile)
+    .set({ periodStartDate, periodEndDate })
+    .where(eq(uploadedFile.id, fileId));
+}
+
+/**
  * Update an uploaded file's processing status and result
  */
 export async function updateUploadedFileProcessingStatus(
