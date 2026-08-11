@@ -160,6 +160,14 @@ describe("isPromotionalSubject", () => {
     ["הסכם התקשרות סיבוס", "Cibus contract"],
     ["הסכם  התקשרות  פלאקסי", "contract with extra spaces"],
     ["ביקשתם, קיבלתם! עדכנו את תנאי הקמפיין", "Wolt campaign-terms update"],
+    [
+      "הדפסת העברה בנקאית (מכתב לספק) - BT26031455",
+      "HAAT payment advice (BT form)",
+    ],
+    [
+      "הדפסת העברה בנקאית (מכתב לספק) - T153105",
+      "HAAT payment advice (T form)",
+    ],
   ])("flags %j as promotional (%s)", (subject) => {
     expect(isPromotionalSubject(subject)).toBe(true);
   });

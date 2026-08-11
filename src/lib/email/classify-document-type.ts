@@ -177,6 +177,17 @@ export const PROMOTIONAL_SUBJECT_PATTERNS: readonly RegExp[] = [
   /עדכנו\s*את\s*תנאי\s*הקמפיין/,
   // Cibus/Pluxee account notification (no data).
   /שינוי\s*סיסמה/,
+  // HAAT/Mishloha payment advice ("הדפסת העברה בנקאית (מכתב לספק) - BT26031455").
+  // A bank-transfer letter, not a report: nothing to reconcile, and it names
+  // only the PAYER's legal entity, so it fell to client_report and either
+  // collided with the real ezcount report for the same (franchisee, period,
+  // type) slot (HAAT) or failed franchisee resolution outright (Mishloha —
+  // "דיב אנד רד פרוג'קטס בע\"מ"). 27 dead rows since 2026-05 and growing
+  // (5 in June, 6 in July, 10 in August); each transfer arrives twice, once
+  // as T###### and again as BT########. Zero of them ever produced a
+  // document. Subject-scoped, NOT sender-scoped: accounting@haat.delivery
+  // also sends the real SI commission invoices. Added 2026-08-11.
+  /הדפסת\s*העברה\s*בנקאית/,
 ];
 
 /**
