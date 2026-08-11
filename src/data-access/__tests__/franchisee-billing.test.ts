@@ -241,7 +241,7 @@ describe("buildRoyaltyBillingPlan", () => {
     expect(plan.drafts[0]).toMatchObject({ tips: 0, grossBase: 2_192_380 });
   });
 
-  it("adds the tips to the base when the franchisee is billed on them", () => {
+  it("takes the receipts column as-is when billed on tips", () => {
     const plan = buildRoyaltyBillingPlan({
       rows: [revenueRow({ receipts: 1_000_000, tips: 40_000 })],
       franchisees: [franchisee({ royaltyIncludeTips: true })],
@@ -251,10 +251,10 @@ describe("buildRoyaltyBillingPlan", () => {
       period: PERIOD,
     });
 
-    expect(plan.drafts[0]).toMatchObject({ grossBase: 1_040_000 });
+    expect(plan.drafts[0]).toMatchObject({ grossBase: 1_000_000 });
   });
 
-  it("ignores the tips when the franchisee is billed without them", () => {
+  it("subtracts the tips when billed without them", () => {
     const plan = buildRoyaltyBillingPlan({
       rows: [revenueRow({ receipts: 1_000_000, tips: 40_000 })],
       franchisees: [franchisee({ royaltyIncludeTips: false })],
@@ -265,7 +265,7 @@ describe("buildRoyaltyBillingPlan", () => {
     });
 
     expect(plan.anomalies).toEqual([]);
-    expect(plan.drafts[0]).toMatchObject({ grossBase: 1_000_000 });
+    expect(plan.drafts[0]).toMatchObject({ grossBase: 960_000 });
   });
 
   it.each([

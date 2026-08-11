@@ -72,7 +72,10 @@ export function calculateRoyalty(
 ): RoyaltyCalculation {
   const { receipts, tips, includeTips, tiers } = input;
   const { tierBasis, marketingRate, discountRatePoints, vat } = input;
-  const grossBase = receipts + (includeTips ? tips : 0);
+  // Tabit's `סה"כ תקבולים` already contains the tips. A franchisee billed on
+  // tips therefore takes the column as it stands, and one billed without them
+  // has them subtracted — adding them would count the tips twice.
+  const grossBase = includeTips ? receipts : receipts - tips;
   const netBase = grossBase / (1 + vat);
 
   // Intentionally select the tier on gross, then apply its rate to net.

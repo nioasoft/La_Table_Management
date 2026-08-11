@@ -351,9 +351,11 @@ describe("calculateRoyalty contract", () => {
     expect(calculateRoyalty({ ...input, vat: 0.18 }).tierRate).toBe(2);
   });
 
-  it("includes tips only when requested", () => {
+  it("subtracts the tips from the receipts only when excluded", () => {
+    // Tabit's receipts column already carries the tips, so including them is
+    // the column untouched and excluding them takes them back out.
     const input = {
-      receipts: 690_000,
+      receipts: 710_000,
       tips: 20_000,
       tiers: [
         { upTo: 700_000, rate: 2 },
@@ -380,6 +382,27 @@ describe("calculateRoyalty contract", () => {
     expect(included.tierRate).toBe(4);
     expect(included.royalty).toBe((includedNetBase * 4) / 100);
     expect(included.marketing).toBe(includedNetBase / 100);
+  });
+
+  it("never counts the tips twice", () => {
+    const base = {
+      receipts: 1_000_000,
+      tips: 40_000,
+      tiers: [{ upTo: null, rate: 5 }],
+      tierBasis: "gross",
+      marketingRate: 1,
+      discountRatePoints: 0,
+      vat: VAT,
+    } as const;
+
+    // The two bases differ by exactly the tips, and the larger one is the
+    // untouched column — never the column plus the tips again.
+    const included = calculateRoyalty({ ...base, includeTips: true });
+    const excluded = calculateRoyalty({ ...base, includeTips: false });
+
+    expect(included.grossBase).toBe(1_000_000);
+    expect(excluded.grossBase).toBe(960_000);
+    expect(included.grossBase - excluded.grossBase).toBe(40_000);
   });
 
   it("clamps a discount larger than the tier rate to zero", () => {

@@ -260,11 +260,12 @@ function configurationAnomalies(
 function amountAnomalies(resolved: ResolvedRevenueRow): BillingAnomaly[] {
   const { franchisee, row, rowIndex } = resolved;
   if (!franchisee || row.receipts === null || row.tips === null) return [];
-  // Whatever tips the report carries is the number, ₪0 included: a franchisee
-  // billed on tips has them added to the base, one billed without them never
-  // does. There is no amount of tips that makes a row worth blocking.
-  const grossBase =
-    row.receipts + (franchisee.royaltyIncludeTips ? row.tips : 0);
+  // Tabit's `סה"כ תקבולים` already contains the tips, so billing on tips means
+  // taking the column as it stands and billing without them means subtracting.
+  // Whatever the tips figure is, ₪0 included, it is never worth blocking a row.
+  const grossBase = franchisee.royaltyIncludeTips
+    ? row.receipts
+    : row.receipts - row.tips;
   return grossBase < 0
     ? [anomaly(
         "negative_base",
