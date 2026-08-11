@@ -142,7 +142,6 @@ function RoyaltyEditorDialog({
               royaltyTierBasis: row.royaltyTierBasis ?? "gross",
               royaltyTiersConfirmed: row.royaltyTiersConfirmed,
               royaltyIncludeTips: row.royaltyIncludeTips,
-              tipsAbsenceAcknowledged: row.tipsAbsenceAcknowledged ?? false,
               hashavshevetAccountKey: row.hashavshevetAccountKey ?? null,
               marketingFeeRate: row.marketingFeeRate,
             }}

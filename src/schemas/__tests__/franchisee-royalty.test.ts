@@ -100,7 +100,6 @@ describe("franchisee royalty editor round trip", () => {
       const expected = {
         ...initialSettings,
         marketingFeeRate: 1.25,
-        tipsAbsenceAcknowledged: false,
       };
 
       const draft = createDraft(initialSettings);

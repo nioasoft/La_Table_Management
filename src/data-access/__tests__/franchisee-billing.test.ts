@@ -224,32 +224,12 @@ describe("buildRoyaltyBillingPlan", () => {
     });
   });
 
-  it("blocks included tips below one percent of receipts", () => {
+  it("bills whatever tips the report carries, zero included", () => {
+    // The report's tips figure is the number, however small. A franchisee
+    // billed on tips has it added to the base; one billed without never does.
     const plan = buildRoyaltyBillingPlan({
-      rows: [revenueRow({ receipts: 2_192_380, tips: 18 })],
+      rows: [revenueRow({ receipts: 2_192_380, tips: 0 })],
       franchisees: [franchisee({ royaltyIncludeTips: true })],
-      existingBillings: [],
-      sourceFileId: "file-1",
-      vat: 0.18,
-      period: PERIOD,
-    });
-
-    expect(plan.drafts).toEqual([]);
-    expect(plan.anomalies[0]).toMatchObject({
-      code: "tips_below_threshold",
-      franchiseeId: "franchisee-1",
-    });
-  });
-
-  it("allows low tips after the franchisee acknowledgment", () => {
-    const plan = buildRoyaltyBillingPlan({
-      rows: [revenueRow({ receipts: 2_192_380, tips: 18 })],
-      franchisees: [
-        franchisee({
-          royaltyIncludeTips: true,
-          tipsAbsenceAcknowledged: true,
-        }),
-      ],
       existingBillings: [],
       sourceFileId: "file-1",
       vat: 0.18,
@@ -258,6 +238,34 @@ describe("buildRoyaltyBillingPlan", () => {
 
     expect(plan.anomalies).toEqual([]);
     expect(plan.drafts).toHaveLength(1);
+    expect(plan.drafts[0]).toMatchObject({ tips: 0, grossBase: 2_192_380 });
+  });
+
+  it("adds the tips to the base when the franchisee is billed on them", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ receipts: 1_000_000, tips: 40_000 })],
+      franchisees: [franchisee({ royaltyIncludeTips: true })],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.drafts[0]).toMatchObject({ grossBase: 1_040_000 });
+  });
+
+  it("ignores the tips when the franchisee is billed without them", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ receipts: 1_000_000, tips: 40_000 })],
+      franchisees: [franchisee({ royaltyIncludeTips: false })],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.anomalies).toEqual([]);
+    expect(plan.drafts[0]).toMatchObject({ grossBase: 1_000_000 });
   });
 
   it.each([

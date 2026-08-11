@@ -19,9 +19,6 @@ export const franchiseeRoyaltyPatchSchema = z
     royaltyTierBasis: z.enum(["gross", "net"]),
     royaltyTiersConfirmed: z.boolean(),
     royaltyIncludeTips: z.boolean(),
-    // Optional so the board's confirm action can keep echoing back the row it
-    // already has without knowing about this field.
-    tipsAbsenceAcknowledged: z.boolean().optional(),
     hashavshevetAccountKey: z.string().trim().nullable(),
     marketingFeeRate: z
       .number()

@@ -22,7 +22,6 @@ export const royaltyBoardRowSchema = z
     royaltyTiersConfirmed: z.boolean(),
     royaltyTiersNote: z.string().nullable().optional(),
     royaltyIncludeTips: z.boolean(),
-    tipsAbsenceAcknowledged: z.boolean().nullable().optional(),
     marketingFeeRate: z.string().nullable(),
     hashavshevetAccountKey: z.string().nullable().optional(),
     brand: z

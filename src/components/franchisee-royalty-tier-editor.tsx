@@ -49,7 +49,6 @@ interface InitialRoyaltySettings {
   royaltyTierBasis: RoyaltyTierBasis;
   royaltyTiersConfirmed: boolean;
   royaltyIncludeTips: boolean;
-  tipsAbsenceAcknowledged?: boolean;
   hashavshevetAccountKey: string | null;
   marketingFeeRate: string | null;
 }
@@ -73,7 +72,6 @@ interface RoyaltyDraft {
   basis: RoyaltyTierBasis;
   confirmed: boolean;
   includeTips: boolean;
-  tipsAbsent: boolean;
   accountKey: string;
   marketingRate: string;
 }
@@ -93,7 +91,6 @@ export function createDraft(settings: InitialRoyaltySettings): RoyaltyDraft {
     basis: settings.royaltyTierBasis,
     confirmed: settings.royaltyTiersConfirmed,
     includeTips: settings.royaltyIncludeTips,
-    tipsAbsent: settings.tipsAbsenceAcknowledged === true,
     accountKey: settings.hashavshevetAccountKey ?? "",
     marketingRate: settings.marketingFeeRate ?? "",
   };
@@ -117,7 +114,6 @@ export function createFranchiseeRoyaltyPatch(
     royaltyTierBasis: draft.basis,
     royaltyTiersConfirmed: confirmed,
     royaltyIncludeTips: draft.includeTips,
-    tipsAbsenceAcknowledged: draft.tipsAbsent,
     hashavshevetAccountKey:
       draft.accountKey.trim() === "" ? null : draft.accountKey.trim(),
     marketingFeeRate: parseNumber(draft.marketingRate),
@@ -315,7 +311,6 @@ export function FranchiseeRoyaltyTierEditor({
         royaltyTierBasis: validation.data.royaltyTierBasis,
         royaltyTiersConfirmed: validation.data.royaltyTiersConfirmed,
         royaltyIncludeTips: validation.data.royaltyIncludeTips,
-        tipsAbsenceAcknowledged: validation.data.tipsAbsenceAcknowledged,
         hashavshevetAccountKey: validation.data.hashavshevetAccountKey,
         marketingFeeRate: validation.data.marketingFeeRate.toString(),
       }),
@@ -636,42 +631,19 @@ export function FranchiseeRoyaltyTierEditor({
             </div>
           </div>
 
-          <div className="space-y-3 rounded-md border p-4">
-            <div className="flex items-center gap-3">
-              <Switch
-                id="royalty-include-tips"
-                checked={draft.includeTips}
-                onCheckedChange={(checked) =>
-                  updateDraft((current) => ({
-                    ...current,
-                    includeTips: checked,
-                  }))
-                }
-                disabled={isSaving}
-              />
-              <Label htmlFor="royalty-include-tips">מחויב כולל טיפים</Label>
-            </div>
-            {draft.includeTips && (
-              <div className="flex items-center gap-3 border-t pt-3">
-                <Switch
-                  id="royalty-tips-absent"
-                  checked={draft.tipsAbsent}
-                  onCheckedChange={(checked) =>
-                    updateDraft((current) => ({
-                      ...current,
-                      tipsAbsent: checked,
-                    }))
-                  }
-                  disabled={isSaving}
-                />
-                <Label
-                  htmlFor="royalty-tips-absent"
-                  className="font-normal"
-                >
-                  אין טיפים בסניף הזה — לא להתריע על טיפים נמוכים
-                </Label>
-              </div>
-            )}
+          <div className="flex items-center gap-3 rounded-md border p-4">
+            <Switch
+              id="royalty-include-tips"
+              checked={draft.includeTips}
+              onCheckedChange={(checked) =>
+                updateDraft((current) => ({
+                  ...current,
+                  includeTips: checked,
+                }))
+              }
+              disabled={isSaving}
+            />
+            <Label htmlFor="royalty-include-tips">מחויב כולל טיפים</Label>
           </div>
 
           <div className="flex justify-end">

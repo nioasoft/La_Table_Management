@@ -252,14 +252,44 @@ export async function parseTenbisInvoice(
       }
     }
 
-    // Fall back to invoice date month if no period month found
+    // Derive the period from the invoice DATE when the line item carries no
+    // month name.
+    //
+    // 10bis dropped the "דוח <חודש>" description during the July 2026 cycle,
+    // and the old fallback — "use the invoice month" — silently filed every
+    // invoice under the wrong period, because 10bis issues on TWO schedules:
+    //
+    //   31/07/2026  400183xxx  → covers JULY   (issued on the month's last day)
+    //   16/07/2026  500113xxx  → covers JUNE   (issued mid-month, in arrears)
+    //   22/07/2026  500114271  → covers JUNE
+    //   14/07/2026  500113094  → covers JUNE
+    //
+    // Both shapes then resolved to "July" and collided in the same
+    // (franchisee, period, type) slot, so the second one was refused by the
+    // overwrite guard. That is why ויני עזריאלי's July slot held June's
+    // ₪2,578.01 while its real July invoice (400183172, ₪3,658) sat parked in
+    // the review queue, and Reut saw a report for every branch but no invoice.
+    //
+    // The rule that separates them: an invoice issued on the LAST DAY of a
+    // month bills that month; anything earlier bills the month before. It
+    // holds for all nine invoices on record with no exception. A month name in
+    // the line item still wins — this only runs when the document gives us
+    // nothing else.
     if (periodMonth === undefined && invoiceDate) {
-      // The invoice date is typically one month AFTER the report month
-      // e.g., invoice dated 15/02/2026 is for January 2026
-      // But we can't be sure, so use the invoice month with a warning
-      periodMonth = invoiceDate.month;
+      const lastDayOfInvoiceMonth = new Date(
+        invoiceDate.year,
+        invoiceDate.month,
+        0,
+      ).getDate();
+
+      if (invoiceDate.day === lastDayOfInvoiceMonth) {
+        periodMonth = invoiceDate.month;
+      } else {
+        periodMonth = invoiceDate.month === 1 ? 12 : invoiceDate.month - 1;
+        if (invoiceDate.month === 1) periodYear = invoiceDate.year - 1;
+      }
       warnings.push(
-        "חודש הדוח לא זוהה מתיאור הפריט - נלקח מתאריך החשבונית (ייתכן שהחודש הנכון הוא חודש קודם)"
+        `חודש הדוח לא זוהה מתיאור הפריט — חושב מתאריך החשבונית (${invoiceDate.day}/${invoiceDate.month}/${invoiceDate.year} → ${periodMonth})`
       );
     }
 

@@ -41,7 +41,6 @@ export type BillingAnomalyCode =
   | "duplicate_franchisee"
   | "negative_base"
   | "missing_branch_name"
-  | "tips_below_threshold"
   | "missing_amount"
   | "missing_billing_config";
 
@@ -261,33 +260,20 @@ function configurationAnomalies(
 function amountAnomalies(resolved: ResolvedRevenueRow): BillingAnomaly[] {
   const { franchisee, row, rowIndex } = resolved;
   if (!franchisee || row.receipts === null || row.tips === null) return [];
+  // Whatever tips the report carries is the number, ₪0 included: a franchisee
+  // billed on tips has them added to the base, one billed without them never
+  // does. There is no amount of tips that makes a row worth blocking.
   const grossBase =
     row.receipts + (franchisee.royaltyIncludeTips ? row.tips : 0);
-  const lowTips =
-    franchisee.royaltyIncludeTips &&
-    !franchisee.tipsAbsenceAcknowledged &&
-    row.receipts > 0 &&
-    row.tips / row.receipts < 0.01;
-  return [
-    ...(grossBase < 0
-      ? [anomaly(
-          "negative_base",
-          row,
-          rowIndex,
-          `בסיס החיוב של "${franchisee.name}" שלילי`,
-          franchisee.id,
-        )]
-      : []),
-    ...(lowTips
-      ? [anomaly(
-        "tips_below_threshold",
+  return grossBase < 0
+    ? [anomaly(
+        "negative_base",
         row,
         rowIndex,
-        `הטיפים של "${franchisee.name}" נמוכים מאחוז מהתקבולים`,
+        `בסיס החיוב של "${franchisee.name}" שלילי`,
         franchisee.id,
       )]
-      : []),
-  ];
+    : [];
 }
 
 function validateResolvedRow(resolved: ResolvedRevenueRow): BillingAnomaly[] {

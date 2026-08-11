@@ -992,8 +992,6 @@ export default function FranchiseeDetailPage() {
                 royaltyTierBasis: franchisee.royaltyTierBasis,
                 royaltyTiersConfirmed: franchisee.royaltyTiersConfirmed,
                 royaltyIncludeTips: franchisee.royaltyIncludeTips,
-                tipsAbsenceAcknowledged:
-                  franchisee.tipsAbsenceAcknowledged ?? false,
                 hashavshevetAccountKey:
                   franchisee.hashavshevetAccountKey ?? null,
                 marketingFeeRate: franchisee.marketingFeeRate ?? null,
