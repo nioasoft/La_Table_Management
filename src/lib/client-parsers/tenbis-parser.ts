@@ -13,8 +13,13 @@
  * - Total to pay (סה"כ לתשלום)
  */
 
-import type { ClientDocumentProcessingResult } from "./types";
+import type { ClientDocumentProcessingResult, TenantSection } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
+import {
+  cellToNumber,
+  extractPositionedRows,
+  joinRtl,
+} from "./positioned-text";
 
 // Import from /lib/pdf-parse.js directly — the package's index.js runs a
 // debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
@@ -221,6 +226,117 @@ export function findRestaurantSections(text: string): string[] {
 }
 
 /**
+ * Split a combined 10bis entity report into one section per restaurant.
+ *
+ * Reads the PDF with column-aware extraction (see positioned-text.ts) rather
+ * than pdf-parse, because the per-section totals live in a table row that
+ * pdf-parse flattens into an unrecoverable digit run
+ * ("סיכום15636.81374.8292-32571350.120560.6-2207.32").
+ *
+ * Document shape — each restaurant is a header row followed, some rows later,
+ * by its own `סיכום` totals row:
+ *
+ *   "פירוט עסקאות למסעדת פט ויני עזריאלי בע''מ"   ← entity title (no סיכום follows
+ *                                                    before the next header)
+ *   "פירוט עסקאות למסעדת ויני חיפה"                ← restaurant 1
+ *      ... day rows ...
+ *   "סיכום  15636.8 1374.8 292 - 3257 1350.1 20560.6 - 2207.32"
+ *   "פירוט עסקאות למסעדת נתנזון בורגר שופ חיפה"    ← restaurant 2
+ *      ... day rows ...
+ *   "סיכום  8353.399 96 879.3 - 2148 728.9 11650.4 95.00 1216.72"
+ *
+ * A header row opens a candidate and REPLACES any still-open one — which is
+ * how the entity title drops out, since the first restaurant header always
+ * follows it before any `סיכום`. A `סיכום` row closes the open candidate.
+ *
+ * Totals row, in visual left-to-right order:
+ *   [0] סה"כ עמלה   [1] טיפ   [2] סה"כ עסקאות   ...   [last] "סיכום"
+ *
+ * The per-section sums are the branch's OWN figures. They do not add up to
+ * the entity's `סה"כ עסקאות לחישוב עמלה`, which nets off HappyHour-on-the-
+ * house at entity level — the caller allocates that base pro-rata if it needs
+ * it (see src/scripts/fix-azrieli-entity-july-2026.ts).
+ */
+export async function parseTenbisSections(
+  buffer: Buffer,
+): Promise<TenantSection[]> {
+  const rows = await extractPositionedRows(buffer);
+
+  const raw: Array<{ name: string; gross: number; commission: number }> = [];
+  let open: string | null = null;
+  let entityBase: number | null = null;
+
+  for (const row of rows) {
+    const logical = joinRtl(row.cells);
+
+    // Header: "פירוט עסקאות למסעדת <name>" — the name is everything after
+    // the marker once the row is back in logical order.
+    const headerMatch = logical.match(/פירוט\s+עסקאות\s+למסעדת\s+(.+)$/);
+    if (headerMatch) {
+      open = headerMatch[1].trim();
+      continue;
+    }
+
+    // Entity footer. The joined text carries spacing artefacts around the
+    // gershayim ('סה " כ'), so anchor on the unambiguous middle words.
+    const baseMatch = logical.match(/עסקאות\s+לחישוב\s+עמלה\s+([\d,.]+)/);
+    if (baseMatch) {
+      entityBase = cellToNumber(baseMatch[1]);
+      continue;
+    }
+
+    // Totals: the row whose LAST visual cell is "סיכום" (RTL — it sits at the
+    // right edge). Requires a real number, so the bare "סיכום:" label row
+    // that introduces the entity footer is ignored.
+    if (open && row.cells[row.cells.length - 1] === "סיכום") {
+      const commission = cellToNumber(row.cells[0]);
+      const gross = cellToNumber(row.cells[2]);
+      if (gross === null) continue;
+      raw.push({ name: open, gross, commission: commission ?? 0 });
+      open = null;
+    }
+  }
+
+  if (raw.length === 0) return [];
+
+  // Per-section `סיכום` rows carry GROSS sales, but a 10bis client_report
+  // stores the COMMISSION BASE ("סה\"כ עסקאות לחישוב עמלה"), which nets off
+  // HappyHour-on-the-house at ENTITY level and so cannot be read per section.
+  // On a single-restaurant report the two differ outright — 31986 for July
+  // 2026 is gross ₪26,139 against a base of ₪25,064.10 — so returning gross
+  // would silently inflate every branch.
+  //
+  // Allocate the entity base pro-rata by each section's gross. On a
+  // single-section document this returns the base unchanged, which is exactly
+  // what the single-file parser stores — the invariant the tests pin.
+  const grossTotal = raw.reduce((sum, r) => sum + r.gross, 0);
+  if (entityBase === null || grossTotal <= 0) {
+    return raw.map((r) => ({
+      name: r.name,
+      totalAmount: r.gross,
+      commissionAmount: r.commission,
+    }));
+  }
+
+  const round2 = (n: number): number => Math.round(n * 100) / 100;
+  let allocated = 0;
+  return raw.map((r, i) => {
+    // Give the last section the remainder so the parts sum to the base
+    // exactly, instead of drifting by a rounding cent.
+    const totalAmount =
+      i === raw.length - 1
+        ? round2(entityBase - allocated)
+        : round2((entityBase * r.gross) / grossTotal);
+    allocated = round2(allocated + totalAmount);
+    return {
+      name: r.name,
+      totalAmount,
+      commissionAmount: r.commission,
+    };
+  });
+}
+
+/**
  * Parse a Tenbis report.
  *
  * Dispatches to the HTML body parser when the input is the email body
@@ -282,18 +398,17 @@ export async function parseTenbisFile(
     // branch overstates that branch and erases the others — exactly the July
     // 2026 Azrieli incident this check exists to prevent.
     //
-    // We deliberately do NOT try to split the amounts here. pdf-parse emits
-    // the per-section day rows as delimiter-less digit runs
-    // ("01/07188178----366-48.44",
-    //  "סיכום15636.81374.8292-32571350.120560.6-2207.32")
-    // where 188178 could as easily be 18|8178. Guessing a split would put
-    // fabricated money into billing — strictly worse than parking the file.
-    // A correct split needs a column-aware extractor (`pdftotext -layout`
-    // reads it cleanly); see src/scripts/fix-azrieli-entity-july-2026.ts for
-    // how July was split and verified against Tabit.
+    // Reaching here means the multi-tenant path did NOT run: `parseTenbisFile`
+    // is the single-franchisee entry point, and the inbound webhook calls
+    // `processMultiTenantReport` (which uses `parseTenbisSections`) before it.
+    // Some callers have no such branch — the replay-inbound route and the
+    // reprocess scripts — so this stays as the backstop for them.
     //
-    // So: refuse, and name every restaurant found, so whoever opens the
-    // review queue knows what is inside without opening the PDF.
+    // Refuse rather than guess, and name every restaurant found so whoever
+    // opens the review queue knows what is inside without opening the PDF.
+    // The amounts ARE recoverable: `parseTenbisSections` reads them with
+    // column-aware extraction (positioned-text.ts). This path just cannot
+    // return them, because its contract is one franchisee per file.
     const sections = findRestaurantSections(text);
     if (sections.length > 1) {
       errors.push(

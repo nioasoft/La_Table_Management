@@ -121,3 +121,29 @@ export interface TabitUploadSummary {
   /** (occasional client × franchisee × period) tuples persisted */
   occasionalDocumentsCreated?: number;
 }
+
+/**
+ * One tenant's slice of a MULTI-TENANT report — a single file whose contents
+ * belong to several franchisees.
+ *
+ * 10bis started sending these in July 2026: one entity-level PDF holding a
+ * section per restaurant, instead of a file per branch. A parser that can
+ * split such a file exports a `(buffer) => Promise<TenantSection[]>` and
+ * registers it in `getSectionExtractor` (client-parsers/index.ts); the
+ * pipeline then routes the file to `processMultiTenantReport` instead of
+ * `processClientDocument`, which can only ever write one franchisee.
+ *
+ * Returning fewer than 2 sections means "not multi-tenant" — the ordinary
+ * single-franchisee path handles it.
+ */
+export interface TenantSection {
+  /** Tenant name as printed in the document; matched via matchFranchiseeName. */
+  name: string;
+  /** This tenant's own total, in the same units the single-file parser reports. */
+  totalAmount: number;
+  /** Commission attributable to this tenant. */
+  commissionAmount: number;
+}
+
+/** Splits a multi-tenant file into per-tenant sections. */
+export type SectionExtractorFn = (buffer: Buffer) => Promise<TenantSection[]>;

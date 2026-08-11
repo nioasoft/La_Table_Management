@@ -15,7 +15,11 @@ import { database } from "@/db";
 import { clientDocument, client, franchisee } from "@/db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { uploadDocument } from "@/lib/storage";
-import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
+import {
+  getClientParser,
+  getInvoiceParser,
+  getSectionExtractor,
+} from "@/lib/client-parsers";
 import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
 import { parseHeverFile } from "@/lib/client-parsers/hever-parser";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
@@ -895,4 +899,221 @@ export async function processHeverUpload(
       error: `שגיאה בעיבוד קובץ חבר: ${errorMessage}`,
     };
   }
+}
+
+
+/** Input for processing a multi-tenant client report */
+export interface ProcessMultiTenantReportInput {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  clientId: string;
+  /** Client code used to look up the section extractor (e.g. "TENBIS"). */
+  parserCode: string;
+  periodMonth: number;
+  periodYear: number;
+  /** Active franchisees, for name matching. */
+  franchisees: Franchisee[];
+  source: "gmail_fetch" | "manual_upload";
+  gmailMessageId?: string;
+}
+
+export interface ProcessMultiTenantReportResult {
+  /**
+   * False when this file is NOT multi-tenant — the client has no section
+   * extractor, or the extractor found fewer than two tenants. The caller
+   * must then run its ordinary single-franchisee path. Nothing was written.
+   */
+  handled: boolean;
+  documentsWritten: number;
+  /** Section names that matched no franchisee; nothing was written for these. */
+  unmatched: string[];
+  matched: Array<{ franchiseeName: string; totalAmount: number }>;
+  errors: string[];
+}
+
+/**
+ * Process a file whose contents belong to SEVERAL franchisees.
+ *
+ * `processClientDocument` can only ever write one franchisee, because the
+ * caller resolves the franchisee before calling it. A multi-tenant file has
+ * no single answer, so before July 2026 the 10bis parser just picked the last
+ * restaurant it saw and filed the entity's whole total onto that branch —
+ * ₪30,132 landed on נתנזון, 169.9% above its Tabit figure, while ויני got no
+ * report at all. Nothing failed and nothing was logged.
+ *
+ * This is the same shape processTabitUpload and processHeverUpload already
+ * use for their multi-franchisee files: match each tenant name to a
+ * franchisee, then upsert one document per franchisee. Franchisee resolution
+ * happens HERE, from the document's own section names — callers must NOT
+ * pre-resolve a franchisee and must not call resolveFranchisee first, since
+ * there is no single correct answer for the file as a whole.
+ *
+ * `handled: false` means "not a multi-tenant file, nothing written" — the
+ * caller falls through to its normal path. That is the common case: this
+ * runs on every TENBIS report and only fires for shared legal entities.
+ *
+ * Unmatched sections are reported, never guessed. A section whose name
+ * matches no franchisee is money we cannot attribute; writing it to a
+ * best-guess branch is how the incident above happened in the first place.
+ */
+export async function processMultiTenantReport(
+  input: ProcessMultiTenantReportInput,
+): Promise<ProcessMultiTenantReportResult> {
+  const {
+    buffer,
+    fileName,
+    mimeType,
+    clientId,
+    parserCode,
+    periodMonth,
+    periodYear,
+    franchisees,
+    source,
+    gmailMessageId,
+  } = input;
+
+  const idle: ProcessMultiTenantReportResult = {
+    handled: false,
+    documentsWritten: 0,
+    unmatched: [],
+    matched: [],
+    errors: [],
+  };
+
+  const extractor = getSectionExtractor(parserCode);
+  if (!extractor) return idle;
+
+  let sections;
+  try {
+    sections = await extractor(buffer);
+  } catch (error) {
+    // A broken extractor must never swallow a file. Fall through to the
+    // single-franchisee path, which is what ran before this existed.
+    console.warn(
+      `[multi-tenant] ${parserCode} section extraction failed for "${fileName}": ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return idle;
+  }
+
+  if (sections.length < 2) return idle;
+
+  console.log(
+    `[multi-tenant] ${parserCode} "${fileName}" holds ${sections.length} tenants: ${sections
+      .map((s) => `${s.name}=${s.totalAmount}`)
+      .join(", ")}`,
+  );
+
+  const uploadResult = await uploadDocument(
+    buffer,
+    fileName,
+    mimeType,
+    "client",
+    clientId,
+  );
+
+  const result: ProcessMultiTenantReportResult = {
+    handled: true,
+    documentsWritten: 0,
+    unmatched: [],
+    matched: [],
+    errors: [],
+  };
+
+  for (const section of sections) {
+    const match = matchFranchiseeName(section.name, franchisees);
+    if (!match.matchedFranchisee) {
+      result.unmatched.push(section.name);
+      continue;
+    }
+
+    const franchiseeId = match.matchedFranchisee.id;
+    const [existing] = await database
+      .select({ id: clientDocument.id })
+      .from(clientDocument)
+      .where(
+        and(
+          eq(clientDocument.clientId, clientId),
+          eq(clientDocument.franchiseeId, franchiseeId),
+          eq(clientDocument.periodMonth, periodMonth),
+          eq(clientDocument.periodYear, periodYear),
+          eq(clientDocument.documentType, "client_report"),
+        ),
+      )
+      .limit(1);
+
+    const commissionRate =
+      section.totalAmount > 0
+        ? Math.round((section.commissionAmount / section.totalAmount) * 10000) /
+          100
+        : 0;
+
+    const docData = {
+      clientId,
+      franchiseeId,
+      documentType: "client_report" as const,
+      source,
+      originalFileName: fileName,
+      fileUrl: uploadResult.url,
+      fileSize: uploadResult.fileSize,
+      mimeType,
+      periodMonth,
+      periodYear,
+      processingStatus: "auto_approved" as const,
+      processingResult: {
+        success: true,
+        data: {
+          franchiseeName: section.name,
+          totalAmount: section.totalAmount,
+          commissionAmount: section.commissionAmount,
+          commissionRate,
+          netAmount: section.totalAmount - section.commissionAmount,
+          periodMonth,
+          periodYear,
+
+        },
+        errors: [],
+        warnings: [],
+      } as unknown as Record<string, unknown>,
+      totalAmount: section.totalAmount.toString(),
+      commissionAmount: section.commissionAmount.toString(),
+      commissionRate: commissionRate.toString(),
+      netAmount: (section.totalAmount - section.commissionAmount).toString(),
+      reviewNotes:
+        `חלק מדוח ${parserCode} מאוחד לישות (${fileName}) המכיל ${sections.length} מסעדות: ` +
+        `${sections.map((s) => s.name).join(", ")}. ` +
+        `הסכום כאן הוא החלק של "${section.name}" בלבד.`,
+      // gmail_message_id is UNIQUE, and one email produces several documents
+      // here — only the first may carry it.
+      gmailMessageId:
+        gmailMessageId && result.documentsWritten === 0 ? gmailMessageId : null,
+      updatedAt: new Date(),
+    };
+
+    if (existing) {
+      await database
+        .update(clientDocument)
+        .set(docData)
+        .where(eq(clientDocument.id, existing.id));
+    } else {
+      await database.insert(clientDocument).values(docData);
+    }
+
+    result.documentsWritten++;
+    result.matched.push({
+      franchiseeName: match.matchedFranchisee.name,
+      totalAmount: section.totalAmount,
+    });
+  }
+
+  if (result.unmatched.length > 0) {
+    result.errors.push(
+      `דוח ${parserCode} מאוחד (${fileName}): לא זוהה זכיין עבור ${result.unmatched.length} מסעדות — ` +
+        `${result.unmatched.join(", ")}. הסכומים שלהן לא נשמרו.`,
+    );
+  }
+
+  return result;
 }

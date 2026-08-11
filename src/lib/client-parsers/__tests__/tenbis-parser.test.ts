@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseTenbisFile, findRestaurantSections } from "../tenbis-parser";
+import {
+  parseTenbisFile,
+  findRestaurantSections,
+  parseTenbisSections,
+} from "../tenbis-parser";
 
 const fixturesDir = resolve(__dirname, "fixtures");
 
@@ -84,5 +88,77 @@ describe("findRestaurantSections", () => {
 
   it("returns nothing when the document has no section headers", () => {
     expect(findRestaurantSections("some unrelated text\nand another line")).toEqual([]);
+  });
+});
+
+/**
+ * Regression for the July 2026 Azrieli incident: 10bis stopped sending one
+ * file per branch and started sending a single entity-level PDF holding a
+ * section per restaurant. The old parser kept the LAST restaurant name it saw
+ * and filed the entity's whole ₪30,132 onto that branch (נתנזון, 169.9% above
+ * its Tabit figure) while ויני got no report at all.
+ *
+ * Both fixtures are the real production files.
+ */
+describe("parseTenbisSections", () => {
+  function loadPdf(name: string): Buffer {
+    return readFileSync(resolve(fixturesDir, name));
+  }
+
+  it("splits a combined entity report into one section per restaurant", async () => {
+    const sections = await parseTenbisSections(
+      loadPdf("tenbis-combined-entity-azrieli-2026-07.pdf"),
+    );
+
+    expect(sections).toHaveLength(2);
+    expect(sections.map((s) => s.name)).toEqual([
+      "ויני חיפה",
+      "נתנזון בורגר שופ חיפה",
+    ]);
+
+    // Verified against Tabit for the same period: ויני ₪19,725.50 and
+    // נתנזון ₪11,164 — both within 2.5%, the same band the single-file
+    // reports hit in May and June.
+    expect(sections[0].totalAmount).toBeCloseTo(19233.55, 2);
+    expect(sections[1].totalAmount).toBeCloseTo(10898.45, 2);
+
+    // The split must preserve the entity's own commission base exactly.
+    const sum = sections.reduce((acc, s) => acc + s.totalAmount, 0);
+    expect(sum).toBeCloseTo(30132, 2);
+  });
+
+  it("carries each restaurant's own commission, not the entity's", async () => {
+    const sections = await parseTenbisSections(
+      loadPdf("tenbis-combined-entity-azrieli-2026-07.pdf"),
+    );
+    expect(sections[0].commissionAmount).toBeCloseTo(2207.32, 2);
+    expect(sections[1].commissionAmount).toBeCloseTo(1216.72, 2);
+  });
+
+  /**
+   * The invariant that keeps the multi-tenant path honest: on a
+   * single-restaurant report the section total must equal what the ordinary
+   * single-file parser stores. That is NOT the section's gross sales — this
+   * fixture grosses ₪26,139 but its commission base is ₪25,064.10, because
+   * 10bis nets off HappyHour-on-the-house at entity level. Returning gross
+   * would silently inflate every branch it touched.
+   */
+  it("returns the commission base, not gross sales, for a single restaurant", async () => {
+    const pdf = loadPdf("tenbis-single-hadera-2026-07.pdf");
+    const sections = await parseTenbisSections(pdf);
+    const single = await parseTenbisFile(pdf, "application/pdf");
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0].totalAmount).toBeCloseTo(25064.1, 2);
+    expect(sections[0].totalAmount).toBeCloseTo(single.data!.totalAmount, 2);
+  });
+
+  it("a single-restaurant report is not treated as multi-tenant", async () => {
+    const sections = await parseTenbisSections(
+      loadPdf("tenbis-single-hadera-2026-07.pdf"),
+    );
+    // processMultiTenantReport bails below 2 — this is what keeps every
+    // ordinary report on the normal single-franchisee path.
+    expect(sections.length).toBeLessThan(2);
   });
 });

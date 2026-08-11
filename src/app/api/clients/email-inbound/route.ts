@@ -22,7 +22,10 @@ import {
   resolvePeriod,
   type ResendInboundWebhookPayload,
 } from "@/lib/email/inbound";
-import { processClientDocument } from "@/lib/client-document-processor";
+import {
+  processClientDocument,
+  processMultiTenantReport,
+} from "@/lib/client-document-processor";
 import {
   createSyncLogEntry,
   updateSyncLogEntry,
@@ -68,6 +71,61 @@ const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
 // Subject classifier (`detectDocumentType`) lives in
 // `@/lib/email/classify-document-type` so the offline reprocess script
 // (`scripts/reprocess-inbound-email.ts`) can share the same rules.
+
+
+/**
+ * A file whose contents belong to several franchisees cannot go through
+ * resolveFranchisee → processClientDocument: that pair writes exactly one
+ * franchisee, and there is no single right answer for the file as a whole.
+ *
+ * So this runs BEFORE franchisee resolution on both inbound paths (email
+ * attachments and link downloads). It is a no-op for everything except a
+ * client with a section extractor whose file really does hold more than one
+ * tenant — currently only a 10bis report for a shared legal entity.
+ *
+ * Returns null when the file is ordinary, and the caller proceeds unchanged.
+ */
+async function tryMultiTenantReport(args: {
+  buffer: Buffer;
+  fileName: string;
+  mimeType: string;
+  fileClient: FileClientIdentity;
+  documentType: "client_report" | "commission_invoice";
+  period: { month: number; year: number };
+  franchisees: Franchisee[];
+  gmailMessageId: string;
+}): Promise<{ created: number; errors: string[] } | null> {
+  // Only reports are ever multi-tenant. A commission invoice is addressed to
+  // one legal entity by definition.
+  if (args.documentType !== "client_report") return null;
+  if (!args.fileClient.clientId) return null;
+
+  const multi = await processMultiTenantReport({
+    buffer: args.buffer,
+    fileName: args.fileName,
+    mimeType: args.mimeType,
+    clientId: args.fileClient.clientId,
+    parserCode: args.fileClient.parserCode,
+    periodMonth: args.period.month,
+    periodYear: args.period.year,
+    franchisees: args.franchisees,
+    source: "gmail_fetch",
+    gmailMessageId: args.gmailMessageId,
+  });
+
+  if (!multi.handled) return null;
+
+  return {
+    created: multi.documentsWritten,
+    errors: [
+      `דוח מאוחד "${args.fileName}" פוצל ל-${multi.documentsWritten} זכיינים: ` +
+        multi.matched
+          .map((m) => `${m.franchiseeName} ₪${m.totalAmount.toLocaleString("he-IL")}`)
+          .join(", "),
+      ...multi.errors,
+    ],
+  };
+}
 
 export async function POST(request: NextRequest) {
   // Create sync log early
@@ -822,6 +880,22 @@ export async function POST(request: NextRequest) {
           attachment.filename,
           errorDetails,
         );
+        const multiTenant = await tryMultiTenantReport({
+          buffer,
+          fileName: attachment.filename,
+          mimeType: attachment.contentType,
+          fileClient,
+          documentType: attachmentDocumentType,
+          period,
+          franchisees: allFranchisees as Franchisee[],
+          gmailMessageId: `${email_id}#${attachment.id}`,
+        });
+        if (multiTenant) {
+          documentsCreated += multiTenant.created;
+          errorDetails.push(...multiTenant.errors);
+          continue;
+        }
+
         const franchiseeMatch = await resolveFranchisee(
           buffer,
           attachment.contentType,
@@ -1270,6 +1344,22 @@ async function processBufferFile(
     file.fileName,
     outcome.errorDetails,
   );
+  const multiTenant = await tryMultiTenantReport({
+    buffer: file.buffer,
+    fileName: file.fileName,
+    mimeType: "application/pdf",
+    fileClient,
+    documentType: file.documentType,
+    period: ctx.period,
+    franchisees: ctx.allFranchisees,
+    gmailMessageId: file.dedupKey,
+  });
+  if (multiTenant) {
+    outcome.created += multiTenant.created;
+    outcome.errorDetails.push(...multiTenant.errors);
+    return outcome;
+  }
+
   const franchiseeMatch = await resolveFranchisee(
     file.buffer,
     "application/pdf",

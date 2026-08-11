@@ -7,7 +7,7 @@
  * Pattern mirrors src/lib/custom-parsers/index.ts for supplier parsers.
  */
 
-import type { ClientParserFn } from "./types";
+import type { ClientParserFn, SectionExtractorFn } from "./types";
 
 export type {
   ClientParserFn,
@@ -16,6 +16,8 @@ export type {
   TabitParsedMatrix,
   TabitProcessingResult,
   TabitUploadSummary,
+  SectionExtractorFn,
+  TenantSection,
 } from "./types";
 
 // Registry of client parsers by client code (lazy-loaded)
@@ -118,4 +120,38 @@ export function requiresClientParser(clientCode: string): boolean {
  */
 export function getRegisteredParserCodes(): string[] {
   return Object.keys(CLIENT_PARSERS);
+}
+
+/**
+ * Parsers that can split a MULTI-TENANT file — one document whose contents
+ * belong to several franchisees — into per-tenant sections.
+ *
+ * Only clients that actually send such files appear here. A file from any
+ * other client, or a file from these clients that turns out to hold a single
+ * tenant, takes the ordinary single-franchisee path.
+ *
+ * TENBIS: from July 2026, 10bis sends shared legal entities ONE PDF holding a
+ * section per restaurant instead of a file per branch. Before this existed,
+ * the parser kept the last restaurant name it saw and filed the whole entity
+ * total onto that one branch — the July 2026 Azrieli incident.
+ *
+ * TABIT and HEVER are also multi-franchisee, but they arrive by manual upload
+ * and already have dedicated pipelines (processTabitUpload /
+ * processHeverUpload) with client-specific behaviour — column mapping,
+ * occasional-client creation, per-franchisee aggregation. They are left alone
+ * deliberately; folding all three into one path is a refactor with no bug
+ * behind it.
+ */
+const SECTION_EXTRACTORS: Record<string, SectionExtractorFn> = {
+  TENBIS: async (buffer) => {
+    const { parseTenbisSections } = await import("./tenbis-parser");
+    return parseTenbisSections(buffer);
+  },
+};
+
+/** Section extractor for a client code, or null when it has none. */
+export function getSectionExtractor(
+  clientCode: string,
+): SectionExtractorFn | null {
+  return SECTION_EXTRACTORS[clientCode.toUpperCase()] ?? null;
 }
