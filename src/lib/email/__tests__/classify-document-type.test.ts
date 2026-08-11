@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectDocumentType,
   isPromotionalSubject,
+  isNonDataSender,
   isHaatMonthlyReport,
   isReceiptDocument,
 } from "../classify-document-type";
@@ -175,6 +176,35 @@ describe("isPromotionalSubject", () => {
   it("handles null/undefined safely", () => {
     expect(isPromotionalSubject(null)).toBe(false);
     expect(isPromotionalSubject(undefined)).toBe(false);
+  });
+});
+
+describe("isNonDataSender", () => {
+  it.each([
+    ["feedback@mishloha.co.il", "Mishloha order-feedback surveys"],
+    ["Mishloha <feedback@mishloha.co.il>", "display-name form"],
+    ["restaurants.israel@mail.wolt.com", "Wolt restaurant marketing"],
+    ["Wolt Israel <Restaurants.Israel@mail.wolt.com>", "mixed case + display name"],
+  ])("flags %j (%s)", (from) => {
+    expect(isNonDataSender(from)).toBe(true);
+  });
+
+  it.each([
+    // Data senders on the SAME domains — must never be swallowed.
+    ["sapirm@mishloha.co.il", "Mishloha bank-transfer letters"],
+    ["info@wolt.com", "Wolt payout reports"],
+    ["no-reply@10bis.co.il", "10bis monthly reports"],
+    ["noreply@ezcount.co.il", "ezcount invoice copies"],
+    ["accounting@haat.delivery", "HAAT accounting"],
+    ["noreply@supinvoice.pluxee.co.il", "Pluxee monthly invoice"],
+    ["", "empty"],
+  ])("does NOT flag %j (%s)", (from) => {
+    expect(isNonDataSender(from)).toBe(false);
+  });
+
+  it("handles null/undefined safely", () => {
+    expect(isNonDataSender(null)).toBe(false);
+    expect(isNonDataSender(undefined)).toBe(false);
   });
 });
 

@@ -40,6 +40,7 @@ import {
 import {
   detectDocumentType,
   isPromotionalSubject,
+  isNonDataSender,
   isCibusDailyReport,
   isHaatMonthlyReport,
   isReceiptDocument,
@@ -203,16 +204,21 @@ export async function POST(request: NextRequest) {
     // to extract and used to clog the daily failure digest. Treated as a
     // silent skip: log row stays for auditability, but status=completed and
     // no errors so downstream alerting ignores it.
-    if (isPromotionalSubject(subject)) {
+    const nonDataSender = isNonDataSender(from);
+    if (nonDataSender || isPromotionalSubject(subject)) {
       console.log(
-        `[email-inbound] Skipping promotional email: "${subject}"`
+        `[email-inbound] Skipping non-data email (${nonDataSender ? `sender ${from}` : "subject"}): "${subject}"`
       );
       await finalizeSyncLog(syncLog.id, "completed", {
         messagesScanned: 1,
         documentsCreated: 0,
         duplicatesSkipped: 1,
         errorCount: 0,
-        errorDetails: [`דולג: מייל שיווקי / לא-נתונים (${subject})`],
+        errorDetails: [
+          nonDataSender
+            ? `דולג: שולח שאינו שולח נתונים (${from}) — "${subject}"`
+            : `דולג: מייל שיווקי / לא-נתונים (${subject})`,
+        ],
         ...diagnostics,
       });
       return NextResponse.json({

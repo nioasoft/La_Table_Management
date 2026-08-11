@@ -236,6 +236,48 @@ export function isPromotionalSubject(
 }
 
 /**
+ * Senders that NEVER carry data, whatever the subject says.
+ *
+ * PROMOTIONAL_SUBJECT_PATTERNS above is a treadmill: every new marketing
+ * subject line needs its own regex (three rounds of additions in 2026 —
+ * 05-17, 06-02, 06-07 — and the senders below still slipped past all of
+ * them). A dedicated marketing/feedback sender never sends a report, so
+ * matching on the address kills the whole class at once instead of one
+ * subject at a time.
+ *
+ * Audited against 30 days of gmail_sync_log (2026-08-11): these two
+ * addresses produced 9 `failed` rows and zero documents, ever. Data
+ * arrives from entirely different addresses on the same domains —
+ * `sapirm@mishloha.co.il`, `info@wolt.com` — so this cannot swallow a
+ * real report.
+ *
+ * IMPORTANT: same rule as the subject list — only add an address whose
+ * SOLE purpose is non-data mail. A shared address (`no-reply@`,
+ * `noreply@`) must never appear here.
+ */
+export const NON_DATA_SENDER_PATTERNS: readonly RegExp[] = [
+  // Mishloha per-order customer satisfaction surveys
+  // ("Mishloha אייפון - משוב להזמנה 923 (30083081) - ציון 1").
+  /feedback@mishloha\.co\.il/i,
+  // Wolt restaurant-marketing blasts ("תזכורת - קמפיין אוגוסט הגדול",
+  // "ימים אחרונים להטבת ההצטרפות המוקדמת", "תיקון טעות - מועד קמפיין").
+  // Wolt's payout reports come from info@wolt.com, never from here.
+  /restaurants\.israel@mail\.wolt\.com/i,
+];
+
+/**
+ * True when the email comes from a sender that only ever sends
+ * marketing/feedback mail — see NON_DATA_SENDER_PATTERNS.
+ *
+ * `from` may be a bare address or a display-name form
+ * ("Wolt Israel <restaurants.israel@mail.wolt.com>"), so we substring-match.
+ */
+export function isNonDataSender(from: string | null | undefined): boolean {
+  if (!from) return false;
+  return NON_DATA_SENDER_PATTERNS.some((p) => p.test(from));
+}
+
+/**
  * An ezcount/EasyCount payment RECEIPT — "קבלה NNNN מאת <franchisee>"
  * (optionally "[העתק]"/"[מקור]" prefixed). A receipt only acknowledges a
  * payment received (usually a bank transfer, net of platform fees); it is NOT

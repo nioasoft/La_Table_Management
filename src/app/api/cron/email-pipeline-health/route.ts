@@ -67,6 +67,7 @@ interface ClientStats {
   errorRate: number;
   documentsCreated: number;
   hoursSinceLastDoc: number | null;
+  hoursSinceLastInbound: number | null;
   lastErrorSubjects: string[];
 }
 
@@ -79,17 +80,27 @@ interface MissingPair {
   hasClientReport: boolean;
 }
 
+interface TabitDivergence {
+  clientCode: string;
+  franchiseeName: string;
+  periodMonth: number;
+  periodYear: number;
+  reportAmount: number;
+  tabitAmount: number;
+  divergencePct: number;
+}
+
 interface HealthReport {
   generatedAt: string;
   lookbackHours: number;
   clients: ClientStats[];
   alerts: string[];
   missingPairs: MissingPair[];
+  tabitDivergences: TabitDivergence[];
 }
 
 async function gatherClientStats(): Promise<ClientStats[]> {
   const sinceLookback = new Date(Date.now() - LOOKBACK_HOURS * 3600 * 1000);
-  const sinceQuiet = new Date(Date.now() - QUIET_HOURS * 3600 * 1000);
   const stats: ClientStats[] = [];
 
   for (const code of TRACKED_CLIENT_CODES) {
@@ -139,7 +150,22 @@ async function gatherClientStats(): Promise<ClientStats[]> {
         )
       : null;
 
-    void sinceQuiet;
+    // Liveness is measured on INBOUND EMAIL, not on documents — see the
+    // quiet-alert note in buildAlerts.
+    const lastInboundRow = await database
+      .select({ runStartedAt: gmailSyncLog.runStartedAt })
+      .from(gmailSyncLog)
+      .where(eq(gmailSyncLog.clientCode, code))
+      .orderBy(sql`${gmailSyncLog.runStartedAt} DESC`)
+      .limit(1);
+
+    const hoursSinceLastInbound = lastInboundRow[0]?.runStartedAt
+      ? Math.floor(
+          (Date.now() - new Date(lastInboundRow[0].runStartedAt).getTime()) /
+            (3600 * 1000),
+        )
+      : null;
+
     stats.push({
       clientCode: code,
       totalRuns,
@@ -147,6 +173,7 @@ async function gatherClientStats(): Promise<ClientStats[]> {
       errorRate,
       documentsCreated,
       hoursSinceLastDoc,
+      hoursSinceLastInbound,
       lastErrorSubjects,
     });
   }
@@ -154,15 +181,23 @@ async function gatherClientStats(): Promise<ClientStats[]> {
   return stats;
 }
 
-async function findMissingPairs(): Promise<MissingPair[]> {
-  // Most-recent FULL month — i.e. the one before the current month
+/**
+ * Most-recent FULL month — i.e. the one before the current month.
+ * Returns a human month (1-12), never `toISOString()` arithmetic.
+ */
+function previousFullMonth(): { m: number; y: number } {
   const now = new Date();
-  let m = now.getMonth(); // 0-indexed → previous month
+  let m = now.getMonth(); // 0-indexed → already the previous month as 1-12
   let y = now.getFullYear();
   if (m === 0) {
     m = 12;
     y -= 1;
   }
+  return { m, y };
+}
+
+async function findMissingPairs(): Promise<MissingPair[]> {
+  const { m, y } = previousFullMonth();
   // m here is human (1-12); pull all (client, franchisee) pairs that
   // produced *something* for that period and compare their document_type set.
   const rows = await database
@@ -217,7 +252,111 @@ async function findMissingPairs(): Promise<MissingPair[]> {
   return out;
 }
 
-function buildAlerts(stats: ClientStats[], missingPairs: MissingPair[]): string[] {
+/**
+ * Cross-check every platform report against Tabit for the same
+ * (client, franchisee, period).
+ *
+ * Tabit is the POS — it independently knows what each branch actually sold
+ * through each delivery platform, so it is the only ground truth we hold that
+ * does not come from the platform itself. Every silent loss found in the
+ * 2026-08-11 audit was visible here and nowhere else:
+ *
+ *   • WOLT / קינג קונג מוצקין 7/2026 — 53.9%. Wolt split July into two
+ *     payouts; the second (₪114,404) was refused by the overwrite guard
+ *     because the DB holds one client_report per franchisee-month, so the
+ *     stored figure was half the month. No other check could see this: the
+ *     report/invoice pair was complete, the parse succeeded, nothing failed.
+ *   • TENBIS / נתנזון עזריאלי 7/2026 — 169.9%. פט ויני עזריאלי's report
+ *     landed on נתנזון (shared ח.פ, no customer number on the document).
+ *   • CIBUS / קינג קונג כרמיאל 5/2026 — 100%. The daily-snapshot overwrite
+ *     that zeroed the May Cibus dataset. This check would have caught it.
+ *
+ * Threshold calibrated on May–July 2026 (all clients, all franchisees):
+ * genuine noise — VAT treatment, delivery-fee handling, cutoff timing —
+ * tops out at ~10%; every real incident sits at 30% or above. 25% leaves
+ * clear air on both sides.
+ *
+ * MIN_TABIT_AMOUNT guards the denominator: a branch with a few hundred
+ * shekels of platform sales swings wildly in percent terms and is not worth
+ * waking anyone for.
+ */
+const TABIT_DIVERGENCE_THRESHOLD = 0.25;
+const MIN_TABIT_AMOUNT = 1000;
+
+async function findTabitDivergences(): Promise<TabitDivergence[]> {
+  const { m, y } = previousFullMonth();
+
+  const rows = await database
+    .select({
+      clientCode: client.code,
+      franchiseeName: franchisee.name,
+      documentType: clientDocument.documentType,
+      totalAmount: clientDocument.totalAmount,
+    })
+    .from(clientDocument)
+    .innerJoin(client, eq(client.id, clientDocument.clientId))
+    .innerJoin(franchisee, eq(franchisee.id, clientDocument.franchiseeId))
+    .where(
+      and(
+        eq(clientDocument.periodMonth, m),
+        eq(clientDocument.periodYear, y),
+        isNotNull(clientDocument.totalAmount),
+      ),
+    );
+
+  const grouped = new Map<
+    string,
+    {
+      clientCode: string;
+      franchiseeName: string;
+      report: number | null;
+      tabit: number | null;
+    }
+  >();
+
+  for (const r of rows) {
+    if (!r.clientCode) continue;
+    const amount = Number(r.totalAmount);
+    if (!Number.isFinite(amount)) continue;
+
+    const key = `${r.clientCode}|${r.franchiseeName}`;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        clientCode: r.clientCode,
+        franchiseeName: r.franchiseeName,
+        report: null,
+        tabit: null,
+      });
+    }
+    const entry = grouped.get(key)!;
+    if (r.documentType === "client_report") entry.report = amount;
+    if (r.documentType === "tabit_report") entry.tabit = amount;
+  }
+
+  const out: TabitDivergence[] = [];
+  for (const e of grouped.values()) {
+    if (e.report === null || e.tabit === null) continue; // missing-pair territory
+    if (e.tabit < MIN_TABIT_AMOUNT) continue;
+    const divergence = Math.abs(e.report - e.tabit) / e.tabit;
+    if (divergence <= TABIT_DIVERGENCE_THRESHOLD) continue;
+    out.push({
+      clientCode: e.clientCode,
+      franchiseeName: e.franchiseeName,
+      periodMonth: m,
+      periodYear: y,
+      reportAmount: e.report,
+      tabitAmount: e.tabit,
+      divergencePct: Math.round(divergence * 1000) / 10,
+    });
+  }
+  return out.sort((a, b) => b.divergencePct - a.divergencePct);
+}
+
+function buildAlerts(
+  stats: ClientStats[],
+  missingPairs: MissingPair[],
+  tabitDivergences: TabitDivergence[],
+): string[] {
   const alerts: string[] = [];
 
   for (const s of stats) {
@@ -230,9 +369,25 @@ function buildAlerts(stats: ClientStats[], missingPairs: MissingPair[]): string[
         `${s.clientCode}: ${s.failedRuns}/${s.totalRuns} כשלונות ב-${LOOKBACK_HOURS} שעות אחרונות (${pct}% > ${Math.round(ERROR_RATE_THRESHOLD * 100)}%). דוגמאות: ${s.lastErrorSubjects.slice(0, 2).join(" | ")}`,
       );
     }
-    if (s.hoursSinceLastDoc !== null && s.hoursSinceLastDoc > QUIET_HOURS) {
+    // Quiet alert = "the pipeline is dead", which is what this cron was built
+    // for (the 2026-05-05 five-day silent outage). It used to fire on
+    // `hoursSinceLastDoc`, but every tracked client is a MONTHLY publisher:
+    // documents arrive in a burst at month-end and nothing comes for the next
+    // ~25 days. So the alert fired for all 5 clients nearly every day —
+    // 100% false positives over the 10 days audited on 2026-08-11 — which
+    // buried the missing-pair alerts below that carry the real signal.
+    //
+    // Inbound EMAIL, by contrast, does flow continuously (daily Pluxee
+    // snapshots, ezcount copies, platform notifications). Silence there is a
+    // genuine "webhook/routing is broken" signal. Per-period completeness is
+    // covered by the missing-pair alerts, which is the right tool for
+    // "the month's documents never showed up".
+    if (
+      s.hoursSinceLastInbound !== null &&
+      s.hoursSinceLastInbound > QUIET_HOURS
+    ) {
       alerts.push(
-        `${s.clientCode}: שקט מעבר ל-${QUIET_HOURS} שעות (לא נוצר מסמך כבר ${s.hoursSinceLastDoc} שעות). אם הקליינט פעיל זה כנראה משמעותי.`,
+        `${s.clientCode}: לא נקלט אף מייל נכנס מעל ${QUIET_HOURS} שעות (${s.hoursSinceLastInbound} שעות). ייתכן שהניתוב/webhook שבור.`,
       );
     }
   }
@@ -262,6 +417,15 @@ function buildAlerts(stats: ClientStats[], missingPairs: MissingPair[]): string[
           .join(", ")}.`,
       );
     }
+  }
+
+  const fmt = (n: number): string =>
+    `₪${n.toLocaleString("he-IL", { maximumFractionDigits: 0 })}`;
+
+  for (const d of tabitDivergences) {
+    alerts.push(
+      `${d.clientCode} / ${d.franchiseeName} ${d.periodMonth}/${d.periodYear}: פער ${d.divergencePct}% מול טאבית — דוח ${fmt(d.reportAmount)} מול טאבית ${fmt(d.tabitAmount)}. בדוק אם הדוח חלקי, שויך לזכיין הלא נכון, או נדרס.`,
+    );
   }
 
   return alerts;
@@ -351,7 +515,8 @@ export async function GET(request: NextRequest) {
   try {
     const stats = await gatherClientStats();
     const missingPairs = await findMissingPairs();
-    const alerts = buildAlerts(stats, missingPairs);
+    const tabitDivergences = await findTabitDivergences();
+    const alerts = buildAlerts(stats, missingPairs, tabitDivergences);
     alertCount = alerts.length;
 
     const report: HealthReport = {
@@ -360,6 +525,7 @@ export async function GET(request: NextRequest) {
       clients: stats,
       alerts,
       missingPairs,
+      tabitDivergences,
     };
 
     const recipients = getRecipients();
