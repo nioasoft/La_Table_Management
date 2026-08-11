@@ -11,17 +11,9 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive>
->(({ className, dir = "rtl", ...props }, ref) => (
-  // `dir` defaults to rtl: the app is Hebrew end to end (<html dir="rtl">),
-  // but cmdk renders inside a Radix Portal attached to document.body, and
-  // Radix consumes the `dir` prop on Popover.Content internally instead of
-  // writing it to the DOM. The list therefore laid out LTR — item text hugging
-  // the left edge with the check mark on the wrong side — on every franchisee
-  // picker. Setting it here fixes all of them at once; pass dir="ltr"
-  // explicitly if a Command ever needs it.
+>(({ className, ...props }, ref) => (
   <CommandPrimitive
     ref={ref}
-    dir={dir}
     className={cn(
       "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
       className

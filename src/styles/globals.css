@@ -1119,14 +1119,15 @@
     text-align: right;
   }
 
-  html[dir="rtl"] [cmdk-item] {
-    flex-direction: row-reverse;
-  }
+  /* NO flex-direction override here. [cmdk-root] above already sets
+     direction: rtl, so the item's flex row starts from the right on its own.
+     Adding row-reverse flipped it BACK, which is why every franchisee picker
+     rendered its list left-aligned with the check mark on the wrong side
+     while the search box above it looked fine — the input only needed
+     text-align, so it was never double-flipped.
 
-  html[dir="rtl"] [cmdk-item] svg:first-child {
-    margin-left: 0.5rem;
-    margin-right: 0;
-  }
+     Spacing is handled by the component (`me-2` on the check icon), which is
+     a logical property and already resolves to margin-left under RTL. */
 
   /* --------------------------------------------------------------------------
      Next.js Portal fixes
