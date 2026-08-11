@@ -260,7 +260,13 @@ describe("selectLiveUnlinkedSources", () => {
     id: string,
     brandId: string | null,
     createdAt: string,
-  ) => ({ id, brandId, createdAt: new Date(createdAt), fileName: `${id}.xlsx`, metadata: { id } });
+  ) => ({
+    id,
+    brandId,
+    createdAt: new Date(createdAt),
+    fileName: `${id}.xlsx`,
+    metadata: { id, anomalies: [{ code: "unmatched_branch" }] },
+  });
   const linked = (id: string, brandId: string, createdAt: string) => ({
     id, brandId, createdAt: new Date(createdAt), fileName: `${id}.xlsx`, metadata: { id },
   });
@@ -333,7 +339,51 @@ describe("selectLiveUnlinkedSources", () => {
     expect(live).toEqual({
       id: "king",
       fileName: "king.xlsx",
-      metadata: { id: "king" },
+      metadata: { id: "king", anomalies: [{ code: "unmatched_branch" }] },
     });
+  });
+});
+
+describe("selectLiveUnlinkedSources — superseded clean uploads", () => {
+  const clean = (id: string, createdAt: string) => ({
+    id,
+    brandId: null, // nothing named a franchisee, so no brand can be derived
+    createdAt: new Date(createdAt),
+    fileName: `${id}.xlsx`,
+    metadata: { anomalies: [], warnings: [], approvedDifferences: [] },
+  });
+  const linked = (id: string, brandId: string, createdAt: string) => ({
+    id, brandId, createdAt: new Date(createdAt), fileName: `${id}.xlsx`, metadata: { id },
+  });
+
+  it("drops a clean upload once the month has a linked file", () => {
+    // Re-uploading a clean month leaves the previous attempt unlinked with no
+    // findings — nothing to say, and no franchisee to place it by brand.
+    const live = selectLiveUnlinkedSources(
+      [clean("mina-2", "2026-08-11T09:01:00Z"), clean("mina-1", "2026-08-11T08:58:00Z")],
+      [linked("mina-3", "brand-mina", "2026-08-11T09:06:00Z")],
+    );
+
+    expect(live).toEqual([]);
+  });
+
+  it("keeps a clean upload when it is the only evidence of the month", () => {
+    const live = selectLiveUnlinkedSources([clean("only", "2026-08-11T09:01:00Z")], []);
+
+    expect(live.map((source) => source.id)).toEqual(["only"]);
+  });
+
+  it("never drops an upload that still has findings", () => {
+    const withFindings = {
+      ...clean("noisy", "2026-08-11T09:01:00Z"),
+      metadata: { anomalies: [], warnings: ["שורה חריגה"], approvedDifferences: [] },
+    };
+
+    const live = selectLiveUnlinkedSources(
+      [withFindings],
+      [linked("other", "brand-mina", "2026-08-11T09:06:00Z")],
+    );
+
+    expect(live.map((source) => source.id)).toEqual(["noisy"]);
   });
 });

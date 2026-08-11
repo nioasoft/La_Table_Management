@@ -46,6 +46,15 @@ export function mapLatestSourceReviewsByBrand(
   );
 }
 
+/** Whether a stored review still has anything the screen would show. */
+function hasFindings(metadata: unknown): boolean {
+  if (typeof metadata !== "object" || metadata === null) return false;
+  const review = metadata as Record<string, unknown>;
+  return ["anomalies", "warnings", "approvedDifferences"].some(
+    (key) => Array.isArray(review[key]) && review[key].length > 0,
+  );
+}
+
 /**
  * Keeps only the newest unlinked upload per brand, and drops any that a later
  * upload of the same brand has already replaced.
@@ -66,11 +75,18 @@ export function selectLiveUnlinkedSources(
       newestLinkedByBrand.set(linked.brandId, linked.createdAt);
     }
   }
-  // A null brand means no anomaly named a franchisee we could resolve. Those
-  // still supersede each other, they just share one bucket.
+  // A null brand means nothing in the review named a franchisee we could
+  // resolve. Those still supersede each other, they just share one bucket.
   const seenBrands = new Set<string | null>();
   return orderedUnlinked
     .filter((source) => {
+      // A superseded upload with nothing to report cannot be placed by brand
+      // either — its findings are what name a franchisee. Once the month has a
+      // linked file it is no longer the evidence that anything was uploaded,
+      // so it is only a stale filename on the screen.
+      if (!hasFindings(source.metadata) && orderedLinked.length > 0) {
+        return false;
+      }
       if (seenBrands.has(source.brandId)) return false;
       seenBrands.add(source.brandId);
       const linkedAt =
