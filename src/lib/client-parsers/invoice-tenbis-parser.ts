@@ -66,7 +66,18 @@ function parseAmount(raw: string): number {
  */
 function extractHebrewMonth(text: string): number | undefined {
   for (const [name, num] of Object.entries(HEBREW_MONTHS)) {
-    if (text.includes(name)) {
+    // Anchor on Hebrew-letter boundaries. A plain `includes` matched a month
+    // INSIDE a longer word: "קסטרא טומאיי בע\"מ" contains "מאי", so קסטרא's
+    // July 2026 invoice was filed as MAY, collided with its real May invoice,
+    // and was refused by the overwrite guard — Reut saw a July report for the
+    // branch with no invoice beside it. "מינה טומאיי" carries the same trap.
+    //
+    // \b is useless here: JS word boundaries are ASCII-only, so it matches
+    // between two Hebrew letters. Use explicit lookaround on the Hebrew block.
+    const anchored = new RegExp(
+      `(?<![\\u0590-\\u05FF])${name}(?![\\u0590-\\u05FF])`,
+    );
+    if (anchored.test(text)) {
       return num;
     }
   }
