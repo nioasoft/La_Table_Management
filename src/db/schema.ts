@@ -3347,6 +3347,58 @@ export type ClientFranchisee = typeof clientFranchisee.$inferSelect;
 // ============================================================================
 
 // Client Document table - tracks all documents (client reports + Tabit reports)
+/**
+ * One source file's contribution to a client_document.
+ *
+ * `client_document` holds a single client_report per (client, franchisee,
+ * period). Platforms normally bill that way — one report per branch per
+ * month — so the parent row IS the month, and every consumer reads it
+ * directly.
+ *
+ * Wolt broke that in July 2026 by splitting קינג קונג מוצקין's month into two
+ * payouts. The second file hit the overwrite guard and was parked, leaving
+ * ₪97,869 stored against a real ₪212,273.
+ *
+ * Parts keep the parent row intact: when a second file covers a DIFFERENT
+ * window of the same month, it is recorded here and the parent's totals
+ * become the sum of its parts. Downstream code is untouched — it still reads
+ * one row per slot, now holding the whole month. Overlapping windows are NOT
+ * merged: that is the same money twice, and stays a conflict for a human.
+ *
+ * A document with a single source file has no part rows; parts appear only
+ * once a month actually arrives in pieces.
+ */
+export const clientDocumentPart = pgTable(
+  "client_document_part",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    clientDocumentId: text("client_document_id")
+      .notNull()
+      .references(() => clientDocument.id, { onDelete: "cascade" }),
+    originalFileName: text("original_file_name").notNull(),
+    fileUrl: text("file_url"),
+    /** Coverage window, YYYY-MM-DD. Parts of one document must not overlap. */
+    coverageStart: date("coverage_start").notNull(),
+    coverageEnd: date("coverage_end").notNull(),
+    totalAmount: decimal("total_amount", { precision: 12, scale: 2 }),
+    commissionAmount: decimal("commission_amount", { precision: 12, scale: 2 }),
+    gmailMessageId: text("gmail_message_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_client_doc_part_unique").on(
+      table.clientDocumentId,
+      table.coverageStart,
+      table.coverageEnd,
+    ),
+    index("idx_client_doc_part_doc").on(table.clientDocumentId),
+  ],
+);
+
+export type ClientDocumentPart = typeof clientDocumentPart.$inferSelect;
+
 export const clientDocument = pgTable(
   "client_document",
   {

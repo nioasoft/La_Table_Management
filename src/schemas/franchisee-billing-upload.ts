@@ -26,3 +26,8 @@ export const franchiseeBillingUploadSchema = z.object({
 export type FranchiseeBillingUploadInput = z.infer<
   typeof franchiseeBillingUploadSchema
 >;
+
+/** Replays a workbook already stored, so only its id crosses the wire. */
+export const franchiseeBillingReprocessSchema = z.object({
+  sourceFileId: z.string().min(1),
+});

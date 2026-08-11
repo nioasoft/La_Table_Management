@@ -12,7 +12,12 @@
  */
 
 import { database } from "@/db";
-import { clientDocument, client, franchisee } from "@/db/schema";
+import {
+  clientDocument,
+  clientDocumentPart,
+  client,
+  franchisee,
+} from "@/db/schema";
 import { eq, and, isNotNull } from "drizzle-orm";
 import { uploadDocument } from "@/lib/storage";
 import {
@@ -23,6 +28,11 @@ import {
 import { parseTabitFile } from "@/lib/client-parsers/tabit-parser";
 import { parseHeverFile } from "@/lib/client-parsers/hever-parser";
 import { matchFranchiseeName } from "@/lib/franchisee-matcher";
+import {
+  extractCoveragePeriod,
+  periodsOverlap,
+  type CoveragePeriod,
+} from "@/lib/coverage-period";
 import {
   upsertOccasionalClientFromTabit,
   upsertOccasionalClientDocument,
@@ -253,6 +263,8 @@ export async function processClientDocument(
         originalFileName: clientDocument.originalFileName,
         invoiceNumber: clientDocument.invoiceNumber,
         totalAmount: clientDocument.totalAmount,
+        commissionAmount: clientDocument.commissionAmount,
+        fileUrl: clientDocument.fileUrl,
       })
       .from(clientDocument)
       .where(and(...existingConditions))
@@ -291,6 +303,35 @@ export async function processClientDocument(
         processingResult,
         skippedDuplicate: true,
       };
+    }
+
+    // Split period: a SECOND file covering a DIFFERENT part of the same month
+    // is not a conflict, it is the rest of the month. Try to merge before the
+    // overwrite guard below refuses it.
+    if (
+      existingDoc.length > 0 &&
+      source === "gmail_fetch" &&
+      !allowReplace &&
+      existingDoc[0].gmailMessageId !== (gmailMessageId ?? null)
+    ) {
+      const merged = await tryMergeAsPart({
+        existing: existingDoc[0],
+        fileName,
+        fileUrl: uploadResult.url,
+        totalAmount: processingResult.data?.totalAmount ?? null,
+        commissionAmount: processingResult.data?.commissionAmount ?? null,
+        gmailMessageId: gmailMessageId ?? null,
+      });
+      if (merged) {
+        console.log(
+          `[client-document-processor] split period: "${fileName}" merged into document ${existingDoc[0].id} — month total is now ${merged.totalAmount}`,
+        );
+        return {
+          success: true,
+          document: merged,
+          processingResult,
+        };
+      }
     }
 
     // Overwrite guard: an unattended gmail_fetch must never silently
@@ -1116,4 +1157,124 @@ export async function processMultiTenantReport(
   }
 
   return result;
+}
+
+
+/**
+ * Fold a second source file into an existing document as a PART, when it
+ * covers a different slice of the same month.
+ *
+ * Wolt split קינג קונג מוצקין's July 2026 into two payouts (01-16/07 and
+ * 16/07-01/08). The second file hit the overwrite guard, was parked in the
+ * review queue nobody works, and the stored figure stayed ₪97,869 against a
+ * real ₪212,273 — a 54% under-report that no check but the Tabit cross-check
+ * could see.
+ *
+ * Merging keeps the parent row exactly as every consumer expects — one row per
+ * (client, franchisee, period) — and makes its totals the SUM of the parts.
+ * Nothing downstream has to learn anything.
+ *
+ * Returns null, leaving the caller to refuse as before, whenever the merge is
+ * not provably safe:
+ *   • either file name carries no coverage window (unknown ≠ full month)
+ *   • the windows overlap — that is the same money twice, and a real conflict
+ *   • the incoming file has no parsed total to add
+ *
+ * The first merge backfills a part for the file already stored, so the parts
+ * always account for the whole parent, never just the newcomers.
+ */
+async function tryMergeAsPart(args: {
+  existing: {
+    id: string;
+    originalFileName: string;
+    fileUrl: string | null;
+    totalAmount: string | null;
+    commissionAmount: string | null;
+    gmailMessageId: string | null;
+  };
+  fileName: string;
+  fileUrl: string;
+  totalAmount: number | null;
+  commissionAmount: number | null;
+  gmailMessageId: string | null;
+}): Promise<ClientDocument | null> {
+  const { existing } = args;
+
+  const incoming = extractCoveragePeriod(args.fileName);
+  if (!incoming || args.totalAmount === null) return null;
+
+  const existingCoverage = extractCoveragePeriod(existing.originalFileName);
+  if (!existingCoverage) return null;
+
+  const parts = await database
+    .select()
+    .from(clientDocumentPart)
+    .where(eq(clientDocumentPart.clientDocumentId, existing.id));
+
+  // First split for this document — record what is already stored, so the
+  // parts sum to the parent rather than to the newcomer alone.
+  if (parts.length === 0) {
+    if (periodsOverlap(existingCoverage, incoming)) return null;
+    await database.insert(clientDocumentPart).values({
+      clientDocumentId: existing.id,
+      originalFileName: existing.originalFileName,
+      fileUrl: existing.fileUrl,
+      coverageStart: existingCoverage.start,
+      coverageEnd: existingCoverage.end,
+      totalAmount: existing.totalAmount,
+      commissionAmount: existing.commissionAmount,
+      gmailMessageId: existing.gmailMessageId,
+    });
+  } else {
+    for (const part of parts) {
+      const window: CoveragePeriod = {
+        start: part.coverageStart,
+        end: part.coverageEnd,
+      };
+      if (periodsOverlap(window, incoming)) return null;
+    }
+  }
+
+  await database.insert(clientDocumentPart).values({
+    clientDocumentId: existing.id,
+    originalFileName: args.fileName,
+    fileUrl: args.fileUrl,
+    coverageStart: incoming.start,
+    coverageEnd: incoming.end,
+    totalAmount: args.totalAmount.toString(),
+    commissionAmount: args.commissionAmount?.toString() ?? null,
+    gmailMessageId: args.gmailMessageId,
+  });
+
+  const allParts = await database
+    .select()
+    .from(clientDocumentPart)
+    .where(eq(clientDocumentPart.clientDocumentId, existing.id));
+
+  const sum = (pick: (p: (typeof allParts)[number]) => string | null): number =>
+    allParts.reduce((acc, p) => acc + parseFloat(pick(p) ?? "0"), 0);
+
+  const total = Math.round(sum((p) => p.totalAmount) * 100) / 100;
+  const commission = Math.round(sum((p) => p.commissionAmount) * 100) / 100;
+
+  const [updated] = await database
+    .update(clientDocument)
+    .set({
+      totalAmount: total.toString(),
+      commissionAmount: commission.toString(),
+      netAmount: (Math.round((total - commission) * 100) / 100).toString(),
+      reviewNotes:
+        `חודש מפוצל: ${allParts.length} קבצים מרכיבים את הסכום — ` +
+        allParts
+          .map(
+            (p) =>
+              `${p.originalFileName} (${p.coverageStart}→${p.coverageEnd}) ₪${parseFloat(p.totalAmount ?? "0").toLocaleString("he-IL")}`,
+          )
+          .join(" + "),
+      updatedAt: new Date(),
+    })
+    .where(eq(clientDocument.id, existing.id))
+    .returning();
+
+  return updated;
 }

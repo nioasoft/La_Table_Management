@@ -41,7 +41,7 @@ import dns from "node:dns";
 dns.setDefaultResultOrder("ipv4first");
 
 import { database } from "@/db";
-import { client, clientDocument, franchisee } from "@/db/schema";
+import { client, clientDocument, clientDocumentPart, franchisee } from "@/db/schema";
 import { and, eq, like } from "drizzle-orm";
 
 const PERIOD_MONTH = 7;
@@ -114,7 +114,45 @@ async function main() {
   );
 
   if (current === FULL_MONTH_AMOUNT) {
-    console.log("\n✓ already merged — nothing to do.");
+    // Totals were merged by an earlier run, before client_document_part
+    // existed. Record the two source files as parts so the split is DATA
+    // rather than a sentence in reviewNotes — and so a third file for this
+    // month would merge on its own instead of conflicting.
+    const parts = await database
+      .select({ id: clientDocumentPart.id })
+      .from(clientDocumentPart)
+      .where(eq(clientDocumentPart.clientDocumentId, doc.id));
+    if (parts.length > 0) {
+      console.log(`\n✓ already merged, ${parts.length} parts recorded — nothing to do.`);
+      process.exit(0);
+    }
+    console.log(`\nbackfilling 2 parts for document ${doc.id}`);
+    if (!apply) {
+      console.log("(dry run — re-run with --apply to write)");
+      process.exit(0);
+    }
+    await database.insert(clientDocumentPart).values([
+      {
+        clientDocumentId: doc.id,
+        originalFileName: doc.fileName,
+        coverageStart: "2026-07-01",
+        coverageEnd: "2026-07-16",
+        totalAmount: FIRST_HALF_AMOUNT.toString(),
+        // The stored commission_invoice (₪24,652.46) covers this half only.
+        commissionAmount: "24652.46",
+      },
+      {
+        clientDocumentId: doc.id,
+        originalFileName: SECOND_HALF_FILE,
+        fileUrl: SECOND_HALF_BLOB,
+        coverageStart: "2026-07-16",
+        coverageEnd: "2026-08-01",
+        totalAmount: SECOND_HALF_AMOUNT.toString(),
+        // Never ingested — see the header note.
+        commissionAmount: null,
+      },
+    ]);
+    console.log("✓ parts recorded.");
     process.exit(0);
   }
 
