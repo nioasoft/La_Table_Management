@@ -33,14 +33,6 @@ interface ByFranchiseeRow {
   clientFileName: string | null;
   tabitFileDocId: string | null;
   tabitFileName: string | null;
-  // The platform's commission invoice for this (client, franchisee, period).
-  // Reut reconciles from this screen and the invoice was not reachable here at
-  // all — clicking the only document icon always produced the report, which
-  // read as "the invoice is missing" even once it was in the system
-  // (10bis, July 2026).
-  invoiceFileDocId: string | null;
-  invoiceFileName: string | null;
-  invoiceAmount: number | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -106,8 +98,6 @@ export async function GET(request: NextRequest) {
     }
     const latestClientFile = new Map<string, LatestFile>();
     const latestTabitFile = new Map<string, LatestFile>();
-    const latestInvoiceFile = new Map<string, LatestFile>();
-    const invoiceAmounts = new Map<string, number>();
 
     for (const doc of docs) {
       if (!doc.clientId) continue;
@@ -121,20 +111,6 @@ export async function GET(request: NextRequest) {
         const prev = latestClientFile.get(doc.clientId);
         if (!prev || doc.createdAt > prev.createdAt) {
           latestClientFile.set(doc.clientId, {
-            docId: doc.id,
-            hasUrl: !!doc.fileUrl,
-            name: doc.originalFileName,
-            createdAt: doc.createdAt,
-          });
-        }
-      } else if (doc.documentType === "commission_invoice") {
-        invoiceAmounts.set(
-          doc.clientId,
-          (invoiceAmounts.get(doc.clientId) ?? 0) + amount
-        );
-        const prev = latestInvoiceFile.get(doc.clientId);
-        if (!prev || doc.createdAt > prev.createdAt) {
-          latestInvoiceFile.set(doc.clientId, {
             docId: doc.id,
             hasUrl: !!doc.fileUrl,
             name: doc.originalFileName,
@@ -232,7 +208,6 @@ export async function GET(request: NextRequest) {
 
       const cf = latestClientFile.get(clientId);
       const tf = latestTabitFile.get(clientId);
-      const inv = latestInvoiceFile.get(clientId);
 
       rows.push({
         clientId,
@@ -245,9 +220,6 @@ export async function GET(request: NextRequest) {
         clientFileName: cf?.name ?? null,
         tabitFileDocId: tf?.hasUrl ? tf.docId : null,
         tabitFileName: tf?.name ?? null,
-        invoiceFileDocId: inv?.hasUrl ? inv.docId : null,
-        invoiceFileName: inv?.name ?? null,
-        invoiceAmount: invoiceAmounts.get(clientId) ?? null,
         difference,
         absoluteDifference,
         status,

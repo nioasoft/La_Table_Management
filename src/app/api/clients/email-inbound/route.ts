@@ -44,6 +44,7 @@ import {
   detectDocumentType,
   isPromotionalSubject,
   isNonDataSender,
+  isFranchiseeEzcountCopy,
   isCibusDailyReport,
   isHaatMonthlyReport,
   isReceiptDocument,
@@ -1349,10 +1350,20 @@ async function processBufferFile(
   // Re-route by the invoice's actual recipient ("לכבוד") — ezcount "[העתק]"
   // copies arrive on the MISHLOCHA channel even when the franchisee issued the
   // invoice to Haat (one ezcount sequence serves both clients).
+  // A file arriving by link inherits the EMAIL's document type, but one email
+  // can carry two different documents: 10bis sends its monthly transaction
+  // report and the franchisee's own ezcount invoice together. The ezcount copy
+  // is always the franchisee billing the platform — a report in this system's
+  // terms, the same as HAAT's and Mishloha's ezcount invoices — never a
+  // commission invoice.
+  const documentType = isFranchiseeEzcountCopy(file.fileName)
+    ? ("client_report" as const)
+    : file.documentType;
+
   const fileClient = await resolveFileClient(
     ctx.identifiedClient,
     file.buffer,
-    file.documentType,
+    documentType,
     file.fileName,
     outcome.errorDetails,
   );
@@ -1361,7 +1372,7 @@ async function processBufferFile(
     fileName: file.fileName,
     mimeType: "application/pdf",
     fileClient,
-    documentType: file.documentType,
+    documentType: documentType,
     period: ctx.period,
     franchisees: ctx.allFranchisees,
     gmailMessageId: file.dedupKey,
@@ -1379,7 +1390,7 @@ async function processBufferFile(
     ctx.subject,
     ctx.allFranchisees,
     file.fileName,
-    file.documentType,
+    documentType,
     ctx.inactiveFranchisees,
   );
 
@@ -1405,7 +1416,7 @@ async function processBufferFile(
       franchiseeId: franchiseeMatch.franchiseeId,
       periodMonth: ctx.period.month,
       periodYear: ctx.period.year,
-      documentType: file.documentType,
+      documentType: documentType,
       source: "gmail_fetch",
       gmailMessageId: file.dedupKey,
     });
@@ -1430,7 +1441,7 @@ async function processBufferFile(
     emailReceivedAt: ctx.emailReceivedAt,
     clientId: fileClient.clientId,
     clientCode: fileClient.clientCode,
-    documentType: file.documentType,
+    documentType: documentType,
     franchiseeMatch,
     processResult: result,
     fileContext: {

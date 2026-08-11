@@ -158,9 +158,6 @@ export interface ByFranchiseeRow {
   clientFileName: string | null;
   tabitFileDocId: string | null;
   tabitFileName: string | null;
-  invoiceFileDocId: string | null;
-  invoiceFileName: string | null;
-  invoiceAmount: number | null;
 }
 
 export interface ByFranchiseeResponse {

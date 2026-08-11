@@ -3,6 +3,7 @@ import {
   detectDocumentType,
   isPromotionalSubject,
   isNonDataSender,
+  isFranchiseeEzcountCopy,
   isHaatMonthlyReport,
   isReceiptDocument,
 } from "../classify-document-type";
@@ -285,5 +286,34 @@ describe("isReceiptDocument", () => {
     expect(isReceiptDocument("קבלה בברכה")).toBe(false); // no "NNNN מאת"
     expect(isReceiptDocument(null)).toBe(false);
     expect(isReceiptDocument(undefined)).toBe(false);
+  });
+});
+
+describe("isFranchiseeEzcountCopy", () => {
+  it.each([
+    ["2026-7-10082_copy.pdf", "ויני עזריאלי's July 10bis invoice"],
+    ["2026-7-10017_copy.pdf", "קינג קונג חדרה"],
+    ["2026-12-9_copy.pdf", "single-digit invoice number"],
+    ["2026-7-10056_COPY.PDF", "upper case"],
+  ])("flags %j (%s)", (fileName) => {
+    expect(isFranchiseeEzcountCopy(fileName)).toBe(true);
+  });
+
+  it.each([
+    // The platform's OWN commission invoice — must keep its type.
+    ["tenbis-invoice-YLKZ22EVGTKOJCNB1.pdf", "10bis commission invoice"],
+    // 10bis's monthly transaction report, from the same email.
+    ["21657_20260701_20260731.pdf", "10bis transaction report"],
+    ["ezcount-invoice.pdf", "ezcount invoice addressed to us"],
+    ["Tax_Invoice_166992.pdf", "Mishloha tax invoice"],
+    ["2026-7-10082.pdf", "no _copy suffix"],
+    ["", "empty"],
+  ])("does NOT flag %j (%s)", (fileName) => {
+    expect(isFranchiseeEzcountCopy(fileName)).toBe(false);
+  });
+
+  it("handles null/undefined safely", () => {
+    expect(isFranchiseeEzcountCopy(null)).toBe(false);
+    expect(isFranchiseeEzcountCopy(undefined)).toBe(false);
   });
 });

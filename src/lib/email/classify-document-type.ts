@@ -239,6 +239,36 @@ export function isHaatMonthlyReport(
   return HAAT_MONTHLY_REPORT_PATTERN.test(subject);
 }
 
+/**
+ * An ezcount "copy" of an invoice the FRANCHISEE issued to a platform.
+ *
+ * ezcount names these `<year>-<month>-<invoice#>_copy.pdf`
+ * (e.g. `2026-7-10082_copy.pdf`) and 10bis attaches them to the same email as
+ * its monthly transaction report. They are the document Reut reconciles as
+ * "the invoice" — the franchisee billing the platform for the month, with a
+ * total equal to the report's — exactly like the ezcount invoice already
+ * stored as the client_report for HAAT and Mishloha.
+ *
+ * They must NOT be typed commission_invoice. Files arriving by link inherit
+ * the email's subject-derived type, and when that came out
+ * commission_invoice these landed in the slot belonging to the platform's own
+ * commission invoice, collided with it, and were refused. All five of July
+ * 2026's were lost that way (10017, 10056, 10062, 10077, 10082) — Reut saw a
+ * report for every branch and no invoice.
+ *
+ * Matched on the ezcount filename, which is machine-generated and stable. The
+ * `_copy` suffix is what marks it a copy of an issued invoice rather than an
+ * invoice addressed to us.
+ */
+const EZCOUNT_COPY_FILENAME = /^\d{4}-\d{1,2}-\d+_copy\.pdf$/i;
+
+export function isFranchiseeEzcountCopy(
+  fileName: string | null | undefined,
+): boolean {
+  if (!fileName) return false;
+  return EZCOUNT_COPY_FILENAME.test(fileName.trim());
+}
+
 export function isPromotionalSubject(
   subject: string | null | undefined,
 ): boolean {
