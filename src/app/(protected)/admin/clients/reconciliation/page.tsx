@@ -54,7 +54,7 @@ import {
   Check,
   X,
   FileSpreadsheet,
-  FileText,
+  Receipt,
   MessageSquare,
   Pencil,
   Zap,
@@ -1107,16 +1107,30 @@ export default function ClientReconciliationPage() {
                                   ? formatAmount(String(row.clientAmount))
                                   : "-"}
                               </span>
-                              {row.clientFileDocId ? (
+                              {/* The commission invoice — the ONLY document
+                                  this cell offers (Reut, 2026-08-11: "the
+                                  report shouldn't be here at all, always just
+                                  the invoice"). It used to link the client
+                                  REPORT, so downloading from this screen
+                                  always produced the report and read as "the
+                                  invoice never arrived" even once it was in
+                                  the system. The amount beside it is still
+                                  the report total, which is what reconciles
+                                  against Tabit. */}
+                              {row.invoiceFileDocId ? (
                                 <a
-                                  href={`/api/clients/documents/${row.clientFileDocId}/download`}
+                                  href={`/api/clients/documents/${row.invoiceFileDocId}/download`}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title={row.clientFileName ?? "פתח קובץ לקוח"}
-                                  className="inline-flex items-center justify-center h-6 w-6 rounded text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                                  title={
+                                    row.invoiceFileName
+                                      ? `חשבונית עמלה — ${row.invoiceFileName}`
+                                      : "פתח חשבונית עמלה"
+                                  }
+                                  className="inline-flex items-center justify-center h-6 w-6 rounded text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <FileText className="h-3.5 w-3.5" />
+                                  <Receipt className="h-3.5 w-3.5" />
                                 </a>
                               ) : null}
                               {row.status === "missing_client" ||
