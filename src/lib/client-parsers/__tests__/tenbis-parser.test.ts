@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { parseTenbisFile } from "../tenbis-parser";
+import { parseTenbisFile, findRestaurantSections } from "../tenbis-parser";
 
 const fixturesDir = resolve(__dirname, "fixtures");
 
@@ -38,5 +38,51 @@ describe("parseTenbisFile (HTML body branch)", () => {
     const result = await parseTenbisFile(html, "application/octet-stream");
     expect(result.success).toBe(true);
     expect(result.data?.franchiseeName).toContain("נתנזון");
+  });
+});
+
+/**
+ * Text below is written the way pdf-parse emits it: RTL Hebrew in VISUAL
+ * order, so every line reads reversed. Copied from the real July 2026
+ * Azrieli report (21657_20260701_20260731.pdf).
+ */
+describe("findRestaurantSections", () => {
+  const ENTITY_TITLE = "\u05de''\u05d1\u05e2 \u05e2\u05d6\u05e8\u05d9\u05d0\u05dc\u05d9 \u05d5\u05d9\u05e0\u05d9 \u05e4\u05d8 \u05dc\u05de\u05e1\u05e2\u05d3\u05ea \u05e2\u05e1\u05e7\u05d0\u05d5\u05ea \u05e4\u05d9\u05e8\u05d5\u05d8";
+  const DATE_RANGE = "31/07/2026 - 01/07/2026 \u05dd\u05d9\u05db\u05d9\u05e8\u05d0\u05ea\u05d4 \u05df\u05d9\u05d1";
+  const SECTION_MARKER = "\u05db\u05dc\u05dc\u05d9 \u05e2\u05e1\u05e7\u05d0\u05d5\u05ea \u05e4\u05d9\u05e8\u05d5\u05d8";
+  const header = (name: string) =>
+    `${name} \u05dc\u05de\u05e1\u05e2\u05d3\u05ea \u05e2\u05e1\u05e7\u05d0\u05d5\u05ea \u05e4\u05d9\u05e8\u05d5\u05d8`;
+
+  it("finds both restaurants in a combined entity report", () => {
+    const text = [
+      ENTITY_TITLE,
+      DATE_RANGE,
+      header("\u05d7\u05d9\u05e4\u05d4 \u05d5\u05d9\u05e0\u05d9"),
+      SECTION_MARKER,
+      "01/07188178----366-48.44",
+      header("\u05d7\u05d9\u05e4\u05d4 \u05e9\u05d5\u05e4 \u05d1\u05d5\u05e8\u05d2\u05e8 \u05e0\u05ea\u05e0\u05d6\u05d5\u05df"),
+      SECTION_MARKER,
+      "01/0784------84-9.91",
+    ].join("\n");
+
+    expect(findRestaurantSections(text)).toEqual([
+      "\u05d7\u05d9\u05e4\u05d4 \u05d5\u05d9\u05e0\u05d9",
+      "\u05d7\u05d9\u05e4\u05d4 \u05e9\u05d5\u05e4 \u05d1\u05d5\u05e8\u05d2\u05e8 \u05e0\u05ea\u05e0\u05d6\u05d5\u05df",
+    ]);
+  });
+
+  it("does not count the entity title as a restaurant section", () => {
+    // The title is followed by the date range, never by "פירוט עסקאות כללי".
+    const text = [ENTITY_TITLE, DATE_RANGE, header("\u05e8\u05d2\u05d1\u05d4 \u05d5\u05d9\u05e0\u05d9"), SECTION_MARKER].join("\n");
+    expect(findRestaurantSections(text)).toEqual(["\u05e8\u05d2\u05d1\u05d4 \u05d5\u05d9\u05e0\u05d9"]);
+  });
+
+  it("returns a single section for an ordinary one-restaurant report", () => {
+    const text = [ENTITY_TITLE, DATE_RANGE, header("\u05d7\u05d3\u05e8\u05d4 \u05e7\u05d5\u05e0\u05d2 \u05e7\u05d9\u05e0\u05d2"), SECTION_MARKER].join("\n");
+    expect(findRestaurantSections(text)).toHaveLength(1);
+  });
+
+  it("returns nothing when the document has no section headers", () => {
+    expect(findRestaurantSections("some unrelated text\nand another line")).toEqual([]);
   });
 });

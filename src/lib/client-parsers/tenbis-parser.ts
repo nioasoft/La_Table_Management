@@ -169,6 +169,58 @@ function parseTenbisHtmlBody(
 }
 
 /**
+ * Find every RESTAURANT section in a 10bis PDF report.
+ *
+ * From July 2026, 10bis stopped sending one file per branch and started
+ * sending a single entity-level PDF holding one section per restaurant.
+ * The Azrieli entity (ח.פ 516161361) is the known case: until June it got
+ * `21657_*.pdf` (ויני עזריאלי חיפה) and `29896_*.pdf` (נתנזון עזריאלי חיפה)
+ * separately; in July both arrived inside `21657_20260701_20260731.pdf` and
+ * no 29896 file was sent at all.
+ *
+ * The old name extractor kept the LAST `פירוט עסקאות למסעדת X` line in the
+ * document, so the whole entity total (₪30,132) was filed onto the last
+ * section's branch — נתנזון, whose Tabit figure was ₪11,164 (169.9% off) —
+ * while ויני was left with no report at all. Nothing failed and nothing was
+ * logged: the parse succeeded and the document looked complete.
+ *
+ * Structure, as pdf-parse emits it (RTL text in visual order, so each line
+ * reads reversed):
+ *
+ *   [1]  "מ''בע עזריאלי ויני פט למסעדת עסקאות פירוט"   ← entity title
+ *   [2]  "31/07/2026 - 01/07/2026 םיכיראתה ןיב"        ← date range
+ *   [5]  "חיפה ויני למסעדת עסקאות פירוט"                ← restaurant 1
+ *   [6]  "כללי עסקאות פירוט"                            ← section marker
+ *   [80] "חיפה שופ בורגר נתנזון למסעדת עסקאות פירוט"    ← restaurant 2
+ *   [81] "כללי עסקאות פירוט"                            ← section marker
+ *
+ * A restaurant section header is always followed by `פירוט עסקאות כללי`;
+ * the entity title is followed by the date range. That marker is the
+ * discriminator — matching on `בע"מ` would not work, since a restaurant may
+ * legitimately be named with it.
+ */
+export function findRestaurantSections(text: string): string[] {
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  // Reversed forms, because pdf-parse emits RTL in visual order.
+  const headerRe = /^(.+?)\s+למסעדת\s+עסקאות\s+פירוט$/;
+  const sectionMarker = "כללי עסקאות פירוט";
+
+  const names: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headerRe);
+    if (!m) continue;
+    if (lines[i + 1]?.startsWith(sectionMarker)) {
+      names.push(m[1].trim());
+    }
+  }
+  return names;
+}
+
+/**
  * Parse a Tenbis report.
  *
  * Dispatches to the HTML body parser when the input is the email body
@@ -222,20 +274,48 @@ export async function parseTenbisFile(
       };
     }
 
-    // Extract franchisee name from the PDF text
-    // pdf-parse outputs RTL Hebrew in visual order. The pattern is:
-    //   Line N: "XXX למסעדת עסקאות פירוט" (company)
-    //   Line N+k: "YYY למסעדת עסקאות פירוט" (specific branch - this is what we want)
-    // We want the LAST occurrence before the table header
-    let franchiseeName = "";
-    const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-    for (const line of lines) {
-      const m = line.match(/^([\u0590-\u05FF"']+(?:\s+[\u0590-\u05FF"']+)*)\s+למסעדת\s+עסקאות\s+פירוט$/);
-      if (m) {
-        franchiseeName = m[1].trim();
+    // Extract the franchisee name(s) — see findRestaurantSections.
+    //
+    // A multi-restaurant report cannot be saved as one document: its totals
+    // are entity-level, and `client_document` holds one client_report per
+    // (client, franchisee, period). Filing the combined total onto any single
+    // branch overstates that branch and erases the others — exactly the July
+    // 2026 Azrieli incident this check exists to prevent.
+    //
+    // We deliberately do NOT try to split the amounts here. pdf-parse emits
+    // the per-section day rows as delimiter-less digit runs
+    // ("01/07188178----366-48.44",
+    //  "סיכום15636.81374.8292-32571350.120560.6-2207.32")
+    // where 188178 could as easily be 18|8178. Guessing a split would put
+    // fabricated money into billing — strictly worse than parking the file.
+    // A correct split needs a column-aware extractor (`pdftotext -layout`
+    // reads it cleanly); see src/scripts/fix-azrieli-entity-july-2026.ts for
+    // how July was split and verified against Tabit.
+    //
+    // So: refuse, and name every restaurant found, so whoever opens the
+    // review queue knows what is inside without opening the PDF.
+    const sections = findRestaurantSections(text);
+    if (sections.length > 1) {
+      errors.push(
+        `דוח 10ביס מאוחד לישות עם ${sections.length} מסעדות (${sections.join(", ")}) — ` +
+          `הסכומים בקובץ הם ברמת הישות ולא ניתן לשייך אותם לזכיין יחיד. ` +
+          `יש לפצל ידנית לפי הסקשנים בקובץ.`
+      );
+      return { success: false, data: null, errors, warnings };
+    }
+
+    let franchiseeName = sections[0] ?? "";
+    if (!franchiseeName) {
+      // Single-restaurant layouts that predate the "פירוט עסקאות כללי"
+      // section marker: fall back to the last header line before the table.
+      const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        const m = line.match(/^([\u0590-\u05FF"']+(?:\s+[\u0590-\u05FF"']+)*)\s+למסעדת\s+עסקאות\s+פירוט$/);
+        if (m) {
+          franchiseeName = m[1].trim();
+        }
+        if (line.includes("הזמנות") && line.includes("משלוחים")) break;
       }
-      // Stop when we hit the table header
-      if (line.includes("הזמנות") && line.includes("משלוחים")) break;
     }
 
     // Extract period dates
