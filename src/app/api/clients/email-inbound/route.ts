@@ -630,7 +630,7 @@ export async function POST(request: NextRequest) {
 
           if (bodyResult.skippedDuplicate) {
             duplicatesSkipped++;
-          } else if (bodyResult.success) {
+          } else if (bodyResult.success && bodyResult.document) {
             documentsCreated++;
           } else {
             errorCount++;
@@ -949,7 +949,7 @@ export async function POST(request: NextRequest) {
 
           if (attResult.skippedDuplicate) {
             duplicatesSkipped++;
-          } else if (attResult.success) {
+          } else if (attResult.success && attResult.document) {
             documentsCreated++;
           } else {
             errorCount++;
@@ -1199,6 +1199,18 @@ async function recordInboundReviewOutcome(args: {
         // already counts them via duplicates_skipped.
         return;
       }
+      if (args.processResult?.success && !args.processResult.document) {
+        // A parser that deliberately refused to persist returns success with
+        // no document — 10bis "הודעת תשלום" remittance advices, the Cibus
+        // daily snapshot, ezcount receipts. That is a DECISION, not a failure.
+        //
+        // The check below keys on `success && document`, so these fell through
+        // to `status = "failed"` with the useless reason "processing failed".
+        // On 2026-08-10 that put 16 payment advices in the review queue as
+        // failures and counted each as a created document, while nothing was
+        // written. Reut reads that board to find real problems.
+        return;
+      }
       if (args.processResult?.success && args.processResult.document) {
         // Borderline matches (0.85 ≤ confidence < 0.95 or filename/subject
         // strategies that fall in the same band) commit normally but get
@@ -1400,7 +1412,7 @@ async function processBufferFile(
 
     if (result.skippedDuplicate) {
       outcome.duplicate++;
-    } else if (result.success) {
+    } else if (result.success && result.document) {
       outcome.created++;
     } else {
       outcome.errorCount++;
