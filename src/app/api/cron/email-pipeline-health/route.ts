@@ -18,6 +18,9 @@
  *     no matching client_report — or vice versa — for the most recent
  *     month, which historically signals one of the two attachments
  *     was silently dropped (Wolt File A/B regression).
+ *   • Any journal-entry client_report over the allocation threshold
+ *     with no מספר הקצאה — column K of the journal-entries export goes
+ *     out empty and only Reut ever sees it (10bis July-2026).
  *
  * Recipients: ALERT_RECIPIENTS env var (comma-separated). Defaults to
  * asaf@giggsi.co.il if unset. Reut should be added to the env list.
@@ -28,7 +31,7 @@
  * gotcha_vercel_cron_get.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, gt, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { database } from "@/db";
 import {
   client,
@@ -38,6 +41,11 @@ import {
 } from "@/db/schema";
 import { startCronLog } from "@/lib/cron-logger";
 import { sendDirectEmail } from "@/lib/email/service";
+import {
+  ALLOCATION_NUMBER_THRESHOLD,
+  isAllocationNumberMissing,
+} from "@/lib/allocation-number";
+import { tenbisUsesJournalEntries } from "@/data-access/client-reconciliation-approval";
 
 const TRACKED_CLIENT_CODES = ["CIBUS", "TENBIS", "HAAT", "WOLT", "MISHLOCHA"];
 const ERROR_RATE_THRESHOLD = 0.2; // 20%
@@ -97,6 +105,7 @@ interface HealthReport {
   alerts: string[];
   missingPairs: MissingPair[];
   tabitDivergences: TabitDivergence[];
+  missingAllocations: MissingAllocation[];
 }
 
 async function gatherClientStats(): Promise<ClientStats[]> {
@@ -352,10 +361,80 @@ async function findTabitDivergences(): Promise<TabitDivergence[]> {
   return out.sort((a, b) => b.divergencePct - a.divergencePct);
 }
 
+/**
+ * Journal-entry invoices that legally must carry a מספר הקצאה but don't.
+ *
+ * The allocation number is column K of the per-franchisee journal-entries
+ * Hashavshevet export, and it is read off the client_report — the tax invoice
+ * the FRANCHISEE issued to the platform. When extraction breaks, nothing
+ * fails: the document saves, the amounts are right, the export builds, and
+ * column K is simply empty. Reut is the only detector, one line at a time.
+ *
+ * That is exactly how 10bis lost every July-2026 allocation (Reut 2026-08-12):
+ * from the July period the TENBIS client_report slot holds the franchisee's
+ * ezcount invoice instead of 10bis's transaction report, and the report parser
+ * had no anchors for that layout. Fixed at the parser; this is the net that
+ * catches the NEXT layout change, whichever platform makes it.
+ *
+ * HEVER is excluded: its client_report is a bank-transfer xlsx, never a tax
+ * invoice, and its journal rows are built to leave K empty. TENBIS counts only
+ * from the period its self-billed cutover took effect.
+ */
+interface MissingAllocation {
+  clientCode: string;
+  franchiseeName: string;
+  periodMonth: number;
+  periodYear: number;
+  amount: number;
+}
+
+const ALLOCATION_EXEMPT_CLIENT_CODES = new Set(["HEVER"]);
+
+async function findMissingAllocations(): Promise<MissingAllocation[]> {
+  const { m, y } = previousFullMonth();
+
+  const rows = await database
+    .select({
+      clientCode: client.code,
+      franchiseeName: franchisee.name,
+      totalAmount: clientDocument.totalAmount,
+    })
+    .from(clientDocument)
+    .innerJoin(client, eq(client.id, clientDocument.clientId))
+    .innerJoin(franchisee, eq(franchisee.id, clientDocument.franchiseeId))
+    .where(
+      and(
+        eq(clientDocument.periodMonth, m),
+        eq(clientDocument.periodYear, y),
+        eq(clientDocument.documentType, "client_report"),
+        eq(client.journalEntryGeneration, true),
+        isNull(clientDocument.allocationNumber),
+      ),
+    );
+
+  const out: MissingAllocation[] = [];
+  for (const r of rows) {
+    if (!r.clientCode) continue;
+    if (ALLOCATION_EXEMPT_CLIENT_CODES.has(r.clientCode)) continue;
+    if (r.clientCode === "TENBIS" && !tenbisUsesJournalEntries(m, y)) continue;
+    const amount = Number(r.totalAmount);
+    if (!isAllocationNumberMissing(amount, null)) continue;
+    out.push({
+      clientCode: r.clientCode,
+      franchiseeName: r.franchiseeName,
+      periodMonth: m,
+      periodYear: y,
+      amount,
+    });
+  }
+  return out.sort((a, b) => b.amount - a.amount);
+}
+
 function buildAlerts(
   stats: ClientStats[],
   missingPairs: MissingPair[],
   tabitDivergences: TabitDivergence[],
+  missingAllocations: MissingAllocation[],
 ): string[] {
   const alerts: string[] = [];
 
@@ -425,6 +504,21 @@ function buildAlerts(
   for (const d of tabitDivergences) {
     alerts.push(
       `${d.clientCode} / ${d.franchiseeName} ${d.periodMonth}/${d.periodYear}: פער ${d.divergencePct}% מול טאבית — דוח ${fmt(d.reportAmount)} מול טאבית ${fmt(d.tabitAmount)}. בדוק אם הדוח חלקי, שויך לזכיין הלא נכון, או נדרס.`,
+    );
+  }
+
+  // Grouped per client — one broken layout hits every branch at once.
+  const allocByClient = new Map<string, MissingAllocation[]>();
+  for (const a of missingAllocations) {
+    if (!allocByClient.has(a.clientCode)) allocByClient.set(a.clientCode, []);
+    allocByClient.get(a.clientCode)!.push(a);
+  }
+  for (const [code, rows] of allocByClient.entries()) {
+    alerts.push(
+      `${code}: ${rows.length} חשבונית(ות) מעל ${fmt(ALLOCATION_NUMBER_THRESHOLD)} ללא מספר הקצאה לחודש ${rows[0].periodMonth}/${rows[0].periodYear} — עמודה K בייצוא פקודות היומן תצא ריקה. ${rows
+        .slice(0, 5)
+        .map((r) => `${r.franchiseeName} (${fmt(r.amount)})`)
+        .join(", ")}.`,
     );
   }
 
@@ -516,7 +610,13 @@ export async function GET(request: NextRequest) {
     const stats = await gatherClientStats();
     const missingPairs = await findMissingPairs();
     const tabitDivergences = await findTabitDivergences();
-    const alerts = buildAlerts(stats, missingPairs, tabitDivergences);
+    const missingAllocations = await findMissingAllocations();
+    const alerts = buildAlerts(
+      stats,
+      missingPairs,
+      tabitDivergences,
+      missingAllocations,
+    );
     alertCount = alerts.length;
 
     const report: HealthReport = {
@@ -526,6 +626,7 @@ export async function GET(request: NextRequest) {
       alerts,
       missingPairs,
       tabitDivergences,
+      missingAllocations,
     };
 
     const recipients = getRecipients();
@@ -565,6 +666,7 @@ export async function GET(request: NextRequest) {
           quietHours: s.hoursSinceLastDoc,
         })),
         missingPairCount: missingPairs.length,
+        missingAllocationCount: missingAllocations.length,
         emailedRecipients: shouldSend ? recipients : [],
       },
     });
@@ -574,6 +676,7 @@ export async function GET(request: NextRequest) {
       alerts,
       stats,
       missingPairs,
+      missingAllocations,
       emailsSent,
       emailsFailed,
     });

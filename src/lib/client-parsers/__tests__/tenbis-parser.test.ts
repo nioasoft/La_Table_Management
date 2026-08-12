@@ -46,6 +46,48 @@ describe("parseTenbisFile (HTML body branch)", () => {
 });
 
 /**
+ * Regression for Reut 2026-08-12: "בתן ביס לא נקלטו מספרי הקצאה".
+ *
+ * From the July-2026 period the TENBIS client_report slot holds the
+ * franchisee's own ezcount tax invoice, not 10bis's transaction report. This
+ * parser had no anchors for that layout, so those files failed with
+ * "לא נמצאו סכומים" — no amounts and, crucially, no מספר הקצאה, which is
+ * column K of the journal-entries Hashavshevet export.
+ *
+ * Fixture is the real production file (ezcount 10017, קינג קונג חדרה).
+ */
+describe("parseTenbisFile — ezcount tax invoice in the report slot", () => {
+  function loadPdf(name: string): Buffer {
+    return readFileSync(resolve(fixturesDir, name));
+  }
+
+  it("delegates an ezcount invoice to the ezcount parser and keeps the allocation number", async () => {
+    const result = await parseTenbisFile(
+      loadPdf("tenbis-ezcount-invoice-10017-hadera-2026-07.pdf"),
+      "application/pdf",
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.data?.allocationNumber).toBe("213027501");
+    expect(result.data?.invoiceNumber).toBe("10017");
+    expect(result.data?.totalAmount).toBeCloseTo(25064, 2);
+    expect(result.data?.periodMonth).toBe(7);
+    expect(result.data?.periodYear).toBe(2026);
+  });
+
+  it("still parses a real 10bis transaction report as a report", async () => {
+    const result = await parseTenbisFile(
+      loadPdf("tenbis-single-hadera-2026-07.pdf"),
+      "application/pdf",
+    );
+    // The delegation must not swallow the reports: the ezcount parser reads
+    // ₪44.9M of garbage out of this file.
+    expect(result.success).toBe(true);
+    expect(result.data?.totalAmount).toBeCloseTo(25064.1, 2);
+  });
+});
+
+/**
  * Text below is written the way pdf-parse emits it: RTL Hebrew in VISUAL
  * order, so every line reads reversed. Copied from the real July 2026
  * Azrieli report (21657_20260701_20260731.pdf).

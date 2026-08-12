@@ -390,6 +390,24 @@ export async function parseTenbisFile(
       };
     }
 
+    // From the July-2026 period the client_report slot no longer holds 10bis's
+    // transaction report but the franchisee's OWN ezcount tax invoice — the
+    // self-billed cutover (fix-tenbis-ezcount-invoices-july-2026.ts). This
+    // parser has none of its anchors, so every such file failed with
+    // "לא נמצאו סכומים": no amounts, and no מספר הקצאה — which is column K of
+    // the journal-entries Hashavshevet export (Reut 2026-08-12: "בתן ביס לא
+    // נקלטו מספרי הקצאה"). HAAT and Mishloha already fall back to the shared
+    // ezcount parser; 10bis now does too.
+    //
+    // The marker is unambiguous: an ezcount tax invoice prints
+    // "חשבונית מס מספר <N>"; a 10bis transaction report never does (verified
+    // against every June + July 2026 TENBIS PDF on record). Checked after the
+    // "הודעת תשלום" rejection above so a payment notice still skips persist.
+    if (/חשבונית\s+מס\s+מספר\s*\d/.test(text)) {
+      const { parseMishlohaFile } = await import("./invoice-mishloha-parser");
+      return parseMishlohaFile(buffer, mimeType);
+    }
+
     // Extract the franchisee name(s) — see findRestaurantSections.
     //
     // A multi-restaurant report cannot be saved as one document: its totals
