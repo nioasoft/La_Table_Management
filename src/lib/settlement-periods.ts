@@ -611,22 +611,17 @@ export function snapPeriodToFrequency(
  * Decide whether a supplier file belongs in a Hashavshevet export for the
  * requested [rangeStart, rangeEnd] window. All dates are YYYY-MM-DD strings.
  *
- * Rules:
+ * Rules (Reut, 2026-07):
  * - Monthly export (range ≤ 35 days): only monthly-or-faster suppliers appear.
  * - Multi-month export (quarter/half/year/custom): monthly-or-faster suppliers
- *   contribute EVERY file overlapping the range, one Hashavshevet row per
- *   month (the aggregation key includes the file period). Until 2026-08 only
- *   the range's last month was kept, which silently dropped the other months
- *   from the export entirely — a July file could never be exported in a Q3 run.
- *   Other suppliers keep the existing date-overlap semantics.
- *
- * ponytail: no "already exported" tracking exists, so a quarterly run re-emits
- * months a monthly run already billed. Reut drops those rows by period before
- * importing; add an exported-periods table if that stops being good enough.
+ *   contribute only files whose period starts in the LAST month of the range —
+ *   the one month not yet invoiced by a monthly run. Earlier months were
+ *   already billed monthly; including them double-bills. Other suppliers keep
+ *   the existing date-overlap semantics.
  */
 export function fileBelongsInExportRange(
   supplierFrequency: string | null,
-  _filePeriodStart: string | null,
+  filePeriodStart: string | null,
   rangeStart: string,
   rangeEnd: string
 ): boolean {
@@ -642,9 +637,15 @@ export function fileBelongsInExportRange(
   const spanDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   const isMonthlyRun = spanDays <= 35;
 
-  // Short-cycle suppliers: every overlapping file, in any run length.
-  // Longer-cycle suppliers: multi-month runs only.
-  return isShortCycle || !isMonthlyRun;
+  if (!isShortCycle) return !isMonthlyRun;
+
+  if (isMonthlyRun) return true;
+
+  // Multi-month run: keep only files starting in the range's last month.
+  // NULL-period files never reach here (SQL overlap filter excludes them).
+  if (!filePeriodStart) return true;
+  const lastMonthStart = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-01`;
+  return filePeriodStart >= lastMonthStart;
 }
 
 /**

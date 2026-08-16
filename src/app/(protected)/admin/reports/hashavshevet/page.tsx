@@ -95,20 +95,6 @@ interface HashavshevetReport {
 // COLUMN DEFINITIONS
 // ============================================================================
 
-/** "07/2026" for a whole month, "01/07/2026 - 15/08/2026" for anything else. */
-function formatEntryPeriod(row: HashavshevetEntry): string {
-  const { periodStartDate: start, periodEndDate: end } = row;
-  if (!start) return "";
-  const [sy, sm, sd] = start.split("-");
-  const [ey, em] = (end || "").split("-");
-  const lastDay = end ? end.split("-")[2] : "";
-  const isWholeMonth =
-    sy === ey && sm === em && sd === "01" && lastDay === String(new Date(Number(ey), Number(em), 0).getDate()).padStart(2, "0");
-  if (isWholeMonth) return `${sm}/${sy}`;
-  const dmy = (d: string) => d.split("-").reverse().join("/");
-  return end ? `${dmy(start)} - ${dmy(end)}` : dmy(start);
-}
-
 const entryColumns: ColumnDef<HashavshevetEntry>[] = [
   {
     id: "docNumber",
@@ -143,15 +129,6 @@ const entryColumns: ColumnDef<HashavshevetEntry>[] = [
         {row.franchiseeName}
       </div>
     ),
-  },
-  {
-    // A multi-month run emits one row per month per (ספק × זכיין), so the
-    // period is what tells those rows apart.
-    id: "period",
-    header: "תקופה",
-    accessor: (row) => formatEntryPeriod(row),
-    accessorKey: "periodStartDate",
-    className: "font-mono text-muted-foreground whitespace-nowrap",
   },
   {
     id: "brandName",
