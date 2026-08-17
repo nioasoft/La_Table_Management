@@ -44,6 +44,28 @@ export function bkmvCoverageEnd(
   return formatDateAsLocal(new Date(year, month - 1, 0));
 }
 
+/**
+ * How much of a settlement period a franchisee can already be held to.
+ *
+ * A period that is still running cannot be "missing" a file: nobody can export
+ * bookkeeping data for months that haven't happened. On 17/08 the open quarter
+ * Q3 is only due through 31/07, and the open month August is due for nothing at
+ * all — flagging all 21 franchisees as חסרים there is noise that reads as a bug
+ * to whoever just uploaded a file.
+ *
+ * @returns YYYY-MM-DD of the last day the period can demand, or null when the
+ *          period hasn't completed a single month yet (nothing is due).
+ */
+export function bkmvPeriodDueThrough(
+  periodStartDate: string,
+  periodEndDate: string,
+  now: Date = new Date()
+): string | null {
+  const due = bkmvCoverageEnd(periodEndDate, now);
+  if (!due || due < periodStartDate) return null;
+  return due;
+}
+
 function toLocalDateString(value: Date | string | null | undefined): string | null {
   if (!value) return null;
   if (typeof value === "string") return value.slice(0, 10);

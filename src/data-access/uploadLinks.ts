@@ -16,7 +16,7 @@ import {
 } from "@/db/schema";
 import { eq, and, desc, lt, or, sql, isNotNull, gte, lte, inArray, ne, ilike } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { bkmvCoverageEnd } from "@/lib/bkmv-coverage";
+import { bkmvCoverageEnd, bkmvPeriodDueThrough } from "@/lib/bkmv-coverage";
 
 // Entity types that can have upload links
 export type UploadLinkEntityType = "supplier" | "franchisee" | "brand";
@@ -1315,6 +1315,21 @@ export async function getFranchiseeBkmvStatusForPeriod(
       )
     );
 
+  // An open period is only due for the months it has actually completed: on
+  // 17/08 the running Q3 is due through 31/07, and August is due for nothing.
+  // Without this every franchisee shows as חסר the moment the period opens,
+  // including the one who just uploaded a file.
+  const dueThrough = bkmvPeriodDueThrough(periodStartDate, periodEndDate);
+  if (!dueThrough) {
+    return {
+      franchisees: activeFranchisees.map((f) => ({
+        id: f.id,
+        name: f.name,
+        hasFile: true,
+      })),
+    };
+  }
+
   // Get all BKMV files that COVER this period (non-rejected).
   // Coverage, not overlap: a Q1 file whose range spills a few days into Q2
   // (e.g. 2026-01-01..2026-04-30) must not count as the Q2 file.
@@ -1337,7 +1352,7 @@ export async function getFranchiseeBkmvStatusForPeriod(
       and(
         isNotNull(uploadedFile.franchiseeId),
         lte(uploadedFile.periodStartDate, periodStartDate),
-        gte(uploadedFile.periodEndDate, periodEndDate),
+        gte(uploadedFile.periodEndDate, dueThrough),
         ne(uploadedFile.processingStatus, "rejected")
       )
     );
@@ -1347,7 +1362,7 @@ export async function getFranchiseeBkmvStatusForPeriod(
     bkmvFiles
       .filter((f) => {
         const coverageEnd = bkmvCoverageEnd(f.periodEndDate, f.createdAt);
-        return coverageEnd !== null && coverageEnd >= periodEndDate;
+        return coverageEnd !== null && coverageEnd >= dueThrough;
       })
       .map((f) => f.franchiseeId)
       .filter(Boolean)

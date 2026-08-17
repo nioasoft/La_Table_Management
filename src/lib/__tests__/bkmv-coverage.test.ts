@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bkmvCoverageEnd } from "@/lib/bkmv-coverage";
+import { bkmvCoverageEnd, bkmvPeriodDueThrough } from "@/lib/bkmv-coverage";
 
 describe("bkmvCoverageEnd", () => {
   it("caps a future period_end_date at the upload date", () => {
@@ -38,5 +38,32 @@ describe("bkmvCoverageEnd", () => {
 
   it("falls back to period_end_date when the upload date is missing", () => {
     expect(bkmvCoverageEnd("2026-06-30", null)).toBe("2026-06-30");
+  });
+});
+
+describe("bkmvPeriodDueThrough", () => {
+  const aug17 = new Date(2026, 7, 17);
+
+  it("demands a closed period in full", () => {
+    expect(bkmvPeriodDueThrough("2026-04-01", "2026-06-30", aug17)).toBe(
+      "2026-06-30"
+    );
+  });
+
+  it("demands only the elapsed months of the running quarter", () => {
+    // Q3 on 17/08: July is done, August isn't.
+    expect(bkmvPeriodDueThrough("2026-07-01", "2026-09-30", aug17)).toBe(
+      "2026-07-31"
+    );
+  });
+
+  it("demands nothing from the running month", () => {
+    expect(bkmvPeriodDueThrough("2026-08-01", "2026-08-31", aug17)).toBeNull();
+  });
+
+  it("demands the elapsed part of the running calendar year", () => {
+    expect(bkmvPeriodDueThrough("2026-01-01", "2026-12-31", aug17)).toBe(
+      "2026-07-31"
+    );
   });
 });
