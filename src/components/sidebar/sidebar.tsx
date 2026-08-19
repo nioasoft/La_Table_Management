@@ -196,6 +196,11 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
                 href: "/admin/clients/inbound-review",
                 icon: <Inbox className="h-4 w-4" />,
               },
+              {
+                label: "ארכיון מסמכים",
+                href: "/admin/clients/archive",
+                icon: <FileText className="h-4 w-4" />,
+              },
             ],
           },
           {
