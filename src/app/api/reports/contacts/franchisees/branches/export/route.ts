@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    const franchisees = await getFranchiseesWithContacts({ category: "all" });
+    const franchisees = await getFranchiseesWithContacts({ category: "regular" });
 
     const headers = [
       "מותג",
