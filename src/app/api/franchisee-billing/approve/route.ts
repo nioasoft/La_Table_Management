@@ -1,4 +1,4 @@
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -77,7 +77,9 @@ function sourceBlockReason(
   rows: readonly ApprovalBillingRow[],
   sourcesByBrand: ReadonlyMap<string, ApprovalSourceReview>,
 ): string | null {
-  if (sourcesByBrand.size === 0) {
+  // A month billed only from one-restaurant files has no brand-wide file to
+  // demand — each of those rows answers to its own file.
+  if (sourcesByBrand.size === 0 && rows.some((row) => !row.sourceSingleBranch)) {
     return "אין קובץ מקור פעיל לחודש שנבחר";
   }
   const reviews = [...sourcesByBrand.values()].map((source) =>
@@ -87,7 +89,9 @@ function sourceBlockReason(
     return "בדיקת אחד מקובצי המקור אינה תקינה";
   }
   const stale = rows.filter(
-    (row) => row.sourceFileId !== sourcesByBrand.get(row.brandId)?.id,
+    (row) =>
+      !row.sourceSingleBranch &&
+      row.sourceFileId !== sourcesByBrand.get(row.brandId)?.id,
   );
   if (stale.length > 0) {
     return `יש ${stale.length} שורות שמבוססות על קובץ ישן: ${stale.map((row) => row.franchiseeName).join(", ")}`;
@@ -116,10 +120,15 @@ function snapshotFor(
   approvedBy: string,
 ): PersistBillingApprovalInput | string {
   const accountKey = row.hashavshevetAccountKey?.trim();
+  // A zero-rate franchisee (Natanzon) bills nothing, so nothing of it ever
+  // reaches Hashavshevet — an export account key would never be read.
+  const billsNothing = [row.royalty, row.marketing, row.total].every(
+    (value) => Number(value) === 0,
+  );
   if (!row.royaltyTiers?.length || !row.royaltyTiersConfirmed) {
     return `מדרגות התמלוגים של ${row.franchiseeName} אינן מאושרות`;
   }
-  if (row.marketingFeeRate === null || !accountKey) {
+  if (row.marketingFeeRate === null || (!accountKey && !billsNothing)) {
     return `חסרה הגדרת חיוב לזכיין ${row.franchiseeName}`;
   }
   return {
@@ -128,7 +137,7 @@ function snapshotFor(
     tierBasisSnapshot: row.royaltyTierBasis,
     marketingRateSnapshot: row.marketingFeeRate,
     vatRateSnapshot: vatRate,
-    accountKeySnapshot: accountKey,
+    accountKeySnapshot: accountKey ?? null,
     approvedAt,
     approvedBy,
   };
@@ -153,14 +162,15 @@ async function approveWithinTransaction(
   const period = { year: input.periodYear, month: input.periodMonth };
   const rows = await store.loadRowsForUpdate(period);
   if (rows.length === 0) return { kind: "not_found" };
-  if (rows.every((row) => row.status === "approved")) {
+  // Brands land at different times, so a month with rows already approved is a
+  // normal state, not a corrupt one: approval takes whatever is still a draft
+  // and leaves the approved rows exactly as they are.
+  const drafts = rows.filter((row) => row.status === "draft");
+  if (drafts.length === 0) {
     return { kind: "already_approved" };
   }
-  if (rows.some((row) => row.status !== "draft")) {
-    return { kind: "blocked", error: "החודש נמצא במצב אישור חלקי ואינו ניתן לאישור" };
-  }
   const sourceReason = sourceBlockReason(
-    rows,
+    drafts,
     await store.loadLatestSources(period),
   );
   if (sourceReason) return { kind: "blocked", error: sourceReason };
@@ -168,7 +178,7 @@ async function approveWithinTransaction(
   if (vatRate === null) {
     return { kind: "blocked", error: "לא נמצא שיעור מע״מ לחודש שנבחר" };
   }
-  return calculateAndPersist(rows, vatRate, approvedBy, store);
+  return calculateAndPersist(drafts, vatRate, approvedBy, store);
 }
 async function calculateAndPersist(
   rows: readonly ApprovalBillingRow[],
@@ -266,6 +276,13 @@ export function createLockedApprovalRowsQuery(
     subtotal: billing.subtotal,
     total: billing.total,
     sourceFileId: billing.sourceFileId,
+    // A correlated subquery instead of a join: FOR UPDATE cannot lock the
+    // nullable side of an outer join, and the file row needs no lock.
+    sourceSingleBranch: sql<boolean>`coalesce((
+      select ${schema.uploadedFile.metadata}->>'singleBranch'
+      from ${schema.uploadedFile}
+      where ${schema.uploadedFile.id} = ${billing.sourceFileId}
+    ), '') = 'true'`,
     status: billing.status,
     royaltyTiers: franchisee.royaltyTiers,
     royaltyTierBasis: franchisee.royaltyTierBasis,

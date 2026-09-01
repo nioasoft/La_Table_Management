@@ -21,6 +21,9 @@ export interface ApprovalBillingRow extends ApprovalCalculationRow {
   readonly periodYear: number;
   readonly periodMonth: number;
   readonly sourceFileId: string | null;
+  /** True when the row was billed from a one-restaurant export — that file is
+   *  its own authority, so the brand's live file never makes it stale. */
+  readonly sourceSingleBranch: boolean;
   readonly status: FranchiseeBillingStatus;
   readonly royaltyTiers: RoyaltyTier[] | null;
   readonly royaltyTierBasis: RoyaltyTierBasis;
@@ -47,7 +50,8 @@ export interface PersistBillingApprovalInput {
   readonly tierBasisSnapshot: RoyaltyTierBasis;
   readonly marketingRateSnapshot: string;
   readonly vatRateSnapshot: string;
-  readonly accountKeySnapshot: string;
+  /** Null only for a row that bills nothing — nothing of it is ever exported. */
+  readonly accountKeySnapshot: string | null;
   readonly approvedAt: Date;
   readonly approvedBy: string;
 }
