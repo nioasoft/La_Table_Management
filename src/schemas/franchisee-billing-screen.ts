@@ -95,6 +95,8 @@ const storedAnomalySchema = z.object({
   branchName: z.string(),
   franchiseeId: z.string().optional(),
   message: z.string(),
+  receipts: z.number().nullable().optional(),
+  tips: z.number().nullable().optional(),
 });
 
 const storedFieldDifferenceSchema = z.object({
@@ -157,6 +159,8 @@ export const franchiseeBillingScreenDataSchema = z.object({
   rows: z.array(billingScreenRowSchema),
   anomalies: z.array(storedAnomalySchema.extend({
     franchiseeName: z.string().optional(),
+    sourceFileId: z.string(),
+    sourceFileName: z.string(),
   })),
   approvedDifferences: z.array(z.object({
     franchiseeId: z.string(),
@@ -165,6 +169,11 @@ export const franchiseeBillingScreenDataSchema = z.object({
     differences: z.array(storedFieldDifferenceSchema),
   })),
   warnings: z.array(z.string()),
+  franchisees: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    brandId: z.string().nullable(),
+  })),
   hasBlockingIssues: z.boolean(),
 });
 

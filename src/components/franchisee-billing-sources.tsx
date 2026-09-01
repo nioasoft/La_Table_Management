@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { reprocessSourceFile } from "@/lib/franchisee-billing-reprocess";
 import type { FranchiseeBillingScreenPayload } from "@/schemas/franchisee-billing-screen";
 
 type SourceFile = FranchiseeBillingScreenPayload["sourceFiles"][number];
@@ -35,28 +36,6 @@ function apiErrorMessage(value: unknown): string | null {
     return value.error;
   }
   return null;
-}
-
-/**
- * Replays a workbook already stored, so a scale approved after the upload is
- * picked up without asking Tabit for the file again.
- */
-async function reprocessSourceFile(sourceFileId: string): Promise<void> {
-  const response = await fetchWithTimeout(
-    "/api/franchisee-billing/reprocess",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceFileId }),
-      timeout: 60_000,
-    },
-  );
-  const responseBody: unknown = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      apiErrorMessage(responseBody) ?? "עיבוד הקובץ מחדש נכשל. נסי שוב.",
-    );
-  }
 }
 
 /** Cancels one upload: its draft rows go and it stops blocking the month. */
@@ -84,7 +63,7 @@ export function FranchiseeBillingSources({
 }: FranchiseeBillingSourcesProps) {
   const [pendingDiscard, setPendingDiscard] = useState<SourceFile | null>(null);
   const reprocess = useMutation({
-    mutationFn: reprocessSourceFile,
+    mutationFn: (sourceFileId: string) => reprocessSourceFile(sourceFileId),
     onSuccess: () => onChanged(),
   });
   const discard = useMutation({

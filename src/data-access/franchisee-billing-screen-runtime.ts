@@ -18,6 +18,7 @@ import {
 import type {
   BillingDiscountContext,
   BillingNoRevenueContext,
+  BillingScreenFranchisee,
   BillingScreenOperations,
   BillingScreenRow,
   BillingSourceReviewRecord,
@@ -449,6 +450,25 @@ async function discardSourceFile(
   });
 }
 
+/**
+ * The franchisees a blocked row may be assigned to — exactly the set the
+ * matcher itself resolves against, so the picker can never offer a franchisee
+ * the replay would then refuse.
+ */
+async function readBillableFranchisees(
+  database: BillingDatabase,
+): Promise<readonly BillingScreenFranchisee[]> {
+  return database
+    .select({
+      id: schema.franchisee.id,
+      name: schema.franchisee.name,
+      brandId: schema.franchisee.brandId,
+    })
+    .from(schema.franchisee)
+    .where(eq(schema.franchisee.category, "regular"))
+    .orderBy(schema.franchisee.name);
+}
+
 export async function createBillingScreenOperations(): Promise<BillingScreenOperations> {
   const { database } = await loadDatabaseRuntime();
   return {
@@ -467,5 +487,6 @@ export async function createBillingScreenOperations(): Promise<BillingScreenOper
       persistDifferenceResolution(database, input),
     discardSourceFile: (sourceFileId) =>
       discardSourceFile(database, sourceFileId),
+    readBillableFranchisees: () => readBillableFranchisees(database),
   };
 }

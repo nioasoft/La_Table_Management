@@ -81,6 +81,7 @@ function operationsFor(context: CompleteDiscountContext) {
     readDifferenceContext: async () => null,
     persistDifferenceResolution: async () => "conflict",
     discardSourceFile: async () => "not_found",
+    readBillableFranchisees: async () => [],
   };
   return {
     operations,

@@ -230,6 +230,7 @@ describe("parseRoyaltyRevenueFile", () => {
             missingTips: false,
           },
         ],
+        singleBranch: false,
       },
       errors: [],
       warnings: [],
@@ -349,7 +350,10 @@ describe("parseRoyaltyRevenueFile", () => {
     expect(result.errors).toContain("הקובץ אינו מקובץ לפי חודש");
   });
 
-  it("names the missing branch grouping when the export is grouped by month", () => {
+  it("keeps a one-restaurant export nameless instead of rejecting it", () => {
+    // Tabit filtered to a single restaurant drops the branch column, so the
+    // workbook never says whose revenue it is. Rejecting it lost the month;
+    // the row now comes through nameless for the screen to assign.
     const buffer = workbookBuffer([
       ["שנה", 2026, 2026],
       ["חודש בשנה", 'סה"כ תקבולים', 'סה"כ טיפ'],
@@ -360,10 +364,35 @@ describe("parseRoyaltyRevenueFile", () => {
 
     const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
 
-    expect(result.success).toBe(false);
-    expect(result.errors).toEqual([
-      "הקובץ אינו מקובץ לפי סניף — ייצאי מטאבית בקיבוץ לפי סניף",
+    expect(result.success).toBe(true);
+    expect(result.data?.rows).toEqual([
+      {
+        branchName: "",
+        receipts: 347897.2,
+        tips: 0,
+        period: { year: 2026, month: 7 },
+        missingBranchName: true,
+        missingReceipts: false,
+        missingTips: false,
+      },
     ]);
+  });
+
+  it("still rejects a one-restaurant export that covers several months", () => {
+    const buffer = workbookBuffer([
+      ["שנה", 2026, 2026],
+      ["חודש בשנה", 'סה"כ תקבולים', 'סה"כ טיפ'],
+      ["אפריל", 45200.9, 0],
+      ["מאי", 66984.7, 0],
+      ["מסננים שהוחלו:\r\nfromDate הוא 2026-04-03\r\ntoDate הוא 2026-07-02"],
+    ]);
+
+    const result = parseRoyaltyRevenueFile(buffer, XLSX_MIME);
+
+    expect(result.success).toBe(false);
+    expect(result.errors).toContain(
+      "הקובץ מכסה 03/04/2026–02/07/2026 — יותר מחודש אחד. ייצאי מטאבית קובץ של חודש בודד",
+    );
   });
 
   it("keeps the generic header error when no known column is present", () => {

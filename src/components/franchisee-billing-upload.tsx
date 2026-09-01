@@ -83,8 +83,11 @@ export function FranchiseeBillingUpload({
       await onUploaded(parsed.data.data.period);
       setFile(null);
       setInputKey((current) => current + 1);
+      const { period, hasBlockingIssues } = parsed.data.data;
       setSuccess(
-        `הקובץ נקלט כחודש ${formatPeriod(parsed.data.data.period)} ושורות הטיוטה עודכנו. ודאי שזו התקופה הנכונה לפני אישור.`,
+        hasBlockingIssues
+          ? `הקובץ נקלט כחודש ${formatPeriod(period)}, אך יש בו שורות שממתינות להחלטה. טפלי בחסימות המופיעות מתחת לרשימת הקבצים.`
+          : `הקובץ נקלט כחודש ${formatPeriod(period)} ושורות הטיוטה עודכנו. ודאי שזו התקופה הנכונה לפני אישור.`,
       );
     } catch (uploadError: unknown) {
       console.error("Failed to upload franchisee billing file:", uploadError);

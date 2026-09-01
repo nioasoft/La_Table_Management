@@ -14,6 +14,7 @@ import {
   RateLimitConfigs,
 } from "@/lib/rate-limit";
 import { processRoyaltyRevenueUpload } from "@/lib/royalty-revenue-processor";
+import type { BillingRowOverride } from "@/data-access/franchisee-billing";
 import { getDocument } from "@/lib/storage";
 import { franchiseeBillingReprocessSchema } from "@/schemas/franchisee-billing-upload";
 
@@ -23,6 +24,37 @@ interface StoredSource {
   readonly fileUrl: string;
   readonly fileName: string;
   readonly mimeType: string;
+  readonly rowOverrides: readonly BillingRowOverride[];
+}
+
+/** The decisions already stored on a file, ignoring anything malformed. */
+function readStoredOverrides(metadata: unknown): readonly BillingRowOverride[] {
+  const stored =
+    typeof metadata === "object" && metadata !== null && "rowOverrides" in metadata
+      ? (metadata as { rowOverrides?: unknown }).rowOverrides
+      : null;
+  if (!Array.isArray(stored)) return [];
+  return stored.flatMap((entry: unknown) =>
+    typeof entry === "object" &&
+    entry !== null &&
+    typeof (entry as { rowIndex?: unknown }).rowIndex === "number" &&
+    (typeof (entry as { franchiseeId?: unknown }).franchiseeId === "string" ||
+      (entry as { franchiseeId?: unknown }).franchiseeId === null)
+      ? [entry as BillingRowOverride]
+      : [],
+  );
+}
+
+/** The newest decision about a row replaces any earlier one. */
+function mergeOverrides(
+  stored: readonly BillingRowOverride[],
+  override: BillingRowOverride | undefined,
+): readonly BillingRowOverride[] {
+  if (!override) return stored;
+  return [
+    ...stored.filter((entry) => entry.rowIndex !== override.rowIndex),
+    override,
+  ];
 }
 
 /**
@@ -53,6 +85,7 @@ async function readStoredSource(
     fileUrl: row.fileUrl,
     fileName: row.fileName,
     mimeType: row.mimeType,
+    rowOverrides: readStoredOverrides(metadata),
   };
 }
 
@@ -110,11 +143,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const rowOverrides = mergeOverrides(
+      source.rowOverrides,
+      validation.data.override,
+    );
     const result = await processRoyaltyRevenueUpload({
       buffer,
       fileName: source.fileName,
       mimeType: source.mimeType,
       uploadedByEmail: authResult.user.email,
+      // Replaying in place: a second row for the same workbook would keep
+      // reporting the findings this run just cleared.
+      sourceFileId: validation.data.sourceFileId,
+      ...(rowOverrides.length ? { rowOverrides } : {}),
     });
     if (!result.success) {
       return NextResponse.json(

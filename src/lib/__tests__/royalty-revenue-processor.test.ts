@@ -116,7 +116,10 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
   readonly billings = new Map<string, StoredFranchiseeBilling>();
   readonly reviews = new Map<
     string,
-    { readonly approvedDifferences: readonly unknown[] }
+    {
+      readonly approvedDifferences: readonly unknown[];
+      readonly rowOverrides?: readonly unknown[];
+    }
   >();
   sourceFiles = 0;
 
@@ -148,7 +151,10 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
 
   async recordSourceReview(
     sourceFileId: string,
-    review: { readonly approvedDifferences: readonly unknown[] },
+    review: {
+      readonly approvedDifferences: readonly unknown[];
+      readonly rowOverrides?: readonly unknown[];
+    },
   ): Promise<void> {
     this.reviews.set(sourceFileId, review);
   }
@@ -227,7 +233,7 @@ function dependencies(
 ): RoyaltyRevenueProcessorDependencies {
   const parsed: RoyaltyRevenueParseResult = {
     success: true,
-    data: { rows: [row] },
+    data: { rows: [row], singleBranch: false },
     errors: [],
     warnings: [],
   };
@@ -369,7 +375,7 @@ describe("processRoyaltyRevenueUpload", () => {
       operations,
       parseRevenue: () => ({
         success: false,
-        data: { rows: [parsedRow()] },
+        data: { rows: [parsedRow()], singleBranch: false },
         errors: ["הקובץ אינו מקובץ לפי חודש"],
         warnings: [],
       }),
@@ -381,5 +387,48 @@ describe("processRoyaltyRevenueUpload", () => {
     expect(result.errors).toEqual(["הקובץ אינו מקובץ לפי חודש"]);
     expect(operations.sourceFiles).toBe(0);
     expect(operations.billings).toHaveLength(0);
+  });
+  it("replays a stored workbook in place instead of adding a second file", async () => {
+    // A replay that inserted a new row left the old one behind, still
+    // reporting the findings the replay had just cleared.
+    const operations = new MemoryBillingOperations();
+    const deps = dependencies(operations);
+    const first = await processRoyaltyRevenueUpload(UPLOAD, deps);
+
+    const replay = await processRoyaltyRevenueUpload(
+      { ...UPLOAD, sourceFileId: first.sourceFileId ?? "" },
+      deps,
+    );
+
+    expect(operations.sourceFiles).toBe(1);
+    expect(replay.sourceFileId).toBe(first.sourceFileId);
+  });
+
+  it("keeps a hand-made row decision on the file it was made for", async () => {
+    const operations = new MemoryBillingOperations();
+    const nameless: RoyaltyRevenueRow = {
+      ...parsedRow(),
+      branchName: "",
+      missingBranchName: true,
+    };
+    const deps = dependencies(operations, nameless);
+
+    const blocked = await processRoyaltyRevenueUpload(UPLOAD, deps);
+    expect(blocked.anomalies).toMatchObject([{ code: "missing_branch_name" }]);
+
+    const assigned = await processRoyaltyRevenueUpload(
+      {
+        ...UPLOAD,
+        sourceFileId: blocked.sourceFileId ?? "",
+        rowOverrides: [{ rowIndex: 0, franchiseeId: "franchisee-1" }],
+      },
+      deps,
+    );
+
+    expect(assigned.anomalies).toEqual([]);
+    expect(operations.billings.get("franchisee-1")?.receipts).toBe("118");
+    expect(
+      operations.reviews.get(assigned.sourceFileId ?? "")?.rowOverrides,
+    ).toEqual([{ rowIndex: 0, franchiseeId: "franchisee-1" }]);
   });
 });

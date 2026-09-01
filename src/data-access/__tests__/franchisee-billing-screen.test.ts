@@ -181,6 +181,9 @@ class MemoryOperations implements BillingScreenOperations {
   differenceContext: DifferenceResolutionContext | null = null;
   persistedResolution: PersistDifferenceResolutionInput | null = null;
   resolutionResult: "success" | "conflict" | "exported" = "success";
+  franchisees = [
+    { id: "franchisee-1", name: "ויני יהוד", brandId: "brand-vini" },
+  ];
   discardedSourceFileId: string | null = null;
   discardResult: DiscardSourceFileResult = "success";
 
@@ -242,6 +245,10 @@ class MemoryOperations implements BillingScreenOperations {
   ): Promise<"success" | "conflict" | "exported"> {
     this.persistedResolution = input;
     return this.resolutionResult;
+  }
+
+  async readBillableFranchisees() {
+    return this.franchisees;
   }
 
   async discardSourceFile(
@@ -341,6 +348,7 @@ describe("loadFranchiseeBillingScreen", () => {
       anomalies: [],
       approvedDifferences: [],
       warnings: [],
+      franchisees: operations.franchisees,
       hasBlockingIssues: false,
     });
   });
@@ -378,6 +386,8 @@ describe("loadFranchiseeBillingScreen", () => {
       branchName: "ויני יהוד",
       franchiseeId: "franchisee-1",
       message: "סולם התמלוגים טרם אושר",
+      sourceFileId: "source-orphan",
+      sourceFileName: "יולי.xlsx",
     }]);
     expect(result.hasBlockingIssues).toBe(true);
   });

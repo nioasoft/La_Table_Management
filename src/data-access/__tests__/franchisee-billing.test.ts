@@ -355,6 +355,94 @@ describe("buildRoyaltyBillingPlan", () => {
   });
 });
 
+describe("buildRoyaltyBillingPlan with hand-made row decisions", () => {
+  it("bills a nameless row against the franchisee it was assigned to", () => {
+    // Tabit filtered to one restaurant sends no branch name at all, so the
+    // amounts can only reach a franchisee by hand.
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ branchName: "", missingBranchName: true })],
+      franchisees: [franchisee()],
+      rowOverrides: [{ rowIndex: 0, franchiseeId: "franchisee-1" }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.anomalies).toEqual([]);
+    expect(plan.drafts).toMatchObject([
+      { franchiseeId: "franchisee-1", receipts: 1_000_000, tips: 30_000 },
+    ]);
+  });
+
+  it("drops a row marked as no franchisee at all", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ branchName: "", missingBranchName: true })],
+      franchisees: [franchisee()],
+      rowOverrides: [{ rowIndex: 0, franchiseeId: null }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.anomalies).toEqual([]);
+    expect(plan.drafts).toEqual([]);
+  });
+
+  it("keeps every check about the franchisee an assigned row was given", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ branchName: "", missingBranchName: true })],
+      franchisees: [franchisee({ royaltyTiersConfirmed: false })],
+      rowOverrides: [{ rowIndex: 0, franchiseeId: "franchisee-1" }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.drafts).toEqual([]);
+    expect(plan.anomalies).toMatchObject([{ code: "unconfirmed_tiers" }]);
+  });
+
+  it("falls back to matching when the assigned franchisee is unknown", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow({ branchName: "", missingBranchName: true })],
+      franchisees: [franchisee()],
+      rowOverrides: [{ rowIndex: 0, franchiseeId: "deleted-franchisee" }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.drafts).toEqual([]);
+    expect(plan.anomalies).toMatchObject([{ code: "missing_branch_name" }]);
+  });
+
+  it("still blocks an assigned row that has no amount to bill", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [
+        revenueRow({
+          branchName: "",
+          missingBranchName: true,
+          receipts: null,
+          missingReceipts: true,
+        }),
+      ],
+      franchisees: [franchisee()],
+      rowOverrides: [{ rowIndex: 0, franchiseeId: "franchisee-1" }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.drafts).toEqual([]);
+    expect(plan.anomalies).toMatchObject([{ code: "missing_amount" }]);
+  });
+});
+
 describe("sourceReviewProcessingStatus", () => {
   it("marks a clean system review as auto-approved", () => {
     expect(sourceReviewProcessingStatus({

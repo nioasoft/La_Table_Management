@@ -218,6 +218,9 @@ export interface BillingScreenOperations {
   readonly discardSourceFile: (
     sourceFileId: string,
   ) => Promise<DiscardSourceFileResult>;
+  readonly readBillableFranchisees: () => Promise<
+    readonly BillingScreenFranchisee[]
+  >;
 }
 
 export interface BillingScreenAnomaly {
@@ -227,6 +230,18 @@ export interface BillingScreenAnomaly {
   readonly franchiseeId?: string;
   readonly franchiseeName?: string;
   readonly message: string;
+  readonly receipts?: number | null;
+  readonly tips?: number | null;
+  /** Which upload the finding came from — the row cannot be settled without it. */
+  readonly sourceFileId: string;
+  readonly sourceFileName: string;
+}
+
+/** The franchisees a blocked row may be assigned to. */
+export interface BillingScreenFranchisee {
+  readonly id: string;
+  readonly name: string;
+  readonly brandId: string | null;
 }
 
 export interface BillingScreenApprovedDifference {
@@ -252,6 +267,7 @@ export interface FranchiseeBillingScreenData {
   readonly anomalies: readonly BillingScreenAnomaly[];
   readonly approvedDifferences: readonly BillingScreenApprovedDifference[];
   readonly warnings: readonly string[];
+  readonly franchisees: readonly BillingScreenFranchisee[];
   readonly hasBlockingIssues: boolean;
 }
 
@@ -299,9 +315,11 @@ function projectSourceReviews(
     rows.map((row) => [row.franchiseeId, row.franchiseeName]),
   );
   return {
-    anomalies: reviews.flatMap(({ review }) =>
+    anomalies: reviews.flatMap(({ source, review }) =>
       review.anomalies.map((finding) => ({
         ...finding,
+        sourceFileId: source.id,
+        sourceFileName: source.fileName,
         ...(finding.franchiseeId && names.has(finding.franchiseeId)
           ? { franchiseeName: names.get(finding.franchiseeId) }
           : {}),
@@ -351,8 +369,11 @@ export async function loadFranchiseeBillingScreen(
   operations?: BillingScreenOperations,
 ): Promise<FranchiseeBillingScreenData> {
   const activeOperations = operations ?? await defaultOperations();
-  const { rows, sourcesByBrand, unlinkedSources } =
-    await activeOperations.readPeriodSnapshot(period);
+  const [{ rows, sourcesByBrand, unlinkedSources }, franchisees] =
+    await Promise.all([
+      activeOperations.readPeriodSnapshot(period),
+      activeOperations.readBillableFranchisees(),
+    ]);
   const sourceFiles = [
     ...[...sourcesByBrand].map(([brandId, source]) => ({
       brandId: brandId as string | null,
@@ -373,6 +394,7 @@ export async function loadFranchiseeBillingScreen(
     period,
     sourceFiles,
     rows,
+    franchisees,
     ...reviewProjection,
     hasBlockingIssues:
       reviewProjection.anomalies.length > 0 ||

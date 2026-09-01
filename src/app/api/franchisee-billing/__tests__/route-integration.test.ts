@@ -140,6 +140,10 @@ class RouteMemoryOperations implements BillingScreenOperations {
   async discardSourceFile(): Promise<"success"> {
     return "success";
   }
+
+  async readBillableFranchisees() {
+    return [{ id: "franchisee-1", name: "ויני יהוד", brandId: "brand-vini" }];
+  }
 }
 
 function getRequest(): NextRequest {

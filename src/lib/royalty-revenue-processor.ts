@@ -3,6 +3,7 @@ import {
   createFranchiseeBillingOperations,
   type ApprovedBillingDifference,
   type BillingAnomaly,
+  type BillingRowOverride,
   type BuildRoyaltyBillingPlanInput,
   type FranchiseeBillingOperations,
   type RoyaltyBillingPlan,
@@ -19,6 +20,13 @@ export interface ProcessRoyaltyRevenueUploadInput {
   readonly fileName: string;
   readonly mimeType: string;
   readonly uploadedByEmail: string;
+  /**
+   * Set when replaying a workbook already stored. The run then updates that
+   * row instead of inserting a second one, so a replay leaves no ghost file
+   * behind still reporting the findings the replay just cleared.
+   */
+  readonly sourceFileId?: string;
+  readonly rowOverrides?: readonly BillingRowOverride[];
 }
 
 export interface RoyaltyRevenueProcessorDependencies {
@@ -117,6 +125,7 @@ async function processMonthlyRows(
   rows: readonly RoyaltyRevenueRow[],
   warnings: readonly string[],
   period: RoyaltyRevenuePeriod,
+  singleBranch: boolean,
 ): Promise<ProcessRoyaltyRevenueUploadResult> {
   const [franchisees, vat, existingBillings] = await Promise.all([
     dependencies.operations.readFranchisees(),
@@ -131,13 +140,16 @@ async function processMonthlyRows(
   }
 
   const sourceFileId =
-    await dependencies.operations.persistSourceFile({
+    input.sourceFileId ??
+    (await dependencies.operations.persistSourceFile({
       ...input,
       period,
-    });
+    }));
   const planInput: PlanInput = {
     rows,
     franchisees,
+    rowOverrides: input.rowOverrides,
+    singleBranch,
     sourceFileId,
     vat,
     period,
@@ -161,6 +173,8 @@ async function processMonthlyRows(
     approvedDifferences: plan.approvedDifferences,
     warnings,
     draftsWritten,
+    ...(input.rowOverrides?.length ? { rowOverrides: input.rowOverrides } : {}),
+    ...(singleBranch ? { singleBranch } : {}),
   });
   const hasBlockingIssues =
     plan.anomalies.length > 0 || plan.approvedDifferences.length > 0;
@@ -206,5 +220,6 @@ export async function processRoyaltyRevenueUpload(
     parsed.data.rows,
     parsed.warnings,
     period,
+    parsed.data.singleBranch,
   );
 }

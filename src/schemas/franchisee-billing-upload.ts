@@ -27,7 +27,17 @@ export type FranchiseeBillingUploadInput = z.infer<
   typeof franchiseeBillingUploadSchema
 >;
 
-/** Replays a workbook already stored, so only its id crosses the wire. */
+/**
+ * Replays a workbook already stored, so only its id crosses the wire — plus,
+ * when the replay exists to settle a blocked row, the decision about that row.
+ * A null franchisee means the row is not a franchisee and should be dropped.
+ */
 export const franchiseeBillingReprocessSchema = z.object({
   sourceFileId: z.string().min(1),
+  override: z
+    .object({
+      rowIndex: z.number().int().min(0, "מזהה השורה אינו תקין"),
+      franchiseeId: z.string().trim().min(1, "מזהה הזכיין חסר").nullable(),
+    })
+    .optional(),
 });

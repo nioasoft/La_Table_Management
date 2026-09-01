@@ -126,6 +126,36 @@ describe("franchisee billing reopen SQL", () => {
     ]);
   });
 
+  it("never lets a one-restaurant file speak for a whole brand", () => {
+    // Natanzon is exported alone, so its file carries no branch names. Taken
+    // as the brand's newest upload it would mark every row of the brand-wide
+    // file as coming from a superseded source.
+    const sources = mapLatestSourceReviewsByBrand([
+      {
+        brandId: "brand-vini",
+        id: "natanzon-only",
+        createdAt: new Date("2026-09-01T10:00:00Z"),
+        fileName: "data (57).xlsx",
+        metadata: { singleBranch: true },
+      },
+      {
+        brandId: "brand-vini",
+        id: "vini-live",
+        createdAt: new Date("2026-08-31T10:00:00Z"),
+        fileName: "data (51).xlsx",
+        metadata: {},
+      },
+    ]);
+
+    expect([...sources]).toEqual([
+      ["brand-vini", {
+        id: "vini-live",
+        fileName: "data (51).xlsx",
+        metadata: {},
+      }],
+    ]);
+  });
+
   it("resolves a requested source only against the franchisee brand", () => {
     const sources = new Map([
       ["brand-vini", {
@@ -166,7 +196,7 @@ describe("franchisee billing reopen SQL", () => {
     ).toSQL();
 
     expect(query.sql).toBe(
-      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"no_revenue_reason\", coalesce((\n      select sum(\"franchisee_deferral_ledger\".\"amount\")\n      from \"franchisee_deferral_ledger\"\n      where \"franchisee_deferral_ledger\".\"franchisee_id\" = \"franchisee_billing\".\"franchisee_id\"\n    ), 0)::text, \"franchisee_billing\".\"source_file_id\", \"uploaded_file\".\"original_file_name\", \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $1 then $2 when $3 then $4 else null end, \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $5 then $6 when $7 then $8 else null end, \"franchisee_billing\".\"status\", \"franchisee\".\"owners\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" left join \"uploaded_file\" on \"franchisee_billing\".\"source_file_id\" = \"uploaded_file\".\"id\" where (\"franchisee_billing\".\"period_year\" = $9 and \"franchisee_billing\".\"period_month\" = $10) order by \"franchisee\".\"name\" asc",
+      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"no_revenue_reason\", coalesce((\n      select sum(\"franchisee_deferral_ledger\".\"amount\")\n      from \"franchisee_deferral_ledger\"\n      where \"franchisee_deferral_ledger\".\"franchisee_id\" = \"franchisee_billing\".\"franchisee_id\"\n    ), 0)::text, \"franchisee_billing\".\"source_file_id\", \"uploaded_file\".\"original_file_name\", coalesce(\"uploaded_file\".\"metadata\"->>'singleBranch', '') <> 'true' and \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $1 then $2 when $3 then $4 else null end, coalesce(\"uploaded_file\".\"metadata\"->>'singleBranch', '') <> 'true' and \"franchisee_billing\".\"source_file_id\" is distinct from case \"franchisee\".\"brand_id\" when $5 then $6 when $7 then $8 else null end, \"franchisee_billing\".\"status\", \"franchisee\".\"owners\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" left join \"uploaded_file\" on \"franchisee_billing\".\"source_file_id\" = \"uploaded_file\".\"id\" where (\"franchisee_billing\".\"period_year\" = $9 and \"franchisee_billing\".\"period_month\" = $10) order by \"franchisee\".\"name\" asc",
     );
     expect(query.params).toEqual([
       "brand-vini",
@@ -365,6 +395,29 @@ describe("selectLiveUnlinkedSources — superseded clean uploads", () => {
     );
 
     expect(live).toEqual([]);
+  });
+
+  it("keeps a one-restaurant file listed even after it billed its franchisee", () => {
+    // It is not any brand's authority, so it is never in the brand-keyed list.
+    // Dropping it here too would take it off the screen entirely, with no way
+    // left to replay or cancel it.
+    const live = selectLiveUnlinkedSources(
+      [{
+        id: "natanzon",
+        brandId: null,
+        createdAt: new Date("2026-09-01T10:00:00Z"),
+        fileName: "data (57).xlsx",
+        metadata: {
+          singleBranch: true,
+          anomalies: [],
+          warnings: [],
+          approvedDifferences: [],
+        },
+      }],
+      [linked("vini", "brand-vini", "2026-09-02T10:00:00Z")],
+    );
+
+    expect(live).toMatchObject([{ id: "natanzon" }]);
   });
 
   it("keeps a clean upload when it is the only evidence of the month", () => {

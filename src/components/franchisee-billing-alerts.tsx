@@ -6,10 +6,19 @@ import { Loader2 } from "lucide-react";
 import { BillingNumber } from "@/components/franchisee-billing-number";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { FranchiseeBillingScreenPayload } from "@/schemas/franchisee-billing-screen";
 
 type ApprovedDifference =
   FranchiseeBillingScreenPayload["approvedDifferences"][number];
+type Anomaly = FranchiseeBillingScreenPayload["anomalies"][number];
+type Franchisee = FranchiseeBillingScreenPayload["franchisees"][number];
 
 interface FranchiseeBillingAlertsProps {
   readonly anomalies: FranchiseeBillingScreenPayload["anomalies"];
@@ -17,11 +26,24 @@ interface FranchiseeBillingAlertsProps {
   readonly staleRows: FranchiseeBillingScreenPayload["rows"];
   readonly approvedDifferences:
     FranchiseeBillingScreenPayload["approvedDifferences"];
+  readonly franchisees: readonly Franchisee[];
   readonly onResolveDifference: (
     difference: ApprovedDifference,
     resolution: "reopen" | "keep",
   ) => Promise<void>;
+  readonly onResolveAnomaly: (
+    anomaly: Anomaly,
+    franchiseeId: string | null,
+  ) => Promise<void>;
 }
+
+/**
+ * Only a row whose owner is unknown can be settled from here. Everything else
+ * — an unconfirmed scale, a missing marketing rate, an amount the file never
+ * carried — is fixed where it actually lives, and dismissing it would drop a
+ * franchisee's billing without anyone noticing.
+ */
+const ASSIGNABLE_CODES = new Set(["missing_branch_name", "unmatched_branch"]);
 
 const fieldLabels: Readonly<Record<string, string>> = {
   receipts: "תקבולים",
@@ -176,12 +198,130 @@ function ApprovedDifferenceItem({
   );
 }
 
+function AnomalyItem({
+  anomaly,
+  franchisees,
+  onResolve,
+}: {
+  readonly anomaly: Anomaly;
+  readonly franchisees: readonly Franchisee[];
+  readonly onResolve: (
+    anomaly: Anomaly,
+    franchiseeId: string | null,
+  ) => Promise<void>;
+}) {
+  const [franchiseeId, setFranchiseeId] = useState<string>("");
+  const [pending, setPending] = useState<"assign" | "ignore" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const assignable = ASSIGNABLE_CODES.has(anomaly.code);
+
+  const resolve = async (choice: "assign" | "ignore") => {
+    setPending(choice);
+    setError(null);
+    try {
+      await onResolve(anomaly, choice === "assign" ? franchiseeId : null);
+    } catch (resolveError: unknown) {
+      console.error("Failed to resolve a billing row anomaly:", resolveError);
+      setError(
+        resolveError instanceof Error
+          ? resolveError.message
+          : "הבחירה לא נשמרה. נסי שוב.",
+      );
+      setPending(null);
+    }
+  };
+
+  return (
+    <li className="space-y-2">
+      <div>
+        <span className="font-medium">
+          {anomaly.franchiseeName || anomaly.branchName || "שורה ללא שם"}:
+        </span>{" "}
+        {anomaly.message}
+        <span className="text-muted-foreground">
+          {" — "}
+          <bdi>{anomaly.sourceFileName}</bdi>
+          {typeof anomaly.receipts === "number" && (
+            <>
+              {", תקבולים "}
+              <BillingNumber value={anomaly.receipts} kind="currency" />
+            </>
+          )}
+          {typeof anomaly.tips === "number" && anomaly.tips !== 0 && (
+            <>
+              {", טיפ "}
+              <BillingNumber value={anomaly.tips} kind="currency" />
+            </>
+          )}
+        </span>
+      </div>
+
+      {assignable && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            dir="rtl"
+            value={franchiseeId}
+            onValueChange={setFranchiseeId}
+            disabled={pending !== null}
+          >
+            <SelectTrigger
+              dir="rtl"
+              aria-label="שיוך השורה לזכיין"
+              className="h-8 w-64 bg-background"
+            >
+              <SelectValue placeholder="בחרי זכיין לשיוך" />
+            </SelectTrigger>
+            <SelectContent dir="rtl">
+              {franchisees.map((franchisee) => (
+                <SelectItem
+                  key={franchisee.id}
+                  dir="rtl"
+                  value={franchisee.id}
+                  className="text-end"
+                >
+                  {franchisee.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            size="sm"
+            disabled={pending !== null || franchiseeId === ""}
+            onClick={() => void resolve("assign")}
+          >
+            {pending === "assign" && (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            )}
+            שייכי את השורה
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={pending !== null}
+            onClick={() => void resolve("ignore")}
+          >
+            {pending === "ignore" && (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            )}
+            התעלמי מהשורה
+          </Button>
+        </div>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </li>
+  );
+}
+
 export function FranchiseeBillingAlerts({
   anomalies,
   warnings,
   staleRows,
   approvedDifferences,
+  franchisees,
   onResolveDifference,
+  onResolveAnomaly,
 }: FranchiseeBillingAlertsProps) {
   return (
     <div className="space-y-4">
@@ -209,16 +349,15 @@ export function FranchiseeBillingAlerts({
         <Alert variant="destructive" className="bg-destructive/5">
           <AlertTitle>לא ניתן לאשר את החודש</AlertTitle>
           <AlertDescription>
-            <ul className="mt-2 list-disc space-y-1 ps-5">
+            <ul className="mt-2 list-disc space-y-3 ps-5">
               {anomalies.map((finding, index) => (
                 // Row indexes repeat across source files, so they cannot key alone.
-                <li key={`${finding.code}-${finding.rowIndex}-${index}`}>
-                  <span className="font-medium">
-                    {finding.franchiseeName || finding.branchName || "שורה ללא שם"}
-                    :
-                  </span>{" "}
-                  {finding.message}
-                </li>
+                <AnomalyItem
+                  key={`${finding.sourceFileId}-${finding.code}-${finding.rowIndex}-${index}`}
+                  anomaly={finding}
+                  franchisees={franchisees}
+                  onResolve={onResolveAnomaly}
+                />
               ))}
             </ul>
           </AlertDescription>

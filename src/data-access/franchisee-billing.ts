@@ -50,6 +50,19 @@ export interface BillingAnomaly {
   readonly branchName: string;
   readonly franchiseeId?: string;
   readonly message: string;
+  /** The row's own amounts, so a nameless row can be recognised by its money. */
+  readonly receipts?: number | null;
+  readonly tips?: number | null;
+}
+
+/**
+ * A hand-made decision about one parsed row, stored on the file and replayed
+ * with it. A null franchisee means the row is not a franchisee at all and is
+ * dropped; an id assigns the row's amounts to that franchisee.
+ */
+export interface BillingRowOverride {
+  readonly rowIndex: number;
+  readonly franchiseeId: string | null;
 }
 
 export interface DraftBillingCandidate {
@@ -98,6 +111,9 @@ export interface RoyaltyBillingPlan {
 export interface BuildRoyaltyBillingPlanInput {
   readonly rows: readonly RoyaltyRevenueRow[];
   readonly franchisees: readonly BillingFranchisee[];
+  readonly rowOverrides?: readonly BillingRowOverride[];
+  /** True when the export carries no branch names at all — see the parser. */
+  readonly singleBranch?: boolean;
   readonly existingBillings: readonly StoredFranchiseeBilling[];
   readonly sourceFileId: string;
   readonly vat: number;
@@ -117,6 +133,13 @@ export interface SourceFileReview {
   readonly approvedDifferences: readonly ApprovedBillingDifference[];
   readonly warnings: readonly string[];
   readonly draftsWritten: number;
+  /** Carried through every replay — a decision is made once, not each run. */
+  readonly rowOverrides?: readonly BillingRowOverride[];
+  /**
+   * An export of one restaurant. It bills only the franchisees its rows were
+   * assigned to, so it never becomes the authority for a whole brand.
+   */
+  readonly singleBranch?: boolean;
 }
 
 export interface DraftUpsertResult {
@@ -153,6 +176,8 @@ function anomaly(
     branchName: row.branchName,
     ...(franchiseeId ? { franchiseeId } : {}),
     message,
+    receipts: row.receipts,
+    tips: row.tips,
   };
 }
 
@@ -169,11 +194,45 @@ function blockedRow(
   };
 }
 
+/**
+ * Applies a decision already made about this row. An override replaces the
+ * name matching only — every check about the franchisee behind it still runs,
+ * and a row with no amount stays blocked, since no amount can be assigned.
+ */
+function overriddenRow(
+  row: RoyaltyRevenueRow,
+  rowIndex: number,
+  franchisees: readonly BillingFranchisee[],
+  override: BillingRowOverride,
+): ResolvedRevenueRow | null {
+  if (override.franchiseeId === null) {
+    return { row, rowIndex, franchisee: null, anomalies: [] };
+  }
+  const assigned = franchisees.find(
+    (franchisee) => franchisee.id === override.franchiseeId,
+  );
+  if (!assigned) return null;
+  if (row.missingReceipts || row.missingTips) {
+    return blockedRow(
+      row,
+      rowIndex,
+      anomaly("missing_amount", row, rowIndex, "חסר סכום תקבולים או טיפים"),
+    );
+  }
+  return { row, rowIndex, franchisee: assigned, anomalies: [] };
+}
+
 function matchRevenueRow(
   row: RoyaltyRevenueRow,
   rowIndex: number,
   franchisees: readonly BillingFranchisee[],
+  override?: BillingRowOverride,
+  singleBranch = false,
 ): ResolvedRevenueRow {
+  const overridden = override
+    ? overriddenRow(row, rowIndex, franchisees, override)
+    : null;
+  if (overridden) return overridden;
   if (row.missingBranchName) {
     return blockedRow(
       row,
@@ -182,7 +241,9 @@ function matchRevenueRow(
         "missing_branch_name",
         row,
         rowIndex,
-        "נמצאה שורה עם סכום וללא שם סניף",
+        singleBranch
+          ? "הקובץ יוצא עבור מסעדה אחת ואינו נושא שם סניף — שייכי אותו לזכיין"
+          : "נמצאה שורה עם סכום וללא שם סניף",
       ),
     );
   }
@@ -462,7 +523,13 @@ export function buildRoyaltyBillingPlan(
   input: BuildRoyaltyBillingPlanInput,
 ): RoyaltyBillingPlan {
   const matched = input.rows.map((row, rowIndex) =>
-    matchRevenueRow(row, rowIndex, input.franchisees),
+    matchRevenueRow(
+      row,
+      rowIndex,
+      input.franchisees,
+      input.rowOverrides?.find((entry) => entry.rowIndex === rowIndex),
+      input.singleBranch,
+    ),
   );
   const resolved = matched.map((entry) =>
     addDuplicateAnomaly(

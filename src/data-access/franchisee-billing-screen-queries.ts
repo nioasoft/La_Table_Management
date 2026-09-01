@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, notExists, or, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import type {
@@ -32,9 +32,12 @@ export function formatBillingPeriodDate(
 export function mapLatestSourceReviewsByBrand(
   orderedSources: readonly BillingSourceReviewRow[],
 ): BillingSourceReviewsByBrand {
-  const newestSources = orderedSources.filter(
+  const brandWide = orderedSources.filter(
+    (source) => !isSingleBranchReview(source.metadata),
+  );
+  const newestSources = brandWide.filter(
     (source, index) =>
-      orderedSources.findIndex(
+      brandWide.findIndex(
         (candidate) => candidate.brandId === source.brandId,
       ) === index,
   );
@@ -43,6 +46,20 @@ export function mapLatestSourceReviewsByBrand(
       source.brandId,
       { id: source.id, fileName: source.fileName, metadata: source.metadata },
     ]),
+  );
+}
+
+/**
+ * An export of one restaurant. Tabit strips the branch name from it, so its
+ * rows reach a franchisee only by hand — and it speaks for that franchisee
+ * alone. Treating it as the brand's newest file would mark every row of the
+ * brand-wide upload as coming from a superseded file.
+ */
+function isSingleBranchReview(metadata: unknown): boolean {
+  return (
+    typeof metadata === "object" &&
+    metadata !== null &&
+    (metadata as { singleBranch?: unknown }).singleBranch === true
   );
 }
 
@@ -80,6 +97,10 @@ export function selectLiveUnlinkedSources(
   const seenBrands = new Set<string | null>();
   return orderedUnlinked
     .filter((source) => {
+      // A one-restaurant file is never a brand's authority, so it is listed
+      // here however many rows it wrote — otherwise it would vanish from the
+      // screen and could no longer be replayed or cancelled.
+      if (isSingleBranchReview(source.metadata)) return true;
       // A superseded upload with nothing to report cannot be placed by brand
       // either — its findings are what name a franchisee. Once the month has a
       // linked file it is no longer the evidence that anything was uploaded,
@@ -187,11 +208,14 @@ export function createUnlinkedSourcesQuery(
         ),
         sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
         notDiscarded(source),
-        notExists(
-          database
-            .select({ one: sql`1` })
-            .from(billing)
-            .where(eq(billing.sourceFileId, source.id)),
+        or(
+          sql`${source.metadata}->>'singleBranch' = 'true'`,
+          notExists(
+            database
+              .select({ one: sql`1` })
+              .from(billing)
+              .where(eq(billing.sourceFileId, source.id)),
+          ),
         ),
       ),
     )
@@ -219,7 +243,9 @@ function billingRowSelection(
   const billing = schema.franchiseeBilling;
   const ledger = schema.franchiseeDeferralLedger;
   const activeSourceFileId = activeSourceFileIdByBrand(sourcesByBrand);
-  const isStale = sql<boolean>`${billing.sourceFileId} is distinct from ${activeSourceFileId}`;
+  // A row billed from a one-restaurant file answers to that file alone, so the
+  // brand's newest upload never makes it stale.
+  const isStale = sql<boolean>`coalesce(${schema.uploadedFile.metadata}->>'singleBranch', '') <> 'true' and ${billing.sourceFileId} is distinct from ${activeSourceFileId}`;
   return {
     id: billing.id,
     franchiseeId: billing.franchiseeId,

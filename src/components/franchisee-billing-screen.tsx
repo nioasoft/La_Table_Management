@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { reprocessSourceFile } from "@/lib/franchisee-billing-reprocess";
 import {
   franchiseeBillingMutationSchema,
   franchiseeBillingMutationResponseSchema,
@@ -251,6 +252,22 @@ export function FranchiseeBillingScreen() {
     await query.refetch();
   };
 
+  /**
+   * Settles one blocked row: either it belongs to a franchisee, or it is not a
+   * franchisee at all. The decision is stored on the file and the workbook is
+   * replayed, so the amounts still come from Tabit and never from the screen.
+   */
+  const resolveAnomaly = async (
+    anomaly: FranchiseeBillingScreenPayload["anomalies"][number],
+    franchiseeId: string | null,
+  ) => {
+    await reprocessSourceFile(anomaly.sourceFileId, {
+      rowIndex: anomaly.rowIndex,
+      franchiseeId,
+    });
+    await query.refetch();
+  };
+
   const saveNoRevenueReason = async (
     billingId: string,
     noRevenueReason: string | null,
@@ -414,7 +431,9 @@ export function FranchiseeBillingScreen() {
             warnings={data.warnings}
             staleRows={data.rows.filter((row) => row.isStaleSource)}
             approvedDifferences={data.approvedDifferences}
+            franchisees={data.franchisees}
             onResolveDifference={resolveDifference}
+            onResolveAnomaly={resolveAnomaly}
           />
           <FranchiseeBillingApproval
             key={`approval-${period.year}-${period.month}`}

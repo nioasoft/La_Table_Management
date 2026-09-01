@@ -39,10 +39,15 @@ const HEBREW_MONTHS: Readonly<Record<string, number>> = {
 };
 
 interface ColumnMap {
+  /** The column holding each row's label — a branch, or a month when the
+   *  export was filtered to one restaurant and Tabit dropped the branch. */
   branch: number;
   receipts: number;
   tips: number;
   period: number | null;
+  /** True when the label column is not a branch name, so every row is nameless
+   *  and has to be assigned to a franchisee by hand. */
+  singleBranch: boolean;
 }
 
 export interface RoyaltyRevenuePeriod {
@@ -64,6 +69,8 @@ export interface RoyaltyRevenueRow {
 
 export interface RoyaltyRevenueData {
   rows: RoyaltyRevenueRow[];
+  /** True for an export of one restaurant, which carries no branch names. */
+  singleBranch: boolean;
 }
 
 export interface RoyaltyRevenueParseResult {
@@ -107,11 +114,28 @@ function findColumns(headers: readonly unknown[]): ColumnMap | null {
   const receipts = normalized.findIndex((header) => header === "סהכ תקבולים");
   const tips = normalized.findIndex((header) => header === "סהכ טיפ");
 
-  if (branch < 0 || receipts < 0 || tips < 0) {
+  if (receipts < 0 || tips < 0) {
     return null;
   }
+  if (branch >= 0) {
+    return {
+      branch,
+      receipts,
+      tips,
+      period: findPeriodColumn(headers),
+      singleBranch: false,
+    };
+  }
 
-  return { branch, receipts, tips, period: findPeriodColumn(headers) };
+  // Tabit filtered to one restaurant groups by month and drops the branch
+  // column, so the workbook never says whose revenue it is. The amounts are
+  // still real: the rows come through nameless and the screen asks who they
+  // belong to. The period comes from the applied-filters footer, since a month
+  // cell of its own ("אוגוסט") carries no year.
+  const label = findPeriodColumn(headers);
+  return label === null
+    ? null
+    : { branch: label, receipts, tips, period: null, singleBranch: true };
 }
 
 /**
@@ -260,14 +284,15 @@ function parseDataRow(
   columns: ColumnMap,
   spreadsheetRow: number,
 ): ParsedDataRow {
-  const branchName = String(sourceRow[columns.branch] ?? "").trim();
+  const label = String(sourceRow[columns.branch] ?? "").trim();
+  const branchName = columns.singleBranch ? "" : label;
   const isBlankRow = sourceRow.every(
     (value) => String(value ?? "").trim() === "",
   );
   if (isBlankRow) {
     return { row: null, errors: [] };
   }
-  if (isMetadataRow(sourceRow, branchName)) {
+  if (isMetadataRow(sourceRow, label)) {
     return { row: null, errors: [] };
   }
 
@@ -356,7 +381,7 @@ function parseWorksheet(
 
   return {
     success: errors.length === 0,
-    data: { rows },
+    data: { rows, singleBranch: header.columns.singleBranch },
     errors,
     warnings,
   };
