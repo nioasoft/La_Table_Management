@@ -343,8 +343,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
         }));
       }
 
-      // Add low-confidence match warnings
-      for (const reviewItem of needsReview) {
+      // Add low-confidence match warnings, least confident first. Every match
+      // under 100% lands here (reviewThreshold is 1.0 by design), so a genuinely
+      // wrong match sits in the same list as a dozen 98% spelling variants —
+      // ordering by row number buried פט ויני מוצקין → קינג קונג מוצקין (92%)
+      // eighth of fourteen. Worst first is what makes it findable.
+      const needsReviewByRisk = [...needsReview].sort(
+        (a, b) => a.matchResult.confidence - b.matchResult.confidence
+      );
+      for (const reviewItem of needsReviewByRisk) {
         result.warnings.push(createFileProcessingError('FRANCHISEE_LOW_CONFIDENCE', {
           rowNumber: reviewItem.rowNumber,
           value: reviewItem.franchisee,

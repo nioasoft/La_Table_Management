@@ -224,7 +224,10 @@ export default function SupplierFilesPage() {
   const [processingResult, setProcessingResult] = useState<ProcessingResult | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [expandedResults, setExpandedResults] = useState(false);
-  const [errorsOpen, setErrorsOpen] = useState(false);
+  // Errors start expanded: an error means zero rows parsed and nothing to
+  // save, so the sentence that says what to do about it must not sit behind
+  // a click. Warnings stay collapsed — there can be dozens and none block.
+  const [errorsOpen, setErrorsOpen] = useState(true);
   const [warningsOpen, setWarningsOpen] = useState(false);
 
   // Manual matching state
@@ -694,7 +697,7 @@ export default function SupplierFilesPage() {
     setUploadError(null);
     setProcessingResult(null);
     setSavedFileId(null);
-    setErrorsOpen(false);
+    setErrorsOpen(true);
     setWarningsOpen(false);
     setPendingAnomalyReview(null);
     setAnomaliesReviewed(false);
@@ -896,7 +899,7 @@ export default function SupplierFilesPage() {
       setUploadError(null);
       setProcessingResult(null);
       setSavedFileId(null);
-      setErrorsOpen(false);
+      setErrorsOpen(true);
       setWarningsOpen(false);
       setPendingAnomalyReview(null);
       setAnomaliesReviewed(false);
@@ -1583,7 +1586,7 @@ export default function SupplierFilesPage() {
                   </div>
                 </div>
 
-                {/* Errors and Warnings - Compact, Closed by Default */}
+                {/* Errors expanded by default; warnings compact and closed */}
                 {(processingResult.errors.length > 0 || processingResult.warnings.length > 0) && (
                   <div className="flex flex-wrap gap-2">
                     {processingResult.errors.length > 0 && (
