@@ -136,6 +136,10 @@ class RouteMemoryOperations implements BillingScreenOperations {
   ): Promise<"success"> {
     return "success";
   }
+
+  async discardSourceFile(): Promise<"success"> {
+    return "success";
+  }
 }
 
 function getRequest(): NextRequest {

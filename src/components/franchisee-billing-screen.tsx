@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
@@ -16,6 +16,7 @@ import {
 import { FranchiseeBillingAlerts } from "@/components/franchisee-billing-alerts";
 import { FranchiseeBillingApproval } from "@/components/franchisee-billing-approval";
 import { FranchiseeBillingExport } from "@/components/franchisee-billing-export";
+import { FranchiseeBillingSources } from "@/components/franchisee-billing-sources";
 import { FranchiseeBillingTable } from "@/components/franchisee-billing-table";
 import { FranchiseeBillingUpload } from "@/components/franchisee-billing-upload";
 import { Button } from "@/components/ui/button";
@@ -105,29 +106,6 @@ async function fetchBillingScreen(
   } catch (error: unknown) {
     console.error("Failed to load franchisee billing screen:", error);
     throw error;
-  }
-}
-
-/**
- * Replays a workbook already stored, so a scale approved after the upload is
- * picked up without asking Tabit for the file again.
- */
-async function reprocessSourceFile(sourceFileId: string): Promise<void> {
-  const response = await fetchWithTimeout(
-    "/api/franchisee-billing/reprocess",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sourceFileId }),
-      timeout: 60_000,
-    },
-  );
-  const responseBody: unknown = await response.json();
-  if (!response.ok) {
-    throw new Error(
-      apiErrorMessage(responseBody) ??
-        "עיבוד הקובץ מחדש נכשל. נסי שוב.",
-    );
   }
 }
 
@@ -246,10 +224,6 @@ export function FranchiseeBillingScreen() {
   const query = useQuery({
     queryKey: ["franchisee-billing-screen", period.year, period.month],
     queryFn: () => fetchBillingScreen(period),
-  });
-  const reprocess = useMutation({
-    mutationFn: reprocessSourceFile,
-    onSuccess: () => query.refetch(),
   });
 
   const saveDiscount = async (
@@ -425,56 +399,16 @@ export function FranchiseeBillingScreen() {
       {data && (
         <section className="space-y-5" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-            <p className="text-muted-foreground">
-              {data.sourceFiles.length > 0 ? (
-                <span className="flex flex-wrap items-center gap-x-1 gap-y-2">
-                  קבצי מקור לחודש:
-                  {data.sourceFiles.map((source) => (
-                    <span
-                      key={source.id}
-                      className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5"
-                    >
-                      <bdi>{source.fileName}</bdi>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 px-1.5 text-xs"
-                        title="מריץ את הקובץ השמור מחדש מול ההגדרות העדכניות"
-                        disabled={reprocess.isPending}
-                        onClick={() => reprocess.mutate(source.id)}
-                      >
-                        {reprocess.isPending &&
-                        reprocess.variables === source.id ? (
-                          <Loader2
-                            className="h-3 w-3 animate-spin"
-                            aria-hidden="true"
-                          />
-                        ) : (
-                          <RefreshCw className="h-3 w-3" aria-hidden="true" />
-                        )}
-                        עבדי מחדש
-                      </Button>
-                    </span>
-                  ))}
-                </span>
-              ) : (
-                "אין קובץ מקור לחודש שנבחר"
-              )}
-            </p>
+            <FranchiseeBillingSources
+              sourceFiles={data.sourceFiles}
+              onChanged={() => query.refetch()}
+            />
             <p className="font-medium">
               {data.rows.length === 1
                 ? "שורת חיוב אחת"
                 : `${data.rows.length} שורות חיוב`}
             </p>
           </div>
-          {reprocess.isError && (
-            <p className="text-sm text-destructive" role="alert">
-              {reprocess.error instanceof Error
-                ? reprocess.error.message
-                : "עיבוד הקובץ מחדש נכשל. נסי שוב."}
-            </p>
-          )}
           <FranchiseeBillingAlerts
             anomalies={data.anomalies}
             warnings={data.warnings}

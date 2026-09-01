@@ -102,6 +102,16 @@ export function selectLiveUnlinkedSources(
     }));
 }
 
+/**
+ * A discarded upload is one an admin cancelled from the screen. It keeps its
+ * row for the audit trail, but stops being a source the month is judged by.
+ */
+function notDiscarded(source: typeof schema.uploadedFile) {
+  // The literal is cast so the comparison stays inside the enum type rather
+  // than leaning on Postgres to infer a bound text parameter.
+  return sql`${source.processingStatus} is distinct from 'rejected'::uploaded_file_review_status`;
+}
+
 export function createLatestSourceReviewsQuery(
   database: BillingReadDatabase,
   period: FranchiseeBillingPeriod,
@@ -127,6 +137,7 @@ export function createLatestSourceReviewsQuery(
         eq(billing.periodYear, period.year),
         eq(billing.periodMonth, period.month),
         sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+        notDiscarded(source),
       ),
     )
     .orderBy(
@@ -175,6 +186,7 @@ export function createUnlinkedSourcesQuery(
           formatBillingPeriodDate(period.year, period.month, 1),
         ),
         sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+        notDiscarded(source),
         notExists(
           database
             .select({ one: sql`1` })

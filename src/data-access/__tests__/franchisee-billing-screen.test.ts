@@ -2,11 +2,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { describe, expect, it } from "vitest";
 
 import * as schema from "@/db/schema";
-import { createPeriodRowsQuery } from "@/data-access/franchisee-billing-screen-queries";
+import {
+  createLatestSourceReviewsQuery,
+  createPeriodRowsQuery,
+  createUnlinkedSourcesQuery,
+} from "@/data-access/franchisee-billing-screen-queries";
 import { calculateRoyalty } from "@/lib/royalty";
 
 import {
   calculateDiscountAmounts,
+  discardBillingSourceFile,
   loadFranchiseeBillingScreen,
   resolveApprovedBillingDifference,
   updateBillingDiscount,
@@ -17,6 +22,7 @@ import {
   type BillingScreenRow,
   type BillingSourceReviewRecord,
   type DifferenceResolutionContext,
+  type DiscardSourceFileResult,
   type PersistDifferenceResolutionInput,
   type PersistDiscountInput,
   type PersistNoRevenueReasonInput,
@@ -175,6 +181,8 @@ class MemoryOperations implements BillingScreenOperations {
   differenceContext: DifferenceResolutionContext | null = null;
   persistedResolution: PersistDifferenceResolutionInput | null = null;
   resolutionResult: "success" | "conflict" | "exported" = "success";
+  discardedSourceFileId: string | null = null;
+  discardResult: DiscardSourceFileResult = "success";
 
   async readPeriodSnapshot() {
     return {
@@ -234,6 +242,13 @@ class MemoryOperations implements BillingScreenOperations {
   ): Promise<"success" | "conflict" | "exported"> {
     this.persistedResolution = input;
     return this.resolutionResult;
+  }
+
+  async discardSourceFile(
+    sourceFileId: string,
+  ): Promise<DiscardSourceFileResult> {
+    this.discardedSourceFileId = sourceFileId;
+    return this.discardResult;
   }
 }
 
@@ -781,5 +796,50 @@ describe("createPeriodRowsQuery with no uploaded files", () => {
 
     expect(text).not.toContain("case");
     expect(text).toContain('"franchisee_billing"."source_file_id" is distinct from null');
+  });
+});
+
+describe("discardBillingSourceFile", () => {
+  it("cancels the upload so a corrected file can replace it", async () => {
+    const operations = new MemoryOperations();
+
+    const result = await discardBillingSourceFile("source-1", operations);
+
+    expect(result).toEqual({ success: true, data: { sourceFileId: "source-1" } });
+    expect(operations.discardedSourceFileId).toBe("source-1");
+  });
+
+  it("refuses a file whose rows were already approved", async () => {
+    const operations = new MemoryOperations();
+    operations.discardResult = "approved";
+
+    const result = await discardBillingSourceFile("source-1", operations);
+
+    expect(result).toEqual({
+      success: false,
+      code: "approved",
+      error: "לקובץ יש שורות מאושרות. יש לפתוח אותן מחדש לפני ביטול הקובץ",
+    });
+  });
+});
+
+describe("source queries skip a discarded upload", () => {
+  it("filters rejected files out of both the linked and unlinked lookups", () => {
+    // A cancelled file keeps its row for the audit trail, so both queries have
+    // to exclude it or its frozen anomalies keep blocking the month.
+    const period = { year: 2026, month: 8 };
+    const linked = createLatestSourceReviewsQuery(
+      drizzle.mock({ schema }),
+      period,
+    ).toSQL().sql;
+    const unlinked = createUnlinkedSourcesQuery(
+      drizzle.mock({ schema }),
+      period,
+    ).toSQL().sql;
+
+    const expected =
+      `is distinct from 'rejected'::uploaded_file_review_status`;
+    expect(linked).toContain(expected);
+    expect(unlinked).toContain(expected);
   });
 });

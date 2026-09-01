@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import {
+  discardBillingSourceFile,
   loadFranchiseeBillingScreen,
   resolveApprovedBillingDifference,
   updateBillingDiscount,
@@ -128,6 +129,11 @@ async function applyMutation(
           mutation.noRevenueReason,
         );
   }
+  if (mutation.action === "discard_source") {
+    return operations
+      ? discardBillingSourceFile(mutation.sourceFileId, operations)
+      : discardBillingSourceFile(mutation.sourceFileId);
+  }
   const input = {
     sourceFileId: mutation.sourceFileId,
     franchiseeId: mutation.franchiseeId,
@@ -186,7 +192,8 @@ export async function handleGetFranchiseeBilling(
 }
 
 /**
- * Updates a draft discount or resolves an approved-file difference.
+ * Updates a draft discount, resolves an approved-file difference, or cancels
+ * a source file.
  */
 export async function handlePatchFranchiseeBilling(
   request: NextRequest,

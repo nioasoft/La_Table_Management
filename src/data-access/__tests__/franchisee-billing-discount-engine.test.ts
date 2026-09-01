@@ -80,6 +80,7 @@ function operationsFor(context: CompleteDiscountContext) {
     persistNoRevenueReason: async () => false,
     readDifferenceContext: async () => null,
     persistDifferenceResolution: async () => "conflict",
+    discardSourceFile: async () => "not_found",
   };
   return {
     operations,

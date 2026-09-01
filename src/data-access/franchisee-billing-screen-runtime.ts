@@ -1,4 +1,4 @@
-import { and, desc, eq, lte } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "@/db/schema";
@@ -23,6 +23,7 @@ import type {
   BillingSourceReviewRecord,
   BillingSourceReviewsByBrand,
   DifferenceResolutionContext,
+  DiscardSourceFileResult,
   PersistDifferenceResolutionInput,
   PersistDifferenceResolutionResult,
   PersistDiscountInput,
@@ -392,6 +393,62 @@ async function persistDifferenceResolution(
   }
 }
 
+/**
+ * Cancels one royalty upload inside a single transaction: the drafts it wrote
+ * are deleted, and the file is marked rejected so neither source query counts
+ * it again. The row itself stays — it is the record that the file arrived.
+ *
+ * ponytail: the stored workbook is left in storage. Nothing reads it once the
+ * file is rejected, and keeping it means a mistaken discard can still be
+ * inspected.
+ */
+async function discardSourceFile(
+  database: BillingDatabase,
+  sourceFileId: string,
+): Promise<DiscardSourceFileResult> {
+  const billing = schema.franchiseeBilling;
+  const source = schema.uploadedFile;
+  return database.transaction(async (tx) => {
+    const [stored] = await tx
+      .select({ id: source.id })
+      .from(source)
+      .where(
+        and(
+          eq(source.id, sourceFileId),
+          sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+        ),
+      )
+      .limit(1);
+    if (!stored) return "not_found";
+
+    const [approved] = await tx
+      .select({ id: billing.id })
+      .from(billing)
+      .where(
+        and(
+          eq(billing.sourceFileId, sourceFileId),
+          eq(billing.status, "approved"),
+        ),
+      )
+      .limit(1);
+    if (approved) return "approved";
+
+    await tx
+      .delete(billing)
+      .where(
+        and(
+          eq(billing.sourceFileId, sourceFileId),
+          eq(billing.status, "draft"),
+        ),
+      );
+    await tx
+      .update(source)
+      .set({ processingStatus: "rejected", reviewedAt: new Date() })
+      .where(eq(source.id, sourceFileId));
+    return "success";
+  });
+}
+
 export async function createBillingScreenOperations(): Promise<BillingScreenOperations> {
   const { database } = await loadDatabaseRuntime();
   return {
@@ -408,5 +465,7 @@ export async function createBillingScreenOperations(): Promise<BillingScreenOper
       readDifferenceContext(database, sourceFileId, franchiseeId),
     persistDifferenceResolution: (input) =>
       persistDifferenceResolution(database, input),
+    discardSourceFile: (sourceFileId) =>
+      discardSourceFile(database, sourceFileId),
   };
 }

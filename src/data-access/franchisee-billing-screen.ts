@@ -189,6 +189,8 @@ export type PersistDifferenceResolutionResult =
   | "conflict"
   | "exported";
 
+export type DiscardSourceFileResult = "success" | "not_found" | "approved";
+
 export interface BillingScreenOperations {
   readonly readPeriodSnapshot: (
     period: FranchiseeBillingPeriod,
@@ -213,6 +215,9 @@ export interface BillingScreenOperations {
   readonly persistDifferenceResolution: (
     input: PersistDifferenceResolutionInput,
   ) => Promise<PersistDifferenceResolutionResult>;
+  readonly discardSourceFile: (
+    sourceFileId: string,
+  ) => Promise<DiscardSourceFileResult>;
 }
 
 export interface BillingScreenAnomaly {
@@ -466,6 +471,34 @@ export interface ResolveApprovedDifferenceInput {
   readonly sourceFileId: string;
   readonly franchiseeId: string;
   readonly resolution: "reopen" | "keep";
+}
+
+/**
+ * Cancels one royalty upload: its drafts go, and the file itself stops
+ * counting as a source for the month. A file whose findings cannot be fixed
+ * from the screen would otherwise block approval forever, with re-uploading
+ * powerless against it — a second file only supersedes a first of the same
+ * brand, and a file that named no franchisee has no brand.
+ *
+ * Approved rows are the line. They carry an invoice and a ledger entry, so the
+ * month has to be reopened before its source can be thrown away.
+ */
+export async function discardBillingSourceFile(
+  sourceFileId: string,
+  operations?: BillingScreenOperations,
+): Promise<MutationResult<{ readonly sourceFileId: string }>> {
+  const activeOperations = operations ?? await defaultOperations();
+  const result = await activeOperations.discardSourceFile(sourceFileId);
+  if (result === "not_found") {
+    return failure("not_found", "קובץ המקור לא נמצא");
+  }
+  if (result === "approved") {
+    return failure(
+      "approved",
+      "לקובץ יש שורות מאושרות. יש לפתוח אותן מחדש לפני ביטול הקובץ",
+    );
+  }
+  return { success: true, data: { sourceFileId } };
 }
 
 export async function resolveApprovedBillingDifference(

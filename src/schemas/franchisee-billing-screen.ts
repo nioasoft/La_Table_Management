@@ -77,10 +77,16 @@ const updateNoRevenueReasonSchema = z.strictObject({
   noRevenueReason: noRevenueReasonSchema,
 });
 
+const discardSourceSchema = z.strictObject({
+  action: z.literal("discard_source"),
+  sourceFileId: z.string().trim().min(1, "מזהה קובץ המקור חסר"),
+});
+
 export const franchiseeBillingMutationSchema = z.discriminatedUnion("action", [
   updateDiscountSchema,
   updateNoRevenueReasonSchema,
   resolveDifferenceSchema,
+  discardSourceSchema,
 ]);
 
 const storedAnomalySchema = z.object({
