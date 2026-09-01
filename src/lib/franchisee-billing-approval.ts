@@ -7,8 +7,6 @@ import type {
   FranchiseeBillingStatus,
   FranchiseeOwner,
 } from "@/db/schema";
-import type { FranchiseeBillingEmailProps } from "@/emails/franchisee-billing";
-import type { FranchiseeBillingRetryInput } from "@/schemas/franchisee-billing-approval";
 
 export interface ApprovalPeriod {
   readonly year: number;
@@ -62,13 +60,6 @@ export interface LedgerEntryInput {
   readonly note: string;
 }
 
-export interface ApprovalEmailLog {
-  readonly entityId: string | null;
-  readonly toEmail: string;
-  readonly status: "pending" | "sent" | "delivered" | "failed" | "bounced";
-  readonly metadata: unknown;
-}
-
 export interface ApprovalStore {
   loadRowsForUpdate(
     period: ApprovalPeriod,
@@ -81,27 +72,8 @@ export interface ApprovalStore {
   insertLedger(entries: readonly LedgerEntryInput[]): Promise<void>;
 }
 
-export interface ApprovalEmailMessage {
-  readonly billingId: string;
-  readonly franchiseeId: string;
-  readonly to: string;
-  readonly props: FranchiseeBillingEmailProps;
-}
-
-export interface RetryEmailContext {
-  readonly rows: readonly ApprovalBillingRow[];
-  readonly logs: readonly ApprovalEmailLog[];
-}
-
 export interface FranchiseeBillingApprovalOperations {
   withTransaction<T>(work: (store: ApprovalStore) => Promise<T>): Promise<T>;
-  loadRetryContext(
-    input: FranchiseeBillingRetryInput,
-  ): Promise<RetryEmailContext>;
-  sendEmail(message: ApprovalEmailMessage): Promise<{
-    readonly success: boolean;
-    readonly error?: string;
-  }>;
 }
 
 const MONEY_SCALE = 6;
