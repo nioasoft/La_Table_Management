@@ -217,7 +217,7 @@ function MissingFranchisees({
   }
   return (
     <div className="text-sm text-destructive">
-      <p className="font-medium">חסרים:</p>
+      <p className="font-medium">טרם אושרו או סומנו ללא מחזור:</p>
       <ul className="mt-1 list-inside list-disc">
         {gate.missingNames.map((name, index) => (
           <li key={`${name}:${index}`}>{name}</li>
