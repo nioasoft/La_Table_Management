@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as XLSX from "xlsx";
 import { parseYamaVekadmaFile } from "../yama-vekadma-parser";
 
 const fixturesDir = resolve(__dirname, "fixtures");
@@ -47,5 +48,50 @@ describe("parseYamaVekadmaFile — ניתוח מכירות תקופתי (HTML sa
     expect(anomaly.severity).toBe("warning");
     expect(anomaly.details!.monthlyTotals).toHaveLength(4); // 04–07/2026
     expect(anomaly.messageHe).toContain("07/2026");
+  });
+});
+
+describe("parseYamaVekadmaFile — the same report as a real workbook", () => {
+  // Reut's corrected Q2-2026 file, 02/09/2026. Opening the ERP's HTML-table
+  // .xls in Excel and saving it turns it into a genuine OLE2 workbook, so the
+  // <table> sniffer no longer recognises it and every row used to fail the
+  // כרטסת ledger's shape — ALL_ROWS_FILTERED, nothing saveable.
+  const buffer = readFileSync(
+    resolve(fixturesDir, "yama-vekadma-sales-report-workbook.xls")
+  );
+
+  it("parses the workbook form to the same eleven customers", () => {
+    const r = parseYamaVekadmaFile(buffer);
+
+    expect(r.success).toBe(true);
+    expect(r.data).toHaveLength(11);
+    expect(r.summary.totalNetAmount).toBe(15646);
+    expect(r.summary.vatAdjusted).toBe(false);
+
+    const kastra = r.data.find((d) => d.franchisee === "קסטרא טומאיי")!;
+    expect(kastra.netAmount).toBe(2975);
+    const big = r.data.find((d) => d.franchisee.includes("קרית אתא"))!;
+    expect(big.netAmount).toBe(3229);
+  });
+
+  it("reads the month column even after the .xls→.xlsx re-encode drops its format", () => {
+    // This is the path production actually takes: the browser converts .xls to
+    // .xlsx before upload because the WAF blocks .xls, and the conversion drops
+    // the number format — the month arrives as a bare Excel serial with nothing
+    // left to say it was a date.
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const reencoded = Buffer.from(
+      XLSX.write(workbook, { type: "array", bookType: "xlsx" }) as ArrayBuffer
+    );
+
+    const r = parseYamaVekadmaFile(reencoded);
+    expect(r.success).toBe(true);
+    expect(r.summary.totalNetAmount).toBe(15646);
+
+    // April–June, not January–March: a serial read as M/D/YY vs D/M/YY differs
+    // by five months and both readings look plausible.
+    const months = new Set(r.data.map((d) => d.date!.getMonth()));
+    expect([...months].sort()).toEqual([3, 4, 5]);
+    expect(r.data.every((d) => d.date!.getFullYear() === 2026)).toBe(true);
   });
 });

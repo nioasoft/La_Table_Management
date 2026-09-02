@@ -51,6 +51,8 @@ import {
 import {
   decodeSalesReport,
   isSalesReport,
+  isSalesReportGrid,
+  parseSalesReportGrid,
   parseYamaVekadmaSalesReport,
 } from "./yama-vekadma-sales-report";
 
@@ -76,6 +78,31 @@ const FOOTER_TOTAL_RE =
 
 // Subtotal labels that may appear in col 7
 const SUBTOTAL_LABELS = ["סהכ", 'סה"כ', "סך הכל"];
+
+/**
+ * Re-read the workbook with real Date values and render the grid as text.
+ *
+ * The ledger path reads with `raw: false`, which renders the month column as
+ * "6/1/26" — M/D/YY or D/M/YY depending on who formatted it, and the report's
+ * months are always the 1st, so the two readings are indistinguishable and one
+ * of them is off by five months. Taking the cell's date value settles it.
+ */
+function readSalesReportGrid(buffer: Buffer, sheetName: string): string[][] {
+  const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+  const rows: unknown[][] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    header: 1,
+    raw: true,
+    defval: "",
+  });
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return rows.map((row) =>
+    row.map((cell) =>
+      cell instanceof Date
+        ? `${pad(cell.getDate())}/${pad(cell.getMonth() + 1)}/${cell.getFullYear()}`
+        : String(cell ?? "").trim()
+    )
+  );
+}
 
 interface FranchiseeAccumulator {
   name: string;
@@ -165,6 +192,15 @@ export function parseYamaVekadmaFile(buffer: Buffer): FileProcessingResult {
       errors.push(createFileProcessingError("FILE_EMPTY"));
       legacyErrors.push("File is empty or too short");
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
+    }
+
+    // The sales report also arrives as a real workbook, not only as the ERP's
+    // HTML table — opening that .xls in Excel and saving it produces one, which
+    // is what happens whenever a file is fixed by hand. Recognise it by its
+    // header row and take the same path the HTML form takes; otherwise every
+    // row fails the ledger's shape and the upload dies as ALL_ROWS_FILTERED.
+    if (isSalesReportGrid(rawData.map((r) => r.map((c) => String(c ?? "").trim())))) {
+      return parseSalesReportGrid(readSalesReportGrid(buffer, sheetName));
     }
 
     const franchisees: FranchiseeAccumulator[] = [];

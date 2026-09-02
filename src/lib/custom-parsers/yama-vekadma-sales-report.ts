@@ -104,8 +104,22 @@ function toNumber(value: string): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
-/** Parse DD/MM/YYYY in local time (toISOString would shift the day — see CLAUDE.md). */
+/**
+ * Parse the month cell in local time (toISOString would shift the day — see
+ * CLAUDE.md).
+ *
+ * Two shapes reach here. The HTML report writes DD/MM/YYYY as text. A workbook
+ * writes a date-formatted number, and the browser's WAF-driven .xls→.xlsx
+ * re-encode drops the number format — so the cell arrives as a bare Excel
+ * serial with nothing left to say it was ever a date.
+ */
 function parseMonth(value: string): Date | null {
+  const serial = value.match(/^\d{5}$/) ? parseInt(value, 10) : NaN;
+  if (!Number.isNaN(serial)) {
+    // Excel's day 0 is 1899-12-30 (its 1900 leap-year bug included).
+    const utc = new Date(Date.UTC(1899, 11, 30) + serial * 86400000);
+    return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+  }
   const m = value.match(MONTH_RE);
   if (!m) return null;
   const day = parseInt(m[1], 10);
@@ -127,13 +141,30 @@ function monthLabel(key: string): string {
 }
 
 export function parseYamaVekadmaSalesReport(text: string): FileProcessingResult {
+  return parseSalesReportGrid(extractRows(text));
+}
+
+/**
+ * True when a worksheet grid is the sales report rather than the כרטסת ledger.
+ *
+ * The same report also arrives as a genuine workbook: anyone who opens the
+ * ERP's HTML-table `.xls` in Excel and saves it produces one, which is exactly
+ * what happens when a file is repaired by hand. `isSalesReport` only knows the
+ * HTML wrapper, so the grid has to be recognised by its own header row.
+ */
+export function isSalesReportGrid(rows: string[][]): boolean {
+  return rows.some(
+    (r) => r.includes(HEADER_CUSTOMER) && r.includes(HEADER_AMOUNT)
+  );
+}
+
+/** Parse the report from its rows, whichever container they arrived in. */
+export function parseSalesReportGrid(rows: string[][]): FileProcessingResult {
   const errors: FileProcessingError[] = [];
   const warnings: FileProcessingError[] = [];
   const legacyErrors: string[] = [];
   const legacyWarnings: string[] = [];
   const data: ParsedRowData[] = [];
-
-  const rows = extractRows(text);
 
   // Header-anchored: this supplier's ERP has already reshuffled the layout once
   const headerIdx = rows.findIndex(
