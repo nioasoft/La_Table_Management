@@ -141,10 +141,15 @@ export function FranchiseeBillingNoRevenueCell(
     return <StaleNoRevenueReason {...props} />;
   }
   return (
-    <span className="text-xs text-muted-foreground">
-      {row.status === "approved"
-        ? "השורה מאושרת"
-        : "זמין רק כשכל הסכומים אפס"}
+    <span
+      className="text-muted-foreground"
+      title={
+        row.status === "approved"
+          ? "השורה מאושרת"
+          : "זמין רק כשכל הסכומים אפס"
+      }
+    >
+      —
     </span>
   );
 }

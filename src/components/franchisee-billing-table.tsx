@@ -53,7 +53,7 @@ export function FranchiseeBillingTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border bg-background shadow-sm">
-      <Table className="min-w-[1700px]">
+      <Table className="min-w-[1250px] [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3">
         <TableCaption className="pb-4">
           סכומי החיוב מוצגים כפי שנשמרו, ללא חישוב מחדש במסך.
         </TableCaption>
@@ -63,19 +63,25 @@ export function FranchiseeBillingTable({
               זכיין
             </TableHead>
             {currencyColumns.map(([, label]) => (
-              <TableHead key={label} className="min-w-32">
+              <TableHead key={label} className="min-w-28">
                 {label}
               </TableHead>
             ))}
-            <TableHead className="min-w-28">תעריף מדרגה</TableHead>
-            <TableHead className="min-w-44">דחייה בנקודות אחוז</TableHead>
-            <TableHead className="min-w-36">שווי הדחייה בשקלים</TableHead>
-            <TableHead className="min-w-32">תמלוגים</TableHead>
-            <TableHead className="min-w-32">שיווק</TableHead>
-            <TableHead className="min-w-36">סה״כ לפני מע״מ</TableHead>
-            <TableHead className="min-w-40">לתשלום כולל מע״מ</TableHead>
-            <TableHead className="min-w-60">סיבת אין מחזור</TableHead>
-            <TableHead className="min-w-40">יתרת דחיות מצטברת</TableHead>
+            <TableHead className="min-w-20">תעריף</TableHead>
+            <TableHead className="min-w-32" title="דחייה בנקודות אחוז">
+              דחייה
+            </TableHead>
+            <TableHead className="min-w-28" title="שווי הדחייה בשקלים">
+              שווי הדחייה
+            </TableHead>
+            <TableHead className="min-w-28">תמלוגים</TableHead>
+            <TableHead className="min-w-28">שיווק</TableHead>
+            <TableHead className="min-w-28">סה״כ לפני מע״מ</TableHead>
+            <TableHead className="min-w-32">לתשלום כולל מע״מ</TableHead>
+            <TableHead className="min-w-40">סיבת אין מחזור</TableHead>
+            <TableHead className="min-w-28" title="יתרת דחיות מצטברת">
+              יתרת דחיות
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
