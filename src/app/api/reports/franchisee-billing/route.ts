@@ -92,7 +92,7 @@ async function reportResponse(
 }
 
 /**
- * Returns one of the four franchisee billing report projections.
+ * Returns one of the franchisee billing report projections.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const context = requestContext(request);
@@ -105,6 +105,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     reportType: request.nextUrl.searchParams.get("reportType"),
     year: request.nextUrl.searchParams.get("year"),
     month: request.nextUrl.searchParams.get("month"),
+    brandId: request.nextUrl.searchParams.get("brandId"),
   });
   if (validation.success) return reportResponse(validation.data, context);
 

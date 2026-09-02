@@ -3,16 +3,22 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  summarizeReportRows,
+  type SummaryReportTotals,
+} from "@/lib/franchisee-billing-summary";
 import type {
   CollectionReportRow,
   DiscountReportRow,
   FranchiseeBillingReportPayload,
   FranchiseeBillingReportType,
   RoyaltyReportRow,
+  SummaryReportRow,
   TurnoverReportRow,
 } from "@/schemas/franchisee-billing-reports";
 
@@ -53,6 +59,16 @@ function ReportHeaders({ reportType }: {
     <TableRow>
       <TableHead>זכיין</TableHead>
       <TableHead>מותג</TableHead>
+      {reportType === "summary" && (
+        <>
+          <TableHead>מחזור כולל מע״מ</TableHead>
+          <TableHead>מחזור ללא מע״מ</TableHead>
+          <TableHead>אחוז</TableHead>
+          <TableHead>תמלוגים</TableHead>
+          <TableHead>שיווק</TableHead>
+          <TableHead>סטטוס</TableHead>
+        </>
+      )}
       {reportType === "royalties" && (
         <>
           <TableHead>תמלוגים</TableHead>
@@ -77,6 +93,52 @@ function ReportHeaders({ reportType }: {
       )}
       {reportType === "discounts" && <TableHead>ערך הנחות מצטבר</TableHead>}
     </TableRow>
+  );
+}
+
+function SummaryRow({ row }: { readonly row: SummaryReportRow }) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">{row.franchiseeName}</TableCell>
+      <TableCell>{row.brandName}</TableCell>
+      <TableCell>{amount(row.grossBase)}</TableCell>
+      <TableCell>{amount(row.netBase)}</TableCell>
+      <TableCell>{rate(row.effectiveRate)}</TableCell>
+      <TableCell>{amount(row.royalty)}</TableCell>
+      <TableCell>{amount(row.marketing)}</TableCell>
+      <TableCell><StatusBadge status={row.status} /></TableCell>
+    </TableRow>
+  );
+}
+
+/** The two bottom lines of Reut's Excel: סה"כ, and סה"כ כולל מע"מ. */
+function SummaryTotals({ totals }: {
+  readonly totals: SummaryReportTotals;
+}) {
+  const money = (value: number) => amount(String(value));
+  return (
+    <TableFooter>
+      <TableRow className="font-semibold">
+        <TableCell colSpan={2}>סה״כ</TableCell>
+        <TableCell>{money(totals.grossBase)}</TableCell>
+        <TableCell>{money(totals.netBase)}</TableCell>
+        <TableCell>{rate(String(totals.overallRate))}</TableCell>
+        <TableCell>{money(totals.royalty)}</TableCell>
+        <TableCell>{money(totals.marketing)}</TableCell>
+        <TableCell />
+      </TableRow>
+      <TableRow className="font-semibold">
+        <TableCell colSpan={5}>סה״כ כולל מע״מ</TableCell>
+        <TableCell>{money(totals.royaltyWithVat)}</TableCell>
+        <TableCell>{money(totals.marketingWithVat)}</TableCell>
+        <TableCell />
+      </TableRow>
+      <TableRow className="font-semibold">
+        <TableCell colSpan={5}>סה״כ לתשלום כולל מע״מ</TableCell>
+        <TableCell colSpan={2}>{money(totals.totalWithVat)}</TableCell>
+        <TableCell />
+      </TableRow>
+    </TableFooter>
   );
 }
 
@@ -128,6 +190,11 @@ function DiscountRow({ row }: { readonly row: DiscountReportRow }) {
 }
 
 function ReportRows({ report }: FranchiseeBillingReportTableProps) {
+  if (report.reportType === "summary") {
+    return report.rows.map((row) => (
+      <SummaryRow key={row.franchiseeId} row={row} />
+    ));
+  }
   if (report.reportType === "royalties") {
     return report.rows.map((row) => (
       <RoyaltyRow key={row.franchiseeId} row={row} />
@@ -160,6 +227,11 @@ export function FranchiseeBillingReportTable({
         <TableBody>
           <ReportRows report={report} />
         </TableBody>
+        {report.reportType === "summary" && report.rows.length > 0 && (
+          <SummaryTotals
+            totals={summarizeReportRows(report.rows, report.vatRate)}
+          />
+        )}
       </Table>
     </div>
   );

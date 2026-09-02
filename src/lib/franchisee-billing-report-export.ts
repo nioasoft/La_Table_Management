@@ -1,10 +1,12 @@
 import * as XLSX from "xlsx";
 
+import { summarizeReportRows } from "@/lib/franchisee-billing-summary";
 import type {
   CollectionReportRow,
   DiscountReportRow,
   FranchiseeBillingReportPayload,
   RoyaltyReportRow,
+  SummaryReportRow,
   TurnoverReportRow,
 } from "@/schemas/franchisee-billing-reports";
 
@@ -24,6 +26,48 @@ interface ExportTable {
 
 function exactNumber(value: string): number {
   return Number(value);
+}
+
+function summaryTable(
+  rows: readonly SummaryReportRow[],
+  vatRate: string | null,
+): ExportTable {
+  const totals = summarizeReportRows(rows, vatRate);
+  return {
+    sheetName: "סיכום חודשי",
+    headers: [
+      "זכיין", "מותג", "מחזור כולל מע״מ", "מחזור ללא מע״מ",
+      "אחוז", "תמלוגים", "שיווק", "סטטוס",
+    ],
+    rows: [
+      ...rows.map((row) => [
+        row.franchiseeName,
+        row.brandName,
+        exactNumber(row.grossBase),
+        exactNumber(row.netBase),
+        exactNumber(row.effectiveRate),
+        exactNumber(row.royalty),
+        exactNumber(row.marketing),
+        row.status === "approved" ? "מאושר" : "טיוטה",
+      ]),
+      [
+        "סה״כ", "",
+        totals.grossBase, totals.netBase, totals.overallRate,
+        totals.royalty, totals.marketing, "",
+      ],
+      [
+        "סה״כ כולל מע״מ", "", "", "", "",
+        totals.royaltyWithVat, totals.marketingWithVat, "",
+      ],
+      [
+        "סה״כ לתשלום כולל מע״מ", "", "", "", "",
+        totals.totalWithVat, "", "",
+      ],
+    ],
+    moneyColumns: [2, 3, 5, 6],
+    rateColumns: [4],
+    columnWidths: [28, 16, 20, 20, 12, 16, 16, 12],
+  };
 }
 
 function royaltyTable(rows: readonly RoyaltyReportRow[]): ExportTable {
@@ -97,6 +141,9 @@ function discountTable(rows: readonly DiscountReportRow[]): ExportTable {
 }
 
 function exportTable(report: FranchiseeBillingReportPayload): ExportTable {
+  if (report.reportType === "summary") {
+    return summaryTable(report.rows, report.vatRate);
+  }
   if (report.reportType === "royalties") return royaltyTable(report.rows);
   if (report.reportType === "turnover") return turnoverTable(report.rows);
   if (report.reportType === "collection") return collectionTable(report.rows);

@@ -13,8 +13,12 @@ export function resolveFranchiseeBillingReportTab(
   return result.success ? result.data : null;
 }
 
+type ReportUrlQuery = Omit<FranchiseeBillingReportQuery, "brandId"> & {
+  readonly brandId?: string | null;
+};
+
 export function buildFranchiseeBillingReportUrl(
-  query: FranchiseeBillingReportQuery,
+  query: ReportUrlQuery,
   endpoint: ReportEndpoint = "data",
 ): string {
   const params = new URLSearchParams({
@@ -22,6 +26,7 @@ export function buildFranchiseeBillingReportUrl(
     year: String(query.year),
     month: String(query.month),
   });
+  if (query.brandId) params.set("brandId", query.brandId);
   const suffix = endpoint === "export" ? "/export" : "";
   return `/api/reports/franchisee-billing${suffix}?${params.toString()}`;
 }

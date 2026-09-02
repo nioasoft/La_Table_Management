@@ -154,6 +154,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     reportType: request.nextUrl.searchParams.get("reportType"),
     year: request.nextUrl.searchParams.get("year"),
     month: request.nextUrl.searchParams.get("month"),
+    brandId: request.nextUrl.searchParams.get("brandId"),
   });
   if (validation.success) return exportResponse(validation.data, context);
 

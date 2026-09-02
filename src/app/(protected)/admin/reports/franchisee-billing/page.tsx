@@ -36,6 +36,13 @@ import {
   type FranchiseeBillingReportPayload,
   type FranchiseeBillingReportType,
 } from "@/schemas/franchisee-billing-reports";
+import { z } from "zod";
+
+const brandOptionsSchema = z.object({
+  brands: z.array(
+    z.object({ id: z.string(), nameHe: z.string() }).loose(),
+  ),
+});
 
 const MONTHS = [
   "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
@@ -143,9 +150,10 @@ async function fetchReport(
   reportType: FranchiseeBillingReportType,
   year: number,
   month: number,
+  brandId: string | null,
 ): Promise<FranchiseeBillingReportPayload> {
   const response = await fetchWithTimeout(
-    buildFranchiseeBillingReportUrl({ reportType, year, month }),
+    buildFranchiseeBillingReportUrl({ reportType, year, month, brandId }),
   );
   const body: unknown = await response.json().catch((error: unknown) => {
     console.error("Franchisee billing report returned invalid JSON", error);
@@ -182,6 +190,58 @@ function YearSelect({ value, options, onChange }: YearSelectProps) {
           {options.map((option) => (
             <SelectItem key={option} value={String(option)}>
               <bdi>{option}</bdi>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+interface BrandOption {
+  readonly id: string;
+  readonly nameHe: string;
+}
+
+async function fetchBrandOptions(): Promise<readonly BrandOption[]> {
+  const response = await fetchWithTimeout("/api/brands");
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(apiError(body));
+  const parsed = brandOptionsSchema.safeParse(body);
+  if (!parsed.success) {
+    console.error("Invalid brands response for report filter", parsed.error);
+    throw new Error("רשימת המותגים לא נטענה. נסי לרענן");
+  }
+  return parsed.data.brands;
+}
+
+const ALL_BRANDS = "all";
+
+interface BrandSelectProps {
+  readonly value: string | null;
+  readonly options: readonly BrandOption[];
+  readonly onChange: (value: string | null) => void;
+}
+
+function BrandSelect({ value, options, onChange }: BrandSelectProps) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="report-brand">מותג</Label>
+      <Select
+        dir="rtl"
+        value={value ?? ALL_BRANDS}
+        onValueChange={(nextValue) =>
+          onChange(nextValue === ALL_BRANDS ? null : nextValue)
+        }
+      >
+        <SelectTrigger id="report-brand" dir="rtl">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent dir="rtl">
+          <SelectItem value={ALL_BRANDS}>כל המותגים</SelectItem>
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {option.nameHe}
             </SelectItem>
           ))}
         </SelectContent>
@@ -248,7 +308,7 @@ function ReportTabs({
       value={reportType}
       onValueChange={handleTabChange}
     >
-      <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-4">
+      <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-5">
         {REPORTS.map((item) => (
           <TabsTrigger key={item.type} value={item.type}>
             {item.label}
@@ -282,26 +342,37 @@ interface ReportPageViewProps extends ReportTabsProps {
   readonly year: number;
   readonly month: number;
   readonly years: readonly number[];
+  readonly brandId: string | null;
+  readonly brands: readonly BrandOption[];
   readonly isFetching: boolean;
   readonly onYearChange: (value: number) => void;
   readonly onMonthChange: (value: number) => void;
+  readonly onBrandChange: (value: string | null) => void;
 }
 
 function ReportBody({
   year,
   month,
   years,
+  brandId,
+  brands,
   isFetching,
   onYearChange,
   onMonthChange,
+  onBrandChange,
   ...tabsProps
 }: ReportPageViewProps) {
   return (
     <>
       <Card>
-        <CardContent className="grid gap-4 pt-6 sm:grid-cols-2">
+        <CardContent className="grid gap-4 pt-6 sm:grid-cols-3">
           <YearSelect value={year} options={years} onChange={onYearChange} />
           <MonthSelect value={month} onChange={onMonthChange} />
+          <BrandSelect
+            value={brandId}
+            options={brands}
+            onChange={onBrandChange}
+          />
         </CardContent>
       </Card>
       <ReportTabs {...tabsProps} />
@@ -333,6 +404,7 @@ function ReportPageView(props: ReportPageViewProps) {
           reportType={props.reportType}
           year={props.year}
           month={props.month}
+          brandId={props.brandId}
           disabled={!hasRows || props.isFetching}
         />
       )}
@@ -348,17 +420,23 @@ export default function FranchiseeBillingReportsPage() {
     return { year: date.getFullYear(), month: date.getMonth() + 1 };
   });
   const [reportType, setReportType] =
-    useState<FranchiseeBillingReportType>("royalties");
+    useState<FranchiseeBillingReportType>("summary");
   const [year, setYear] = useState(initialPeriod.year);
   const [month, setMonth] = useState(initialPeriod.month);
+  const [brandId, setBrandId] = useState<string | null>(null);
   const years = Array.from(
     { length: initialPeriod.year - 2019 },
     (_, index) => initialPeriod.year - index,
   );
   const query = useQuery({
-    queryKey: ["franchisee-billing-report", reportType, year, month],
-    queryFn: () => fetchReport(reportType, year, month),
+    queryKey: ["franchisee-billing-report", reportType, year, month, brandId],
+    queryFn: () => fetchReport(reportType, year, month, brandId),
     retry: 1,
+  });
+  const brandsQuery = useQuery({
+    queryKey: ["report-brand-options"],
+    queryFn: fetchBrandOptions,
+    staleTime: 5 * 60 * 1000,
   });
 
   return (
@@ -368,12 +446,15 @@ export default function FranchiseeBillingReportsPage() {
       year={year}
       month={month}
       years={years}
+      brandId={brandId}
+      brands={brandsQuery.data ?? []}
       isLoading={query.isLoading}
       isFetching={query.isFetching}
       error={query.error}
       onChange={setReportType}
       onYearChange={setYear}
       onMonthChange={setMonth}
+      onBrandChange={setBrandId}
       onRetry={() => { void query.refetch(); }}
     />
   );

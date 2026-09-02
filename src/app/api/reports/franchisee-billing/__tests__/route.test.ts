@@ -65,6 +65,7 @@ describe("GET /api/reports/franchisee-billing", () => {
       reportType: "turnover",
       year: 2026,
       month: 6,
+      brandId: null,
     });
     await expect(response.json()).resolves.toMatchObject({
       success: true,

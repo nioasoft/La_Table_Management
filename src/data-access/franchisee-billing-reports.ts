@@ -1,10 +1,12 @@
 import {
   and,
   asc,
+  desc,
   eq,
   isNotNull,
   isNull,
   lt,
+  lte,
   ne,
   or,
   sql,
@@ -27,6 +29,11 @@ const identitySelection = {
   brandName: schema.brand.nameHe,
 };
 
+/** Narrows any report to one brand; null keeps them all. */
+function brandFilter(brandId: string | null) {
+  return brandId === null ? undefined : eq(schema.franchisee.brandId, brandId);
+}
+
 function selectedMonth(period: FranchiseeBillingPeriod) {
   return and(
     eq(schema.franchiseeBilling.periodYear, period.year),
@@ -47,6 +54,7 @@ function throughSelectedMonth(period: FranchiseeBillingPeriod) {
 export function createRoyaltyReportQuery(
   reportDatabase: ReportDatabase,
   period: FranchiseeBillingPeriod,
+  brandId: string | null = null,
 ) {
   return reportDatabase
     .select({
@@ -67,6 +75,7 @@ export function createRoyaltyReportQuery(
       and(
         selectedMonth(period),
         ne(schema.franchiseeBilling.royalty, "0"),
+        brandFilter(brandId),
       ),
     )
     .orderBy(asc(schema.brand.nameHe), asc(schema.franchisee.name));
@@ -75,6 +84,7 @@ export function createRoyaltyReportQuery(
 export function createTurnoverReportQuery(
   reportDatabase: ReportDatabase,
   period: FranchiseeBillingPeriod,
+  brandId: string | null = null,
 ) {
   return reportDatabase
     .select({
@@ -89,13 +99,63 @@ export function createTurnoverReportQuery(
       eq(schema.franchiseeBilling.franchiseeId, schema.franchisee.id),
     )
     .innerJoin(schema.brand, eq(schema.franchisee.brandId, schema.brand.id))
-    .where(selectedMonth(period))
+    .where(and(selectedMonth(period), brandFilter(brandId)))
     .orderBy(asc(schema.brand.nameHe), asc(schema.franchisee.name));
+}
+
+/**
+ * Reut's monthly Excel, one brand at a time: every franchisee beside its
+ * turnover, the rate that actually billed, and the royalty and marketing
+ * amounts — with the stored לתשלום for the totals-with-VAT line.
+ */
+export function createSummaryReportQuery(
+  reportDatabase: ReportDatabase,
+  period: FranchiseeBillingPeriod,
+  brandId: string | null = null,
+) {
+  return reportDatabase
+    .select({
+      ...identitySelection,
+      grossBase: schema.franchiseeBilling.grossBase,
+      netBase: schema.franchiseeBilling.netBase,
+      effectiveRate: schema.franchiseeBilling.effectiveRate,
+      royalty: schema.franchiseeBilling.royalty,
+      marketing: schema.franchiseeBilling.marketing,
+      total: schema.franchiseeBilling.total,
+      status: schema.franchiseeBilling.status,
+    })
+    .from(schema.franchiseeBilling)
+    .innerJoin(
+      schema.franchisee,
+      eq(schema.franchiseeBilling.franchiseeId, schema.franchisee.id),
+    )
+    .innerJoin(schema.brand, eq(schema.franchisee.brandId, schema.brand.id))
+    .where(and(selectedMonth(period), brandFilter(brandId)))
+    .orderBy(asc(schema.brand.nameHe), asc(schema.franchisee.name));
+}
+
+async function readVatRate(
+  reportDatabase: ReportDatabase,
+  period: FranchiseeBillingPeriod,
+): Promise<string | null> {
+  const periodStart = [
+    String(period.year).padStart(4, "0"),
+    String(period.month).padStart(2, "0"),
+    "01",
+  ].join("-");
+  const [row] = await reportDatabase
+    .select({ rate: schema.vatRate.rate })
+    .from(schema.vatRate)
+    .where(lte(schema.vatRate.effectiveFrom, periodStart))
+    .orderBy(desc(schema.vatRate.effectiveFrom))
+    .limit(1);
+  return row?.rate ?? null;
 }
 
 export function createCollectionReportQuery(
   reportDatabase: ReportDatabase,
   period: FranchiseeBillingPeriod,
+  brandId: string | null = null,
 ) {
   return reportDatabase
     .select({
@@ -128,6 +188,7 @@ export function createCollectionReportQuery(
           isNotNull(schema.franchiseeBilling.royaltyExportedAt),
           isNotNull(schema.franchiseeBilling.marketingExportedAt),
         ),
+        brandFilter(brandId),
       ),
     )
     .groupBy(
@@ -148,6 +209,7 @@ function firstDayAfter(period: FranchiseeBillingPeriod) {
 export function createDiscountReportQuery(
   reportDatabase: ReportDatabase,
   period: FranchiseeBillingPeriod,
+  brandId: string | null = null,
 ) {
   const nextPeriod = firstDayAfter(period);
   return reportDatabase
@@ -173,16 +235,19 @@ export function createDiscountReportQuery(
       ),
     )
     .where(
-      or(
-        and(
-          isNotNull(schema.franchiseeDeferralLedger.billingId),
-          throughSelectedMonth(period),
+      and(
+        or(
+          and(
+            isNotNull(schema.franchiseeDeferralLedger.billingId),
+            throughSelectedMonth(period),
+          ),
+          and(
+            isNull(schema.franchiseeDeferralLedger.billingId),
+            sql`${schema.franchiseeDeferralLedger.createdAt}
+              < make_date(${nextPeriod.year}, ${nextPeriod.month}, 1)`,
+          ),
         ),
-        and(
-          isNull(schema.franchiseeDeferralLedger.billingId),
-          sql`${schema.franchiseeDeferralLedger.createdAt}
-            < make_date(${nextPeriod.year}, ${nextPeriod.month}, 1)`,
-        ),
+        brandFilter(brandId),
       ),
     )
     .groupBy(
@@ -198,18 +263,26 @@ export async function loadFranchiseeBillingReport(
   reportDatabase: ReportDatabase = database,
 ): Promise<FranchiseeBillingReportPayload> {
   const period = { year: input.year, month: input.month };
+  const brandId = input.brandId ?? null;
+  if (input.reportType === "summary") {
+    const [rows, vatRate] = await Promise.all([
+      createSummaryReportQuery(reportDatabase, period, brandId),
+      readVatRate(reportDatabase, period),
+    ]);
+    return { reportType: input.reportType, period, vatRate, rows };
+  }
   if (input.reportType === "royalties") {
-    const rows = await createRoyaltyReportQuery(reportDatabase, period);
+    const rows = await createRoyaltyReportQuery(reportDatabase, period, brandId);
     return { reportType: input.reportType, period, rows };
   }
   if (input.reportType === "turnover") {
-    const rows = await createTurnoverReportQuery(reportDatabase, period);
+    const rows = await createTurnoverReportQuery(reportDatabase, period, brandId);
     return { reportType: input.reportType, period, rows };
   }
   if (input.reportType === "collection") {
-    const rows = await createCollectionReportQuery(reportDatabase, period);
+    const rows = await createCollectionReportQuery(reportDatabase, period, brandId);
     return { reportType: input.reportType, period, rows };
   }
-  const rows = await createDiscountReportQuery(reportDatabase, period);
+  const rows = await createDiscountReportQuery(reportDatabase, period, brandId);
   return { reportType: input.reportType, period, rows };
 }

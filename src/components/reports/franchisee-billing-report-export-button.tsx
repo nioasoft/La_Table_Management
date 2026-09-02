@@ -14,6 +14,7 @@ interface FranchiseeBillingReportExportButtonProps {
   readonly reportType: FranchiseeBillingReportType;
   readonly year: number;
   readonly month: number;
+  readonly brandId: string | null;
   readonly disabled: boolean;
 }
 
@@ -41,6 +42,7 @@ export function FranchiseeBillingReportExportButton({
   reportType,
   year,
   month,
+  brandId,
   disabled,
 }: FranchiseeBillingReportExportButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
@@ -50,7 +52,7 @@ export function FranchiseeBillingReportExportButton({
     try {
       const response = await fetchWithTimeout(
         buildFranchiseeBillingReportUrl(
-          { reportType, year, month },
+          { reportType, year, month, brandId },
           "export",
         ),
       );
