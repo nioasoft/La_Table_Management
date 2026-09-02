@@ -38,6 +38,7 @@ function screenRow(
     id: "billing-1",
     franchiseeId: "franchisee-1",
     franchiseeName: "ויני יהוד",
+    brandName: "ויני",
     periodYear: 2026,
     periodMonth: 6,
     grossBase: "118.000000",
@@ -851,5 +852,37 @@ describe("source queries skip a discarded upload", () => {
       `is distinct from 'rejected'::uploaded_file_review_status`;
     expect(linked).toContain(expected);
     expect(unlinked).toContain(expected);
+  });
+});
+
+describe("totalsByBrand", () => {
+  it("sums each brand's money columns in table order", async () => {
+    const { totalsByBrand } = await import(
+      "@/components/franchisee-billing-table"
+    );
+    const totals = totalsByBrand([
+      screenRow({ id: "b1", brandName: "ויני", royalty: "10", marketing: "2", total: "14.16", grossBase: "100", netBase: "84.75" }),
+      screenRow({ id: "b2", brandName: "קינג קונג", franchiseeId: "f2", royalty: "20", marketing: "4", total: "28.32", grossBase: "200", netBase: "169.49" }),
+      screenRow({ id: "b3", brandName: "ויני", franchiseeId: "f3", royalty: "30", marketing: "6", total: "42.48", grossBase: "300", netBase: "254.24" }),
+    ]);
+
+    expect(totals).toEqual([
+      {
+        brandName: "ויני",
+        grossBase: 400,
+        netBase: 338.99,
+        royalty: 40,
+        marketing: 8,
+        total: 56.64,
+      },
+      {
+        brandName: "קינג קונג",
+        grossBase: 200,
+        netBase: 169.49,
+        royalty: 20,
+        marketing: 4,
+        total: 28.32,
+      },
+    ]);
   });
 });

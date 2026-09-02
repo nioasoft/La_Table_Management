@@ -36,6 +36,7 @@ function billingRow(
     id: "billing-1",
     franchiseeId: "franchisee-1",
     franchiseeName: "ויני יהוד",
+    brandName: "ויני",
     periodYear: 2026,
     periodMonth: 6,
     grossBase: "118",

@@ -18,6 +18,7 @@ export interface BillingScreenRow {
   readonly id: string;
   readonly franchiseeId: string;
   readonly franchiseeName: string;
+  readonly brandName: string;
   readonly periodYear: number;
   readonly periodMonth: number;
   readonly grossBase: string;

@@ -12,6 +12,7 @@ import {
   TableBody,
   TableCaption,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -34,6 +35,68 @@ const currencyColumns = [
   ["grossBase", "מחזור ברוטו"],
   ["netBase", "מחזור נטו"],
 ] as const;
+
+interface BrandTotals {
+  readonly brandName: string;
+  readonly grossBase: number;
+  readonly netBase: number;
+  readonly royalty: number;
+  readonly marketing: number;
+  readonly total: number;
+}
+
+/** One totals line per brand, in the order the brands appear in the table. */
+export function totalsByBrand(
+  rows: FranchiseeBillingTableProps["rows"],
+): readonly BrandTotals[] {
+  const totals = new Map<string, BrandTotals>();
+  for (const row of rows) {
+    const current = totals.get(row.brandName) ?? {
+      brandName: row.brandName,
+      grossBase: 0,
+      netBase: 0,
+      royalty: 0,
+      marketing: 0,
+      total: 0,
+    };
+    totals.set(row.brandName, {
+      brandName: row.brandName,
+      grossBase: current.grossBase + Number(row.grossBase),
+      netBase: current.netBase + Number(row.netBase),
+      royalty: current.royalty + Number(row.royalty),
+      marketing: current.marketing + Number(row.marketing),
+      total: current.total + Number(row.total),
+    });
+  }
+  return [...totals.values()];
+}
+
+function BrandTotalsRow({ totals }: { readonly totals: BrandTotals }) {
+  return (
+    <TableRow className="font-semibold">
+      <TableCell className="sticky start-0 z-10 bg-muted">
+        סה״כ {totals.brandName}
+      </TableCell>
+      <TableCell>
+        <BillingNumber value={String(totals.grossBase)} kind="currency" />
+      </TableCell>
+      <TableCell>
+        <BillingNumber value={String(totals.netBase)} kind="currency" />
+      </TableCell>
+      <TableCell colSpan={3} />
+      <TableCell>
+        <BillingNumber value={String(totals.royalty)} kind="currency" />
+      </TableCell>
+      <TableCell>
+        <BillingNumber value={String(totals.marketing)} kind="currency" />
+      </TableCell>
+      <TableCell>
+        <BillingNumber value={String(totals.total)} kind="currency" />
+      </TableCell>
+      <TableCell colSpan={2} />
+    </TableRow>
+  );
+}
 
 export function FranchiseeBillingTable({
   rows,
@@ -76,7 +139,6 @@ export function FranchiseeBillingTable({
             </TableHead>
             <TableHead className="min-w-28">תמלוגים</TableHead>
             <TableHead className="min-w-28">שיווק</TableHead>
-            <TableHead className="min-w-28">סה״כ לפני מע״מ</TableHead>
             <TableHead className="min-w-32">לתשלום כולל מע״מ</TableHead>
             <TableHead className="min-w-40">סיבת אין מחזור</TableHead>
             <TableHead className="min-w-28" title="יתרת דחיות מצטברת">
@@ -178,9 +240,6 @@ export function FranchiseeBillingTable({
                   <BillingNumber value={row.marketing} kind="currency" />
                 </TableCell>
                 <TableCell>
-                  <BillingNumber value={row.subtotal} kind="currency" />
-                </TableCell>
-                <TableCell>
                   <BillingNumber
                     value={row.total}
                     kind="currency"
@@ -205,6 +264,13 @@ export function FranchiseeBillingTable({
             );
           })}
         </TableBody>
+        {rows.length > 0 && (
+          <TableFooter>
+            {totalsByBrand(rows).map((totals) => (
+              <BrandTotalsRow key={totals.brandName} totals={totals} />
+            ))}
+          </TableFooter>
+        )}
       </Table>
     </div>
   );

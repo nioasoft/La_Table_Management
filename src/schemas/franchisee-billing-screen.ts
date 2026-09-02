@@ -125,6 +125,7 @@ const billingScreenRowSchema = z.object({
   id: z.string(),
   franchiseeId: z.string(),
   franchiseeName: z.string(),
+  brandName: z.string(),
   periodYear: z.number().int(),
   periodMonth: z.number().int().min(1).max(12),
   grossBase: z.string(),

@@ -250,6 +250,7 @@ function billingRowSelection(
     id: billing.id,
     franchiseeId: billing.franchiseeId,
     franchiseeName: schema.franchisee.name,
+    brandName: schema.brand.nameHe,
     periodYear: billing.periodYear,
     periodMonth: billing.periodMonth,
     grossBase: billing.grossBase,
@@ -288,6 +289,10 @@ export function createPeriodRowsQuery(
     .innerJoin(
       schema.franchisee,
       eq(billing.franchiseeId, schema.franchisee.id),
+    )
+    .innerJoin(
+      schema.brand,
+      eq(schema.franchisee.brandId, schema.brand.id),
     )
     .leftJoin(
       schema.uploadedFile,
