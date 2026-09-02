@@ -30,7 +30,12 @@ import {
 import { createAuditContext } from "@/data-access/auditLog";
 import { uploadDocument, generateEntityFileName } from "@/lib/storage";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { buildPeriodAnomaly } from "@/lib/settlement-periods";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
+import {
+  getAllBlacklisted,
+  normalizeSupplierFileName,
+} from "@/data-access/supplier-file-blacklist";
 
 interface RouteContext {
   params: Promise<{ supplierId: string }>;
@@ -143,6 +148,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const customVatRate = formData.get("vatRate") as string | null;
     const enableMatching = formData.get("enableMatching") !== "false"; // Default to true
     const matchConfigStr = formData.get("matchConfig") as string | null;
+    const chosenPeriodStart = formData.get("periodStartDate") as string | null;
+    const chosenPeriodEnd = formData.get("periodEndDate") as string | null;
 
     if (!file) {
       return NextResponse.json(
@@ -270,6 +277,52 @@ export async function POST(request: NextRequest, context: RouteContext) {
           message: `נוספו ${syncResult.added.length} פריטים חדשים. יש לבדוק סטטוס מע"מ בכרטיס ספק.`,
           details: `נוספו ${syncResult.added.length} פריטים חדשים. יש לבדוק סטטוס מע"מ בכרטיס ספק.`,
         }));
+      }
+    }
+
+    // Drop rows the admin has already declared irrelevant for this supplier.
+    // The blacklist was only ever consulted on the review screen, so a name
+    // marked "לא רלוונטי" came back every period and was force-matched to the
+    // nearest franchisee — Nespresso's office line
+    // "פט ויני (ניהול מותג) בע\"מ מסעדת פט ויני קריית מוצקין" landed on
+    // קינג קונג מוצקין at 92%. Filtering here keeps it out of the matcher, the
+    // totals and any commission.
+    const blacklisted = await getAllBlacklisted(supplier.id);
+    if (blacklisted.length > 0) {
+      const blocked = new Set(blacklisted.map((b) => b.normalizedName));
+      const dropped = result.data.filter((r) =>
+        blocked.has(normalizeSupplierFileName(r.franchisee))
+      );
+      if (dropped.length > 0) {
+        result.data = result.data.filter((r) => !dropped.includes(r));
+        result.summary.processedRows -= dropped.length;
+        result.summary.skippedRows += dropped.length;
+        result.summary.totalGrossAmount -= dropped.reduce((t, r) => t + (r.grossAmount ?? 0), 0);
+        result.summary.totalNetAmount -= dropped.reduce((t, r) => t + (r.netAmount ?? 0), 0);
+        const names = [...new Set(dropped.map((r) => r.franchisee))].join(", ");
+        result.warnings.push(createFileProcessingError('SYSTEM_ERROR', {
+          message: `${dropped.length} שורות דולגו לפי רשימת "לא רלוונטי": ${names}`,
+          details: `${dropped.length} שורות דולגו לפי רשימת "לא רלוונטי": ${names}`,
+        }));
+      }
+    }
+
+    // Check the period the admin picked against the dates inside the file.
+    // Nothing did this before: the period was a dropdown choice that no code
+    // ever contradicted, so a file could be filed under any quarter in
+    // silence — which is exactly what Reut reported ("אני מעלה תקופה סתם,
+    // הוא לא רושם שגיאה").
+    if (chosenPeriodStart && chosenPeriodEnd && result.data.length > 0) {
+      const periodAnomaly = buildPeriodAnomaly(
+        result.data.map((r) => r.date),
+        chosenPeriodStart,
+        chosenPeriodEnd,
+        (result.anomalies ?? []).some(
+          (a) => a.code === "DATES_NOT_EXTRACTED" || a.code === "MIXED_PERIODS"
+        )
+      );
+      if (periodAnomaly) {
+        result.anomalies = [...(result.anomalies ?? []), periodAnomaly];
       }
     }
 

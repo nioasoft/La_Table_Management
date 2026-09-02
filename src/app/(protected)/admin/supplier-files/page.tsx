@@ -101,6 +101,14 @@ import { looksLikeHtmlTableFile } from "@/lib/html-table-file";
  * and the server parsers sniff content rather than the extension. The rename
  * alone is what the WAF needs.
  */
+/** Tell the server which settlement period the admin picked for this upload. */
+function appendChosenPeriod(formData: FormData, periodKey: string): void {
+  const period = getPeriodByKey(periodKey);
+  if (!period) return;
+  formData.append("periodStartDate", formatDateAsLocal(period.startDate));
+  formData.append("periodEndDate", formatDateAsLocal(period.endDate));
+}
+
 async function convertXlsToXlsx(file: File): Promise<File> {
   const arrayBuffer = await file.arrayBuffer();
   const newFileNameForHtml = file.name.replace(/\.xls$/i, ".xlsx");
@@ -582,6 +590,9 @@ export default function SupplierFilesPage() {
     const formData = new FormData();
     formData.append("file", processedFile);
     formData.append("enableMatching", "true");
+    // Send the chosen period so the server can check it against the dates
+    // inside the file — nothing did, so any period was accepted in silence.
+    appendChosenPeriod(formData, periodKey);
 
     const response = await fetchWithTimeout(`/api/suppliers/${supplierId}/process-file`, {
       method: "POST",
@@ -722,6 +733,7 @@ export default function SupplierFilesPage() {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("enableMatching", "true");
+        appendChosenPeriod(formData, selectedPeriodKey);
 
         const response = await fetchWithTimeout(`/api/suppliers/${selectedSupplierId}/process-file`, {
           method: "POST",
@@ -919,6 +931,7 @@ export default function SupplierFilesPage() {
         const formData = new FormData();
         formData.append("file", file);
         formData.append("enableMatching", "true");
+        appendChosenPeriod(formData, selectedPeriodKey);
 
         const response = await fetchWithTimeout(`/api/suppliers/${selectedSupplierId}/process-file`, {
           method: "POST",
@@ -1035,18 +1048,26 @@ export default function SupplierFilesPage() {
   }, [selectedSupplierId, selectedPeriodKey, selectedSupplier, isMultiFile, processSingleFile, queryClient]);
 
   // Handle manual match save
-  const handleSaveMatch = useCallback(async () => {
-    if (!editingRow || !selectedFranchiseeId || !processingResult) return;
-
-    const selectedFranchisee = franchisees.find(f => f.id === selectedFranchiseeId);
+  /**
+   * Pin one row to a franchisee, optionally registering the file's spelling as
+   * an alias so the next file matches it outright. Shared by the edit dialog
+   * and by the row's inline confirm — a suggested match that only needs
+   * agreeing with shouldn't cost a dialog.
+   */
+  const applyMatch = useCallback(async (
+    row: ProcessedRow,
+    franchiseeId: string,
+    alsoAddAlias: boolean
+  ) => {
+    const selectedFranchisee = franchisees.find(f => f.id === franchiseeId);
     if (!selectedFranchisee) return;
 
     // Add alias if requested
-    if (addAsAlias && editingRow.franchisee) {
+    if (alsoAddAlias && row.franchisee) {
       try {
         await addAliasMutation.mutateAsync({
-          franchiseeId: selectedFranchiseeId,
-          aliasName: editingRow.franchisee,
+          franchiseeId,
+          aliasName: row.franchisee,
         });
       } catch (error) {
         console.error("Failed to add alias:", error);
@@ -1059,10 +1080,10 @@ export default function SupplierFilesPage() {
       if (!prev) return null;
       return {
         ...prev,
-        data: prev.data.map(row => {
-          if (row.rowNumber === editingRow.rowNumber) {
+        data: prev.data.map(candidate => {
+          if (candidate.rowNumber === row.rowNumber) {
             return {
-              ...row,
+              ...candidate,
               manualMatch: {
                 franchiseeId: selectedFranchisee.id,
                 franchiseeName: selectedFranchisee.name,
@@ -1070,21 +1091,25 @@ export default function SupplierFilesPage() {
               },
             };
           }
-          return row;
+          return candidate;
         }),
         matchSummary: prev.matchSummary ? {
           ...prev.matchSummary,
           matched: prev.matchSummary.matched + 1,
           unmatched: Math.max(0, prev.matchSummary.unmatched - 1),
-          unmatchedNames: prev.matchSummary.unmatchedNames.filter(n => n !== editingRow.franchisee),
+          unmatchedNames: prev.matchSummary.unmatchedNames.filter(n => n !== row.franchisee),
         } : undefined,
       };
     });
+  }, [franchisees, addAliasMutation]);
 
+  const handleSaveMatch = useCallback(async () => {
+    if (!editingRow || !selectedFranchiseeId) return;
+    await applyMatch(editingRow, selectedFranchiseeId, addAsAlias);
     setEditingRow(null);
     setSelectedFranchiseeId("");
     setFranchiseeSearch("");
-  }, [editingRow, selectedFranchiseeId, processingResult, franchisees, addAsAlias, addAliasMutation]);
+  }, [editingRow, selectedFranchiseeId, addAsAlias, applyMatch]);
 
   // Handle blacklist
   const handleBlacklist = useCallback(() => {
@@ -1710,10 +1735,29 @@ export default function SupplierFilesPage() {
                                 <TableCell>
                                   {!isBlacklisted && (
                                     <div className="flex gap-1">
+                                      {/* A 96% match is almost always simply right. Agreeing with
+                                          it used to cost opening the dialog, picking the same
+                                          franchisee and saving — fourteen times for one Nespresso
+                                          file. One click here does the same thing, alias included. */}
+                                      {match.type === "fuzzy" && row.matchResult?.matchedFranchisee && (
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                          disabled={addAliasMutation.isPending}
+                                          onClick={() =>
+                                            applyMatch(row, row.matchResult!.matchedFranchisee!.id, true)
+                                          }
+                                          title={`אשר התאמה ל"${match.name}" ושמור ככינוי`}
+                                        >
+                                          <Check className="h-3.5 w-3.5" />
+                                        </Button>
+                                      )}
                                       <Button
                                         size="sm"
                                         variant="ghost"
                                         className="h-7 w-7 p-0"
+                                        title="בחר זכיין אחר"
                                         onClick={() => {
                                           setEditingRow(row);
                                           setSelectedFranchiseeId(

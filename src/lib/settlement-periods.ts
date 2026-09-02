@@ -13,6 +13,7 @@
  */
 
 import type { SettlementPeriodType } from "@/db/schema";
+import type { Anomaly } from "@/types/file-anomalies";
 
 export interface SettlementPeriodInfo {
   type: SettlementPeriodType;
@@ -713,4 +714,83 @@ export function derivePeriodKey(
     default:
       return null;
   }
+}
+
+/**
+ * Compare the period the admin picked on the upload page against the dates
+ * carried by the file's own rows.
+ *
+ * The period was a dropdown choice nothing ever contradicted, so a file could
+ * be filed under any quarter in silence — the אראל incident (Q4 tagged as Q1,
+ * 2026-05-04) and Nespresso's Q1/Q2 confusion (2026-09-02, whose file is
+ * titled "הפרשה לרבעון 1 2026" while holding Q2 figures) are the same failure.
+ *
+ * A file whose rows carry no date at all cannot be checked; saying so plainly
+ * is the only honest thing to show, so it comes back as `info` rather than as
+ * a warning that would demand a click on every upload.
+ *
+ * @param dates      Per-row dates, nulls included — the parser may not extract any.
+ * @param chosenStart YYYY-MM-DD as picked on the upload page.
+ * @param chosenEnd   YYYY-MM-DD as picked on the upload page.
+ * @param alreadyFlagged True when the parser already emitted its own period anomaly.
+ */
+export function buildPeriodAnomaly(
+  dates: Array<Date | null | undefined>,
+  chosenStart: string,
+  chosenEnd: string,
+  alreadyFlagged = false
+): Anomaly | null {
+  const start = parseLocalDateString(chosenStart);
+  const end = parseLocalDateString(chosenEnd);
+  end.setHours(23, 59, 59, 999);
+
+  const known = dates.filter(
+    (d): d is Date => d instanceof Date && !isNaN(d.getTime())
+  );
+
+  if (known.length === 0) {
+    if (alreadyFlagged) return null;
+    return {
+      code: "DATES_NOT_EXTRACTED",
+      severity: "info",
+      messageHe: "אין תאריכים בקובץ — לא ניתן לאמת שהתקופה שנבחרה תואמת לתוכן.",
+      details: {
+        explanationHe:
+          "השורות בקובץ הזה לא נושאות תאריך, ולכן התקופה נקבעת אך ורק לפי הבחירה שלך בעמוד ההעלאה. " +
+          "כותרת הקובץ אינה ראיה — ספקים לא תמיד מעדכנים אותה. ודאי מול הסכומים שזו התקופה הנכונה.",
+        chosenPeriod: `${chosenStart} — ${chosenEnd}`,
+      },
+    };
+  }
+
+  const outside = known.filter((d) => d < start || d > end);
+  if (outside.length === 0) return null;
+
+  const min = new Date(Math.min(...known.map((d) => d.getTime())));
+  const max = new Date(Math.max(...known.map((d) => d.getTime())));
+  return {
+    code: "PERIOD_MISMATCH",
+    severity: "warning",
+    messageHe:
+      `שימי לב — התקופה לא תואמת: ${outside.length} מתוך ${known.length} השורות בקובץ ` +
+      `הן מחוץ לתקופה שנבחרה (${chosenStart} — ${chosenEnd}).`,
+    details: {
+      explanationHe:
+        "התאריכים בקובץ עצמו נופלים מחוץ לתקופה שסומנה בעמוד ההעלאה. " +
+        "אם התקופה שגויה, העמלות ייווצרו בתקופה הלא נכונה. בדקי את הבחירה לפני שמירה.",
+      fileRange: `${formatLocal(min)} — ${formatLocal(max)}`,
+      chosenPeriod: `${chosenStart} — ${chosenEnd}`,
+      rowsOutside: outside.length,
+      rowsTotal: known.length,
+    },
+    suggestedActions: [
+      { type: "acknowledge_only", labelHe: "אישרתי שהתקופה נכונה" },
+    ],
+  };
+}
+
+/** YYYY-MM-DD from local parts — toISOString would shift the day in Israel. */
+function formatLocal(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
