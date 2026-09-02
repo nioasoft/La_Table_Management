@@ -166,13 +166,6 @@ export function FranchiseeBillingTable({
                   />
                 </TableCell>
                 <TableCell>
-                  <FranchiseeBillingNoRevenueCell
-                    key={`${row.id}:${row.noRevenueReason ?? ""}`}
-                    row={row}
-                    onSave={onSaveNoRevenueReason}
-                  />
-                </TableCell>
-                <TableCell>
                   <BillingNumber value={row.royalty} kind="currency" />
                 </TableCell>
                 <TableCell>
@@ -186,6 +179,13 @@ export function FranchiseeBillingTable({
                     value={row.total}
                     kind="currency"
                     className="font-semibold"
+                  />
+                </TableCell>
+                <TableCell>
+                  <FranchiseeBillingNoRevenueCell
+                    key={`${row.id}:${row.noRevenueReason ?? ""}`}
+                    row={row}
+                    onSave={onSaveNoRevenueReason}
                   />
                 </TableCell>
                 <TableCell>
