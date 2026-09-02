@@ -56,6 +56,12 @@ const REPORTS: readonly {
   empty: string;
 }[] = [
   {
+    type: "summary",
+    label: "סיכום חודשי",
+    description: "מחזורים, תמלוגים ושיווק לכל זכיין, עם שורת סה״כ — לפי מותג או לכולם",
+    empty: "לא נמצאו חיובים בחודש שנבחר",
+  },
+  {
     type: "royalties",
     label: "תמלוגים",
     description: "תמלוגים לפי סניף בחודש שנבחר",
