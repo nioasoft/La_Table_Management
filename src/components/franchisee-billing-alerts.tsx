@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { BillingNumber } from "@/components/franchisee-billing-number";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -130,6 +131,13 @@ function ApprovedDifferenceItem({
     setError(null);
     try {
       await onResolve(difference, choice);
+      // The card disappears with the refetch, so the "what now" must outlive it.
+      toast.success(
+        choice === "reopen"
+          ? `השורה של ${difference.franchiseeName} נפתחה מחדש כטיוטה עם המספרים המעודכנים. כשתסיימי — "אישור החודש" בראש העמוד.`
+          : `הפער של ${difference.franchiseeName} נסגר. השורה נשארה כפי שאושרה.`,
+        { duration: 8000 },
+      );
     } catch (resolutionError: unknown) {
       console.error(
         "Failed to resolve approved franchisee billing difference:",
@@ -168,7 +176,12 @@ function ApprovedDifferenceItem({
           </li>
         ))}
       </ul>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <p className="mt-3 text-xs text-muted-foreground">
+        פתיחה מחדש מחזירה את השורה לטיוטה עם המספרים מהקובץ החדש — ואז מאשרים
+        שוב בכפתור ״אישור החודש״ שבראש העמוד. ״השאר כמו שהוא״ סוגר את הפער
+        ומשאיר את השורה כפי שאושרה.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"

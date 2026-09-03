@@ -126,6 +126,12 @@ export function FranchiseeBillingApproval({
 
   return (
     <div className="space-y-3" aria-live="polite">
+      {hasDrafts && (
+        <p className="text-sm text-muted-foreground">
+          {data.rows.filter((row) => row.status === "draft").length} שורות
+          טיוטה ממתינות לאישור.
+        </p>
+      )}
       {hasDrafts && <Dialog>
         <DialogTrigger asChild>
           <Button
