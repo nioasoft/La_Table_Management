@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
-import { CheckCircle2, LockKeyhole } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCircle2, LockKeyhole, Search } from "lucide-react";
 
 import { FranchiseeBillingDiscountCell } from "@/components/franchisee-billing-discount-cell";
+import { FranchiseeBillingDiscountEmail } from "@/components/franchisee-billing-discount-email";
 import { FranchiseeBillingNoRevenueCell } from "@/components/franchisee-billing-no-revenue-cell";
 import { BillingNumber } from "@/components/franchisee-billing-number";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -45,9 +54,14 @@ interface BrandTotals {
   readonly total: number;
 }
 
+type BrandTotalsSource = Pick<
+  FranchiseeBillingTableProps["rows"][number],
+  "brandName" | "grossBase" | "netBase" | "royalty" | "marketing" | "total"
+>;
+
 /** One totals line per brand, in the order the brands appear in the table. */
 export function totalsByBrand(
-  rows: FranchiseeBillingTableProps["rows"],
+  rows: readonly BrandTotalsSource[],
 ): readonly BrandTotals[] {
   const totals = new Map<string, BrandTotals>();
   for (const row of rows) {
@@ -98,6 +112,8 @@ function BrandTotalsRow({ totals }: { readonly totals: BrandTotals }) {
   );
 }
 
+const ALL_BRANDS = "all";
+
 export function FranchiseeBillingTable({
   rows,
   onSaveDiscount,
@@ -106,6 +122,18 @@ export function FranchiseeBillingTable({
   const [discountPreviews, setDiscountPreviews] = useState<
     Readonly<Record<string, number>>
   >({});
+  const [search, setSearch] = useState("");
+  const [brand, setBrand] = useState<string>(ALL_BRANDS);
+  const brandNames = useMemo(
+    () => [...new Set(rows.map((row) => row.brandName))],
+    [rows],
+  );
+  const query = search.trim();
+  const visibleRows = rows.filter(
+    (row) =>
+      (brand === ALL_BRANDS || row.brandName === brand) &&
+      (query === "" || row.franchiseeName.includes(query)),
+  );
 
   const updatePreview = (billingId: string, discountValue: number) => {
     setDiscountPreviews((current) => ({
@@ -115,7 +143,46 @@ export function FranchiseeBillingTable({
   };
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-background shadow-sm">
+    <div className="rounded-xl border bg-background shadow-sm">
+      <div className="flex flex-wrap items-center gap-3 border-b p-3">
+        <div className="relative">
+          <Search
+            className="absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            dir="rtl"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="חיפוש זכיין…"
+            aria-label="חיפוש זכיין"
+            className="w-56 ps-8"
+          />
+        </div>
+        <Select dir="rtl" value={brand} onValueChange={setBrand}>
+          <SelectTrigger
+            dir="rtl"
+            aria-label="סינון לפי מותג"
+            className="w-44"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent dir="rtl">
+            <SelectItem value={ALL_BRANDS}>כל המותגים</SelectItem>
+            {brandNames.map((name) => (
+              <SelectItem key={name} value={name}>
+                {name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {visibleRows.length !== rows.length && (
+          <span className="text-sm text-muted-foreground">
+            {visibleRows.length} מתוך {rows.length} שורות
+          </span>
+        )}
+      </div>
+      <div className="overflow-x-auto">
       <Table className="min-w-[1250px] [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3">
         <TableCaption className="pb-4">
           סכומי החיוב מוצגים כפי שנשמרו, ללא חישוב מחדש במסך.
@@ -131,8 +198,8 @@ export function FranchiseeBillingTable({
               </TableHead>
             ))}
             <TableHead className="min-w-20">תעריף</TableHead>
-            <TableHead className="min-w-32" title="דחייה בנקודות אחוז">
-              דחייה
+            <TableHead className="min-w-32" title="הנחה / דחייה בנקודות אחוז">
+              דחייה (הנחה)
             </TableHead>
             <TableHead className="min-w-28" title="שווי הדחייה בשקלים">
               שווי הדחייה
@@ -147,7 +214,17 @@ export function FranchiseeBillingTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.map((row) => {
+          {visibleRows.length === 0 && (
+            <TableRow>
+              <TableCell
+                colSpan={11}
+                className="py-10 text-center text-muted-foreground"
+              >
+                אין שורות שתואמות את הסינון
+              </TableCell>
+            </TableRow>
+          )}
+          {visibleRows.map((row) => {
             const isApproved = row.status === "approved";
             const isStale = row.isStaleSource;
             const stickyBackground = isStale
@@ -201,19 +278,22 @@ export function FranchiseeBillingTable({
                 </TableCell>
                 <TableCell>
                   {isApproved || row.isApprovalBlocked ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <LockKeyhole className="h-4 w-4" aria-hidden="true" />
-                      <div>
-                        <BillingNumber
-                          value={row.discountRatePoints}
-                          kind="percent"
-                        />
-                        {row.isApprovalBlocked && (
-                          <span className="block text-xs">
-                            חסום עד להכרעה
-                          </span>
-                        )}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+                        <div>
+                          <BillingNumber
+                            value={row.discountRatePoints}
+                            kind="percent"
+                          />
+                          {row.isApprovalBlocked && (
+                            <span className="block text-xs">
+                              חסום עד להכרעה
+                            </span>
+                          )}
+                        </div>
                       </div>
+                      <FranchiseeBillingDiscountEmail row={row} />
                     </div>
                   ) : (
                     <FranchiseeBillingDiscountCell
@@ -264,14 +344,15 @@ export function FranchiseeBillingTable({
             );
           })}
         </TableBody>
-        {rows.length > 0 && (
+        {visibleRows.length > 0 && (
           <TableFooter>
-            {totalsByBrand(rows).map((totals) => (
+            {totalsByBrand(visibleRows).map((totals) => (
               <BrandTotalsRow key={totals.brandName} totals={totals} />
             ))}
           </TableFooter>
         )}
       </Table>
+      </div>
     </div>
   );
 }
