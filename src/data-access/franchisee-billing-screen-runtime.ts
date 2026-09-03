@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, notExists, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "@/db/schema";
@@ -271,6 +271,42 @@ async function readFranchiseeBrandId(
   return franchisee?.brandId ?? null;
 }
 
+/**
+ * A re-upload over a fully approved month writes no billing rows — every one
+ * is skipped as approved — so the file never enters the brand's linked map,
+ * and its differences were unreachable: the screen showed them, resolving
+ * them 404'd. Such a file is accepted here as the difference's source as long
+ * as it is a live (not cancelled) royalty upload that nothing links to.
+ */
+async function readUnlinkedDifferenceSource(
+  database: BillingReadDatabase,
+  sourceFileId: string,
+): Promise<BillingSourceReviewRecord | null> {
+  const source = schema.uploadedFile;
+  const [row] = await database
+    .select({
+      id: source.id,
+      fileName: source.originalFileName,
+      metadata: source.metadata,
+    })
+    .from(source)
+    .where(
+      and(
+        eq(source.id, sourceFileId),
+        sql`${source.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+        sql`${source.processingStatus} is distinct from 'rejected'::uploaded_file_review_status`,
+        notExists(
+          database
+            .select({ one: sql`1` })
+            .from(schema.franchiseeBilling)
+            .where(eq(schema.franchiseeBilling.sourceFileId, sourceFileId)),
+        ),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 async function readLiveDifferenceContext(
   database: BillingReadDatabase,
   sourceFileId: string,
@@ -282,11 +318,9 @@ async function readLiveDifferenceContext(
   ]);
   if (!period || !brandId) return null;
   const sourcesByBrand = await readLatestSourceReview(database, period);
-  const source = resolveLiveSourceReview(
-    sourcesByBrand,
-    brandId,
-    sourceFileId,
-  );
+  const source =
+    resolveLiveSourceReview(sourcesByBrand, brandId, sourceFileId) ??
+    (await readUnlinkedDifferenceSource(database, sourceFileId));
   if (!source) return null;
   const billing = await readApprovedBilling(database, franchiseeId, period);
   return billing ? { source, billing } : null;

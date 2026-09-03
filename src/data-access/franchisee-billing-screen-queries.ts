@@ -425,25 +425,42 @@ function liveSourceCondition(input: PersistDifferenceResolutionInput) {
     input.periodMonth,
     1,
   );
-  return sql`${schema.uploadedFile.id} = (
-    select live_source.id
-    from ${schema.uploadedFile} as live_source
-    inner join ${schema.franchiseeBilling} as live_billing
-      on live_billing.source_file_id = live_source.id
-    inner join ${schema.franchisee} as live_franchisee
-      on live_franchisee.id = live_billing.franchisee_id
-    where live_source.period_start_date = ${periodStart}
-      and live_source.metadata->>'documentType' = ${"franchisee_royalty_revenue"}
-      and live_billing.period_year = ${input.periodYear}
-      and live_billing.period_month = ${input.periodMonth}
-      and live_franchisee.brand_id = (
-        select requested_franchisee.brand_id
-        from ${schema.franchisee} as requested_franchisee
-        where requested_franchisee.id = ${input.franchiseeId}
-      )
-    order by live_source.created_at desc, live_source.id desc
-    limit 1
-  )`;
+  // Either the newest file the brand's rows actually point at, or — when the
+  // month was fully approved before the re-upload — a live unlinked upload:
+  // it wrote no rows (every one was skipped as approved), so it can never
+  // become the brand's linked file, yet its differences are exactly what the
+  // screen is showing. The caller's metadata-equality guard rules out races.
+  return or(
+    sql`${schema.uploadedFile.id} = (
+      select live_source.id
+      from ${schema.uploadedFile} as live_source
+      inner join ${schema.franchiseeBilling} as live_billing
+        on live_billing.source_file_id = live_source.id
+      inner join ${schema.franchisee} as live_franchisee
+        on live_franchisee.id = live_billing.franchisee_id
+      where live_source.period_start_date = ${periodStart}
+        and live_source.metadata->>'documentType' = ${"franchisee_royalty_revenue"}
+        and live_billing.period_year = ${input.periodYear}
+        and live_billing.period_month = ${input.periodMonth}
+        and live_franchisee.brand_id = (
+          select requested_franchisee.brand_id
+          from ${schema.franchisee} as requested_franchisee
+          where requested_franchisee.id = ${input.franchiseeId}
+        )
+      order by live_source.created_at desc, live_source.id desc
+      limit 1
+    )`,
+    and(
+      sql`${schema.uploadedFile.metadata}->>'documentType' = ${"franchisee_royalty_revenue"}`,
+      notDiscarded(schema.uploadedFile),
+      eq(schema.uploadedFile.periodStartDate, periodStart),
+      sql`not exists (
+        select 1
+        from ${schema.franchiseeBilling}
+        where ${schema.franchiseeBilling.sourceFileId} = ${schema.uploadedFile.id}
+      )`,
+    ),
+  );
 }
 
 export function createSourceReviewUpdateQuery(

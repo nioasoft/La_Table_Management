@@ -259,7 +259,7 @@ describe("franchisee billing reopen SQL", () => {
     expect(query.params).toEqual(["billing-1"]);
   });
 
-  it("updates source metadata only when it is still live for the franchisee brand", () => {
+  it("updates source metadata for the brand-live file or a live unlinked upload", () => {
     const database = drizzle.mock({ schema });
     const input = resolutionInput();
     const query = createSourceReviewUpdateQuery(
@@ -268,8 +268,16 @@ describe("franchisee billing reopen SQL", () => {
       false,
     ).toSQL();
 
-    expect(query.sql).toBe(
-      "update \"uploaded_file\" set \"metadata\" = $1, \"processing_status\" = $2 where (\"uploaded_file\".\"id\" = $3 and \"uploaded_file\".\"metadata\" = $4::jsonb and \"uploaded_file\".\"id\" = (\n    select live_source.id\n    from \"uploaded_file\" as live_source\n    inner join \"franchisee_billing\" as live_billing\n      on live_billing.source_file_id = live_source.id\n    inner join \"franchisee\" as live_franchisee\n      on live_franchisee.id = live_billing.franchisee_id\n    where live_source.period_start_date = $5\n      and live_source.metadata->>'documentType' = $6\n      and live_billing.period_year = $7\n      and live_billing.period_month = $8\n      and live_franchisee.brand_id = (\n        select requested_franchisee.brand_id\n        from \"franchisee\" as requested_franchisee\n        where requested_franchisee.id = $9\n      )\n    order by live_source.created_at desc, live_source.id desc\n    limit 1\n  ))",
+    // Guarded three ways: the exact metadata it read, and the file being
+    // either the newest linked source of the franchisee brand or — for a
+    // re-upload over a fully approved month, which links to nothing — a live
+    // unlinked royalty upload.
+    expect(query.sql).toContain('"uploaded_file"."metadata" = $');
+    expect(query.sql).toContain("select live_source.id");
+    expect(query.sql).toContain("order by live_source.created_at desc");
+    expect(query.sql).toContain("not exists");
+    expect(query.sql).toContain(
+      "is distinct from 'rejected'::uploaded_file_review_status",
     );
     expect(query.params).toEqual([
       JSON.stringify(input.updatedMetadata),
@@ -281,6 +289,8 @@ describe("franchisee billing reopen SQL", () => {
       2026,
       6,
       "franchisee-1",
+      "franchisee_royalty_revenue",
+      "2026-06-01",
     ]);
   });
 });
