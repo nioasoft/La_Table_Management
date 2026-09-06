@@ -351,18 +351,39 @@ export function getPeriodsForFrequency(
   fiscalYearStartMonth: number = 1,
   includeCurrent: boolean = false
 ): SettlementPeriodInfo[] {
-  switch (frequency) {
-    case "monthly":
-      return getMonthlyPeriods(referenceDate, count, includeCurrent);
-    case "quarterly":
-      return getQuarterlyPeriods(referenceDate, count, includeCurrent);
-    case "semi_annual":
-      return getSemiAnnualPeriods(referenceDate, count, includeCurrent);
-    case "annual":
-      return getAnnualPeriods(referenceDate, count, fiscalYearStartMonth, includeCurrent);
-    default:
-      return [];
-  }
+  const periods = ((): SettlementPeriodInfo[] => {
+    switch (frequency) {
+      case "monthly":
+        return getMonthlyPeriods(referenceDate, count, includeCurrent);
+      case "quarterly":
+        return getQuarterlyPeriods(referenceDate, count, includeCurrent);
+      case "semi_annual":
+        return getSemiAnnualPeriods(referenceDate, count, includeCurrent);
+      case "annual":
+        return getAnnualPeriods(referenceDate, count, fiscalYearStartMonth, includeCurrent);
+      default:
+        return [];
+    }
+  })();
+
+  return periods.map((p) =>
+    isPeriodInProgress(p, referenceDate) ? { ...p, inProgress: true } : p
+  );
+}
+
+/**
+ * True when `referenceDate` falls inside the period — i.e. the period is
+ * running and hasn't closed yet. Such a period may be offered for upload or
+ * export (a supplier settled early), but is never a sensible default.
+ */
+export function isPeriodInProgress(
+  period: SettlementPeriodInfo,
+  referenceDate: Date = new Date()
+): boolean {
+  return (
+    period.startDate.getTime() <= referenceDate.getTime() &&
+    period.endDate.getTime() >= referenceDate.getTime()
+  );
 }
 
 /**
@@ -513,11 +534,7 @@ export function getAvailablePeriodsForSupplier(
   // ...plus the period we're currently inside, so a supplier that's already
   // been settled mid-period can be invoiced without waiting for the period to
   // close. Flagged so the UI offers it but never auto-selects it.
-  const inProgress = allPeriods.find(
-    (p) =>
-      p.startDate.getTime() <= referenceDate.getTime() &&
-      p.endDate.getTime() >= referenceDate.getTime()
-  );
+  const inProgress = allPeriods.find((p) => isPeriodInProgress(p, referenceDate));
 
   const available = inProgress
     ? [{ ...inProgress, inProgress: true }, ...endedPeriods]

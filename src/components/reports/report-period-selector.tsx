@@ -91,9 +91,10 @@ export function ReportPeriodSelector({
     }
 
     const type = newType as SettlementPeriodType;
-    // Get the most recent period for this type
+    // Default to the most recent *closed* period. The in-progress one is
+    // offered in the list but never picked for the user.
     const periods = getPeriodsForFrequency(type, new Date(), 1, 1, includeCurrent);
-    const defaultPeriod = periods[0];
+    const defaultPeriod = periods.find((p) => !p.inProgress) ?? periods[0];
 
     onChange(type, defaultPeriod?.key || "");
   };
@@ -153,6 +154,9 @@ export function ReportPeriodSelector({
                   <span className="flex items-center gap-2">
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                     {selectedPeriod.nameHe}
+                    {selectedPeriod.inProgress && (
+                      <span className="text-xs text-muted-foreground">(בתהליך)</span>
+                    )}
                   </span>
                 )}
               </SelectValue>
@@ -161,7 +165,14 @@ export function ReportPeriodSelector({
               {availablePeriods.map((period) => (
                 <SelectItem key={period.key} value={period.key} className="text-end">
                   <div className="flex flex-col">
-                    <span className="font-medium">{period.nameHe}</span>
+                    <span className="font-medium">
+                      {period.nameHe}
+                      {period.inProgress && (
+                        <span className="ms-2 text-xs font-normal text-muted-foreground">
+                          (בתהליך)
+                        </span>
+                      )}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {formatPeriodRange(period)}
                     </span>

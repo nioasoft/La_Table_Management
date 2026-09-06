@@ -592,6 +592,7 @@ export default function HashavshevetExportPage() {
                 showCustomRange={true}
                 layout="horizontal"
                 showLabels={true}
+                includeCurrent
               />
             </div>
 
