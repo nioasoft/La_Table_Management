@@ -88,11 +88,12 @@ export function PeriodSelector({
     fetchPeriods();
   }, [supplierId]);
 
-  // Auto-select the latest period when periods are loaded and no selection exists
+  // Auto-select the latest *ended* period when periods are loaded and no
+  // selection exists. The in-progress period is offered but never defaulted to.
   React.useEffect(() => {
     if (periods.length > 0 && !selectedPeriodKey) {
-      // periods[0] is the latest period (sorted by endDate descending)
-      onSelect(periods[0].key);
+      const defaultPeriod = periods.find((p) => !p.inProgress) ?? periods[0];
+      onSelect(defaultPeriod.key);
     }
   }, [periods, selectedPeriodKey, onSelect]);
 
@@ -146,6 +147,11 @@ export function PeriodSelector({
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span>{selectedPeriod.nameHe}</span>
+                {selectedPeriod.inProgress && (
+                  <Badge variant="outline" className="text-xs text-muted-foreground">
+                    בתהליך
+                  </Badge>
+                )}
                 {selectedPeriod.isMultiFile && selectedPeriod.fileCount && selectedPeriod.fileCount > 0 ? (
                   <Badge variant="secondary" className="text-xs">
                     {selectedPeriod.fileCount} קבצים
@@ -164,6 +170,11 @@ export function PeriodSelector({
                 <div className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>{period.nameHe}</span>
+                  {period.inProgress && (
+                    <Badge variant="outline" className="text-xs text-muted-foreground">
+                      בתהליך
+                    </Badge>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {period.isMultiFile ? (
@@ -203,6 +214,12 @@ export function PeriodSelector({
             <span>טווח תאריכים:</span>
             <span className="font-medium">{formatPeriodRange(selectedPeriod)}</span>
           </div>
+          {selectedPeriod.inProgress && (
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-500">
+              <AlertCircle className="h-4 w-4" />
+              <span>התקופה טרם הסתיימה — הקובץ יכסה רק חלק ממנה</span>
+            </div>
+          )}
           {selectedPeriod.isMultiFile && selectedPeriod.fileCount && selectedPeriod.fileCount > 0 ? (
             <div className="flex items-center gap-2 text-muted-foreground">
               <FileText className="h-4 w-4" />

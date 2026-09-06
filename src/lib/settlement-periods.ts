@@ -23,6 +23,8 @@ export interface SettlementPeriodInfo {
   endDate: Date;
   dueDate: Date; // When reports should be submitted
   key: string; // Unique identifier like "2025-Q4", "2025-01", "2025-H2"
+  /** The period containing today — selectable for early upload, never the default. */
+  inProgress?: boolean;
 }
 
 // Hebrew month names
@@ -503,13 +505,26 @@ export function getAvailablePeriodsForSupplier(
     (a, b) => b.endDate.getTime() - a.endDate.getTime()
   );
 
-  // Filter to only include periods that have ended (we can't upload reports for future periods)
+  // Only periods that have ended — we can't upload reports for future periods.
   const endedPeriods = allPeriods.filter(
     (p) => p.endDate.getTime() < referenceDate.getTime()
   );
 
+  // ...plus the period we're currently inside, so a supplier that's already
+  // been settled mid-period can be invoiced without waiting for the period to
+  // close. Flagged so the UI offers it but never auto-selects it.
+  const inProgress = allPeriods.find(
+    (p) =>
+      p.startDate.getTime() <= referenceDate.getTime() &&
+      p.endDate.getTime() >= referenceDate.getTime()
+  );
+
+  const available = inProgress
+    ? [{ ...inProgress, inProgress: true }, ...endedPeriods]
+    : endedPeriods;
+
   // Return up to 8 periods
-  return endedPeriods.slice(0, 8);
+  return available.slice(0, 8);
 }
 
 /**
