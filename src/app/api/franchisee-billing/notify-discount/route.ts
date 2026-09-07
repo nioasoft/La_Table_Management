@@ -41,10 +41,6 @@ interface DiscountNoticeRow {
   readonly royaltyFull: string;
   readonly discountValue: string;
   readonly royalty: string;
-  readonly marketingRateSnapshot: string | null;
-  readonly marketing: string;
-  readonly subtotal: string;
-  readonly total: string;
 }
 
 async function loadRow(billingId: string): Promise<DiscountNoticeRow | null> {
@@ -66,10 +62,6 @@ async function loadRow(billingId: string): Promise<DiscountNoticeRow | null> {
       royaltyFull: billing.royaltyFull,
       discountValue: billing.discountValue,
       royalty: billing.royalty,
-      marketingRateSnapshot: billing.marketingRateSnapshot,
-      marketing: billing.marketing,
-      subtotal: billing.subtotal,
-      total: billing.total,
     })
     .from(billing)
     .innerJoin(
@@ -126,10 +118,6 @@ function noticeProps(
     royaltyFull: row.royaltyFull,
     discountValue: row.discountValue,
     royalty: row.royalty,
-    marketingRateSnapshot: row.marketingRateSnapshot ?? "0",
-    marketing: row.marketing,
-    subtotal: row.subtotal,
-    total: row.total,
   };
 }
 

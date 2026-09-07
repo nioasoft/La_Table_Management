@@ -39,10 +39,6 @@ export interface FranchiseeBillingEmailProps {
   readonly royaltyFull: string;
   readonly discountValue: string;
   readonly royalty: string;
-  readonly marketingRateSnapshot: string;
-  readonly marketing: string;
-  readonly subtotal: string;
-  readonly total: string;
 }
 
 function monthName(month: number): string {
@@ -84,7 +80,7 @@ export function franchiseeBillingEmailSubject(
     "franchiseeName" | "periodMonth" | "periodYear"
   >,
 ): string {
-  return `חיוב תמלוגים ושיווק · ${props.franchiseeName} · ${monthName(props.periodMonth)} ${props.periodYear}`;
+  return `חיוב תמלוגים · ${props.franchiseeName} · ${monthName(props.periodMonth)} ${props.periodYear}`;
 }
 
 function ChargeRow({
@@ -106,6 +102,10 @@ function ChargeRow({
 
 /**
  * Renders the Hebrew franchisee royalty charge and deferral notice.
+ *
+ * Royalties only. The marketing fee is deliberately absent, and so are the
+ * two totals — they are the royalty and the marketing charge added together,
+ * so printing them would state the marketing amount by subtraction.
  */
 export function FranchiseeBillingEmail(
   props: FranchiseeBillingEmailProps,
@@ -127,7 +127,7 @@ export function FranchiseeBillingEmail(
         <Container style={container}>
           <Text style={paragraph}>שלום {props.ownerName},</Text>
           <Text style={paragraph}>
-            להלן החיוב של {props.franchiseeName} לחודש {period}.
+            להלן חיוב תמלוגים {props.franchiseeName} לחודש {period}.
           </Text>
 
           <Section style={charges}>
@@ -150,18 +150,6 @@ export function FranchiseeBillingEmail(
             <ChargeRow
               label={`תמלוגים לחיוב, ${rate(props.effectiveRate)}%`}
               value={money(props.royalty)}
-            />
-            <ChargeRow
-              label={`דמי שיווק ${rate(props.marketingRateSnapshot)}%`}
-              value={money(props.marketing)}
-            />
-            <ChargeRow
-              label='סה"כ לפני מע"מ'
-              value={money(props.subtotal)}
-            />
-            <ChargeRow
-              label='לתשלום כולל מע"מ'
-              value={money(props.total)}
             />
           </Section>
 
@@ -252,10 +240,6 @@ FranchiseeBillingEmail.PreviewProps = {
   royaltyFull: "50000.005231",
   discountValue: "10000.001046",
   royalty: "40000.004185",
-  marketingRateSnapshot: "0.75",
-  marketing: "7500.000785",
-  subtotal: "47500.004970",
-  total: "56050.005865",
 } satisfies FranchiseeBillingEmailProps;
 
 export default FranchiseeBillingEmail;

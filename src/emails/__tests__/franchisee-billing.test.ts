@@ -33,10 +33,6 @@ const props = {
   royaltyFull: moneyValue(calculation.royaltyFull),
   discountValue: moneyValue(calculation.discountValue),
   royalty: moneyValue(calculation.royalty),
-  marketingRateSnapshot: rateValue(0.75),
-  marketing: moneyValue(calculation.marketing),
-  subtotal: moneyValue(calculation.subtotal),
-  total: moneyValue(calculation.total),
 } as const;
 
 function displayDecimal(value: string): string {
@@ -49,7 +45,7 @@ function displayDecimal(value: string): string {
 describe("FranchiseeBillingEmail", () => {
   it("uses the approved Hebrew subject verbatim", () => {
     expect(franchiseeBillingEmailSubject(props)).toBe(
-      "חיוב תמלוגים ושיווק · ויני יהוד · יוני 2026",
+      "חיוב תמלוגים · ויני יהוד · יוני 2026",
     );
   });
 
@@ -67,7 +63,7 @@ describe("FranchiseeBillingEmail", () => {
     const expected = [
       "שלום דנה,",
       "",
-      "להלן החיוב של ויני יהוד לחודש יוני 2026.",
+      "להלן חיוב תמלוגים ויני יהוד לחודש יוני 2026.",
       "",
       `מחזור כולל מע"מ${amount(props.grossBase)}`,
       "",
@@ -78,12 +74,6 @@ describe("FranchiseeBillingEmail", () => {
       `דחיית חיוב, ${displayDecimal(props.discountRatePoints)} נק' אחוז−${amount(props.discountValue)}`,
       "",
       `תמלוגים לחיוב, ${displayDecimal(props.effectiveRate)}%${amount(props.royalty)}`,
-      "",
-      `דמי שיווק ${displayDecimal(props.marketingRateSnapshot)}%${amount(props.marketing)}`,
-      "",
-      `סה"כ לפני מע"מ${amount(props.subtotal)}`,
-      "",
-      `לתשלום כולל מע"מ${amount(props.total)}`,
       "",
       "הסכום שנדחה אינו מבוטל. נעדכן אתכם לגבי מועד חיובו.",
       "",
@@ -112,7 +102,18 @@ describe("FranchiseeBillingEmail", () => {
 
     expect(text).toContain(`₪\u00a0${agorot(props.grossBase)}`);
     expect(text).toContain(`₪\u00a0${agorot(props.discountValue)}`);
-    expect(text).toContain(`₪\u00a0${agorot(props.total)}`);
+    expect(text).toContain(`₪\u00a0${agorot(props.royalty)}`);
     expect(text).not.toMatch(/₪\u00a0[\d,]+\.\d{3,}/);
+  });
+
+  it("never names the marketing fee — this notice is about royalties alone", async () => {
+    const text = await render(FranchiseeBillingEmail(props), {
+      plainText: true,
+    });
+
+    expect(text).not.toContain("שיווק");
+    // The totals would carry the marketing charge back in by arithmetic.
+    expect(text).not.toContain('סה"כ לפני מע"מ');
+    expect(text).not.toContain("לתשלום כולל מע\"מ");
   });
 });
