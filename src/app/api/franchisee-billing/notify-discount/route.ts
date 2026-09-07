@@ -6,6 +6,7 @@ import {
   buildDiscountNoticePreview,
   discountNoticeProps,
 } from "@/app/api/franchisee-billing/notify-discount/preview";
+import { ownerRecipients } from "@/data-access/franchisee-owner-recipients";
 import * as schema from "@/db/schema";
 import {
   FranchiseeBillingEmail,
@@ -53,7 +54,7 @@ async function loadRow(billingId: string): Promise<DiscountNoticeRow | null> {
     .select({
       id: billing.id,
       franchiseeName: schema.franchisee.name,
-      owners: schema.franchisee.owners,
+      owners: ownerRecipients,
       periodYear: billing.periodYear,
       periodMonth: billing.periodMonth,
       status: billing.status,

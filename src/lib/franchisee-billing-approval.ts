@@ -3,10 +3,7 @@ import {
   type RoyaltyTier,
   type RoyaltyTierBasis,
 } from "@/lib/royalty";
-import type {
-  FranchiseeBillingStatus,
-  FranchiseeOwner,
-} from "@/db/schema";
+import type { FranchiseeBillingStatus } from "@/db/schema";
 
 export interface ApprovalPeriod {
   readonly year: number;
@@ -30,7 +27,6 @@ export interface ApprovalBillingRow extends ApprovalCalculationRow {
   readonly royaltyTiersConfirmed: boolean;
   readonly marketingFeeRate: string | null;
   readonly hashavshevetAccountKey: string | null;
-  readonly owners: FranchiseeOwner[] | null;
   readonly tiersSnapshot: RoyaltyTier[] | null;
   readonly tierBasisSnapshot: RoyaltyTierBasis | null;
   readonly marketingRateSnapshot: string | null;

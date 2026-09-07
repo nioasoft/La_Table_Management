@@ -86,8 +86,6 @@ function calculatedFixture(
   id: string,
   franchiseeId: string,
   franchiseeName: string,
-  ownerName: string,
-  ownerEmail: string,
   discountRatePoints: number,
   brandId: string,
   sourceFileId: string,
@@ -139,12 +137,6 @@ function calculatedFixture(
       royaltyTiersConfirmed: true,
       marketingFeeRate: rate(inputs.marketingRate),
       hashavshevetAccountKey: `account-${franchiseeId}`,
-      owners: [{
-        name: ownerName,
-        phone: "",
-        email: ownerEmail,
-        ownershipPercentage: 100,
-      }],
       tiersSnapshot: null,
       tierBasisSnapshot: null,
       marketingRateSnapshot: null,
@@ -169,8 +161,6 @@ class TransactionalApprovalHarness
       "billing-1",
       "franchisee-1",
       "ויני יהוד",
-      "דנה",
-      "Dana@Example.com",
       1,
       "brand-vini",
       "source-vini",
@@ -179,8 +169,6 @@ class TransactionalApprovalHarness
       "billing-2",
       "franchisee-2",
       "מינה קריות",
-      "יואב",
-      "yoav@example.com",
       1,
       "brand-mina",
       "source-mina",
@@ -189,8 +177,6 @@ class TransactionalApprovalHarness
       "billing-3",
       "franchisee-3",
       "קינג עפולה",
-      "נועה",
-      "noa@example.com",
       0,
       "brand-king-kong",
       "source-king-kong",
@@ -552,7 +538,7 @@ describe("approval SQL", () => {
     const query = createLockedApprovalRowsQuery(database, PERIOD).toSQL();
 
     expect(query.sql).toBe(
-      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee\".\"brand_id\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"receipts\", \"franchisee_billing\".\"tips\", \"franchisee_billing\".\"include_tips\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"effective_rate\", \"franchisee_billing\".\"royalty_full\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"source_file_id\", coalesce((\n      select \"uploaded_file\".\"metadata\"->>'singleBranch'\n      from \"uploaded_file\"\n      where \"uploaded_file\".\"id\" = \"franchisee_billing\".\"source_file_id\"\n    ), '') = 'true', \"franchisee_billing\".\"status\", \"franchisee\".\"royalty_tiers\", \"franchisee\".\"royalty_tier_basis\", \"franchisee\".\"royalty_tiers_confirmed\", \"franchisee\".\"marketing_fee_rate\", \"franchisee\".\"hashavshevet_account_key\", \"franchisee\".\"owners\", \"franchisee_billing\".\"tiers_snapshot\", \"franchisee_billing\".\"tier_basis_snapshot\", \"franchisee_billing\".\"marketing_rate_snapshot\", \"franchisee_billing\".\"vat_rate_snapshot\", \"franchisee_billing\".\"account_key_snapshot\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" where (\"franchisee_billing\".\"period_year\" = $1 and \"franchisee_billing\".\"period_month\" = $2) for update",
+      "select \"franchisee_billing\".\"id\", \"franchisee_billing\".\"franchisee_id\", \"franchisee\".\"name\", \"franchisee\".\"brand_id\", \"franchisee_billing\".\"period_year\", \"franchisee_billing\".\"period_month\", \"franchisee_billing\".\"receipts\", \"franchisee_billing\".\"tips\", \"franchisee_billing\".\"include_tips\", \"franchisee_billing\".\"gross_base\", \"franchisee_billing\".\"net_base\", \"franchisee_billing\".\"tier_rate\", \"franchisee_billing\".\"discount_rate_points\", \"franchisee_billing\".\"effective_rate\", \"franchisee_billing\".\"royalty_full\", \"franchisee_billing\".\"royalty\", \"franchisee_billing\".\"discount_value\", \"franchisee_billing\".\"marketing\", \"franchisee_billing\".\"subtotal\", \"franchisee_billing\".\"total\", \"franchisee_billing\".\"source_file_id\", coalesce((\n      select \"uploaded_file\".\"metadata\"->>'singleBranch'\n      from \"uploaded_file\"\n      where \"uploaded_file\".\"id\" = \"franchisee_billing\".\"source_file_id\"\n    ), '') = 'true', \"franchisee_billing\".\"status\", \"franchisee\".\"royalty_tiers\", \"franchisee\".\"royalty_tier_basis\", \"franchisee\".\"royalty_tiers_confirmed\", \"franchisee\".\"marketing_fee_rate\", \"franchisee\".\"hashavshevet_account_key\", \"franchisee_billing\".\"tiers_snapshot\", \"franchisee_billing\".\"tier_basis_snapshot\", \"franchisee_billing\".\"marketing_rate_snapshot\", \"franchisee_billing\".\"vat_rate_snapshot\", \"franchisee_billing\".\"account_key_snapshot\" from \"franchisee_billing\" inner join \"franchisee\" on \"franchisee_billing\".\"franchisee_id\" = \"franchisee\".\"id\" where (\"franchisee_billing\".\"period_year\" = $1 and \"franchisee_billing\".\"period_month\" = $2) for update",
     );
     expect(query.params).toEqual([PERIOD.year, PERIOD.month]);
   });

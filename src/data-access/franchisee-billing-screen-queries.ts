@@ -10,6 +10,7 @@ import type {
   BillingSourceReviewsByBrand,
   BillingUnlinkedSourceRow,
 } from "@/data-access/franchisee-billing-screen";
+import { ownerRecipients } from "@/data-access/franchisee-owner-recipients";
 import * as schema from "@/db/schema";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
 
@@ -293,7 +294,7 @@ function billingRowSelection(
     isStaleSource: isStale,
     isApprovalBlocked: isStale,
     status: billing.status,
-    owners: schema.franchisee.owners,
+    owners: ownerRecipients,
   };
 }
 

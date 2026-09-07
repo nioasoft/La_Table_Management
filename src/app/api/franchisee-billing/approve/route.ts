@@ -289,7 +289,6 @@ export function createLockedApprovalRowsQuery(
     royaltyTiersConfirmed: franchisee.royaltyTiersConfirmed,
     marketingFeeRate: franchisee.marketingFeeRate,
     hashavshevetAccountKey: franchisee.hashavshevetAccountKey,
-    owners: franchisee.owners,
     tiersSnapshot: billing.tiersSnapshot,
     tierBasisSnapshot: billing.tierBasisSnapshot,
     marketingRateSnapshot: billing.marketingRateSnapshot,
