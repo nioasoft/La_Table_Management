@@ -23,13 +23,29 @@ interface FranchiseeBillingAnnualTableProps {
 }
 
 /**
- * The branch column is pinned while the twelve months scroll past it, so its
- * width is fixed rather than content-driven — a sticky offset that disagrees
- * with the real column width paints over the neighbouring cell.
+ * Sixteen columns have to earn their width. The branch column is pinned while
+ * the months scroll past it, so it is sized rather than content-driven — a
+ * sticky offset that disagrees with the real width paints over its neighbour.
  */
-const BRANCH_COLUMN = "w-64 min-w-64 max-w-64";
-const MONTH_COLUMN = "w-[6.5rem] min-w-[6.5rem]";
-const TOTAL_COLUMN = "w-32 min-w-32";
+const BRANCH_COLUMN = "w-44 min-w-44 max-w-44";
+const MONTH_COLUMN = "w-[4.75rem] min-w-[4.75rem]";
+const TOTAL_COLUMN = "w-24 min-w-24";
+const RATE_COLUMN = "w-14 min-w-14";
+const CELL_PADDING = "px-2 py-1.5";
+
+/**
+ * One band per brand, in the order the query sorts them, so the grid reads
+ * like Reut's workbook. Assigned by position rather than by name: a new brand
+ * takes the next colour instead of falling through to no colour at all. The
+ * bands are opaque because the pinned cell scrolls over the month columns.
+ */
+const BRAND_TINTS = [
+  { band: "bg-blue-100 dark:bg-blue-950", text: "text-blue-900 dark:text-blue-100" },
+  { band: "bg-emerald-100 dark:bg-emerald-950", text: "text-emerald-900 dark:text-emerald-100" },
+  { band: "bg-sky-100 dark:bg-sky-950", text: "text-sky-900 dark:text-sky-100" },
+  { band: "bg-amber-100 dark:bg-amber-950", text: "text-amber-900 dark:text-amber-100" },
+  { band: "bg-violet-100 dark:bg-violet-950", text: "text-violet-900 dark:text-violet-100" },
+] as const;
 
 /** Whole shekels — the grid is read across, not reconciled cell by cell. */
 function amount(value: string | null): React.ReactNode {
@@ -56,43 +72,24 @@ interface GridRowProps {
   readonly row: FranchiseeBillingAnnualRow;
   readonly label: string;
   readonly withRate: boolean;
-  readonly variant?: "brand" | "group";
+  /** Opaque band for a totals row; branch rows sit on the plain background. */
+  readonly surface?: string;
+  readonly rule?: string;
 }
 
-/**
- * The pinned cell scrolls over the month columns, so its background has to be
- * fully opaque — a /50 tint lets the columns underneath show through it. Class
- * names are spelled out because Tailwind only sees literals.
- */
-const ROW_SURFACE = {
-  branch: { cell: "bg-background", row: "" },
-  brand: {
-    cell: "bg-muted font-semibold",
-    row: "bg-muted hover:bg-muted [&>td]:border-t",
-  },
-  // muted, secondary and accent are the same grey in this theme, so the group
-  // total separates itself by rule and weight rather than a second shade. The
-  // border sits on the cells because border-separate ignores row borders.
-  group: {
-    cell: "bg-muted font-bold",
-    row: "bg-muted hover:bg-muted [&>td]:border-t-2 [&>td]:border-t-foreground/40",
-  },
-} as const;
-
-function GridRow({ row, label, withRate, variant }: GridRowProps) {
-  const surface = ROW_SURFACE[variant ?? "branch"];
-  const numeric = cn(
-    "border-s tabular-nums whitespace-nowrap text-start",
-    surface.cell,
-  );
+function GridRow({ row, label, withRate, surface, rule }: GridRowProps) {
+  const cell = cn(CELL_PADDING, surface ?? "bg-background", surface && "font-semibold", rule);
+  const numeric = cn(cell, "border-s tabular-nums whitespace-nowrap text-start");
   return (
-    <TableRow className={surface.row}>
+    // The band lives on the cells so the pinned one matches the rest of the
+    // row; the row's own hover tint would only repaint the unpinned part.
+    <TableRow className={surface ? "hover:bg-transparent" : undefined}>
       <TableCell
         className={cn(
+          cell,
           BRANCH_COLUMN,
           "sticky start-0 z-20 truncate",
-          surface.cell,
-          !variant && "font-medium",
+          !surface && "font-medium",
         )}
         title={label}
       >
@@ -110,7 +107,7 @@ function GridRow({ row, label, withRate, variant }: GridRowProps) {
         {amount(row.average)}
       </TableCell>
       {withRate && (
-        <TableCell className={cn(numeric, "w-24 min-w-24")}>
+        <TableCell className={cn(numeric, RATE_COLUMN)}>
           {percent(row.ratePercent)}
         </TableCell>
       )}
@@ -120,18 +117,21 @@ function GridRow({ row, label, withRate, variant }: GridRowProps) {
 
 function BrandSection({
   brand,
+  index,
   columnCount,
   withRate,
 }: {
   readonly brand: AnnualBrandSection;
+  readonly index: number;
   readonly columnCount: number;
   readonly withRate: boolean;
 }) {
+  const tint = BRAND_TINTS[index % BRAND_TINTS.length];
   return (
     <>
-      <TableRow className="bg-primary/5 hover:bg-primary/5">
-        <TableCell colSpan={columnCount} className="border-t-2 p-0">
-          <div className="sticky start-0 w-fit px-4 py-2 text-base font-bold text-primary">
+      <TableRow className="hover:bg-transparent">
+        <TableCell colSpan={columnCount} className={cn(tint.band, "border-t-2 p-0")}>
+          <div className={cn("sticky start-0 w-fit px-2 py-1.5 font-bold", tint.text)}>
             {brand.brandName}
           </div>
         </TableCell>
@@ -148,14 +148,14 @@ function BrandSection({
         row={brand.subtotal}
         label={`סה״כ ${brand.brandName}`}
         withRate={withRate}
-        variant="brand"
+        surface={tint.band}
       />
     </>
   );
 }
 
 /**
- * The yearly grid Reut used to keep by hand: branches under their brand,
+ * The yearly grid Reut used to keep by hand: branches under their brand band,
  * twelve month columns, a subtotal per brand and one group total at the
  * bottom. The brand reads as a section heading rather than a repeated column,
  * which leaves the width for the months.
@@ -166,15 +166,19 @@ export function FranchiseeBillingAnnualTable({
   const { brands, grandTotal } = groupAnnualRows(report.rows);
   const withRate = report.reportType === "royalties";
   const columnCount = 1 + ANNUAL_MONTHS.length + 2 + (withRate ? 1 : 0);
-  const headCell = "border-s bg-muted text-start font-semibold whitespace-nowrap";
+  const headCell = cn(
+    CELL_PADDING,
+    "border-s bg-muted text-start font-semibold whitespace-nowrap",
+  );
 
   return (
     <div className="w-full overflow-x-auto rounded-lg border">
-      <Table className="border-separate border-spacing-0 [&_td]:border-b [&_th]:border-b">
+      <Table className="border-separate border-spacing-0 text-xs [&_td]:border-b [&_th]:border-b">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead
               className={cn(
+                CELL_PADDING,
                 BRANCH_COLUMN,
                 "sticky start-0 z-30 bg-muted text-start font-semibold",
               )}
@@ -191,15 +195,16 @@ export function FranchiseeBillingAnnualTable({
             </TableHead>
             <TableHead className={cn(headCell, TOTAL_COLUMN)}>ממוצע</TableHead>
             {withRate && (
-              <TableHead className={cn(headCell, "w-24 min-w-24")}>%</TableHead>
+              <TableHead className={cn(headCell, RATE_COLUMN)}>%</TableHead>
             )}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {brands.map((brand) => (
+          {brands.map((brand, index) => (
             <BrandSection
               key={brand.brandName}
               brand={brand}
+              index={index}
               columnCount={columnCount}
               withRate={withRate}
             />
@@ -210,7 +215,8 @@ export function FranchiseeBillingAnnualTable({
             row={grandTotal}
             label="סה״כ קבוצתי"
             withRate={withRate}
-            variant="group"
+            surface="bg-muted"
+            rule="border-t-2 border-t-foreground/40"
           />
         </TableFooter>
       </Table>
