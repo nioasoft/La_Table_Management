@@ -205,8 +205,19 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
           },
           {
             label: "חיוב תמלוגים ושיווק",
-            href: "/admin/franchisee-billing",
             icon: <Coins className="h-5 w-5" />,
+            children: [
+              {
+                label: "תמלוגים ושיווק",
+                href: "/admin/franchisee-billing",
+                icon: <Coins className="h-4 w-4" />,
+              },
+              {
+                label: "דוחות",
+                href: "/admin/franchisee-billing/reports",
+                icon: <FileSpreadsheet className="h-4 w-4" />,
+              },
+            ],
           },
           {
             label: he.sidebar.navigation.files,

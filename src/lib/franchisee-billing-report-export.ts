@@ -12,16 +12,21 @@ import type {
 
 // Display format only — Excel keeps the full stored value in the cell, so
 // nothing is lost by showing agorot to whoever opens the report.
-const MONEY_FORMAT = "#,##0.00";
-const RATE_FORMAT = "0.00";
+export const MONEY_FORMAT = "#,##0.00";
+export const RATE_FORMAT = "0.00";
 
-interface ExportTable {
+export interface ExportTable {
   readonly sheetName: string;
   readonly headers: readonly string[];
   readonly rows: readonly (readonly (string | number)[])[];
   readonly moneyColumns: readonly number[];
   readonly rateColumns: readonly number[];
   readonly columnWidths: readonly number[];
+  /** Defaults to agorot; a wide grid reads better without them. */
+  readonly moneyFormat?: string;
+  readonly rateFormat?: string;
+  /** Off for grids that interleave subtotal rows, where filtering misleads. */
+  readonly autofilter?: boolean;
 }
 
 function exactNumber(value: string): number {
@@ -164,32 +169,41 @@ function applyNumberFormat(
   }
 }
 
-export function buildFranchiseeBillingReportWorkbook(
-  report: FranchiseeBillingReportPayload,
-): Buffer {
-  const table = exportTable(report);
+/**
+ * The one place that turns a table into a workbook — SheetJS silently drops
+ * worksheet["!dir"], so RTL has to live on the workbook views, and every
+ * report export goes through here rather than repeating that line wrongly.
+ */
+export function buildWorkbook(table: ExportTable): Buffer {
   const worksheet = XLSX.utils.aoa_to_sheet([
     [...table.headers],
     ...table.rows.map((row) => [...row]),
   ]);
   worksheet["!cols"] = table.columnWidths.map((width) => ({ wch: width }));
-  worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1:A1" };
+  if (table.autofilter !== false) {
+    worksheet["!autofilter"] = { ref: worksheet["!ref"] ?? "A1:A1" };
+  }
   applyNumberFormat(
     worksheet,
     table.rows.length,
     table.moneyColumns,
-    MONEY_FORMAT,
+    table.moneyFormat ?? MONEY_FORMAT,
   );
   applyNumberFormat(
     worksheet,
     table.rows.length,
     table.rateColumns,
-    RATE_FORMAT,
+    table.rateFormat ?? RATE_FORMAT,
   );
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, table.sheetName);
-  // SheetJS silently drops worksheet["!dir"]; workbook views persist RTL.
   workbook.Workbook = { Views: [{ RTL: true }] };
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+}
+
+export function buildFranchiseeBillingReportWorkbook(
+  report: FranchiseeBillingReportPayload,
+): Buffer {
+  return buildWorkbook(exportTable(report));
 }

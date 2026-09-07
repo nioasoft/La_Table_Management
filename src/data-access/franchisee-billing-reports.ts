@@ -14,8 +14,13 @@ import {
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { database } from "@/db";
+import { pivotAnnualRows } from "@/lib/franchisee-billing-annual-summary";
 import * as schema from "@/db/schema";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
+import type {
+  FranchiseeBillingAnnualPayload,
+  FranchiseeBillingAnnualQuery,
+} from "@/schemas/franchisee-billing-annual";
 import type {
   FranchiseeBillingReportPayload,
   FranchiseeBillingReportQuery,
@@ -285,4 +290,65 @@ export async function loadFranchiseeBillingReport(
   }
   const rows = await createDiscountReportQuery(reportDatabase, period, brandId);
   return { reportType: input.reportType, period, rows };
+}
+
+/**
+ * The yearly grid, one query for all three projections. Starts from the
+ * franchisee rather than the billing row so a branch with nothing billed still
+ * gets a line — the year predicate therefore belongs in the join, not the
+ * where, or the left join collapses into an inner one.
+ */
+export function createAnnualReportQuery(
+  reportDatabase: ReportDatabase,
+  year: number,
+  brandId: string | null = null,
+) {
+  return reportDatabase
+    .select({
+      ...identitySelection,
+      periodMonth: schema.franchiseeBilling.periodMonth,
+      netBase: schema.franchiseeBilling.netBase,
+      royalty: schema.franchiseeBilling.royalty,
+      marketing: schema.franchiseeBilling.marketing,
+      discountValue: schema.franchiseeBilling.discountValue,
+    })
+    .from(schema.franchisee)
+    .innerJoin(schema.brand, eq(schema.franchisee.brandId, schema.brand.id))
+    .leftJoin(
+      schema.franchiseeBilling,
+      and(
+        eq(schema.franchiseeBilling.franchiseeId, schema.franchisee.id),
+        eq(schema.franchiseeBilling.periodYear, year),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.franchisee.status, "active"),
+        eq(schema.franchisee.isActive, true),
+        // "שונות" holds non-franchise income, which has no royalty grid.
+        eq(schema.brand.isSystemBrand, false),
+        brandFilter(brandId),
+      ),
+    )
+    .orderBy(
+      asc(schema.brand.nameHe),
+      asc(schema.franchisee.name),
+      asc(schema.franchiseeBilling.periodMonth),
+    );
+}
+
+export async function loadFranchiseeBillingAnnualReport(
+  input: FranchiseeBillingAnnualQuery,
+  reportDatabase: ReportDatabase = database,
+): Promise<FranchiseeBillingAnnualPayload> {
+  const raw = await createAnnualReportQuery(
+    reportDatabase,
+    input.year,
+    input.brandId ?? null,
+  );
+  return {
+    reportType: input.reportType,
+    year: input.year,
+    rows: pivotAnnualRows(raw, input.reportType),
+  };
 }
