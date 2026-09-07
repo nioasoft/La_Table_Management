@@ -4,6 +4,7 @@ import {
   discardBillingSourceFile,
   loadFranchiseeBillingScreen,
   resolveApprovedBillingDifference,
+  resolveStaleBillingRow,
   updateBillingDiscount,
   updateBillingNoRevenueReason,
   type BillingScreenOperations,
@@ -128,6 +129,15 @@ async function applyMutation(
           mutation.billingId,
           mutation.noRevenueReason,
         );
+  }
+  if (mutation.action === "resolve_stale_row") {
+    const staleInput = {
+      billingId: mutation.billingId,
+      resolution: mutation.resolution,
+    };
+    return operations
+      ? resolveStaleBillingRow(staleInput, operations)
+      : resolveStaleBillingRow(staleInput);
   }
   if (mutation.action === "discard_source") {
     return operations

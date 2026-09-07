@@ -36,7 +36,13 @@ interface FranchiseeBillingAlertsProps {
     anomaly: Anomaly,
     franchiseeId: string | null,
   ) => Promise<void>;
+  readonly onResolveStaleRow: (
+    billingId: string,
+    resolution: "keep" | "delete",
+  ) => Promise<void>;
 }
+
+type StaleRow = FranchiseeBillingScreenPayload["rows"][number];
 
 /**
  * Only a row whose owner is unknown can be settled from here. Everything else
@@ -327,6 +333,82 @@ function AnomalyItem({
   );
 }
 
+/**
+ * One row blocked for coming from a superseded file, with the two answers
+ * nobody could give before: bill it from that file anyway, or drop it.
+ */
+function StaleRowItem({
+  row,
+  onResolve,
+}: {
+  readonly row: StaleRow;
+  readonly onResolve: (
+    billingId: string,
+    resolution: "keep" | "delete",
+  ) => Promise<void>;
+}) {
+  const [pending, setPending] = useState<"keep" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const resolve = async (resolution: "keep" | "delete") => {
+    setPending(resolution);
+    setError(null);
+    try {
+      await onResolve(row.id, resolution);
+      toast.success(
+        resolution === "keep"
+          ? `${row.franchiseeName} תחויב מהקובץ הקודם`
+          : `שורת החיוב של ${row.franchiseeName} נמחקה`,
+      );
+    } catch (resolveError: unknown) {
+      console.error("Failed to resolve a stale billing row:", resolveError);
+      setError(
+        resolveError instanceof Error
+          ? resolveError.message
+          : "הפעולה נכשלה. נסי שוב.",
+      );
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <li className="space-y-2 rounded-lg border bg-background/60 p-3">
+      <p>
+        <span className="font-medium">{row.franchiseeName}</span>
+        {" — מקור בפועל: "}
+        <bdi>{row.sourceFileName ?? "קובץ מקור לא זמין"}</bdi>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          disabled={pending !== null}
+          onClick={() => void resolve("keep")}
+        >
+          {pending === "keep" && (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          )}
+          חייבי מהקובץ הקודם
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={pending !== null}
+          onClick={() => void resolve("delete")}
+        >
+          {pending === "delete" && (
+            <Loader2 className="animate-spin" aria-hidden="true" />
+          )}
+          מחקי את השורה
+        </Button>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </li>
+  );
+}
+
 export function FranchiseeBillingAlerts({
   anomalies,
   warnings,
@@ -335,6 +417,7 @@ export function FranchiseeBillingAlerts({
   franchisees,
   onResolveDifference,
   onResolveAnomaly,
+  onResolveStaleRow,
 }: FranchiseeBillingAlertsProps) {
   return (
     <div className="space-y-4">
@@ -343,15 +426,17 @@ export function FranchiseeBillingAlerts({
           <AlertTitle>נמצאו שורות מקובץ קודם</AlertTitle>
           <AlertDescription>
             <p className="mt-1">
-              השורות הבאות אינן שייכות לקובץ האחרון והן חסומות לאישור:
+              השורות הבאות נוצרו מקובץ שקובץ חדש יותר של אותו מותג החליף, והן
+              חוסמות את נעילת החודש. הכריעי בכל שורה: לחייב אותה מהקובץ הישן,
+              או למחוק אותה אם הקובץ החדש כבר לא מכסה את הסניף.
             </p>
-            <ul className="mt-2 list-disc space-y-1 ps-5">
+            <ul className="mt-2 space-y-2">
               {staleRows.map((row) => (
-                <li key={row.id}>
-                  <span className="font-medium">{row.franchiseeName}</span>
-                  {" — מקור בפועל: "}
-                  <bdi>{row.sourceFileName ?? "קובץ מקור לא זמין"}</bdi>
-                </li>
+                <StaleRowItem
+                  key={row.id}
+                  row={row}
+                  onResolve={onResolveStaleRow}
+                />
               ))}
             </ul>
           </AlertDescription>

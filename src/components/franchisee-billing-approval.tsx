@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -58,8 +58,8 @@ async function postApproval(
 }
 
 function resultMessage(result: FranchiseeBillingApprovalResponse): string {
-  if (result.data?.alreadyApproved) return "החודש כבר אושר קודם לכן";
-  return "החיובים אושרו";
+  if (result.data?.alreadyApproved) return "החודש כבר היה נעול";
+  return "החודש ננעל. שורות החיוב מקובעות ומוכנות לייצוא";
 }
 
 /**
@@ -94,9 +94,9 @@ export function FranchiseeBillingApproval({
   if (panelState === "hidden") return null;
   if (panelState === "already-approved") {
     return (
-      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-3 text-sm">
-        <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden="true" />
-        החודש כבר אושר
+      <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/20">
+        <Lock className="h-4 w-4 text-emerald-600" aria-hidden="true" />
+        החודש נעול — שורות החיוב מקובעות ולא ניתן לערוך אותן או את ההנחות.
       </div>
     );
   }
@@ -125,29 +125,51 @@ export function FranchiseeBillingApproval({
   };
 
   return (
-    <div className="space-y-3" aria-live="polite">
-      {hasDrafts && (
-        <p className="text-sm text-muted-foreground">
-          {data.rows.filter((row) => row.status === "draft").length} שורות
-          טיוטה ממתינות לאישור.
+    <div
+      className="space-y-3 rounded-xl border border-dashed bg-muted/20 p-4"
+      aria-live="polite"
+    >
+      <div>
+        <h2 className="flex items-center gap-2 font-medium">
+          <Lock className="h-4 w-4" aria-hidden="true" />
+          סיום החודש
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {hasDrafts && (
+            <>
+              {data.rows.filter((row) => row.status === "draft").length} שורות
+              טיוטה פתוחות לעריכה.{" "}
+            </>
+          )}
+          נעילת החודש מקבעת את שורות החיוב — אחריה כבר לא ניתן לעדכן הנחות, לתקן
+          שורות או להעלות קובץ מעודכן. נעלי רק כשסיימת את כל התיקונים.
         </p>
-      )}
+      </div>
       {hasDrafts && <Dialog>
         <DialogTrigger asChild>
           <Button
             type="button"
             disabled={data.hasBlockingIssues || pending}
           >
-            <CheckCircle2 aria-hidden="true" />
-            אישור החודש
+            <Lock aria-hidden="true" />
+            נעילת החודש
           </Button>
         </DialogTrigger>
         <DialogContent dir="rtl">
           <DialogHeader dir="rtl">
-            <DialogTitle>אישור חיובי החודש</DialogTitle>
-            <DialogDescription>
-              האישור מקבע את נתוני החיוב וכותב את הדחיות לליג׳ר. לא נשלחת שום
-              הודעה לזכיינים.
+            <DialogTitle>לנעול את החודש?</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 text-start">
+                <p>
+                  הנעילה מקבעת את נתוני החיוב וכותבת את הדחיות לליג׳ר. אחריה
+                  לא ניתן לערוך הנחות או שורות, והעלאת קובץ חדש תדרוש אישור
+                  מפורש להחלפת השורות הנעולות.
+                </p>
+                <p>
+                  זה לא כפתור רענון — לרענון הנתונים יש כפתור &quot;רענון&quot;
+                  בראש העמוד. לא נשלחת שום הודעה לזכיינים.
+                </p>
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter dir="rtl">
@@ -155,9 +177,9 @@ export function FranchiseeBillingApproval({
               {pending ? (
                 <Loader2 className="animate-spin" aria-hidden="true" />
               ) : (
-                <CheckCircle2 aria-hidden="true" />
+                <Lock aria-hidden="true" />
               )}
-              אישור החודש
+              נעלי את החודש
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -165,7 +187,7 @@ export function FranchiseeBillingApproval({
 
       {data.hasBlockingIssues && (
         <p className="text-sm text-destructive">
-          לא ניתן לאשר עד שכל החסימות והפערים יטופלו.
+          לא ניתן לנעול עד שכל החסימות והפערים יטופלו.
         </p>
       )}
       {(localError || result) && (

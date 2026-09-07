@@ -1,6 +1,6 @@
 import type { Franchisee, FranchiseeBillingStatus } from "@/db/schema";
 import * as schema from "@/db/schema";
-import { and, desc, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
 import { calculateRoyalty } from "@/lib/royalty";
@@ -32,6 +32,12 @@ export interface StoredFranchiseeBilling {
   readonly tierBasisSnapshot: RoyaltyTierBasis | null;
   readonly marketingRateSnapshot: string | null;
   readonly vatRateSnapshot: string | null;
+  /**
+   * A row already carried into a Hashavshevet batch is invoiced. No upload
+   * rewrites it, however emphatically the overwrite was confirmed.
+   */
+  readonly royaltyExportBatchId: string | null;
+  readonly marketingExportBatchId: string | null;
 }
 
 export type BillingAnomalyCode =
@@ -106,6 +112,12 @@ export interface RoyaltyBillingPlan {
   readonly drafts: readonly DraftBillingCandidate[];
   readonly anomalies: readonly BillingAnomaly[];
   readonly approvedDifferences: readonly ApprovedBillingDifference[];
+  /**
+   * Every franchisee the file resolved to, whether or not it produced a draft.
+   * An approved row writes nothing, and it is exactly the one worth warning
+   * about before the upload lands.
+   */
+  readonly matchedFranchiseeIds: readonly string[];
 }
 
 export interface BuildRoyaltyBillingPlanInput {
@@ -115,12 +127,16 @@ export interface BuildRoyaltyBillingPlanInput {
   /** True when the export carries no branch names at all — see the parser. */
   readonly singleBranch?: boolean;
   readonly existingBillings: readonly StoredFranchiseeBilling[];
+  /** The admin said to replace what the month already holds. */
+  readonly overwriteApproved?: boolean;
   readonly sourceFileId: string;
   readonly vat: number;
   readonly period: RoyaltyRevenuePeriod;
 }
 
 export interface SourceFileInput {
+  /** Minted before the plan is built, so a refused upload stores nothing. */
+  readonly id: string;
   readonly buffer: Buffer;
   readonly fileName: string;
   readonly mimeType: string;
@@ -151,9 +167,12 @@ export interface FranchiseeBillingOperations {
   readonly readFranchisees: () => Promise<readonly BillingFranchisee[]>;
   readonly readVatRate: (period: RoyaltyRevenuePeriod) => Promise<number | null>;
   readonly readExistingBillings: (period: RoyaltyRevenuePeriod) => Promise<readonly StoredFranchiseeBilling[]>;
-  readonly persistSourceFile: (input: SourceFileInput) => Promise<string>;
+  readonly persistSourceFile: (input: SourceFileInput) => Promise<void>;
   readonly recordSourceReview: (sourceFileId: string, review: SourceFileReview) => Promise<void>;
-  readonly upsertDrafts: (drafts: readonly DraftBillingCandidate[]) => Promise<DraftUpsertResult>;
+  readonly upsertDrafts: (
+    drafts: readonly DraftBillingCandidate[],
+    overwriteApproved?: boolean,
+  ) => Promise<DraftUpsertResult>;
 }
 
 interface ResolvedRevenueRow {
@@ -544,30 +563,78 @@ export function buildRoyaltyBillingPlan(
     const draft = buildDraft(entry, input);
     return draft ? [{ entry, draft }] : [];
   });
-  const approvedDifferences = candidates.flatMap(({ entry, draft }) => {
-    const existing = input.existingBillings.find(
-      (billing) => billing.franchiseeId === draft.franchiseeId,
+  const existingFor = (franchiseeId: string) =>
+    input.existingBillings.find(
+      (billing) => billing.franchiseeId === franchiseeId,
     );
-    if (existing?.status !== "approved" || !entry.franchisee) return [];
-    const differences = compareApproved(existing, draft, entry.franchisee);
-    return differences.length === 0
-      ? []
-      : [{
-          franchiseeId: draft.franchiseeId,
-          status: "approved" as const,
-          differences,
-        }];
-  });
+  // A confirmed overwrite has already been decided, so a difference from the
+  // row it replaces is not a question anyone still needs to answer.
+  const approvedDifferences = input.overwriteApproved
+    ? []
+    : candidates.flatMap(({ entry, draft }) => {
+        const existing = existingFor(draft.franchiseeId);
+        if (existing?.status !== "approved" || !entry.franchisee) return [];
+        const differences = compareApproved(existing, draft, entry.franchisee);
+        return differences.length === 0
+          ? []
+          : [{
+              franchiseeId: draft.franchiseeId,
+              status: "approved" as const,
+              differences,
+            }];
+      });
   const drafts = candidates.flatMap(({ draft }) => {
-    const existing = input.existingBillings.find(
-      (billing) => billing.franchiseeId === draft.franchiseeId,
-    );
-    return existing?.status === "approved" ? [] : [draft];
+    const existing = existingFor(draft.franchiseeId);
+    if (existing?.status !== "approved") return [draft];
+    return input.overwriteApproved && !isExported(existing) ? [draft] : [];
   });
   return {
     drafts,
     anomalies: resolved.flatMap((entry) => entry.anomalies),
     approvedDifferences,
+    matchedFranchiseeIds: candidates.map(({ draft }) => draft.franchiseeId),
+  };
+}
+
+/** A row carried into a Hashavshevet batch — invoiced, and no longer ours. */
+function isExported(billing: StoredFranchiseeBilling): boolean {
+  return (
+    billing.royaltyExportBatchId !== null ||
+    billing.marketingExportBatchId !== null
+  );
+}
+
+export interface OverwriteConflict {
+  readonly franchiseeNames: readonly string[];
+  readonly approvedNames: readonly string[];
+  readonly exportedNames: readonly string[];
+}
+
+/**
+ * What a new upload would replace, or null when it replaces nothing. This is
+ * the question the screen asks before the file is stored — an approved row is
+ * otherwise skipped in silence, and then blocks the month for coming from the
+ * file it was never allowed to leave.
+ */
+export function describeOverwriteConflict(
+  matchedFranchiseeIds: readonly string[],
+  existingBillings: readonly StoredFranchiseeBilling[],
+  franchisees: readonly BillingFranchisee[],
+): OverwriteConflict | null {
+  const nameOf = (franchiseeId: string) =>
+    franchisees.find((entry) => entry.id === franchiseeId)?.name ??
+    franchiseeId;
+  const affected = existingBillings.filter((billing) =>
+    matchedFranchiseeIds.includes(billing.franchiseeId),
+  );
+  if (affected.length === 0) return null;
+  const namesOf = (
+    predicate: (billing: StoredFranchiseeBilling) => boolean,
+  ) => affected.filter(predicate).map((billing) => nameOf(billing.franchiseeId));
+  return {
+    franchiseeNames: namesOf(() => true),
+    approvedNames: namesOf((billing) => billing.status === "approved"),
+    exportedNames: namesOf(isExported),
   };
 }
 
@@ -621,13 +688,23 @@ function draftInsertValues(
   };
 }
 
+/**
+ * `overwriteApproved` widens the rows this may rewrite from drafts to any row
+ * the month has not yet invoiced. The approval it clears is the one the admin
+ * agreed to replace in the upload dialog.
+ */
 export function createDraftBillingUpsertQuery(
   database: BillingInsertDatabase,
   draft: DraftBillingCandidate,
+  overwriteApproved = false,
 ) {
   const { franchiseeBilling } = schema;
   const excluded = (column: { readonly name: string }) =>
     excludedColumn(column);
+  const notExported = and(
+    isNull(franchiseeBilling.royaltyExportBatchId),
+    isNull(franchiseeBilling.marketingExportBatchId),
+  );
   return database
     .insert(franchiseeBilling)
     .values(draftInsertValues(draft))
@@ -652,8 +729,16 @@ export function createDraftBillingUpsertQuery(
         subtotal: excluded(franchiseeBilling.subtotal),
         total: excluded(franchiseeBilling.total),
         sourceFileId: excluded(franchiseeBilling.sourceFileId),
+        status: sql`'draft'`,
+        approvedAt: sql`null`,
+        approvedBy: sql`null`,
+        // The row now answers to the file that just wrote it, so a decision to
+        // bill it from an older one has nothing left to silence.
+        staleSourceAcknowledged: sql`false`,
       },
-      setWhere: eq(franchiseeBilling.status, "draft"),
+      setWhere: overwriteApproved
+        ? notExported
+        : eq(franchiseeBilling.status, "draft"),
     });
 }
 
@@ -685,11 +770,18 @@ function recalculateDraft(draft: DraftBillingCandidate, discountRatePoints: numb
   };
 }
 
-async function upsertDraft(tx: BillingUpsertDatabase, draft: DraftBillingCandidate): Promise<boolean> {
+async function upsertDraft(
+  tx: BillingUpsertDatabase,
+  draft: DraftBillingCandidate,
+  overwriteApproved: boolean,
+): Promise<boolean> {
   const discountRatePoints = await readLockedDiscountRatePoints(tx, draft);
   const recalculated = recalculateDraft(draft, discountRatePoints);
-  const [result] = await createDraftBillingUpsertQuery(tx, recalculated)
-    .returning({ id: schema.franchiseeBilling.id });
+  const [result] = await createDraftBillingUpsertQuery(
+    tx,
+    recalculated,
+    overwriteApproved,
+  ).returning({ id: schema.franchiseeBilling.id });
   return Boolean(result);
 }
 
@@ -749,6 +841,9 @@ async function readExistingBillings(
         schema.franchiseeBilling.marketingRateSnapshot,
       vatRateSnapshot: schema.franchiseeBilling.vatRateSnapshot,
       status: schema.franchiseeBilling.status,
+      royaltyExportBatchId: schema.franchiseeBilling.royaltyExportBatchId,
+      marketingExportBatchId:
+        schema.franchiseeBilling.marketingExportBatchId,
     })
     .from(schema.franchiseeBilling)
     .where(
@@ -763,8 +858,7 @@ async function persistSourceFile(
   database: BillingDatabase,
   uploadDocument: UploadDocument,
   input: SourceFileInput,
-): Promise<string> {
-  const id = crypto.randomUUID();
+): Promise<void> {
   const upload = await uploadDocument(
     input.buffer,
     input.fileName,
@@ -778,7 +872,7 @@ async function persistSourceFile(
     0,
   ).getDate();
   await database.insert(schema.uploadedFile).values({
-    id,
+    id: input.id,
     uploadLinkId: null,
     fileName: upload.fileName,
     originalFileName: upload.originalFileName,
@@ -795,7 +889,6 @@ async function persistSourceFile(
     ),
     metadata: { documentType: "franchisee_royalty_revenue" },
   });
-  return id;
 }
 
 function createRuntimeOperations(
@@ -821,12 +914,12 @@ function createRuntimeOperations(
         })
         .where(eq(schema.uploadedFile.id, sourceFileId));
     },
-    upsertDrafts: async (drafts) =>
+    upsertDrafts: async (drafts, overwriteApproved = false) =>
       database.transaction(async (tx) => {
         return drafts.reduce<Promise<DraftUpsertResult>>(
           async (pending, draft) => {
             const current = await pending;
-            const written = await upsertDraft(tx, draft);
+            const written = await upsertDraft(tx, draft, overwriteApproved);
             return written
               ? { ...current, writtenCount: current.writtenCount + 1 }
               : {

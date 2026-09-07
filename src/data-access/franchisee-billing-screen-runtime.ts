@@ -1,4 +1,4 @@
-import { and, desc, eq, lte, notExists, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, notExists, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "@/db/schema";
@@ -31,6 +31,7 @@ import type {
   PersistNoRevenueReasonInput,
   ReopenableBilling,
   ReopenedBillingValues,
+  StaleRowContext,
 } from "@/data-access/franchisee-billing-screen";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
 
@@ -485,6 +486,76 @@ async function discardSourceFile(
 }
 
 /**
+ * Whether one row is still blocked as coming from a superseded file, decided
+ * by the same brand-newest rule the screen renders — never by the caller.
+ */
+async function readStaleRowContext(
+  database: BillingDatabase,
+  billingId: string,
+): Promise<StaleRowContext | null> {
+  const billing = schema.franchiseeBilling;
+  const [row] = await database
+    .select({
+      id: billing.id,
+      periodYear: billing.periodYear,
+      periodMonth: billing.periodMonth,
+      isExported: sql<boolean>`(
+        ${billing.royaltyExportBatchId} is not null
+        or ${billing.marketingExportBatchId} is not null
+      )`,
+    })
+    .from(billing)
+    .where(eq(billing.id, billingId))
+    .limit(1);
+  if (!row) return null;
+  const snapshot = await readPeriodSnapshot(database, {
+    year: row.periodYear,
+    month: row.periodMonth,
+  });
+  const rendered = snapshot.rows.find((entry) => entry.id === billingId);
+  return {
+    id: row.id,
+    isStaleSource: rendered?.isStaleSource ?? false,
+    isExported: row.isExported,
+  };
+}
+
+async function acknowledgeStaleRow(
+  database: BillingDatabase,
+  billingId: string,
+): Promise<boolean> {
+  const [updated] = await database
+    .update(schema.franchiseeBilling)
+    .set({ staleSourceAcknowledged: true })
+    .where(
+      and(
+        eq(schema.franchiseeBilling.id, billingId),
+        isNull(schema.franchiseeBilling.royaltyExportBatchId),
+        isNull(schema.franchiseeBilling.marketingExportBatchId),
+      ),
+    )
+    .returning({ id: schema.franchiseeBilling.id });
+  return Boolean(updated);
+}
+
+async function deleteStaleRow(
+  database: BillingDatabase,
+  billingId: string,
+): Promise<boolean> {
+  const [deleted] = await database
+    .delete(schema.franchiseeBilling)
+    .where(
+      and(
+        eq(schema.franchiseeBilling.id, billingId),
+        isNull(schema.franchiseeBilling.royaltyExportBatchId),
+        isNull(schema.franchiseeBilling.marketingExportBatchId),
+      ),
+    )
+    .returning({ id: schema.franchiseeBilling.id });
+  return Boolean(deleted);
+}
+
+/**
  * The franchisees a blocked row may be assigned to — exactly the set the
  * matcher itself resolves against, so the picker can never offer a franchisee
  * the replay would then refuse.
@@ -522,5 +593,10 @@ export async function createBillingScreenOperations(): Promise<BillingScreenOper
     discardSourceFile: (sourceFileId) =>
       discardSourceFile(database, sourceFileId),
     readBillableFranchisees: () => readBillableFranchisees(database),
+    readStaleRowContext: (billingId) =>
+      readStaleRowContext(database, billingId),
+    acknowledgeStaleRow: (billingId) =>
+      acknowledgeStaleRow(database, billingId),
+    deleteStaleRow: (billingId) => deleteStaleRow(database, billingId),
   };
 }

@@ -163,6 +163,10 @@ function differenceContext(
 }
 
 class MemoryOperations implements BillingScreenOperations {
+  readStaleRowContext = async () => null;
+  acknowledgeStaleRow = async () => true;
+  deleteStaleRow = async () => true;
+
   rows: BillingScreenRow[] = [screenRow()];
   sourcesByBrand: ReadonlyMap<string, BillingSourceReviewRecord> = new Map([
     ["brand-vini", sourceReview()],

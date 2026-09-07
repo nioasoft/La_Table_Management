@@ -1,11 +1,13 @@
 import {
   buildRoyaltyBillingPlan,
   createFranchiseeBillingOperations,
+  describeOverwriteConflict,
   type ApprovedBillingDifference,
   type BillingAnomaly,
   type BillingRowOverride,
   type BuildRoyaltyBillingPlanInput,
   type FranchiseeBillingOperations,
+  type OverwriteConflict,
   type RoyaltyBillingPlan,
 } from "@/data-access/franchisee-billing";
 import {
@@ -27,6 +29,12 @@ export interface ProcessRoyaltyRevenueUploadInput {
    */
   readonly sourceFileId?: string;
   readonly rowOverrides?: readonly BillingRowOverride[];
+  /**
+   * The admin answered the "this month already has rows" dialog with yes.
+   * Without it an upload onto an already-billed month is refused and stores
+   * nothing, rather than half-writing itself and leaving the rest behind.
+   */
+  readonly confirmOverwrite?: boolean;
 }
 
 export interface RoyaltyRevenueProcessorDependencies {
@@ -47,11 +55,14 @@ export interface ProcessRoyaltyRevenueUploadResult {
   readonly errors: readonly string[];
   readonly warnings: readonly string[];
   readonly hasBlockingIssues: boolean;
+  /** Set when the upload was refused pending an overwrite decision. */
+  readonly conflict: OverwriteConflict | null;
 }
 
 function failedResult(
   errors: readonly string[],
   warnings: readonly string[],
+  conflict: OverwriteConflict | null = null,
 ): ProcessRoyaltyRevenueUploadResult {
   return {
     success: false,
@@ -63,6 +74,7 @@ function failedResult(
     errors,
     warnings,
     hasBlockingIssues: true,
+    conflict,
   };
 }
 
@@ -103,6 +115,7 @@ async function refreshConcurrentApprovals(
   });
   return {
     drafts: original.drafts,
+    matchedFranchiseeIds: original.matchedFranchiseeIds,
     anomalies: [
       ...original.anomalies,
       ...refreshed.anomalies.filter(
@@ -139,17 +152,18 @@ async function processMonthlyRows(
     );
   }
 
-  const sourceFileId =
-    input.sourceFileId ??
-    (await dependencies.operations.persistSourceFile({
-      ...input,
-      period,
-    }));
+  // A replay re-runs a file the month already answers to, so it asks nothing
+  // and overwrites nothing it was not already allowed to: an approved row it
+  // disagrees with still comes back as a difference to settle on the screen.
+  const isReplay = input.sourceFileId !== undefined;
+  const sourceFileId = input.sourceFileId ?? crypto.randomUUID();
+  const overwriteApproved = !isReplay && input.confirmOverwrite === true;
   const planInput: PlanInput = {
     rows,
     franchisees,
     rowOverrides: input.rowOverrides,
     singleBranch,
+    overwriteApproved,
     sourceFileId,
     vat,
     period,
@@ -158,8 +172,46 @@ async function processMonthlyRows(
     ...planInput,
     existingBillings,
   });
+  if (!isReplay && !input.confirmOverwrite) {
+    const conflict = describeOverwriteConflict(
+      initialPlan.matchedFranchiseeIds,
+      existingBillings,
+      franchisees,
+    );
+    if (conflict) {
+      return failedResult(
+        ["לחודש זה כבר קיימות שורות חיוב"],
+        warnings,
+        conflict,
+      );
+    }
+  }
+  // An invoiced row is the one thing a confirmed overwrite still cannot touch,
+  // so say which ones kept their old figures rather than leaving it to be
+  // noticed later in a report.
+  const exportedNames = overwriteApproved
+    ? describeOverwriteConflict(
+        initialPlan.matchedFranchiseeIds,
+        existingBillings,
+        franchisees,
+      )?.exportedNames ?? []
+    : [];
+  const allWarnings = exportedNames.length
+    ? [
+        ...warnings,
+        `שורות שכבר יוצאו לחשבשבת לא עודכנו מהקובץ החדש: ${exportedNames.join(", ")}`,
+      ]
+    : warnings;
+  if (!isReplay) {
+    await dependencies.operations.persistSourceFile({
+      ...input,
+      id: sourceFileId,
+      period,
+    });
+  }
   const upsert = await dependencies.operations.upsertDrafts(
     initialPlan.drafts,
+    overwriteApproved,
   );
   const plan = await refreshConcurrentApprovals(
     dependencies.operations,
@@ -171,7 +223,7 @@ async function processMonthlyRows(
   await dependencies.operations.recordSourceReview(sourceFileId, {
     anomalies: plan.anomalies,
     approvedDifferences: plan.approvedDifferences,
-    warnings,
+    warnings: allWarnings,
     draftsWritten,
     ...(input.rowOverrides?.length ? { rowOverrides: input.rowOverrides } : {}),
     ...(singleBranch ? { singleBranch } : {}),
@@ -187,8 +239,9 @@ async function processMonthlyRows(
     anomalies: plan.anomalies,
     approvedDifferences: plan.approvedDifferences,
     errors: [],
-    warnings,
+    warnings: allWarnings,
     hasBlockingIssues,
+    conflict: null,
   };
 }
 

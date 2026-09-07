@@ -1220,6 +1220,14 @@ export const franchiseeBilling = pgTable(
       { onDelete: "restrict" },
     ),
     noRevenueReason: text("no_revenue_reason"),
+    /**
+     * An admin's decision to bill this row from a superseded file anyway. Set
+     * from the screen and cleared by any upload that rewrites the row, so it
+     * only ever silences the source it was given for.
+     */
+    staleSourceAcknowledged: boolean("stale_source_acknowledged")
+      .default(false)
+      .notNull(),
   },
   (table) => [
     uniqueIndex("idx_franchisee_billing_unique_period").on(

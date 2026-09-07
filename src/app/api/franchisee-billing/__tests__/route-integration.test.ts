@@ -60,6 +60,10 @@ function billingRow(
 }
 
 class RouteMemoryOperations implements BillingScreenOperations {
+  readStaleRowContext = async () => null;
+  acknowledgeStaleRow = async () => true;
+  deleteStaleRow = async () => true;
+
   row = billingRow();
 
   async readPeriodSnapshot() {

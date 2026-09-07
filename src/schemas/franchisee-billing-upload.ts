@@ -7,7 +7,13 @@ const EXCEL_MIME_TYPES = new Set([
   "application/octet-stream",
 ]);
 
+/** "true" only — anything else reads as "she has not been asked yet". */
+const confirmOverwriteSchema = z
+  .unknown()
+  .transform((value) => value === "true" || value === true);
+
 export const franchiseeBillingUploadSchema = z.object({
+  confirmOverwrite: confirmOverwriteSchema,
   file: z
     .instanceof(File, { error: "נדרש קובץ Excel" })
     .refine((file) => file.size > 0, "הקובץ ריק")

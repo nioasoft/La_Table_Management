@@ -1,14 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  FileSpreadsheet,
+  Loader2,
+  Upload,
+} from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import {
+  franchiseeBillingOverwriteConflictSchema,
   franchiseeBillingUploadResponseSchema,
+  type FranchiseeBillingOverwriteConflict,
   type FranchiseeBillingPeriod,
 } from "@/schemas/franchisee-billing-screen";
 
@@ -36,6 +53,32 @@ function apiErrorMessage(value: unknown): string | null {
   return null;
 }
 
+/**
+ * The 409 body of an upload the server refused until the overwrite is decided.
+ * Anything else is an ordinary failure and keeps its own message.
+ */
+function overwriteConflict(
+  value: unknown,
+): FranchiseeBillingOverwriteConflict | null {
+  if (typeof value !== "object" || value === null || !("conflict" in value)) {
+    return null;
+  }
+  const parsed = franchiseeBillingOverwriteConflictSchema.safeParse(
+    value.conflict,
+  );
+  return parsed.success ? parsed.data : null;
+}
+
+function conflictQuestion(
+  conflict: FranchiseeBillingOverwriteConflict,
+): string {
+  const { franchiseeNames, approvedNames } = conflict;
+  const approved = approvedNames.length
+    ? `, מתוכם ${approvedNames.length} מאושרים`
+    : "";
+  return `כבר קיימות שורות חיוב עבור ${franchiseeNames.length} זכיינים בחודש הזה${approved}. להחליף אותן בנתוני הקובץ החדש?`;
+}
+
 export function FranchiseeBillingUpload({
   onUploaded,
 }: FranchiseeBillingUploadProps) {
@@ -44,8 +87,10 @@ export function FranchiseeBillingUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [conflict, setConflict] =
+    useState<FranchiseeBillingOverwriteConflict | null>(null);
 
-  const upload = async () => {
+  const upload = async (confirmOverwrite: boolean) => {
     if (!file) {
       setError("בחרי קובץ Excel להעלאה");
       return;
@@ -56,6 +101,7 @@ export function FranchiseeBillingUpload({
     try {
       const formData = new FormData();
       formData.set("file", file);
+      if (confirmOverwrite) formData.set("confirmOverwrite", "true");
       const response = await fetchWithTimeout(
         "/api/franchisee-billing/upload",
         {
@@ -66,11 +112,17 @@ export function FranchiseeBillingUpload({
       );
       const responseBody: unknown = await response.json();
       if (!response.ok) {
+        const pending = overwriteConflict(responseBody);
+        if (pending) {
+          setConflict(pending);
+          return;
+        }
         throw new Error(
           apiErrorMessage(responseBody) ??
             "הקובץ לא נקלט. בדקי אותו ונסי שוב.",
         );
       }
+      setConflict(null);
       const parsed = franchiseeBillingUploadResponseSchema.safeParse(
         responseBody,
       );
@@ -83,11 +135,15 @@ export function FranchiseeBillingUpload({
       await onUploaded(parsed.data.data.period);
       setFile(null);
       setInputKey((current) => current + 1);
-      const { period, hasBlockingIssues } = parsed.data.data;
+      const { period, hasBlockingIssues, draftsWritten } = parsed.data.data;
+      const month = formatPeriod(period);
       setSuccess(
         hasBlockingIssues
-          ? `הקובץ נקלט כחודש ${formatPeriod(period)}, אך יש בו שורות שממתינות להחלטה. טפלי בחסימות המופיעות מתחת לרשימת הקבצים.`
-          : `הקובץ נקלט כחודש ${formatPeriod(period)} ושורות הטיוטה עודכנו. ודאי שזו התקופה הנכונה לפני אישור.`,
+          ? `הקובץ נקלט כחודש ${month}, אך יש בו שורות שממתינות להחלטה. טפלי בחסימות המופיעות מתחת לרשימת הקבצים.`
+          // A file that wrote nothing used to report success all the same.
+          : draftsWritten === 0
+            ? `הקובץ נקלט כחודש ${month}, אך לא עודכנה אף שורת חיוב. בדקי שזהו החודש הנכון ושהסניפים שבקובץ מזוהים.`
+            : `הקובץ נקלט כחודש ${month} ו-${draftsWritten} שורות עודכנו. ודאי שזו התקופה הנכונה לפני אישור.`,
       );
     } catch (uploadError: unknown) {
       console.error("Failed to upload franchisee billing file:", uploadError);
@@ -124,7 +180,7 @@ export function FranchiseeBillingUpload({
         </div>
         <Button
           type="button"
-          onClick={() => void upload()}
+          onClick={() => void upload(false)}
           disabled={!file || isUploading}
           className="xl:min-w-40"
         >
@@ -165,6 +221,71 @@ export function FranchiseeBillingUpload({
           {success}
         </p>
       )}
+
+      <AlertDialog
+        open={conflict !== null}
+        onOpenChange={(open) => {
+          if (!open) setConflict(null);
+        }}
+      >
+        <AlertDialogContent dir="rtl" className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className="h-5 w-5 text-amber-500"
+                aria-hidden="true"
+              />
+              קיימות כבר שורות חיוב לחודש הזה
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>{conflict ? conflictQuestion(conflict) : ""}</p>
+                {conflict && conflict.franchiseeNames.length > 0 && (
+                  <ul className="max-h-40 space-y-1 overflow-y-auto rounded-lg bg-muted/50 p-3 text-sm">
+                    {conflict.franchiseeNames.map((name) => (
+                      <li key={name}>
+                        <bdi>{name}</bdi>
+                        {conflict.approvedNames.includes(name) && (
+                          <span className="text-amber-600"> — מאושר</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {conflict && conflict.approvedNames.length > 0 && (
+                  <p className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-500">
+                    <AlertTriangle
+                      className="h-4 w-4 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      החלפה תבטל את האישור של השורות המאושרות ותחזיר אותן
+                      לטיוטה.
+                    </span>
+                  </p>
+                )}
+                {conflict && conflict.exportedNames.length > 0 && (
+                  <p className="text-sm text-destructive">
+                    שורות שכבר יוצאו לחשבשבת לא יוחלפו:{" "}
+                    <bdi>{conflict.exportedNames.join(", ")}</bdi>
+                  </p>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-row-reverse gap-2 sm:gap-2">
+            <AlertDialogAction
+              onClick={() => {
+                setConflict(null);
+                void upload(true);
+              }}
+            >
+              החליפי את השורות
+            </AlertDialogAction>
+            <AlertDialogCancel>ביטול</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

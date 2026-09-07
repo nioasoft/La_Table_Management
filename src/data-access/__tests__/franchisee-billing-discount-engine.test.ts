@@ -82,6 +82,9 @@ function operationsFor(context: CompleteDiscountContext) {
     persistDifferenceResolution: async () => "conflict",
     discardSourceFile: async () => "not_found",
     readBillableFranchisees: async () => [],
+    readStaleRowContext: async () => null,
+    acknowledgeStaleRow: async () => true,
+    deleteStaleRow: async () => true,
   };
   return {
     operations,

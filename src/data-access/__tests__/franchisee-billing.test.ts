@@ -477,7 +477,9 @@ describe("createDraftBillingUpsertQuery", () => {
       '"discount_value" = excluded.discount_value,',
       '"marketing" = excluded.marketing,',
       '"subtotal" = excluded.subtotal, "total" = excluded.total,',
-      '"source_file_id" = excluded.source_file_id',
+      '"source_file_id" = excluded.source_file_id,',
+      `"status" = 'draft', "approved_at" = null, "approved_by" = null,`,
+      '"stale_source_acknowledged" = false',
       'where "franchisee_billing"."status" = $20',
     ].join(" "));
     expect(query.params.at(-1)).toBe("draft");
@@ -510,6 +512,8 @@ function storedBilling(
     marketingRateSnapshot: "1.00",
     vatRateSnapshot: "0.1800",
     status: "draft",
+    royaltyExportBatchId: null,
+    marketingExportBatchId: null,
     ...overrides,
   };
 }

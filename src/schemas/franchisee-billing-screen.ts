@@ -77,6 +77,14 @@ const updateNoRevenueReasonSchema = z.strictObject({
   noRevenueReason: noRevenueReasonSchema,
 });
 
+const resolveStaleRowSchema = z.strictObject({
+  action: z.literal("resolve_stale_row"),
+  billingId: z.string().trim().min(1, "מזהה שורת החיוב חסר"),
+  resolution: z.enum(["keep", "delete"], {
+    error: "בחירת הטיפול בשורה אינה תקינה",
+  }),
+});
+
 const discardSourceSchema = z.strictObject({
   action: z.literal("discard_source"),
   sourceFileId: z.string().trim().min(1, "מזהה קובץ המקור חסר"),
@@ -86,6 +94,7 @@ export const franchiseeBillingMutationSchema = z.discriminatedUnion("action", [
   updateDiscountSchema,
   updateNoRevenueReasonSchema,
   resolveDifferenceSchema,
+  resolveStaleRowSchema,
   discardSourceSchema,
 ]);
 
@@ -184,6 +193,13 @@ export const franchiseeBillingScreenResponseSchema = z.object({
   requestId: z.string(),
 });
 
+/** What a refused upload would replace, as the 409 body reports it. */
+export const franchiseeBillingOverwriteConflictSchema = z.object({
+  franchiseeNames: z.array(z.string()),
+  approvedNames: z.array(z.string()),
+  exportedNames: z.array(z.string()),
+});
+
 export const franchiseeBillingUploadResponseSchema = z.object({
   success: z.literal(true),
   data: z.object({
@@ -194,6 +210,10 @@ export const franchiseeBillingUploadResponseSchema = z.object({
   }).passthrough(),
   requestId: z.string(),
 });
+
+export type FranchiseeBillingOverwriteConflict = z.infer<
+  typeof franchiseeBillingOverwriteConflictSchema
+>;
 
 export const franchiseeBillingMutationResponseSchema = z.object({
   success: z.literal(true),

@@ -51,15 +51,26 @@ interface RequestContext {
   readonly startedAt: number;
 }
 
+interface ValidatedUpload {
+  readonly file: File;
+  readonly confirmOverwrite: boolean;
+}
+
 async function validateUploadedFile(
   request: NextRequest,
   context: RequestContext,
-): Promise<File | NextResponse> {
+): Promise<ValidatedUpload | NextResponse> {
   const formData = await request.formData();
   const validation = franchiseeBillingUploadSchema.safeParse({
     file: formData.get("file"),
+    confirmOverwrite: formData.get("confirmOverwrite"),
   });
-  if (validation.success) return validation.data.file;
+  if (validation.success) {
+    return {
+      file: validation.data.file,
+      confirmOverwrite: validation.data.confirmOverwrite,
+    };
+  }
   const error = validation.error.issues[0]?.message ?? "קובץ לא תקין";
   logCompletion(context.requestId, context.startedAt, 400, {
     error: "validation",
@@ -71,16 +82,36 @@ async function validateUploadedFile(
 }
 
 async function processUploadedFile(
-  file: File,
+  upload: ValidatedUpload,
   uploadedByEmail: string,
   context: RequestContext,
 ): Promise<NextResponse> {
+  const { file } = upload;
   const result = await processRoyaltyRevenueUpload({
     buffer: Buffer.from(await file.arrayBuffer()),
     fileName: file.name,
     mimeType: file.type || "application/octet-stream",
     uploadedByEmail,
+    confirmOverwrite: upload.confirmOverwrite,
   });
+  // The month already holds rows for these franchisees. Nothing was stored;
+  // the screen asks, and re-sends the same file with the answer.
+  if (result.conflict) {
+    logCompletion(context.requestId, context.startedAt, 409, {
+      error: "overwrite_conflict",
+      franchisees: result.conflict.franchiseeNames.length,
+      approved: result.conflict.approvedNames.length,
+    });
+    return NextResponse.json(
+      {
+        success: false,
+        error: "לחודש זה כבר קיימות שורות חיוב",
+        conflict: result.conflict,
+        requestId: context.requestId,
+      },
+      { status: 409 },
+    );
+  }
   if (!result.success) {
     const error = result.errors.join("; ") || "עיבוד הקובץ נכשל";
     logCompletion(context.requestId, context.startedAt, 422, {
@@ -137,9 +168,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (limited) return limited;
 
   try {
-    const file = await validateUploadedFile(request, context);
-    if (file instanceof NextResponse) return file;
-    return processUploadedFile(file, authResult.user.email, context);
+    const upload = await validateUploadedFile(request, context);
+    if (upload instanceof NextResponse) return upload;
+    return processUploadedFile(upload, authResult.user.email, context);
   } catch (error: unknown) {
     return unexpectedErrorResponse(error, context);
   }

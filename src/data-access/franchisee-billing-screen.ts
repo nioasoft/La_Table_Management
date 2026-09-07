@@ -192,6 +192,22 @@ export type PersistDifferenceResolutionResult =
 
 export type DiscardSourceFileResult = "success" | "not_found" | "approved";
 
+/**
+ * A row the screen blocked for coming from a file the brand has since
+ * replaced. Whether it is right to bill it anyway is a judgement no upload can
+ * make: the newer file may simply not cover that branch.
+ */
+export interface StaleRowContext {
+  readonly id: string;
+  readonly isStaleSource: boolean;
+  readonly isExported: boolean;
+}
+
+export interface ResolveStaleRowInput {
+  readonly billingId: string;
+  readonly resolution: "keep" | "delete";
+}
+
 export interface BillingScreenOperations {
   readonly readPeriodSnapshot: (
     period: FranchiseeBillingPeriod,
@@ -222,6 +238,11 @@ export interface BillingScreenOperations {
   readonly readBillableFranchisees: () => Promise<
     readonly BillingScreenFranchisee[]
   >;
+  readonly readStaleRowContext: (
+    billingId: string,
+  ) => Promise<StaleRowContext | null>;
+  readonly acknowledgeStaleRow: (billingId: string) => Promise<boolean>;
+  readonly deleteStaleRow: (billingId: string) => Promise<boolean>;
 }
 
 export interface BillingScreenAnomaly {
@@ -522,6 +543,36 @@ export async function discardBillingSourceFile(
     );
   }
   return { success: true, data: { sourceFileId } };
+}
+
+/**
+ * Settles one row blocked as coming from a superseded file. "keep" bills it
+ * from the file it already has; "delete" drops it, for a branch the newer file
+ * deliberately no longer covers. An invoiced row is neither — it is a fact.
+ */
+export async function resolveStaleBillingRow(
+  input: ResolveStaleRowInput,
+  operations?: BillingScreenOperations,
+): Promise<MutationResult<{ readonly resolution: "keep" | "delete" }>> {
+  const activeOperations = operations ?? await defaultOperations();
+  const context = await activeOperations.readStaleRowContext(
+    input.billingId,
+  );
+  if (!context || !context.isStaleSource) {
+    return failure("not_found", "השורה כבר אינה חסומה. רענני את העמוד");
+  }
+  if (context.isExported) {
+    return failure(
+      "exported",
+      "לא ניתן לשנות שורה שכבר יוצאה לחשבשבת",
+    );
+  }
+  const persisted = input.resolution === "keep"
+    ? await activeOperations.acknowledgeStaleRow(input.billingId)
+    : await activeOperations.deleteStaleRow(input.billingId);
+  return persisted
+    ? { success: true, data: { resolution: input.resolution } }
+    : failure("conflict", "השורה השתנתה ולא נשמרה. רענני את העמוד ונסי שוב");
 }
 
 export async function resolveApprovedBillingDifference(

@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CalendarDays,
@@ -222,6 +222,7 @@ export function FranchiseeBillingScreen() {
     },
     [pathname, router],
   );
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ["franchisee-billing-screen", period.year, period.month],
     queryFn: () => fetchBillingScreen(period),
@@ -247,6 +248,23 @@ export function FranchiseeBillingScreen() {
       action: "resolve_difference",
       sourceFileId: difference.sourceFileId,
       franchiseeId: difference.franchiseeId,
+      resolution,
+    });
+    await query.refetch();
+  };
+
+  /**
+   * Settles one row blocked as coming from a superseded file: bill it from the
+   * file it already has, or drop it because the newer file no longer covers
+   * that branch.
+   */
+  const resolveStaleRow = async (
+    billingId: string,
+    resolution: "keep" | "delete",
+  ) => {
+    await patchBillingScreen({
+      action: "resolve_stale_row",
+      billingId,
       resolution,
     });
     await query.refetch();
@@ -280,15 +298,26 @@ export function FranchiseeBillingScreen() {
     await query.refetch();
   };
 
+  /**
+   * Always invalidates the month the file was read as, then moves there. The
+   * period switch alone is not enough: a month already in cache is served from
+   * it for `staleTime`, so an upload could land and the screen still show what
+   * it held before — which reads as "nothing happened".
+   */
   const handleUploaded = async (uploadedPeriod: FranchiseeBillingPeriod) => {
+    await queryClient.invalidateQueries({
+      queryKey: [
+        "franchisee-billing-screen",
+        uploadedPeriod.year,
+        uploadedPeriod.month,
+      ],
+    });
     if (
-      uploadedPeriod.year === period.year &&
-      uploadedPeriod.month === period.month
+      uploadedPeriod.year !== period.year ||
+      uploadedPeriod.month !== period.month
     ) {
-      await query.refetch();
-      return;
+      setPeriod(uploadedPeriod);
     }
-    setPeriod(uploadedPeriod);
   };
 
   const data = query.data;
@@ -434,12 +463,7 @@ export function FranchiseeBillingScreen() {
             franchisees={data.franchisees}
             onResolveDifference={resolveDifference}
             onResolveAnomaly={resolveAnomaly}
-          />
-          <FranchiseeBillingApproval
-            key={`approval-${period.year}-${period.month}`}
-            data={data}
-            period={period}
-            onApproved={() => query.refetch()}
+            onResolveStaleRow={resolveStaleRow}
           />
           <FranchiseeBillingExport
             key={[
@@ -461,6 +485,14 @@ export function FranchiseeBillingScreen() {
           ) : (
             <BillingEmptyState hasSource={data.sourceFiles.length > 0} />
           )}
+          {/* Below the table on purpose: locking is the last step of the
+              month, not the first thing to reach for on the way in. */}
+          <FranchiseeBillingApproval
+            key={`approval-${period.year}-${period.month}`}
+            data={data}
+            period={period}
+            onApproved={() => query.refetch()}
+          />
         </section>
       )}
     </main>

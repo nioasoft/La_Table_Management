@@ -245,7 +245,9 @@ function billingRowSelection(
   const activeSourceFileId = activeSourceFileIdByBrand(sourcesByBrand);
   // A row billed from a one-restaurant file answers to that file alone, so the
   // brand's newest upload never makes it stale.
-  const isStale = sql<boolean>`coalesce(${schema.uploadedFile.metadata}->>'singleBranch', '') <> 'true' and ${billing.sourceFileId} is distinct from ${activeSourceFileId}`;
+  // `stale_source_acknowledged` is an admin's answer to this exact block, and
+  // any upload that rewrites the row clears it again.
+  const isStale = sql<boolean>`coalesce(${schema.uploadedFile.metadata}->>'singleBranch', '') <> 'true' and ${billing.sourceFileId} is distinct from ${activeSourceFileId} and not ${billing.staleSourceAcknowledged}`;
   return {
     id: billing.id,
     franchiseeId: billing.franchiseeId,

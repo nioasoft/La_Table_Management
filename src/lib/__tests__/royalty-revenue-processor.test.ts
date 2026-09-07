@@ -108,6 +108,8 @@ function storedBilling(
     marketingRateSnapshot: "1.00",
     vatRateSnapshot: "0.1800",
     status: "draft",
+    royaltyExportBatchId: null,
+    marketingExportBatchId: null,
     ...overrides,
   };
 }
@@ -144,9 +146,8 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
     return [...this.billings.values()];
   }
 
-  async persistSourceFile(_input: SourceFileInput): Promise<string> {
+  async persistSourceFile(_input: SourceFileInput): Promise<void> {
     this.sourceFiles += 1;
-    return `source-file-${this.sourceFiles}`;
   }
 
   async recordSourceReview(
@@ -161,6 +162,7 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
 
   async upsertDrafts(
     drafts: readonly DraftBillingCandidate[],
+    overwriteApproved = false,
   ): Promise<{
     readonly writtenCount: number;
     readonly skippedFranchiseeIds: readonly string[];
@@ -176,14 +178,22 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
         }
       });
     }
+    // Mirrors the upsert's `setWhere`: drafts always, approved only when the
+    // overwrite was confirmed, and never a row carried into an export batch.
+    const writable = (billing: StoredFranchiseeBilling | undefined) =>
+      billing === undefined ||
+      billing.status === "draft" ||
+      (overwriteApproved &&
+        billing.royaltyExportBatchId === null &&
+        billing.marketingExportBatchId === null);
     const skippedFranchiseeIds = drafts.flatMap((draft) =>
-      this.billings.get(draft.franchiseeId)?.status === "approved"
-        ? [draft.franchiseeId]
-        : [],
+      writable(this.billings.get(draft.franchiseeId))
+        ? []
+        : [draft.franchiseeId],
     );
     drafts.forEach((draft) => {
       const current = this.billings.get(draft.franchiseeId);
-      if (current?.status === "approved") return;
+      if (!writable(current)) return;
       const discount = current?.discountRatePoints ?? "0";
       this.billings.set(
         draft.franchiseeId,
@@ -224,6 +234,8 @@ function draftToStored(
     marketingRateSnapshot: null,
     vatRateSnapshot: null,
     status: "draft",
+    royaltyExportBatchId: null,
+    marketingExportBatchId: null,
   };
 }
 
@@ -261,7 +273,10 @@ async function uploadWithStoredDiscount(): Promise<StoredFranchiseeBilling> {
     ...uploaded,
     discountRatePoints: "1.00",
   });
-  await processRoyaltyRevenueUpload(UPLOAD, dependencies(operations, row));
+  await processRoyaltyRevenueUpload(
+    { ...UPLOAD, confirmOverwrite: true },
+    dependencies(operations, row),
+  );
   const stored = operations.billings.get("franchisee-1");
   if (!stored) throw new Error("Expected the repeated upload to keep the draft");
   return stored;
@@ -273,10 +288,67 @@ describe("processRoyaltyRevenueUpload", () => {
     const deps = dependencies(operations);
 
     await processRoyaltyRevenueUpload(UPLOAD, deps);
-    await processRoyaltyRevenueUpload(UPLOAD, deps);
+    await processRoyaltyRevenueUpload(
+      { ...UPLOAD, confirmOverwrite: true },
+      deps,
+    );
 
     expect(operations.billings).toHaveLength(1);
     expect(operations.billings.get("franchisee-1")?.receipts).toBe("118");
+  });
+
+  it("refuses a second upload until the overwrite is confirmed", async () => {
+    const operations = new MemoryBillingOperations([
+      storedBilling({ status: "approved" }),
+    ]);
+
+    const result = await processRoyaltyRevenueUpload(
+      UPLOAD,
+      dependencies(operations),
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.conflict).toEqual({
+      franchiseeNames: ["VINNI יהוד"],
+      approvedNames: ["VINNI יהוד"],
+      exportedNames: [],
+    });
+    // Nothing was stored, so a refused upload leaves no ghost file behind.
+    expect(operations.sourceFiles).toBe(0);
+  });
+
+  it("replaces an approved row once the overwrite is confirmed", async () => {
+    const operations = new MemoryBillingOperations([
+      storedBilling({ status: "approved" }),
+    ]);
+
+    const result = await processRoyaltyRevenueUpload(
+      { ...UPLOAD, confirmOverwrite: true },
+      dependencies(operations, parsedRow(236)),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.draftsWritten).toBe(1);
+    expect(result.approvedDifferences).toEqual([]);
+  });
+
+  it("never rewrites a row already exported to Hashavshevet", async () => {
+    const operations = new MemoryBillingOperations([
+      storedBilling({
+        status: "approved",
+        royaltyExportBatchId: "batch-1",
+      }),
+    ]);
+
+    const result = await processRoyaltyRevenueUpload(
+      { ...UPLOAD, confirmOverwrite: true },
+      dependencies(operations, parsedRow(236)),
+    );
+
+    expect(result.draftsWritten).toBe(0);
+    expect(result.warnings).toContain(
+      "שורות שכבר יוצאו לחשבשבת לא עודכנו מהקובץ החדש: VINNI יהוד",
+    );
   });
 
   it("preserves a stored discount and recalculates the draft with it", async () => {
@@ -284,7 +356,10 @@ describe("processRoyaltyRevenueUpload", () => {
       storedBilling({ discountRatePoints: "1.00" }),
     ]);
 
-    await processRoyaltyRevenueUpload(UPLOAD, dependencies(operations));
+    await processRoyaltyRevenueUpload(
+      { ...UPLOAD, confirmOverwrite: true },
+      dependencies(operations),
+    );
 
     expect(operations.billings.get("franchisee-1")).toMatchObject({
       discountRatePoints: "1.00",
@@ -338,7 +413,7 @@ describe("processRoyaltyRevenueUpload", () => {
     const operations = new MemoryBillingOperations([approved]);
 
     const result = await processRoyaltyRevenueUpload(
-      UPLOAD,
+      { ...UPLOAD, sourceFileId: "source-file-1" },
       dependencies(operations, parsedRow(236)),
     );
 
@@ -357,7 +432,7 @@ describe("processRoyaltyRevenueUpload", () => {
     );
 
     const result = await processRoyaltyRevenueUpload(
-      UPLOAD,
+      { ...UPLOAD, sourceFileId: "source-file-1" },
       dependencies(operations, parsedRow(236)),
     );
 
