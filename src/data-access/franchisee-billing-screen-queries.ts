@@ -272,6 +272,24 @@ function billingRowSelection(
     ), 0)::text`,
     sourceFileId: billing.sourceFileId,
     sourceFileName: schema.uploadedFile.originalFileName,
+    // When the owners were last told about this row's discount. The email log
+    // is the record — a delivered send is the only thing that counts, so a
+    // queued or failed attempt leaves the row looking unsent, which it is.
+    // Stamped as ISO-8601 in UTC. The column carries no zone, so the bare
+    // Postgres string would be read as local time and shown an hour or three
+    // early — the same trap as `toISOString()` in the other direction.
+    discountNoticeSentAt: sql<string | null>`(
+      select to_char(
+        max(${schema.emailLog.sentAt}),
+        'YYYY-MM-DD"T"HH24:MI:SS"Z"'
+      )
+      from ${schema.emailLog}
+      where ${schema.emailLog.entityType} = 'franchisee_billing'
+        and ${schema.emailLog.entityId} = ${billing.id}
+        and ${schema.emailLog.status} = 'sent'
+        and ${schema.emailLog.metadata}->>'messageKind'
+            = 'franchisee_billing_discount_notice'
+    )`,
     isStaleSource: isStale,
     isApprovalBlocked: isStale,
     status: billing.status,

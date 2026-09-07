@@ -54,6 +54,7 @@ function screenRow(
     deferralBalance: "12.500000",
     sourceFileId: "source-1",
     sourceFileName: "יוני.xlsx",
+    discountNoticeSentAt: null,
     isStaleSource: false,
     isApprovalBlocked: false,
     status: "draft",

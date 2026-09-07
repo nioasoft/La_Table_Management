@@ -52,6 +52,7 @@ function billingRow(
     deferralBalance: "0",
     sourceFileId: "source-1",
     sourceFileName: "יוני.xlsx",
+    discountNoticeSentAt: null,
     isStaleSource: false,
     isApprovalBlocked: false,
     status: "draft",

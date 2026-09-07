@@ -34,6 +34,7 @@ export interface BillingScreenRow {
   readonly deferralBalance: string;
   readonly sourceFileId: string | null;
   readonly sourceFileName: string | null;
+  readonly discountNoticeSentAt: Date | string | null;
   readonly isStaleSource: boolean;
   readonly isApprovalBlocked: boolean;
   readonly status: FranchiseeBillingStatus;

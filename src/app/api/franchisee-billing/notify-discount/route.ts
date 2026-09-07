@@ -2,11 +2,14 @@ import { render } from "@react-email/components";
 import { and, eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  buildDiscountNoticePreview,
+  discountNoticeProps,
+} from "@/app/api/franchisee-billing/notify-discount/preview";
 import * as schema from "@/db/schema";
 import {
   FranchiseeBillingEmail,
   franchiseeBillingEmailSubject,
-  type FranchiseeBillingEmailProps,
 } from "@/emails/franchisee-billing";
 import {
   isAuthError,
@@ -101,26 +104,6 @@ export function resolveRecipients(
   return recipients;
 }
 
-function noticeProps(
-  row: DiscountNoticeRow,
-  ownerName: string,
-): FranchiseeBillingEmailProps {
-  return {
-    ownerName,
-    franchiseeName: row.franchiseeName,
-    periodYear: row.periodYear,
-    periodMonth: row.periodMonth,
-    grossBase: row.grossBase,
-    netBase: row.netBase,
-    tierRate: row.tierRate,
-    discountRatePoints: row.discountRatePoints,
-    effectiveRate: row.effectiveRate,
-    royaltyFull: row.royaltyFull,
-    discountValue: row.discountValue,
-    royalty: row.royalty,
-  };
-}
-
 export function blockReason(row: DiscountNoticeRow): string | null {
   if (row.status !== "approved") {
     return "אפשר לשלוח הודעת הנחה רק אחרי אישור החודש";
@@ -135,7 +118,7 @@ async function deliver(
   row: DiscountNoticeRow,
   recipient: { readonly name: string; readonly email: string },
 ): Promise<{ readonly success: boolean; readonly error?: string }> {
-  const props = noticeProps(row, recipient.name);
+  const props = discountNoticeProps(row, recipient.name);
   const element = FranchiseeBillingEmail(props);
   const [html, text, emailService] = await Promise.all([
     render(element),
@@ -211,6 +194,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         { success: false, error: recipients, requestId },
         { status: 409 },
       );
+    }
+
+    if (validation.data.preview) {
+      const preview = await buildDiscountNoticePreview(row, recipients);
+      return NextResponse.json({
+        success: true,
+        data: { preview },
+        requestId,
+      });
     }
 
     const failures: { email: string; error: string }[] = [];

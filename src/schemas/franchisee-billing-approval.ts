@@ -32,7 +32,25 @@ export const franchiseeBillingApprovalResponseSchema = z.object({
 export const franchiseeBillingDiscountEmailSchema = z.strictObject({
   billingId: z.string().trim().min(1).max(100),
   emails: z.array(z.string().trim().email().max(254)).min(1).max(20),
+  /** Render what would be sent and deliver nothing. */
+  preview: z.boolean().default(false),
 });
+
+export const franchiseeBillingDiscountPreviewResponseSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    preview: z.object({
+      subject: z.string(),
+      html: z.string(),
+      shownFor: z.string(),
+      recipients: z.array(z.string()),
+    }),
+  }),
+});
+
+export type FranchiseeBillingDiscountPreview = z.infer<
+  typeof franchiseeBillingDiscountPreviewResponseSchema
+>["data"]["preview"];
 
 export type FranchiseeBillingApprovalInput = z.infer<
   typeof franchiseeBillingApprovalSchema

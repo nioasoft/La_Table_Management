@@ -38,6 +38,8 @@ interface FranchiseeBillingTableProps {
     billingId: string,
     noRevenueReason: string | null,
   ) => Promise<void>;
+  /** Refreshes the month so the "נשלח ב-" marker appears without a reload. */
+  readonly onNoticeSent: () => Promise<unknown>;
 }
 
 const currencyColumns = [
@@ -118,6 +120,7 @@ export function FranchiseeBillingTable({
   rows,
   onSaveDiscount,
   onSaveNoRevenueReason,
+  onNoticeSent,
 }: FranchiseeBillingTableProps) {
   const [discountPreviews, setDiscountPreviews] = useState<
     Readonly<Record<string, number>>
@@ -293,7 +296,10 @@ export function FranchiseeBillingTable({
                           )}
                         </div>
                       </div>
-                      <FranchiseeBillingDiscountEmail row={row} />
+                      <FranchiseeBillingDiscountEmail
+                        row={row}
+                        onSent={onNoticeSent}
+                      />
                     </div>
                   ) : (
                     <FranchiseeBillingDiscountCell

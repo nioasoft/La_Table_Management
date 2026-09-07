@@ -150,6 +150,7 @@ const billingScreenRowSchema = z.object({
   deferralBalance: z.string(),
   sourceFileId: z.string().nullable(),
   sourceFileName: z.string().nullable(),
+  discountNoticeSentAt: z.string().nullable(),
   isStaleSource: z.boolean(),
   isApprovalBlocked: z.boolean(),
   status: z.enum(["draft", "approved"]),

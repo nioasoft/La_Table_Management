@@ -481,6 +481,7 @@ export function FranchiseeBillingScreen() {
               rows={data.rows}
               onSaveDiscount={saveDiscount}
               onSaveNoRevenueReason={saveNoRevenueReason}
+              onNoticeSent={() => query.refetch()}
             />
           ) : (
             <BillingEmptyState hasSource={data.sourceFiles.length > 0} />
