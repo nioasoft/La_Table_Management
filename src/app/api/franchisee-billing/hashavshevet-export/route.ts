@@ -1,3 +1,4 @@
+import AdmZip from "adm-zip";
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
@@ -25,6 +26,11 @@ const ITEM_LABELS = {
   royalty: "תמלוגים",
   marketing: "שיווק",
 } as const;
+const ITEM_TYPES: readonly FranchiseeBillingItemType[] = [
+  "royalty",
+  "marketing",
+];
+const ZIP_FILE_NAME = "תמלוגים ושיווק זכיינים.zip";
 const EXPORT_BRAND_NAMES: Readonly<Record<string, string>> = {
   MINNA_TOMEI: "מינה טומאיי",
   VINNI: "פט ויני",
@@ -371,6 +377,8 @@ function incompleteError(completeness: BrandCompleteness): never {
 
 interface UploadTracker {
   url: string | null;
+  /** Every file the run put in blob storage, so a failure can undo them all. */
+  readonly urls: string[];
 }
 
 async function exportWithinTransaction(
@@ -397,6 +405,7 @@ async function exportWithinTransaction(
     buffer,
   });
   upload.url = stored.url;
+  upload.urls.push(stored.url);
   await store.persistExport({
     ...input,
     batchId,
@@ -414,18 +423,19 @@ async function exportWithinTransaction(
   };
 }
 
-async function cleanupUploadedFile(
+async function cleanupUploadedFiles(
   operations: HashavshevetExportOperations,
-  uploadedUrl: string | null,
+  uploadedUrls: readonly string[],
 ): Promise<void> {
-  if (!uploadedUrl) return;
-  try {
-    await operations.deleteFile(uploadedUrl);
-  } catch (cleanupError: unknown) {
-    console.error("[franchisee-billing-export] Blob cleanup failed", {
-      uploadedUrl,
-      cleanupError,
-    });
+  for (const uploadedUrl of uploadedUrls) {
+    try {
+      await operations.deleteFile(uploadedUrl);
+    } catch (cleanupError: unknown) {
+      console.error("[franchisee-billing-export] Blob cleanup failed", {
+        uploadedUrl,
+        cleanupError,
+      });
+    }
   }
 }
 
@@ -434,7 +444,7 @@ export async function executeHashavshevetExport(
   exportedBy: string,
   operations: HashavshevetExportOperations,
 ): Promise<ExportArtifact> {
-  const upload: UploadTracker = { url: null };
+  const upload: UploadTracker = { url: null, urls: [] };
   try {
     return await operations.withTransaction((store) =>
       exportWithinTransaction(
@@ -445,7 +455,63 @@ export async function executeHashavshevetExport(
         upload,
       ));
   } catch (error: unknown) {
-    await cleanupUploadedFile(operations, upload.url);
+    await cleanupUploadedFiles(operations, upload.urls);
+    throw error;
+  }
+}
+
+/**
+ * Every brand's royalty and marketing file, in one archive and one
+ * transaction. All or nothing on purpose: a bundle that quietly leaves a brand
+ * out is a month billed short that nobody is told about.
+ */
+export async function executeHashavshevetZipExport(
+  period: FranchiseeBillingPeriod,
+  exportedBy: string,
+  operations: HashavshevetExportOperations,
+): Promise<readonly ExportArtifact[]> {
+  const brands = await operations.readBrandContexts(period);
+  if (brands.length === 0) {
+    throw new HashavshevetExportError(
+      "not_found",
+      "אין מותגים זמינים לייצוא",
+    );
+  }
+  // Checked before a single file is built, so a brand that is not ready costs
+  // nothing but the message.
+  const blocked = brands
+    .map(summarizeBrandCompleteness)
+    .filter((completeness) => !completeness.canExport);
+  if (blocked.length > 0) {
+    throw new HashavshevetExportError(
+      "incomplete",
+      `לא ניתן לייצא הכל: ${blocked
+        .map((brand) =>
+          `${brand.brandName} ${brand.readyCount}/${brand.totalActive}`)
+        .join(", ")}. יש לאשר או לסמן ללא מחזור את כל הזכיינים.`,
+    );
+  }
+  const upload: UploadTracker = { url: null, urls: [] };
+  try {
+    return await operations.withTransaction(async (store) => {
+      const artifacts: ExportArtifact[] = [];
+      for (const brand of brands) {
+        for (const itemType of ITEM_TYPES) {
+          artifacts.push(
+            await exportWithinTransaction(
+              { ...period, brandId: brand.brandId, itemType },
+              exportedBy,
+              operations,
+              store,
+              upload,
+            ),
+          );
+        }
+      }
+      return artifacts;
+    });
+  } catch (error: unknown) {
+    await cleanupUploadedFiles(operations, upload.urls);
     throw error;
   }
 }
@@ -477,14 +543,14 @@ function queryInput(request: NextRequest): Record<string, string | undefined> {
     year: params.get("year") ?? undefined,
     month: params.get("month") ?? undefined,
   };
-  return params.get("mode") === "status"
-    ? { ...period, mode: "status" }
-    : {
-        ...period,
-        mode: "file",
-        brandId: params.get("brandId") ?? undefined,
-        itemType: params.get("itemType") ?? undefined,
-      };
+  const mode = params.get("mode");
+  if (mode === "status" || mode === "zip") return { ...period, mode };
+  return {
+    ...period,
+    mode: "file",
+    brandId: params.get("brandId") ?? undefined,
+    itemType: params.get("itemType") ?? undefined,
+  };
 }
 
 function errorStatus(error: HashavshevetExportError): number {
@@ -581,6 +647,36 @@ async function fileResponse(
   });
 }
 
+async function zipResponse(
+  period: FranchiseeBillingPeriod,
+  exportedBy: string,
+  operations: HashavshevetExportOperations,
+  context: RequestContext,
+): Promise<NextResponse> {
+  const artifacts = await executeHashavshevetZipExport(
+    period,
+    exportedBy,
+    operations,
+  );
+  const zip = new AdmZip();
+  for (const artifact of artifacts) {
+    zip.addFile(artifact.fileName, artifact.buffer);
+  }
+  logCompletion(context, 200, {
+    mode: "zip",
+    files: artifacts.length,
+    rows: artifacts.reduce((sum, artifact) => sum + artifact.rowCount, 0),
+  });
+  const encodedName = encodeURIComponent(ZIP_FILE_NAME);
+  return new NextResponse(new Uint8Array(zip.toBuffer()), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodedName}`,
+    },
+  });
+}
+
 export async function handleHashavshevetExport(
   request: NextRequest,
   operations?: HashavshevetExportOperations,
@@ -599,8 +695,19 @@ export async function handleHashavshevetExport(
   const activeOperations =
     operations ?? await createHashavshevetExportOperations();
   try {
+    // `return await`, not `return`: an async function adopts a returned
+    // promise, so its rejection would skip the catch below and surface as an
+    // unhandled 500 with no Hebrew message and no cleanup.
     if (validation.data.mode === "status") {
-      return statusResponse(validation.data, activeOperations, context);
+      return await statusResponse(validation.data, activeOperations, context);
+    }
+    if (validation.data.mode === "zip") {
+      return await zipResponse(
+        { year: validation.data.year, month: validation.data.month },
+        authResult.user.id,
+        activeOperations,
+        context,
+      );
     }
     const exportInput: HashavshevetExportInput = {
       year: validation.data.year,
@@ -608,7 +715,7 @@ export async function handleHashavshevetExport(
       brandId: validation.data.brandId,
       itemType: validation.data.itemType,
     };
-    return fileResponse(
+    return await fileResponse(
       exportInput,
       authResult.user.id,
       activeOperations,

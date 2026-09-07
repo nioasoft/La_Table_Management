@@ -36,10 +36,18 @@ const exportFileQuerySchema = z.strictObject({
   itemType: franchiseeBillingItemTypeSchema,
 });
 
+/** Every brand's royalty and marketing file in one archive. */
+const exportZipQuerySchema = z.strictObject({
+  mode: z.literal("zip"),
+  year: billingYearSchema,
+  month: billingMonthSchema,
+});
+
 export const franchiseeBillingHashavshevetQuerySchema =
   z.discriminatedUnion("mode", [
     exportStatusQuerySchema,
     exportFileQuerySchema,
+    exportZipQuerySchema,
   ]);
 
 const discountRatePointsSchema = z

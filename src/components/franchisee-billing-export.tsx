@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  FileArchive,
   FileSpreadsheet,
   Loader2,
   RefreshCw,
@@ -70,6 +71,24 @@ export function hashavshevetExportUrl(
   return `/api/franchisee-billing/hashavshevet-export?${params.toString()}`;
 }
 
+export function hashavshevetZipUrl(
+  period: FranchiseeBillingPeriod,
+): string {
+  const params = new URLSearchParams({
+    year: String(period.year),
+    month: String(period.month),
+    mode: "zip",
+  });
+  return `/api/franchisee-billing/hashavshevet-export?${params.toString()}`;
+}
+
+/** The bundle is all six files or none, so one unready brand closes it. */
+export function canExportEverything(
+  brands: readonly FranchiseeBillingExportBrandStatus[],
+): boolean {
+  return brands.length > 0 && brands.every((brand) => brand.canExport);
+}
+
 export function deriveBrandExportGate(
   brand: FranchiseeBillingExportBrandStatus,
 ): BrandExportGate {
@@ -116,15 +135,11 @@ function responseFileName(
   }
 }
 
-async function downloadExport(
-  period: FranchiseeBillingPeriod,
-  brand: FranchiseeBillingExportBrandStatus,
-  itemType: FranchiseeBillingItemType,
-  label: string,
+async function downloadFrom(
+  url: string,
+  fallbackName: string,
 ): Promise<void> {
-  const response = await fetchWithTimeout(
-    hashavshevetExportUrl(period, brand.brandId, itemType),
-  );
+  const response = await fetchWithTimeout(url, { timeout: 120_000 });
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
     throw new Error(
@@ -133,17 +148,14 @@ async function downloadExport(
     );
   }
   const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
+  const objectUrl = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = responseFileName(
-    response,
-    `${brand.brandName} ${label} זכיינים.xlsx`,
-  );
+  anchor.href = objectUrl;
+  anchor.download = responseFileName(response, fallbackName);
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  URL.revokeObjectURL(objectUrl);
 }
 
 function ExportLoading() {
@@ -306,7 +318,10 @@ export function FranchiseeBillingExport({
     setPendingKey(key);
     setFailure(null);
     try {
-      await downloadExport(period, brand, itemType, label);
+      await downloadFrom(
+        hashavshevetExportUrl(period, brand.brandId, itemType),
+        `${brand.brandName} ${label} זכיינים.xlsx`,
+      );
       setSuccess({
         key,
         message: `קובץ ${label} של ${brand.brandName} הופק, נשמר והורד.`,
@@ -324,6 +339,31 @@ export function FranchiseeBillingExport({
     }
   };
 
+  const handleDownloadAll = async () => {
+    setPendingKey("zip");
+    setFailure(null);
+    try {
+      await downloadFrom(
+        hashavshevetZipUrl(period),
+        "תמלוגים ושיווק זכיינים.zip",
+      );
+      setSuccess({
+        key: "zip",
+        message: "כל הקבצים הופקו, נשמרו והורדו כקובץ ZIP אחד.",
+      });
+      await query.refetch();
+    } catch (error: unknown) {
+      console.error("Failed to export every franchisee billing file:", error);
+      setFailure(
+        error instanceof Error ? error.message : "הקבצים לא הופקו. נסי שוב.",
+      );
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  const bundleReady = canExportEverything(query.data ?? []);
+
   return (
     <section className="space-y-4" aria-labelledby="hashavshevet-export-title">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -336,23 +376,44 @@ export function FranchiseeBillingExport({
             ייצוא לחשבשבת
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            לכל מותג מופקים שני קבצים נפרדים. הייצוא נפתח רק כשכל הזכיינים
-            הפעילים מאושרים או מסומנים ללא מחזור.
+            לכל מותג מופקים שני קבצים נפרדים — תמלוגים ושיווק. הייצוא נפתח רק
+            כשכל הזכיינים הפעילים מאושרים או מסומנים ללא מחזור. &quot;ייצוא
+            הכל&quot; מפיק את כל הקבצים ביחד, והוא הכל או כלום.
           </p>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={query.isFetching}
-          onClick={() => void query.refetch()}
-        >
-          <RefreshCw
-            className={query.isFetching ? "animate-spin" : undefined}
-            aria-hidden="true"
-          />
-          בדיקה מחדש
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={!bundleReady || pendingKey !== null}
+            title={
+              bundleReady
+                ? "מפיק את כל ששת הקבצים ומוריד אותם כ-ZIP אחד"
+                : "נפתח כשכל המותגים מוכנים לייצוא"
+            }
+            onClick={() => void handleDownloadAll()}
+          >
+            {pendingKey === "zip" ? (
+              <Loader2 className="animate-spin" aria-hidden="true" />
+            ) : (
+              <FileArchive aria-hidden="true" />
+            )}
+            {pendingKey === "zip" ? "מפיק קבצים…" : "ייצוא הכל (ZIP)"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+          >
+            <RefreshCw
+              className={query.isFetching ? "animate-spin" : undefined}
+              aria-hidden="true"
+            />
+            בדיקה מחדש
+          </Button>
+        </div>
       </div>
 
       {query.isLoading && <ExportLoading />}
