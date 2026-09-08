@@ -22,42 +22,45 @@ import { InitialValuePlugin } from "./plugins/InitialValuePlugin";
 import { DefaultStylesPlugin } from "./plugins/DefaultStylesPlugin";
 import { EmailEditorToolbar } from "./EmailEditorToolbar";
 import { inlineEmailStyles } from "./inline-email-styles";
+import { emailTranslations } from "@/lib/translations/emails";
 
 /** Static signature + brand footer shown below the editable area.
- *  Mirrors the EmailLayout component from src/emails/components/email-layout.tsx.
- *  Not editable — purely visual so the user sees the full email. */
+ *  Mirrors the EmailLayout component from src/emails/components/email-layout.tsx,
+ *  reading the same signature table so the preview cannot drift from the send. */
 function EmailSignatureFooter() {
+  const signature = emailTranslations.signature;
+
   return (
     <div className="px-8 pb-6 select-none pointer-events-none opacity-80" dir="rtl">
       <hr className="border-t border-[#e6ebf1] my-6" />
       {/* Signature */}
       <div className="text-right px-5">
-        <p className="text-[16px] font-bold text-[#333] m-0 mb-0.5">רעות</p>
+        <p className="text-[16px] font-bold text-[#333] m-0 mb-0.5">
+          {signature.name}
+        </p>
         <p className="text-[14px] font-semibold text-[#333] m-0 mb-2 tracking-wide">
-          קבוצת LA TABLE
+          {signature.company}
         </p>
-        <p className="text-[12px] text-[#666] m-0 mb-0.5">
-          שדרות משה גושן 16, קרית מוצקין
-        </p>
+        <p className="text-[12px] text-[#666] m-0 mb-0.5">{signature.address}</p>
         <p className="text-[12px] text-[#666] m-0" dir="ltr">
-          T: 04-8759732 &nbsp;&nbsp; F: 04-8763534
+          {signature.phone}
         </p>
       </div>
       <hr className="border-t border-[#e6ebf1] my-4" />
       {/* Brand logos */}
       <div className="grid grid-cols-4 text-center px-5">
-        <p className="text-[13px] font-bold italic text-[#c41e3a] m-0 tracking-wide">
-          VINNI
-        </p>
-        <p className="text-[12px] font-extrabold text-[#333] m-0 tracking-wide">
-          KING KONG
-        </p>
-        <p className="text-[12px] font-semibold text-[#e67e22] m-0 tracking-[0.5px]">
-          minna tomei
-        </p>
-        <p className="text-[13px] font-bold text-[#333] m-0 tracking-[2px]">
-          NATANZON
-        </p>
+        {signature.brands.map((brand) => (
+          <p
+            key={brand.name}
+            className="text-[12px] font-bold m-0 tracking-wide"
+            style={{
+              color: brand.color,
+              fontStyle: brand.italic ? "italic" : "normal",
+            }}
+          >
+            {brand.name}
+          </p>
+        ))}
       </div>
       <hr className="border-t border-[#f0f0f0] mt-4 mb-2" />
       <p className="text-[11px] text-[#8898aa] text-center leading-4 m-0">

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>מעבר לדומיין חדש — minna tōmei group</title>
+<style>
+  :root {
+    --ink: #1a1a1a; --muted: #666; --line: #e3e6ea; --bg: #fbfbfc;
+    --card: #fff; --accent: #1e3a5f; --warn: #d6006e; --ok: #1f7a4d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 24px; background: var(--bg); color: var(--ink);
+    font-family: "Assistant", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 16px; line-height: 1.7;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+  header { border-bottom: 3px solid var(--accent); padding-bottom: 20px; margin-bottom: 32px; }
+  h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.3px; }
+  .sub { color: var(--muted); font-size: 15px; margin: 0; }
+  h2 {
+    font-size: 21px; margin: 40px 0 14px; padding-inline-start: 12px;
+    border-inline-start: 4px solid var(--accent);
+  }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  section.card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px 24px; margin-bottom: 18px;
+  }
+  code {
+    background: #f2f4f7; padding: 2px 6px; border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.88em;
+    direction: ltr; display: inline-block;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 15px; }
+  th, td { text-align: start; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: #f5f7f9; font-weight: 600; }
+  ol, ul { padding-inline-start: 22px; margin: 10px 0; }
+  li { margin: 7px 0; }
+  .flag {
+    border-inline-start: 4px solid var(--warn); background: #fff5fa;
+    padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  .flag strong { color: var(--warn); }
+  .keep {
+    border-inline-start: 4px solid var(--ok); background: #f2faf6;
+    padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 16px 0;
+  }
+  .keep strong { color: var(--ok); }
+  .ph { background: #fff3cd; border-bottom: 1px dashed #a07800; padding: 1px 5px; border-radius: 3px; }
+  .who { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 9px;
+         border-radius: 20px; background: #eef1f5; color: var(--accent); margin-inline-start: 8px;
+         vertical-align: middle; }
+  .who.you { background: #ffe9f3; color: var(--warn); }
+  footer { margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>מעבר לדומיין חדש</h1>
+  <p class="sub">La Table → minna tōmei group · מסמך הכנה · 8 בספטמבר 2026</p>
+</header>
+
+<section class="card">
+  <p style="margin-top:0">
+    <strong>שלב 1 (החלפת השם בקוד) הושלם.</strong> המסמך הזה הוא שלב 2: מה צריך
+    להתארגן <em>לפני</em> שנוגעים בדומיין. אין כאן שינוי קוד — רק רשימת הכנות.
+  </p>
+  <p style="margin-bottom:0">
+    לאורך המסמך <span class="ph">&lt;NEW_DOMAIN&gt;</span> מסמן את הדומיין החדש,
+    שעדיין לא נמסר לי. <span class="who you">אתה</span> = פעולה שרק אתה יכול לבצע ·
+    <span class="who">קוד</span> = שינוי שאבצע כשנגיע לשם.
+  </p>
+</section>
+
+<div class="keep">
+  <strong>הקו האדום.</strong> כל המיילים ה<u>נכנסים</u> — 10ביס, סיבוס, וולט,
+  משלוחה וכל השאר — נשארים על הדומיין הישן ללא שינוי:
+  <code>*@inbound.latable.co.il</code>, רשומות ה-MX ב-Cloudflare, וכללי ה-Email
+  Routing. רק ה<u>יוצא</u> עובר.
+</div>
+
+<h2>א. מה שרק אתה יכול לספק</h2>
+
+<section class="card">
+  <h3>1. הדומיין עצמו <span class="who you">אתה</span></h3>
+  <p>
+    השם המדויק, ואיפה יושב ה-DNS שלו — ב-Cloudflare כמו הדומיין הנוכחי, או אצל
+    רשם אחר. אם הוא לא ב-Cloudflare, כדאי להעביר אותו לשם לפני שמתחילים: כל
+    ה-runbook הקיים ב-<code>docs/email-inbound-setup.md</code> מניח Cloudflare.
+  </p>
+
+  <h3>2. תיבת דואר אמיתית לכתובת ה-Reply-To <span class="who you">אתה</span></h3>
+  <p>
+    זה הפריט הכבד ביותר במעבר, ולא בגלל הטכניקה. היום כל מייל יוצא נושא
+    <code>replyTo: office@latable.co.il</code>, וספקים <em>עונים</em> — על
+    חשבוניות, על בקשות דוחות, על תזכורות. אם הכתובת החדשה
+    (<code>office@<span class="ph">&lt;NEW_DOMAIN&gt;</span></code>) תהיה "כתובת
+    שליחה" בלבד בלי תיבה מאחוריה, כל תשובה כזאת תיפול בשקט — בלי שגיאה, בלי
+    התראה, בלי שאף אחד ישים לב.
+  </p>
+  <p>
+    לכן צריך להחליט מי מארח את הדואר של הדומיין החדש (Google Workspace? אחר?),
+    ולוודא שהתיבה קיימת ונקראת לפני שמשנים את <code>EMAIL_FROM</code>.
+  </p>
+
+  <h3>3. גישה ל-Google Cloud Console <span class="who you">אתה</span></h3>
+  <p>
+    ההתחברות למערכת עוברת ב-Google OAuth, וכתובות ה-redirect מוגדרות בקונסולה
+    של Google — לא בקוד. בלי להוסיף שם את הדומיין החדש, ההתחברות תישבר ברגע
+    שהאתר יעבור. צריך גישה לפרויקט, או מישהו שיש לו.
+  </p>
+
+  <h3>4. קבצי הלוגו <span class="who you">אתה</span></h3>
+  <p>
+    הלוגו החדש כ-SVG או PNG ברזולוציה גבוהה, וסט פאביקון
+    (<code>favicon.ico</code>, <code>apple-touch-icon.png</code>,
+    <code>android-chrome-192/512</code>). כרגע עדיין מוצג
+    <code>public/logos/latable.jpeg</code> הישן.
+  </p>
+</section>
+
+<h2>ב. Resend — חשבון חדש לא צריך</h2>
+
+<section class="card">
+  <p>
+    החשבון הקיים תומך בכמה דומיינים מאומתים במקביל, אז אין סיבה לפתוח חדש.
+    מה שכן צריך:
+  </p>
+  <ul>
+    <li>
+      <strong>אימות הדומיין החדש לשליחה</strong> <span class="who you">אתה</span> —
+      Resend ייתן רשומות SPF‏ (TXT), DKIM‏ (CNAME) ו-DMARC להוסיף ל-DNS.
+    </li>
+    <li>
+      <strong>להחליט על API key</strong> — אפשר להמשיך עם הקיים. מפתח נפרד לדומיין
+      החדש נוח אם בעתיד תרצה לבטל אחד מהם בלי לגעת בשני.
+    </li>
+    <li>
+      <strong>חימום</strong> — דומיין שליחה חדש מתחיל בלי מוניטין אצל Gmail ו-Outlook.
+      מומלץ להתחיל עם <code>p=none</code> ב-DMARC, לעקוב שבועיים אחרי הדוחות, ורק
+      אז להדק ל-<code>quarantine</code>.
+    </li>
+  </ul>
+  <div class="flag">
+    <strong>שים לב:</strong> שני ה-webhooks של Resend (אחד לדואר נכנס, אחד
+    לאירועי מסירה) מצביעים היום על <code>www.latable.co.il</code> ויש להם שני
+    סודות חתימה <em>שונים</em> —
+    <code>RESEND_INBOUND_WEBHOOK_SECRET</code> ו-<code>RESEND_WEBHOOK_SECRET</code>.
+    כל עוד הדומיין הישן ממשיך להגיש את האתר, אין מה לגעת בהם.
+  </div>
+</section>
+
+<h2>ג. משתני סביבה — שני מאגרים נפרדים</h2>
+
+<section class="card">
+  <p>
+    זו הנקודה שהכי קל לפספס: חלק מהמשתנים יושבים ב-Vercel, וחלק ב-GitHub — מאגר
+    אחר לגמרי. עדכון של אחד לא נוגע בשני.
+  </p>
+  <table>
+    <thead><tr><th>משתנה</th><th>איפה</th><th>מה משתנה</th></tr></thead>
+    <tbody>
+      <tr><td><code>NEXT_PUBLIC_APP_URL</code></td><td>Vercel (prod + preview)</td><td>כתובת האתר — מזינה כל לינק העלאה ציבורי</td></tr>
+      <tr><td><code>NEXT_PUBLIC_BETTER_AUTH_URL</code></td><td>Vercel</td><td>כתובת בסיס של האימות</td></tr>
+      <tr><td><code>EMAIL_FROM</code></td><td>Vercel <em>וגם</em> GitHub</td><td>כתובת השולח</td></tr>
+      <tr><td><code>EMAIL_FROM_NAME</code></td><td>Vercel <em>וגם</em> GitHub</td><td>שם התצוגה — <strong>כנראה מכיל היום את השם הישן</strong></td></tr>
+      <tr><td><code>BACKUP_NOTIFICATION_TO</code> / <code>_CC</code></td><td>GitHub secrets</td><td>נמעני מייל הגיבוי היומי</td></tr>
+      <tr><td><code>ALERT_RECIPIENTS</code></td><td>Vercel</td><td>נמעני התראות ה-cron</td></tr>
+    </tbody>
+  </table>
+  <div class="flag">
+    <strong>לבדוק כבר עכשיו:</strong> <code>EMAIL_FROM_NAME</code> ב-Vercel
+    וב-GitHub. בקוד ברירת המחדל כבר עודכנה ל-<code>רעות - minna tōmei group</code>,
+    אבל אם המשתנה מוגדר בפרודקשן הוא <em>גובר</em> על ברירת המחדל — וכל מייל
+    שיוצא ימשיך להציג את השם הישן בתיבה של הנמען. זה שם תצוגה בלבד, לא כתובת,
+    ולכן אפשר לתקן אותו מיד בלי קשר למעבר הדומיין.
+  </div>
+</section>
+
+<h2>ד. שינויי קוד שהמעבר יחייב</h2>
+
+<section class="card">
+  <p>מתועד כאן, לא בוצע — זה שייך ליום המעבר עצמו. <span class="who">קוד</span></p>
+  <table>
+    <thead><tr><th>קובץ</th><th>מה</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>src/utils/auth.ts</code> (שורות 10-11)</td>
+        <td><code>trustedOrigins</code> — מערך קשיח עם שתי הכתובות הישנות. בלי להוסיף את החדשה, ההתחברות תיחסם.</td>
+      </tr>
+      <tr>
+        <td><code>src/app/api/cron/inbound-review-summary/route.ts</code> (331)</td>
+        <td>fallback קשיח ל-<code>https://www.latable.co.il</code> בלינקים שבמייל הסיכום.</td>
+      </tr>
+      <tr>
+        <td><code>scripts/backup/email-template.ts</code> (103)</td>
+        <td>הלינק בתחתית מייל הגיבוי היומי.</td>
+      </tr>
+      <tr>
+        <td><code>src/app/(protected)/admin/clients/documents/page.tsx</code> (165)</td>
+        <td>מציג <code>&lt;code&gt;@inbound.latable.co.il</code>. <strong>לא לשנות</strong> — זו כתובת נכנסת שנשארת.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>לאחד לפני המעבר, לא אחריו</h3>
+  <p>
+    יש שני בלוקים נפרדים של ברירות מחדל לשולח, ושניהם קוראים את אותו
+    <code>EMAIL_FROM</code> — אבל עם fallback שונה:
+  </p>
+  <ul>
+    <li><code>src/lib/email/types.ts</code> → <code>office@latable.co.il</code></li>
+    <li><code>src/lib/notifications/upload-notification.ts</code> → <code>noreply@latable.co.il</code></li>
+  </ul>
+  <p>
+    כל עוד <code>EMAIL_FROM</code> מוגדר, שניהם מתכנסים לאותה כתובת והפער לא נראה.
+    ברגע שהוא לא מוגדר — למשל בסביבת preview חדשה — הם מתפצלים בשקט לשתי כתובות
+    על דומיין שאולי כבר לא מאומת. שווה לאחד לפני שמוסיפים דומיין למשוואה.
+  </p>
+</section>
+
+<h2>ה. הדומיין הישן חייב להישאר חי — לתמיד</h2>
+
+<section class="card">
+  <p>זו לא זהירות יתר. שלוש סיבות בלתי תלויות זו בזו:</p>
+  <ol>
+    <li>
+      <strong>כל הדואר הנכנס יושב עליו.</strong> <code>inbound.latable.co.il</code>
+      מקבל את הדוחות והחשבוniות מכל הלקוחות. אם הדומיין יפוג, הצינור הזה מת.
+    </li>
+    <li>
+      <strong>לינקי העלאה שכבר נשלחו.</strong> כל מייל שיצא עד היום מכיל
+      <code>https://www.latable.co.il/upload/&lt;token&gt;</code>. ספק שייכנס ללינק
+      חודשיים אחרי שהאתר עבר — יקבל דף שגיאה.
+    </li>
+    <li>
+      <strong>שני ה-webhooks של Resend</strong> מצביעים על המארח הישן.
+    </li>
+  </ol>
+  <p>
+    <strong>ההמלצה:</strong> הדומיין הישן נשאר רשום עם חידוש אוטומטי, ממשיך להגיש
+    את ה-inbound, ומפנה 301 לדומיין החדש. זו התחייבות תקציבית מתמשכת ולא פעולה
+    חד-פעמית — ולכן היא כתובה כאן ולא נשכחת.
+  </p>
+</section>
+
+<h2>ו. סדר פעולות בטוח</h2>
+
+<section class="card">
+  <ol>
+    <li>הדומיין החדש עולה ב-Vercel <em>במקביל</em> לישן. שניהם מגישים את אותו אתר.</li>
+    <li>מוסיפים את הדומיין החדש ל-<code>trustedOrigins</code> ולכתובות ה-redirect של Google. בודקים התחברות דרך הכתובת החדשה.</li>
+    <li>מאמתים את הדומיין החדש ב-Resend לשליחה. שולחים מייל בדיקה ובודקים שהוא נוחת ב-Inbox ולא ב-Spam.</li>
+    <li>מוודאים שתיבת ה-Reply-To החדשה קיימת ונקראת. שולחים אליה מייל בדיקה <em>ועונים עליו</em>.</li>
+    <li>רק עכשיו: מעדכנים <code>EMAIL_FROM</code>, <code>EMAIL_FROM_NAME</code>, <code>NEXT_PUBLIC_APP_URL</code>, <code>NEXT_PUBLIC_BETTER_AUTH_URL</code>.</li>
+    <li>הדומיין הישן עובר ל-301 — <u>חוץ</u> מ-<code>inbound.</code> ומ-<code>/api/clients/email-inbound</code>, שנשארים כפי שהם.</li>
+  </ol>
+  <p style="margin-bottom:0">
+    אף שלב ברשימה לא מוריד את הדומיין הישן. אם משהו משתבש, אפשר להחזיר את
+    <code>EMAIL_FROM</code> אחורה והכול חוזר לעבוד.
+  </p>
+</section>
+
+<footer>
+  נכתב 8 בספטמבר 2026 · מלווה את שלב 1 של הרבּרֶנד (החלפת השם בקוד, הושלמה) ·
+  יש לעדכן את <span class="ph">&lt;NEW_DOMAIN&gt;</span> ברגע שהדומיין נמסר
+</footer>
+
+</main>
+</body>
+</html>

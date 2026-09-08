@@ -1,8 +1,10 @@
 /**
- * Hebrew Translation Constants for La Table Management System
+ * Hebrew Translation Constants for the minna tomei group management system
  *
  * This file contains all UI string translations for the Hebrew localization.
- * "LaTable" brand name remains in English throughout.
+ * Group name: "minna tōmei group" (macron) on screen and in email bodies;
+ * the ASCII "minna tomei group" in PDF exports. Hebrew: "מינה טומאי גרופ" --
+ * the word גרופ is what separates the group from the same-named brand.
  *
  * Organization:
  * - common: Shared strings used across multiple pages
@@ -19,9 +21,9 @@ export const he = {
   // COMMON - Shared strings across the application
   // ==========================================================================
   common: {
-    // Brand name - always English
-    brandName: "LaTable",
-    appTitle: "LaTable Management",
+    // Group name - always English on screen
+    brandName: "minna tōmei group",
+    appTitle: "minna tōmei group",
     appDescription: "מערכת ניהול זכיינות",
 
     // Navigation
@@ -146,7 +148,7 @@ export const he = {
   // HOMEPAGE
   // ==========================================================================
   home: {
-    title: "LaTable Management",
+    title: "minna tōmei group",
     subtitle: "ברוכים הבאים למערכת ניהול הזכיינות",
     secondarySubtitle: "מערכת ניהול זכיינות מסעדות",
     getStarted: "התחל עכשיו",
@@ -174,7 +176,7 @@ export const he = {
       title: "ברוך הבא!",
       superUserMessage: "יש לך גישה מלאה למערכת",
       adminMessage: "יש לך גישת ניהול",
-      defaultMessage: "ברוך הבא ל-LaTable Management",
+      defaultMessage: "ברוך הבא ל-minna tōmei group",
       superUserDescription:
         "בתור משתמש על, אתה יכול לנהל משתמשים, לאשר הרשמות ולהגדיר את המערכת.",
       adminDescription:
@@ -3259,8 +3261,7 @@ export const he = {
   // ==========================================================================
   sidebar: {
     // Brand
-    brandName: "LaTable",
-    brandSubtitle: "מערכת ניהול",
+    brandName: "minna tōmei group",
 
     // Main navigation items
     navigation: {
@@ -3327,11 +3328,11 @@ export const he = {
   // ==========================================================================
   staffContacts: {
     title: "אנשי מטה",
-    description: "ניהול אנשי מטה של קבוצת לה טייבל",
+    description: "ניהול אנשי מטה של מינה טומאי גרופ",
     addButton: "הוסף איש מטה",
     editTitle: "עריכת איש מטה",
     createTitle: "הוספת איש מטה חדש",
-    group: "קבוצת לה טייבל",
+    group: "מינה טומאי גרופ",
 
     // Form labels
     form: {
@@ -3388,7 +3389,7 @@ export const he = {
   // ============================================================================
   clients: {
     title: "לקוחות",
-    description: "ניהול לקוחות של קבוצת לה טייבל",
+    description: "ניהול לקוחות של מינה טומאי גרופ",
     addButton: "הוסף לקוח",
     editTitle: "עריכת לקוח",
     createTitle: "הוספת לקוח חדש",

@@ -30,7 +30,7 @@ Configure under `Settings → Secrets and variables → Actions` in the reposito
 | `BLOB_READ_WRITE_TOKEN`    | Vercel Blob write token (Vercel project → Storage → Blob)|
 | `RESEND_API_KEY`           | Resend API key for sending the notification email        |
 | `EMAIL_FROM`               | Sender address (e.g. `office@latable.co.il`)             |
-| `EMAIL_FROM_NAME`          | Sender display name (e.g. `La Table Management`)         |
+| `EMAIL_FROM_NAME`          | Sender display name (e.g. `minna tomei group`)         |
 | `BACKUP_NOTIFICATION_TO`   | Primary recipient (e.g. `reutl@latableg.com`)            |
 | `BACKUP_NOTIFICATION_CC`   | Optional CC recipient (e.g. `asaf@giggsi.co.il`)         |
 | `BACKUP_RETENTION_DAYS`    | Optional, defaults to `30`                               |
@@ -55,7 +55,7 @@ export BACKUP_DATE=$(date +%Y-%m-%d)
 export BLOB_READ_WRITE_TOKEN=...
 export RESEND_API_KEY=...
 export EMAIL_FROM=office@latable.co.il
-export EMAIL_FROM_NAME="La Table Management"
+export EMAIL_FROM_NAME="minna tomei group"
 export BACKUP_NOTIFICATION_TO=your-test-email@example.com
 export BACKUP_RETENTION_DAYS=30
 

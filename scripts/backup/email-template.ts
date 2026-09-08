@@ -40,7 +40,7 @@ export function renderBackupEmailHtml(params: BackupEmailParams): string {
                 גיבוי מסד נתונים יומי
               </h1>
               <p style="margin:8px 0 0;color:#9ca3af;font-size:14px;text-align:right;">
-                La Table Management
+                minna tomei group
               </p>
             </td>
           </tr>
@@ -115,7 +115,7 @@ export function renderBackupEmailHtml(params: BackupEmailParams): string {
 export function renderBackupEmailText(params: BackupEmailParams): string {
   const { date, sizeBytes, downloadUrl, retentionDays } = params;
   return [
-    `גיבוי מסד נתונים יומי - La Table Management`,
+    `גיבוי מסד נתונים יומי - minna tomei group`,
     ``,
     `תאריך: ${formatHebrewDate(date)}`,
     `גודל קובץ: ${formatBytes(sizeBytes)}`,

@@ -59,7 +59,7 @@ async function ensureEmailTemplate() {
           </a>
         </div>
         <p>לשאלות או עזרה, אנא פנו למנהל החשבון שלכם.</p>
-        <p>בברכה,<br/>צוות La Table</p>
+        <p>בברכה,<br/>צוות מינה טומאי גרופ</p>
       </div>
     `,
     bodyText: `
@@ -74,7 +74,7 @@ async function ensureEmailTemplate() {
 לשאלות או עזרה, אנא פנו למנהל החשבון שלכם.
 
 בברכה,
-צוות La Table
+צוות מינה טומאי גרופ
     `,
     description: "תבנית לבקשת דוחות מכירות מספקים",
     category: "supplier_request",
@@ -152,7 +152,7 @@ async function main() {
     templateId: templateId,
     variables: {
       period: "Q4 2024",
-      brand_name: "La Table",
+      brand_name: "minna tōmei group",
       deadline: formatDateForDisplay(deadline),
     },
   });

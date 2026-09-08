@@ -27,7 +27,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       period: variables.period || "January 2024",
       upload_link: variables.upload_link || "https://example.com/upload/abc123",
       deadline: variables.deadline || "2024-01-31",
-      brand_name: variables.brand_name || "La Table",
+      brand_name: variables.brand_name || "minna tōmei group",
       ...variables,
     };
 

@@ -48,7 +48,7 @@ export default function AboutPage() {
           <Link href="/">
             <Image
               src="/logos/latable.jpeg"
-              alt="La Table"
+              alt="minna tōmei group"
               width={150}
               height={67}
               className="object-contain"
@@ -65,11 +65,11 @@ export default function AboutPage() {
       <section className="py-16 px-6">
         <div className="container mx-auto text-center">
           <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-5xl">
-            La Table - מערכת לניהול זכיינויות
+            minna tōmei group - מערכת לניהול זכיינויות
           </h1>
           <p className="mt-6 text-xl text-muted-foreground max-w-2xl mx-auto">
             פלטפורמה מתקדמת לניהול זכיינויות, התאמות ותקשורת עם ספקים וזכיינים
-            עבור קבוצת המסעדות La Table
+            עבור קבוצת המסעדות מינה טומאי גרופ
           </p>
         </div>
       </section>
@@ -142,7 +142,7 @@ export default function AboutPage() {
       {/* Footer */}
       <footer className="py-6 px-6 border-t">
         <div className="container mx-auto text-center text-sm text-muted-foreground">
-          © {new Date().getFullYear()} La Table Group. כל הזכויות שמורות.
+          © {new Date().getFullYear()} minna tōmei group. כל הזכויות שמורות.
         </div>
       </footer>
     </main>

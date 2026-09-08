@@ -13,10 +13,11 @@ import {
 import * as React from "react";
 import { emailTranslations } from "@/lib/translations/emails";
 
+const signature = emailTranslations.signature;
+
 interface EmailLayoutProps {
   preview: string;
   children: React.ReactNode;
-  footerText?: string;
 }
 
 export function EmailLayout({
@@ -36,28 +37,20 @@ export function EmailLayout({
           <Hr style={hr} />
           {/* Signature Block */}
           <Section style={signatureSection}>
-            <Text style={signatureName}>רעות</Text>
-            <Text style={signatureCompany}>קבוצת LA TABLE</Text>
-            <Text style={signatureAddress}>
-              שדרות משה גושן 16, קרית מוצקין
-            </Text>
-            <Text style={signaturePhone}>
-              T: 04-8759732 &nbsp;&nbsp; F: 04-8763534
-            </Text>
+            <Text style={signatureName}>{signature.name}</Text>
+            <Text style={signatureCompany}>{signature.company}</Text>
+            <Text style={signatureAddress}>{signature.address}</Text>
+            <Text style={signaturePhone}>{signature.phone}</Text>
           </Section>
           <Hr style={brandsDivider} />
           {/* Brand Names */}
           <Section style={brandsSection}>
             <Row>
-              <Column style={brandColumn}>
-                <Text style={brandVinni}>VINNI</Text>
-              </Column>
-              <Column style={brandColumn}>
-                <Text style={brandKingKong}>KING KONG</Text>
-              </Column>
-              <Column style={brandColumn}>
-                <Text style={brandMinna}>minna tomei</Text>
-              </Column>
+              {signature.brands.map((brand) => (
+                <Column key={brand.name} style={brandColumn}>
+                  <Text style={brandStyle(brand)}>{brand.name}</Text>
+                </Column>
+              ))}
             </Row>
           </Section>
           <Hr style={hrLight} />
@@ -143,41 +136,21 @@ const brandsSection: React.CSSProperties = {
 
 const brandColumn: React.CSSProperties = {
   textAlign: "center" as const,
-  width: "33%",
+  width: `${Math.floor(100 / signature.brands.length)}%`,
 };
 
-const brandVinni: React.CSSProperties = {
-  color: "#1e3a5f",
-  fontSize: "13px",
-  fontWeight: "700",
-  fontStyle: "italic",
-  margin: "0",
-  letterSpacing: "1px",
-};
-
-const brandKingKong: React.CSSProperties = {
-  color: "#d6006e",
-  fontSize: "12px",
-  fontWeight: "800",
-  margin: "0",
-  letterSpacing: "1px",
-};
-
-const brandMinna: React.CSSProperties = {
-  color: "#1a1a1a",
-  fontSize: "12px",
-  fontWeight: "600",
-  margin: "0",
-  letterSpacing: "0.5px",
-};
-
-const brandNatanzon: React.CSSProperties = {
-  color: "#6b3a2a",
-  fontSize: "13px",
-  fontWeight: "700",
-  margin: "0",
-  letterSpacing: "2px",
-};
+function brandStyle(
+  brand: (typeof signature.brands)[number]
+): React.CSSProperties {
+  return {
+    color: brand.color,
+    fontSize: "12px",
+    fontWeight: "700",
+    fontStyle: brand.italic ? "italic" : "normal",
+    margin: "0",
+    letterSpacing: "1px",
+  };
+}
 
 const hrLight: React.CSSProperties = {
   borderColor: "#f0f0f0",

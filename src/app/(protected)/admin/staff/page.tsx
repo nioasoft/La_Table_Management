@@ -361,7 +361,7 @@ export default function StaffContactsPage() {
             <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
               {hasActiveFilters
                 ? "נסה לשנות את הסינון או להוסיף איש מטה חדש"
-                : "הוסף את אנשי המטה הראשונים של קבוצת לה טייבל"}
+                : "הוסף את אנשי המטה הראשונים של מינה טומאי גרופ"}
             </p>
             {!hasActiveFilters && (
               <Button onClick={openCreateDialog}>

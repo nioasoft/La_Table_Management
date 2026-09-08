@@ -82,3 +82,12 @@ src/graphify-out/
 # Misc
 .cache
 .env.sandbox
+
+# superpowers brainstorming mockups
+.superpowers/
+
+# project-audit runs (audit trail, local only)
+audit-run/
+
+# pre-write snapshots from src/scripts/rebrand-email-template-signatures.ts
+email-template-backup-*.json

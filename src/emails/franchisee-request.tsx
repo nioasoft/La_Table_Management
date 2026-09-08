@@ -25,7 +25,7 @@ export function FranchiseeRequestEmail({
   period = "{{period}}",
   upload_link = "{{upload_link}}",
   deadline = "{{deadline}}",
-  brand_name = "La Table",
+  brand_name = "minna tōmei group",
 }: FranchiseeRequestEmailProps) {
   const t = emailTranslations.franchiseeRequest;
   const common = emailTranslations.common;

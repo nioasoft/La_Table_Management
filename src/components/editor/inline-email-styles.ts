@@ -7,6 +7,8 @@
  * 4. Wraps in the full email layout (container, signature, brands)
  */
 
+import { emailTranslations } from "@/lib/translations/emails";
+
 const BASE_FONT =
   '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Ubuntu, sans-serif';
 
@@ -151,22 +153,30 @@ function styleContentElements(html: string): string {
   return doc.body.innerHTML;
 }
 
-/** Email signature + brand footer HTML (matches EmailLayout component) */
+/** Email signature + brand footer HTML (matches EmailLayout component).
+ *  Text and brand colours come from the shared signature table so this copy
+ *  cannot drift away from what we actually send. */
+const SIGNATURE = emailTranslations.signature;
+
+const BRAND_CELLS = SIGNATURE.brands
+  .map(
+    (brand) =>
+      `<td style="width: ${Math.floor(100 / SIGNATURE.brands.length)}%; text-align: center;"><p style="color: ${brand.color}; font-size: 12px; font-weight: 700; font-style: ${brand.italic ? "italic" : "normal"}; margin: 0; letter-spacing: 1px;">${brand.name}</p></td>`
+  )
+  .join("\n        ");
+
 const EMAIL_FOOTER_HTML = `
     <hr style="border: none; border-top: 1px solid #e6ebf1; margin: 30px 0 20px;" />
     <div style="text-align: right; padding: 0 20px;">
-      <p style="color: #333333; font-size: 16px; font-weight: 700; margin: 0 0 2px; text-align: right; font-family: ${BASE_FONT};">רעות</p>
-      <p style="color: #333333; font-size: 14px; font-weight: 600; margin: 0 0 8px; text-align: right; letter-spacing: 1px; font-family: ${BASE_FONT};">קבוצת LA TABLE</p>
-      <p style="color: #666666; font-size: 12px; margin: 0 0 2px; text-align: right; font-family: ${BASE_FONT};">שדרות משה גושן 16, קרית מוצקין</p>
-      <p style="color: #666666; font-size: 12px; margin: 0; text-align: right; direction: ltr; font-family: ${BASE_FONT};">T: 04-8759732 &nbsp;&nbsp; F: 04-8763534</p>
+      <p style="color: #333333; font-size: 16px; font-weight: 700; margin: 0 0 2px; text-align: right; font-family: ${BASE_FONT};">${SIGNATURE.name}</p>
+      <p style="color: #333333; font-size: 14px; font-weight: 600; margin: 0 0 8px; text-align: right; letter-spacing: 1px; font-family: ${BASE_FONT};">${SIGNATURE.company}</p>
+      <p style="color: #666666; font-size: 12px; margin: 0 0 2px; text-align: right; font-family: ${BASE_FONT};">${SIGNATURE.address}</p>
+      <p style="color: #666666; font-size: 12px; margin: 0; text-align: right; direction: ltr; font-family: ${BASE_FONT};">${SIGNATURE.phone}</p>
     </div>
     <hr style="border: none; border-top: 1px solid #e6ebf1; margin: 16px 0;" />
     <table style="width: 100%; text-align: center; padding: 0 20px;" cellpadding="0" cellspacing="0">
       <tr>
-        <td style="width: 25%; text-align: center;"><p style="color: #c41e3a; font-size: 13px; font-weight: 700; font-style: italic; margin: 0; letter-spacing: 1px;">VINNI</p></td>
-        <td style="width: 25%; text-align: center;"><p style="color: #333333; font-size: 12px; font-weight: 800; margin: 0; letter-spacing: 1px;">KING KONG</p></td>
-        <td style="width: 25%; text-align: center;"><p style="color: #e67e22; font-size: 12px; font-weight: 600; margin: 0; letter-spacing: 0.5px;">minna tomei</p></td>
-        <td style="width: 25%; text-align: center;"><p style="color: #333333; font-size: 13px; font-weight: 700; margin: 0; letter-spacing: 2px;">NATANZON</p></td>
+        ${BRAND_CELLS}
       </tr>
     </table>
     <hr style="border: none; border-top: 1px solid #f0f0f0; margin: 16px 0 8px;" />

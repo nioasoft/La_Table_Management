@@ -2,9 +2,11 @@
  * Hebrew Translation Constants for Email Templates
  *
  * This file contains all translation strings for the email templates
- * used in the La Table Management System.
+ * used in the minna tomei group management system.
  *
- * "LaTable" brand name remains in English throughout.
+ * Group name casing: "minna tōmei group" (with macron) on HTML surfaces --
+ * the web UI and email bodies. PDF exports use the ASCII "minna tomei group",
+ * because the Rubik subset the PDF renderer loads may not carry U+014D.
  *
  * Organization:
  * - common: Shared strings across email templates
@@ -52,8 +54,31 @@ export const emailTranslations = {
   // LAYOUT - Email layout component strings
   // ==========================================================================
   layout: {
-    footerText: "LaTable Management",
     autoEmailNotice: "הודעה זו נשלחה אוטומטית. אנא אל תשיבו ישירות להודעה זו.",
+  },
+
+  // ==========================================================================
+  // SIGNATURE - The sign-off block at the foot of every outgoing email.
+  //
+  // Read by all three renderers so they cannot drift apart again:
+  //   src/emails/components/email-layout.tsx   (React Email - what we send)
+  //   src/components/editor/inline-email-styles.ts (raw HTML - editor output)
+  //   src/components/editor/EmailEditor.tsx    (Tailwind - editor preview)
+  // Each keeps its own type sizes; the text and brand colours live here.
+  // ==========================================================================
+  signature: {
+    name: "רעות לוי",
+    company: "minna tōmei group®",
+    address: "שדרות משה גושן 16, קרית מוצקין",
+    // Non-breaking spaces so the gap survives every mail client.
+    phone: "T: 04-8759732    F: 04-8763534",
+    // Order and colours follow the group logo.
+    brands: [
+      { name: "VINNI", color: "#1e3a5f", italic: true },
+      { name: "minna tōmei", color: "#1a1a1a", italic: false },
+      { name: "KING KONG", color: "#d6006e", italic: false },
+      { name: "natanzon", color: "#1a1a1a", italic: false },
+    ],
   },
 
   // ==========================================================================

@@ -30,7 +30,7 @@ export function UploadNotificationEmail({
   uploader_email = "{{uploader_email}}",
   upload_date = "{{upload_date}}",
   process_link = "{{process_link}}",
-  brand_name = "La Table",
+  brand_name = "minna tōmei group",
 }: UploadNotificationEmailProps) {
   const t = emailTranslations.uploadNotification;
   const common = emailTranslations.common;

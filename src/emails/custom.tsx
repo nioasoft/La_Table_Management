@@ -26,7 +26,7 @@ export function CustomEmail({
   period = "{{period}}",
   upload_link = "{{upload_link}}",
   deadline = "{{deadline}}",
-  brand_name = "La Table",
+  brand_name = "minna tōmei group",
   customSubject = "",
   customBody = "",
 }: CustomEmailProps) {

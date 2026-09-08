@@ -88,7 +88,7 @@ async function getSupplierBrandNames(supplierId: string): Promise<string> {
     .innerJoin(brand, eq(supplierBrand.brandId, brand.id))
     .where(eq(supplierBrand.supplierId, supplierId));
 
-  if (results.length === 0) return "לה טייבל";
+  if (results.length === 0) return "מינה טומאי גרופ";
   return results.map((r) => r.nameHe).join(" / ");
 }
 

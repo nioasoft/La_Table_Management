@@ -604,11 +604,8 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
           )}
         >
           <Link href="/dashboard" className="flex items-center gap-2">
-            <span className="text-xl font-bold text-sidebar-primary whitespace-nowrap">
+            <span className="text-base font-bold text-sidebar-primary whitespace-nowrap">
               {he.sidebar.brandName}
-            </span>
-            <span className="text-xs text-sidebar-foreground/60 whitespace-nowrap">
-              {he.sidebar.brandSubtitle}
             </span>
           </Link>
         </div>

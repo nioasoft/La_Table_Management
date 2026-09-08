@@ -1,8 +1,8 @@
 services:
-  latable-db:
+  minna-tomei-db:
     image: postgres:17
     restart: always
-    container_name: latable-db
+    container_name: minna-tomei-db
     ports:
       - 5432:5432
     environment:

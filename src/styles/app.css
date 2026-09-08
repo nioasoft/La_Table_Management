@@ -254,7 +254,7 @@
 
 :root {
   --radius: 0.65rem;
-  /* Clean, professional LaTable brand: white background, black primary */
+  /* Clean, professional minna tomei group brand: white background, black primary */
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

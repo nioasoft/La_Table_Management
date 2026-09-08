@@ -160,9 +160,9 @@ export function FranchiseeBillingEmail(
           <Text style={signature}>
             בברכה,
             <br />
-            רעות
+            רעות לוי
             <br />
-            לה טייבל ניהול
+            מינה טומאי גרופ
           </Text>
         </Container>
       </Body>

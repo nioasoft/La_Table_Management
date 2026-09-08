@@ -3163,7 +3163,7 @@ export const staffContact = pgTable(
     phone: text("phone"),
     email: text("email"),
     role: staffRoleEnum("role").notNull(),
-    // null = group-level ("קבוצת לה טייבל"), otherwise brand-specific
+    // null = group-level ("מינה טומאי גרופ"), otherwise brand-specific
     brandId: text("brand_id").references(() => brand.id, {
       onDelete: "set null",
     }),

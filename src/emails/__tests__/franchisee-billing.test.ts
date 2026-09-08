@@ -80,8 +80,8 @@ describe("FranchiseeBillingEmail", () => {
       "החשבונית תגיע בנפרד.",
       "",
       "בברכה,",
-      "רעות",
-      "לה טייבל ניהול",
+      "רעות לוי",
+      "מינה טומאי גרופ",
     ].join("\n");
 
     expect(html).toContain('dir="rtl"');

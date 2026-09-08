@@ -1,5 +1,5 @@
 /**
- * Translation Helper Utilities for La Table Management System
+ * Translation Helper Utilities for the minna tomei group management system
  *
  * This module provides helper functions for accessing Hebrew translations
  * with type-safe path lookups and interpolation support.

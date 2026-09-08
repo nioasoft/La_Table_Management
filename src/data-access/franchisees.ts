@@ -1064,7 +1064,7 @@ export async function matchFranchiseeNamesFromFileWithAnomalies<
   const rows = await matchFranchiseeNamesFromFile(parsedData, config);
 
   // Re-fetch franchisees once for anomaly suggestions. Cheap relative to the
-  // overall upload pipeline (single SELECT, ~100 rows for La Table).
+  // overall upload pipeline (single SELECT, ~100 rows for the group).
   const allFranchisees = (await database
     .select()
     .from(franchisee)

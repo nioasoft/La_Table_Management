@@ -20,7 +20,7 @@ const resend = process.env.RESEND_API_KEY
 // Default email settings
 const EMAIL_DEFAULTS = {
   fromEmail: process.env.EMAIL_FROM || "noreply@latable.co.il",
-  fromName: process.env.EMAIL_FROM_NAME || "La Table Management",
+  fromName: process.env.EMAIL_FROM_NAME || "minna tōmei group",
 };
 
 /**
@@ -142,7 +142,7 @@ export async function notifySuperUsersAboutUpload(
       uploader_email: uploadedFile.uploadedByEmail || "Not provided",
       upload_date: formatDate(new Date(uploadedFile.createdAt)),
       process_link: buildProcessLink(uploadLink),
-      brand_name: "La Table",
+      brand_name: "minna tōmei group",
     };
 
     // Render the email template

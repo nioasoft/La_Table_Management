@@ -30,7 +30,7 @@ export function FileRequestEmail({
   upload_link = "{{upload_link}}",
   due_date = "{{due_date}}",
   description = "{{description}}",
-  brand_name = "La Table",
+  brand_name = "minna tōmei group",
   is_reminder = "",
 }: FileRequestEmailProps) {
   const isReminder = is_reminder === "true";

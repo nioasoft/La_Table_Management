@@ -407,7 +407,7 @@ const SummaryPage: React.FC<{ report: CommissionReportData }> = ({
     </View>
 
     <Text style={styles.footer}>
-      La Table Management - דוח עמלות
+      minna tomei group - דוח עמלות
     </Text>
     <Text
       style={styles.pageNumber}
@@ -491,7 +491,7 @@ const ByPeriodPage: React.FC<{ report: CommissionReportData }> = ({
     </View>
 
     <Text style={styles.footer}>
-      La Table Management - דוח עמלות
+      minna tomei group - דוח עמלות
     </Text>
     <Text
       style={styles.pageNumber}
@@ -579,7 +579,7 @@ const BySupplierPage: React.FC<{ report: CommissionReportData }> = ({
     </View>
 
     <Text style={styles.footer}>
-      La Table Management - דוח עמלות
+      minna tomei group - דוח עמלות
     </Text>
     <Text
       style={styles.pageNumber}
@@ -692,7 +692,7 @@ const DetailsPages: React.FC<{ details: CommissionWithDetails[] }> = ({
           </View>
 
           <Text style={styles.footer}>
-            La Table Management - דוח עמלות
+            minna tomei group - דוח עמלות
           </Text>
           <Text
             style={styles.pageNumber}

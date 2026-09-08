@@ -58,7 +58,7 @@ function loadConfig(): BackupConfig {
     blobToken: getRequiredEnv("BLOB_READ_WRITE_TOKEN"),
     resendApiKey: getRequiredEnv("RESEND_API_KEY"),
     emailFrom: getRequiredEnv("EMAIL_FROM"),
-    emailFromName: process.env.EMAIL_FROM_NAME ?? "La Table Management",
+    emailFromName: process.env.EMAIL_FROM_NAME ?? "minna tomei group",
     notificationTo: getRequiredEnv("BACKUP_NOTIFICATION_TO"),
     notificationCc: process.env.BACKUP_NOTIFICATION_CC,
     retentionDays,

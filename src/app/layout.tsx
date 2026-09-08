@@ -12,14 +12,14 @@ const assistant = Assistant({
 });
 
 export const metadata: Metadata = {
-  title: "La Table - מערכת לניהול זכיינויות",
-  description: "מערכת לניהול זכיינויות ומסעדות עבור קבוצת La Table",
+  title: "minna tōmei group - מערכת לניהול זכיינויות",
+  description: "מערכת לניהול זכיינויות ומסעדות עבור מינה טומאי גרופ",
   icons: {
     icon: "/favicon.ico",
   },
   openGraph: {
-    title: "La Table - מערכת לניהול זכיינויות",
-    description: "מערכת לניהול זכיינויות ומסעדות עבור קבוצת La Table",
+    title: "minna tōmei group - מערכת לניהול זכיינויות",
+    description: "מערכת לניהול זכיינויות ומסעדות עבור מינה טומאי גרופ",
     locale: "he_IL",
     type: "website",
   },

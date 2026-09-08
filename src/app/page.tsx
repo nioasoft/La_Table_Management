@@ -15,12 +15,12 @@ export default function HomePage() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between bg-background">
-      {/* Header with La Table Logo */}
+      {/* Header with the group logo */}
       <header className="w-full py-8">
         <div className="flex justify-center">
           <Image
             src="/logos/latable.jpeg"
-            alt="La Table"
+            alt="minna tōmei group"
             width={225}
             height={100}
             className="object-contain"

@@ -541,7 +541,7 @@ export default function ClientsPage() {
             <p className="text-sm text-muted-foreground mb-6 text-center max-w-sm">
               {activeFilter !== "all"
                 ? "נסה לשנות את הסינון או להוסיף לקוח חדש"
-                : "הוסף את הלקוחות הראשונים של קבוצת לה טייבל"}
+                : "הוסף את הלקוחות הראשונים של מינה טומאי גרופ"}
             </p>
             {activeFilter === "all" && (
               <Button onClick={openCreateDialog}>

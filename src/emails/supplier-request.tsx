@@ -22,7 +22,7 @@ export function SupplierRequestEmail({
   period_end_date = "{{period_end_date}}",
   upload_link = "{{upload_link}}",
   deadline = "{{deadline}}",
-  brand_name = "La Table",
+  brand_name = "minna tōmei group",
   brand_names = "{{brand_names}}",
 }: SupplierRequestEmailProps) {
   const displayBrands = brand_names && brand_names !== "{{brand_names}}" ? brand_names : brand_name;
@@ -36,7 +36,7 @@ export function SupplierRequestEmail({
           נבקש מכם להעלות דוח עמלות רשת עבור:
         </Text>
         <Text style={brandLine} dir="ltr">
-          LA TABLE ({displayBrands})
+          minna tōmei group ({displayBrands})
         </Text>
         <Text style={text}>
           לתקופה שמסתיימת ב-{period_end_date}, בקישור המצורף מטה.

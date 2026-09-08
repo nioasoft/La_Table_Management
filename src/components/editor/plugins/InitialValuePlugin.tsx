@@ -28,7 +28,15 @@ function stripEmailFooter(html: string): string {
     doc = parser.parseFromString(inner.innerHTML, "text/html");
   }
 
-  const SIGNATURE_MARKERS = ["רעות", "LA TABLE", "VINNI", "KING KONG"];
+  const SIGNATURE_MARKERS = [
+    "רעות",
+    // The old group name stays: every email already in the archive carries it.
+    "LA TABLE",
+    "minna tōmei",
+    "מינה טומאי",
+    "VINNI",
+    "KING KONG",
+  ];
 
   // Walk all <hr> elements and check if what follows looks like a signature
   const hrs = doc.body.querySelectorAll("hr");
@@ -92,8 +100,11 @@ function removeElementAndFollowing(el: Element): void {
 function removeTrailingSignature(container: Element): void {
   const SIGNATURE_TEXTS = [
     "רעות",
+    // Old group name and its "קבוצת" prefix stay for mail already in the archive.
     "LA TABLE",
     "קבוצת",
+    "minna tōmei",
+    "מינה טומאי",
     "שדרות משה גושן",
     "04-8759732",
     "04-8763534",

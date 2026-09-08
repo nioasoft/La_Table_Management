@@ -342,7 +342,7 @@ const InvoiceHeaderPage: React.FC<{ invoice: InvoiceData }> = ({ invoice }) => (
       </Text>
     </View>
 
-    <Text style={styles.footer}>La Table Management - חשבונית עמלות</Text>
+    <Text style={styles.footer}>minna tomei group - חשבונית עמלות</Text>
     <Text
       style={styles.pageNumber}
       render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
@@ -448,7 +448,7 @@ const BrandDetailsPage: React.FC<{ invoice: InvoiceData }> = ({ invoice }) => (
       </Text>
     </View>
 
-    <Text style={styles.footer}>La Table Management - חשבונית עמלות</Text>
+    <Text style={styles.footer}>minna tomei group - חשבונית עמלות</Text>
     <Text
       style={styles.pageNumber}
       render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
