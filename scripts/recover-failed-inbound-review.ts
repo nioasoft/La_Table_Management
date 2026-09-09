@@ -27,6 +27,7 @@ import "dotenv/config";
 import { database } from "../src/db";
 import {
   inboundReviewQueue,
+  clientDocument,
   franchisee,
   client,
   type Franchisee,
@@ -153,8 +154,31 @@ async function main(): Promise<void> {
       allowReplace: false,
     });
 
-    if (!result.success || !result.document) {
-      console.log(`   ↳ processClientDocument refused: ${result.error ?? "unknown"}`);
+    // The ezcount emails carry the same invoice as two download links, so
+    // each one leaves TWO queue rows. The second is a genuine duplicate of a
+    // document that now exists — close it against that document instead of
+    // leaving a phantom failure on the board Reut reads.
+    let documentId = result.document?.id ?? null;
+    if (!documentId && result.skippedDuplicate) {
+      const [existing] = await database
+        .select({ id: clientDocument.id })
+        .from(clientDocument)
+        .where(
+          and(
+            eq(clientDocument.clientId, row.clientId),
+            eq(clientDocument.franchiseeId, resolved.franchiseeId),
+            eq(clientDocument.documentType, documentType),
+            eq(clientDocument.periodMonth, row.periodMonth ?? 0),
+            eq(clientDocument.periodYear, row.periodYear ?? 0),
+          ),
+        )
+        .limit(1);
+      documentId = existing?.id ?? null;
+      if (documentId) console.log(`   ↳ duplicate of ${documentId}`);
+    }
+
+    if (!documentId) {
+      console.log(`   ↳ not committed: ${result.error ?? "duplicate with no matching document"}`);
       continue;
     }
 
@@ -165,7 +189,7 @@ async function main(): Promise<void> {
         // the same as verifying it, and Reut still needs to see the ones the
         // matcher was not sure about.
         status: resolved.needsReview ? "needs_review" : "auto_committed",
-        committedClientDocumentId: result.document.id,
+        committedClientDocumentId: documentId,
         proposedFranchiseeId: resolved.franchiseeId,
         proposedFranchiseeName: resolved.franchiseeName,
         reviewNotes: "שוחזר אוטומטית לאחר תיקון זיהוי הזכיין (ח.פ / mojibake)",
@@ -173,7 +197,7 @@ async function main(): Promise<void> {
         updatedAt: new Date(),
       })
       .where(eq(inboundReviewQueue.id, row.id));
-    console.log(`   ↳ committed ${result.document.id}`);
+    console.log(`   ↳ committed ${documentId}`);
   }
 
   console.log(
