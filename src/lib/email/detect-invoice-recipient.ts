@@ -19,8 +19,8 @@
 
 // `require` is unavailable in ESM-mode tsx scripts. Use `createRequire` so
 // this module loads cleanly under both Next.js and tsx (recovery scripts).
-import { createRequire } from "node:module";
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+
+import { extractPdfText } from "../pdf-text";
 
 const RECIPIENT_MARKERS = ["לכבוד", "דובכל"]; // normal + RTL-reversed
 
@@ -86,9 +86,14 @@ export function detectRecipientClientCodeFromText(
   );
   if (markerLineIdx < 0) return null;
 
+  // Three lines, not two: since 2026-09 ezcount wraps the recipient block
+  // over up to three lines, and the ח.פ — the only RTL-proof token here —
+  // sits on the third. A two-line window returned null on every one of
+  // those and the document kept the channel-derived client.
   const window = [
     lines[markerLineIdx] ?? "",
     lines[markerLineIdx + 1] ?? "",
+    lines[markerLineIdx + 2] ?? "",
   ]
     .join("\n")
     .toLowerCase();
@@ -111,7 +116,7 @@ export async function detectRecipientClientCodeFromPdf(
   buffer: Buffer,
 ): Promise<string | null> {
   try {
-    const data = await pdfParse(buffer);
+    const data = await extractPdfText(buffer);
     const text = (data.text as string) ?? "";
     if (text.length < 30) return null;
     return detectRecipientClientCodeFromText(text);

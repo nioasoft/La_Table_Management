@@ -24,13 +24,9 @@
  *   stored as the primary headline amount.
  */
 
-import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
-
-// Import from /lib/pdf-parse.js directly — the package's index.js runs a
-// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+import { extractPdfText } from "../pdf-text";
 
 /**
  * Dynamic imports for OCR dependencies. String-variable imports prevent
@@ -142,7 +138,7 @@ export async function parseHaatFile(
   const warnings: string[] = [];
 
   try {
-    const pdfData = await pdfParse(buffer);
+    const pdfData = await extractPdfText(buffer);
     let text = pdfData.text as string;
 
     // Image-only PDFs (e.g. invoices routed through iLovePDF) lose the text

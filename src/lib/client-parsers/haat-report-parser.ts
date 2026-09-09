@@ -19,13 +19,7 @@
  */
 
 import type { ClientDocumentProcessingResult } from "./types";
-
-// `require` is unavailable in ESM-mode tsx scripts. Use `createRequire` so
-// this module loads cleanly under both Next.js (CJS-via-bundler) and tsx
-// (recovery / reparse scripts).
-import { createRequire } from "node:module";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+import { extractPdfText } from "../pdf-text";
 
 const HEBREW_MONTHS_REPORT_HEADER = /דווח\s*האאט\s*(\d{2})\/(\d{4})/;
 
@@ -46,7 +40,7 @@ export async function parseHaatReportFile(
   const warnings: string[] = [];
 
   try {
-    const data = await pdfParse(buffer);
+    const data = await extractPdfText(buffer);
     const text = (data.text as string) ?? "";
 
     if (!text || text.length < 50) {

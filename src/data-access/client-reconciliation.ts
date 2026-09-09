@@ -19,6 +19,7 @@ import {
   type ReconciliationComparisonStatus,
 } from "@/db/schema";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { mirrorAmounts } from "@/lib/client-reconciliation-mirror";
 
 // ============================================================================
 // CONSTANTS
@@ -167,6 +168,8 @@ export async function createClientReconciliationSession(
       ? parseFloat(clientDoc.netAmount)
       : null;
 
+    const mirrored = mirrorAmounts(clientRow.code, clientAmount, tabitAmount);
+
     // Calculate difference (only if both sides have amounts)
     let difference: number | null = null;
     let absDifference: number | null = null;
@@ -186,15 +189,17 @@ export async function createClientReconciliationSession(
 
       totalClientAmount += clientAmount;
       totalTabitAmount += tabitAmount;
-    } else if (clientRow.code === "GIFTCARD" && tabitAmount !== null) {
-      // Gift Card: Tabit is the sole source of truth — no separate client report.
-      // Auto-approve using Tabit amount for both sides.
+    } else if (mirrored.autoOk) {
+      // A one-sided client (Tabit-only: GIFTCARD/LATABLE/LATABLEMARK;
+      // client-only: HEVER). The missing column is filled from the one that
+      // exists, so the row carries a number on both sides and needs no human
+      // comparison. See client-reconciliation-mirror.ts.
       difference = 0;
       absDifference = 0;
       status = "auto_approved";
       matchedCount++;
-      totalTabitAmount += tabitAmount;
-      totalClientAmount += tabitAmount; // Use Tabit amount as client amount too
+      totalTabitAmount += mirrored.tabitAmount ?? 0;
+      totalClientAmount += mirrored.clientAmount ?? 0;
     } else {
       // Missing one or both documents
       status = "needs_review";
@@ -209,9 +214,8 @@ export async function createClientReconciliationSession(
       franchiseeId: f.franchiseeId,
       clientDocumentId: clientDoc?.id ?? null,
       tabitDocumentId: tabitDoc?.id ?? null,
-      // Gift Card: use Tabit amount as client amount (Tabit is sole source of truth)
-      clientAmount: (clientAmount ?? (clientRow.code === "GIFTCARD" ? tabitAmount : null))?.toString() ?? null,
-      tabitAmount: tabitAmount?.toString() ?? null,
+      clientAmount: mirrored.clientAmount?.toString() ?? null,
+      tabitAmount: mirrored.tabitAmount?.toString() ?? null,
       difference: difference?.toString() ?? null,
       absoluteDifference: absDifference?.toString() ?? null,
       expectedCommissionRate: expectedRate?.toString() ?? null,

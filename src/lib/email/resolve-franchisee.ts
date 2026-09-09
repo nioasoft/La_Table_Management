@@ -11,6 +11,7 @@ import {
   getSharedEntityFranchisees,
 } from "@/lib/franchisee-parent-map";
 import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
+import { resolveFranchiseeByCompanyId } from "./resolve-by-company-id";
 
 /** Sentinel values the parser uses when it cannot identify the franchisee */
 const UNKNOWN_FRANCHISEE_NAMES = new Set(["לא זוהה", ""]);
@@ -149,6 +150,20 @@ export async function resolveFranchisee(
   if (parser) {
     try {
       const parseResult = await parser(buffer, mimeType);
+
+      // Everything the document says, in one blob. Built before the
+      // franchisee-name guard below because the deterministic ח.פ route
+      // must still work when the name came out unreadable — that is
+      // precisely the case it exists for.
+      const contentText = parseResult.success
+        ? [
+            parseResult.data?.rawText ?? "",
+            ...(parseResult.data?.lineItems ?? []).map(
+              (li) => li.description ?? "",
+            ),
+          ].join("\n")
+        : "";
+
       if (
         parseResult.success &&
         parseResult.data?.franchiseeName &&
@@ -169,10 +184,8 @@ export async function resolveFranchisee(
         // documents that genuinely belong to the parent legal entity (no
         // mention of the operating brand) fall through to the fuzzy match
         // instead of being kidnapped to the operating-brand franchisee.
-        const contentText = [
-          parseResult.data.rawText ?? "",
-          ...(parseResult.data.lineItems ?? []).map((li) => li.description ?? ""),
-        ].join("\n");
+        // (The gate itself runs a few lines below, after the customer
+        // number — see findOperatingBrand.)
 
         // Shared-legal-entity disambiguation (deterministic, highest
         // priority). When several franchisees share one legal entity + ח.פ
@@ -258,6 +271,52 @@ export async function resolveFranchisee(
         console.warn(
           `[email-inbound] Document-content match rejected: ${formatVerdictForLog(verdict)} (extracted="${extractedName}")`
         );
+      }
+
+      // Strategy 1b — ח.פ. Runs only once every name-based route above has
+      // failed or was skipped (an unreadable name never reaches them), so
+      // it can never change routing that already works. It is the one
+      // signal that survives a supplier changing its PDF font, encoding or
+      // text direction.
+      //
+      // Added 2026-09-09: ezcount started emitting the customer-name block
+      // as UTF-8-through-cp1252 mojibake, which cost 8 Mishloha commission
+      // invoices for period 08/2026. The ח.פ two lines below it was clean
+      // ASCII in every one of them. Skipped for shared-legal-entity
+      // franchisees, where one ח.פ covers more than one restaurant and the
+      // document must keep being parked for manual assignment.
+      const companyIdMatch = resolveFranchiseeByCompanyId(
+        contentText,
+        franchisees,
+      );
+      if (companyIdMatch && !isSharedEntityFranchisee(companyIdMatch.id)) {
+        // A ח.פ identifies a LEGAL ENTITY, and one legal entity can run two
+        // restaurants: 516161361 covers both ויני עזריאלי חיפה and נתנזון
+        // עזריאלי חיפה, whose August Mishloha invoices are identical down
+        // to the recipient block and differ only in their line items. Hand
+        // the match to the same operating-brand content gate the name route
+        // uses, so a נתנזון invoice does not land on ויני and overwrite it.
+        const operating = findOperatingBrand(companyIdMatch.name, contentText);
+        const target =
+          operating &&
+          franchisees.find((f) => f.id === operating.operatingFranchiseeId)
+            ? {
+                id: operating.operatingFranchiseeId,
+                name: operating.operatingFranchiseeName,
+              }
+            : { id: companyIdMatch.id, name: companyIdMatch.name };
+
+        console.log(
+          `[email-inbound] ח.פ match (${parserCode}): ${companyIdMatch.companyId} → "${target.name}"${
+            target.id === companyIdMatch.id ? "" : " (operating brand)"
+          }`,
+        );
+        return {
+          ok: true,
+          franchiseeId: target.id,
+          franchiseeName: target.name,
+          confidence: 1,
+        };
       }
     } catch (err) {
       console.warn("[email-inbound] Pre-parse for franchisee extraction failed:", err);

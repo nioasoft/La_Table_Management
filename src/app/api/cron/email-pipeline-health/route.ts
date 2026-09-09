@@ -14,10 +14,13 @@
  *     across ≥3 runs (low-volume noise filtered out).
  *   • Any client that normally produces inbound documents has gone
  *     quiet for `QUIET_HOURS` (36h) without a single new doc.
- *   • Any (client, franchisee, period) has a commission_invoice with
- *     no matching client_report — or vice versa — for the most recent
- *     month, which historically signals one of the two attachments
- *     was silently dropped (Wolt File A/B regression).
+ *   • Any (client, franchisee) that delivered in either of the two
+ *     preceding months is missing a commission_invoice, a client_report,
+ *     or BOTH for the most recent month. Half-missing historically means
+ *     one of two attachments was silently dropped (Wolt File A/B);
+ *     fully-missing means the pair stopped delivering altogether, which
+ *     this check was blind to until 2026-09-09 (eight Mishloha commission
+ *     invoices lost to an ezcount encoding change, found by Reut).
  *   • Any journal-entry client_report over the allocation threshold
  *     with no מספר הקצאה — column K of the journal-entries export goes
  *     out empty and only Reut ever sees it (10bis July-2026).
@@ -31,7 +34,7 @@
  * gotcha_vercel_cron_get.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { database } from "@/db";
 import {
   client,
@@ -207,46 +210,108 @@ function previousFullMonth(): { m: number; y: number } {
 
 async function findMissingPairs(): Promise<MissingPair[]> {
   const { m, y } = previousFullMonth();
-  // m here is human (1-12); pull all (client, franchisee) pairs that
-  // produced *something* for that period and compare their document_type set.
+
+  // Which (client, franchisee) pairs are EXPECTED to produce documents.
+  //
+  // The first version of this check grouped the rows that already existed
+  // for the period, which meant a pair producing NOTHING AT ALL was never
+  // in the group and therefore never alerted — only half-missing pairs
+  // were. That blind spot hid נתנזון עזריאלי × משלוחה and × תן ביס for
+  // 08/2026 completely, and it is the reason the eight Mishloha commission
+  // invoices lost to an ezcount encoding change on 2026-09-02 were found
+  // by Reut rather than by this cron.
+  //
+  // Expectation is taken from HISTORY, not from `client_franchisee` links:
+  // 12 of the 20 franchisees linked to Mishloha have never received a
+  // single document (memory: gotcha-phantom-client-franchisee-links), so
+  // driving alerts off the links would bury the real ones. A pair that
+  // delivered in either of the two preceding months is expected to deliver
+  // again; one that goes quiet for three months drops off by itself.
+  const priorMonths = [monthsBefore({ m, y }, 1), monthsBefore({ m, y }, 2)];
+
   const rows = await database
     .select({
       clientCode: client.code,
       franchiseeName: franchisee.name,
       documentType: clientDocument.documentType,
+      periodMonth: clientDocument.periodMonth,
+      periodYear: clientDocument.periodYear,
     })
     .from(clientDocument)
     .innerJoin(client, eq(client.id, clientDocument.clientId))
     .innerJoin(franchisee, eq(franchisee.id, clientDocument.franchiseeId))
     .where(
-      and(
-        eq(clientDocument.periodMonth, m),
-        eq(clientDocument.periodYear, y),
+      or(
+        and(
+          eq(clientDocument.periodMonth, m),
+          eq(clientDocument.periodYear, y),
+        ),
+        ...priorMonths.map((p) =>
+          and(
+            eq(clientDocument.periodMonth, p.m),
+            eq(clientDocument.periodYear, p.y),
+          ),
+        ),
       ),
     );
 
-  const grouped = new Map<
+  /** key → what the period under review actually holds */
+  const current = new Map<
     string,
     { clientCode: string; franchiseeName: string; types: Set<string> }
+  >();
+  /** keys that delivered at least one document in the two months before */
+  const expected = new Map<
+    string,
+    { clientCode: string; franchiseeName: string }
   >();
 
   for (const r of rows) {
     if (!r.clientCode || !BIDIRECTIONAL_CLIENT_CODES.has(r.clientCode)) continue;
+    // tabit_report is a POS export, not something the client sends; it says
+    // nothing about whether the client delivered.
+    if (
+      r.documentType !== "client_report" &&
+      r.documentType !== "commission_invoice"
+    ) {
+      continue;
+    }
     const key = `${r.clientCode}|${r.franchiseeName}`;
-    if (!grouped.has(key)) {
-      grouped.set(key, {
+
+    if (r.periodMonth === m && r.periodYear === y) {
+      if (!current.has(key)) {
+        current.set(key, {
+          clientCode: r.clientCode,
+          franchiseeName: r.franchiseeName,
+          types: new Set<string>(),
+        });
+      }
+      current.get(key)!.types.add(r.documentType);
+    } else {
+      expected.set(key, {
         clientCode: r.clientCode,
         franchiseeName: r.franchiseeName,
-        types: new Set<string>(),
       });
     }
-    grouped.get(key)!.types.add(r.documentType);
+  }
+
+  // A pair that only appeared in the period under review is expected too —
+  // a new franchisee that delivered one side and not the other still needs
+  // the alert.
+  for (const [key, value] of current.entries()) {
+    if (!expected.has(key)) {
+      expected.set(key, {
+        clientCode: value.clientCode,
+        franchiseeName: value.franchiseeName,
+      });
+    }
   }
 
   const out: MissingPair[] = [];
-  for (const value of grouped.values()) {
-    const hasCommission = value.types.has("commission_invoice");
-    const hasReport = value.types.has("client_report");
+  for (const [key, value] of expected.entries()) {
+    const types = current.get(key)?.types ?? new Set<string>();
+    const hasCommission = types.has("commission_invoice");
+    const hasReport = types.has("client_report");
     if (!hasCommission || !hasReport) {
       out.push({
         clientCode: value.clientCode,
@@ -259,6 +324,17 @@ async function findMissingPairs(): Promise<MissingPair[]> {
     }
   }
   return out;
+}
+
+/** `count` months before `from`, in human months (1-12). Never toISOString. */
+export function monthsBefore(
+  from: { m: number; y: number },
+  count: number,
+): { m: number; y: number } {
+  const zeroBased = from.m - 1 - count;
+  const y = from.y + Math.floor(zeroBased / 12);
+  const m = ((zeroBased % 12) + 12) % 12 + 1;
+  return { m, y };
 }
 
 /**
@@ -478,22 +554,29 @@ function buildAlerts(
     byClient.get(p.clientCode)!.push(p);
   }
   for (const [code, pairs] of byClient.entries()) {
-    const halfMissing = pairs.filter(
-      (p) => p.hasCommissionInvoice !== p.hasClientReport,
+    // Label the MISSING type, not the present one. Inverted in the first
+    // version of this cron — caught by manual review when Castra Tomayee
+    // Tnbis was tagged "דוח חסר" despite a client_report row existing for
+    // April 2026.
+    const label = (p: MissingPair): string => {
+      if (!p.hasCommissionInvoice && !p.hasClientReport) return "שני המסמכים חסרים";
+      return `${!p.hasCommissionInvoice ? "עמלה" : "דוח"} חסר`;
+    };
+
+    // Pairs with nothing at all first — a pair that delivered in the prior
+    // months and then produced nothing is the loudest signal there is, and
+    // until 2026-09-09 this cron could not see it at all.
+    const ordered = [...pairs].sort(
+      (a, b) =>
+        Number(a.hasCommissionInvoice || a.hasClientReport) -
+        Number(b.hasCommissionInvoice || b.hasClientReport),
     );
-    if (halfMissing.length > 0) {
+    if (ordered.length > 0) {
       alerts.push(
-        `${code}: ${halfMissing.length} זכייני(ם) עם רק חצי מהמסמכים לחודש ${pairs[0].periodMonth}/${pairs[0].periodYear} — ${halfMissing
-          .slice(0, 5)
-          .map(
-            (p) =>
-              // Label the MISSING type, not the present one. Inverted in
-              // the first version of this cron — caught by manual review
-              // when Castra Tomayee Tnbis was tagged "דוח חסר" despite
-              // a client_report row existing for April 2026.
-              `${p.franchiseeName} (${!p.hasCommissionInvoice ? "עמלה" : "דוח"} חסר)`,
-          )
-          .join(", ")}.`,
+        `${code}: ${ordered.length} זכייני(ם) עם מסמכים חסרים לחודש ${pairs[0].periodMonth}/${pairs[0].periodYear} — ${ordered
+          .slice(0, 6)
+          .map((p) => `${p.franchiseeName} (${label(p)})`)
+          .join(", ")}${ordered.length > 6 ? ", ועוד" : ""}.`,
       );
     }
   }

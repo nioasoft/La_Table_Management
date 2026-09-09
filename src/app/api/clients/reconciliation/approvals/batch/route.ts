@@ -13,6 +13,7 @@ import { database } from "@/db";
 import { clientDocument, client } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { batchApproveForFranchisee } from "@/data-access/client-reconciliation-approval";
+import { mirrorAmounts } from "@/lib/client-reconciliation-mirror";
 
 const THRESHOLD = 30;
 
@@ -90,8 +91,8 @@ export async function POST(request: NextRequest) {
       }
       const code = clientCodeMap.get(clientId);
       // Include "missing_client" and "missing_tabit" in batch approve too (user
-      // intent: "approve all"); GIFTCARD with tabit-only counts as ok, skip.
-      if (code === "GIFTCARD" && tabitAmt !== null) continue;
+      // intent: "approve all"); a one-sided client already counts as ok, skip.
+      if (mirrorAmounts(code, clientAmt, tabitAmt).autoOk) continue;
       if (clientAmt !== null || tabitAmt !== null) {
         mismatchClientIds.push(clientId);
       }

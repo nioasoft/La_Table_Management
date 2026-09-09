@@ -20,13 +20,9 @@
  * - Grand total (incl. VAT) = netAmount
  */
 
-import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
-
-// Import from /lib/pdf-parse.js directly — the package's index.js runs a
-// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+import { extractPdfText } from "../pdf-text";
 
 /**
  * Dynamic imports for OCR dependencies (pdfjs-dist + tesseract.js + sharp).
@@ -163,7 +159,7 @@ export async function parseMishlohaFile(
   const warnings: string[] = [];
 
   try {
-    const pdfData = await pdfParse(buffer);
+    const pdfData = await extractPdfText(buffer);
     let text = pdfData.text as string;
 
     // jsPDF-generated invoices embed content as a page-sized image and have
@@ -262,22 +258,45 @@ export async function parseMishlohaFile(
           .trim();
       const sameLineAfterLabel = stripLabel(lekavodLine);
       // If layout A produced a non-empty value, use it as-is.
-      // If layout B (label-on-own-line), pull from the next non-empty line.
+      // If layout B (label-on-own-line), gather the recipient block that
+      // follows. Since 2026-09 ezcount wraps the customer name over up to
+      // three lines ("…(קינג קונג" then "(מוצקין בע\"מ"), so taking only the
+      // first of them drops the legal entity and half the tokens the
+      // franchisee matcher needs. Stop at the ח.פ line, which always ends
+      // the block.
       let afterLabel = sameLineAfterLabel;
       if (!afterLabel) {
-        for (let off = 1; off <= 3 && lekavodIdx + off < lines.length; off++) {
+        const parts: string[] = [];
+        for (let off = 1; off <= 4 && lekavodIdx + off < lines.length; off++) {
           const nextLine = lines[lekavodIdx + off];
-          if (!nextLine || /^[\d\s./:]+$/.test(nextLine)) continue;
-          afterLabel = nextLine.replace(/""/g, '"').trim();
-          if (afterLabel.length > 0) break;
+          if (!nextLine) continue;
+          // Numbers-only separators are noise.
+          if (/^[\d\s./:]+$/.test(nextLine)) continue;
+          // The ח.פ / ת.ז line closes the recipient block. Matched as a long
+          // digit run NEXT TO the label, so an ordinary Hebrew word that
+          // happens to contain those letters does not truncate the name.
+          if (/\d{8,}/.test(nextLine) && /[חת][.\s]*[פזנ]/.test(nextLine)) break;
+          if (!/[\u0590-\u05FF]/.test(nextLine)) break;
+          parts.push(nextLine.replace(/""/g, '"').trim());
+          if (/בע"מ|בעמ|בע״מ/.test(nextLine)) break;
         }
+        afterLabel = parts.join(" ").trim();
       }
+      // pdf-parse mangles the RTL parentheses that wrap the trading name, and
+      // a stray paren splits the legal-entity match in two. For the בע"מ match
+      // only, treat them as whitespace — the lazy match still stops at the
+      // first בע"מ, so the same-line layouts resolve exactly as before. The
+      // paren-aware fallbacks below keep the original string.
+      const afterLabelFlat = afterLabel
+        .replace(/[()]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
       // (Redundant client-token guard removed — outer `issuerIsKnownClient`
       // gate already ensures we only enter this block for commission
       // invoices, where the recipient is always the franchisee.)
 
       // 1. Prefer a legal-entity name ending in בע"מ
-      const bizMatch = afterLabel.match(
+      const bizMatch = afterLabelFlat.match(
         /([\u0590-\u05FF][\u0590-\u05FF\s"'״]+?(?:בע"מ|בעמ|בע״מ))/
       );
       if (bizMatch) {

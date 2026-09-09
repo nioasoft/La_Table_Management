@@ -25,13 +25,9 @@
  * All regex patterns are written to match reversed Hebrew text.
  */
 
-import { createRequire } from "node:module";
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
-
-// Import from /lib/pdf-parse.js directly — the package's index.js runs a
-// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+import { extractPdfText } from "../pdf-text";
 
 /**
  * Parse a number string from the PDF text.
@@ -376,7 +372,7 @@ export async function parseWoltInvoice(
   const warnings: string[] = [];
 
   try {
-    const data = await pdfParse(buffer);
+    const data = await extractPdfText(buffer);
     const text = data.text as string;
 
     if (!text || text.length < 50) {

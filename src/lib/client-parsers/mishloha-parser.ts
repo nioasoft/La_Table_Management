@@ -15,6 +15,7 @@
 
 import type { ClientDocumentProcessingResult } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
+import { extractPdfText } from "../pdf-text";
 
 // ESM-safe loader (works in both Next.js CJS bundles and tsx ESM scripts).
 import { createRequire } from "node:module";
@@ -100,13 +101,8 @@ export async function parseMishlohaFile(
   const warnings: string[] = [];
 
   try {
-    // Step 1: Try pdf-parse for text-based PDFs.
-    // Import from /lib/pdf-parse.js directly — the package's index.js runs a
-    // debug file-read at module load when `module.parent` is null (which
-    // happens with bundlers like Turbopack), breaking the build.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = ecmRequire("pdf-parse/lib/pdf-parse.js");
-    const pdfData = await pdfParse(buffer);
+    // Step 1: Try the text layer.
+    const pdfData = await extractPdfText(buffer);
     let text = (pdfData.text as string).trim();
 
     // Step 2: If no text, try image extraction and OCR

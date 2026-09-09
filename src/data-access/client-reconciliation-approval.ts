@@ -16,6 +16,7 @@ import {
   franchisee,
 } from "@/db/schema";
 import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { mirrorAmounts } from "@/lib/client-reconciliation-mirror";
 import {
   resolveClientHashavshevetAccount,
   resolveClientHashavshevetItemKey,
@@ -348,18 +349,6 @@ export interface ExportRow {
   approvedAt: Date;
 }
 
-const RECONCILIATION_THRESHOLD = 30; // NIS — same as by-franchisee endpoint
-
-// Clients that never produce a separate client_report (income invoice from
-// franchisee → client) — Tabit is the only ledger we have for them. Without
-// this allow-list, `getApprovedForExport` would skip them entirely because
-// the auto-OK gate requires both clientAmt AND tabitAmt to be present.
-//
-// GIFTCARD: prepaid card sales recorded via Tabit only.
-// LATABLE / LATABLEMARK: La Table loyalty / marketing meals sold through Tabit
-//   POS; no external client invoice cycle exists.
-const TABIT_ONLY_AUTO_OK_CLIENTS = new Set(["GIFTCARD", "LATABLE", "LATABLEMARK"]);
-
 export async function getApprovedForExport(input: {
   franchiseeId: string;
   periodMonth: number;
@@ -491,25 +480,19 @@ export async function getApprovedForExport(input: {
     const tabitAmt = tabitAmounts.has(c.id) ? tabitAmounts.get(c.id)! : null;
     const isManuallyApproved = approvedAtByClient.has(c.id);
 
-    let isAutoOk = false;
-    if (clientAmt !== null && tabitAmt !== null) {
-      isAutoOk = Math.abs(clientAmt - tabitAmt) <= RECONCILIATION_THRESHOLD;
-    } else if ((c.code ? TABIT_ONLY_AUTO_OK_CLIENTS.has(c.code) : false) && tabitAmt !== null) {
-      // GIFTCARD / LATABLE / LATABLEMARK never produce a separate
-      // client_report — Tabit is the only source of truth. Was missing
-      // for LATABLE/LATABLEMARK (Reut 2026-05-10): the franchisee's
-      // client-invoices Hashavshevet export was silently dropping La Table
-      // because reconciliation required a non-existent client_report.
-      isAutoOk = true;
-    }
+    // One-sided clients never produce both documents, so the plain
+    // both-present gate would skip them entirely: GIFTCARD/LATABLE/
+    // LATABLEMARK have Tabit only (Reut 2026-05-10 — La Table was being
+    // dropped from the client-invoices Hashavshevet export), HEVER has a
+    // client report only (Reut 2026-09-09 — she was hand-approving it for
+    // every franchisee, every month). See client-reconciliation-mirror.ts.
+    const mirrored = mirrorAmounts(c.code, clientAmt, tabitAmt);
 
-    if (!isManuallyApproved && !isAutoOk) continue;
+    if (!isManuallyApproved && !mirrored.autoOk) continue;
 
-    // For Tabit-only clients with no client_report, surface the tabit
-    // amount as the client amount so downstream exports have a value to
-    // print. Mirrors the by-franchisee endpoint behavior for GIFTCARD.
-    const exportClientAmount =
-      clientAmt ?? ((c.code ? TABIT_ONLY_AUTO_OK_CLIENTS.has(c.code) : false) ? (tabitAmt ?? 0) : 0);
+    // Downstream exports need a value to print, so a one-sided client
+    // exports the side it actually has.
+    const exportClientAmount = mirrored.clientAmount ?? 0;
 
     const resolvable: ResolvableClientAccount = {
       hashavshevetByBrand: c.hashavshevetByBrand,

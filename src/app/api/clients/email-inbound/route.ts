@@ -65,6 +65,7 @@ import { database } from "@/db";
 import { franchisee, client } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import type { Franchisee } from "@/db/schema";
+import { classifyProcessOutcome } from "@/lib/inbound-outcome";
 
 /** Client codes that parse from email body instead of attachments */
 const BODY_BASED_CLIENTS = new Set(["CIBUS"]);
@@ -233,13 +234,24 @@ export async function POST(request: NextRequest) {
     // ─── Step 2: Parse webhook event ───────────────────────────────────
     const event = JSON.parse(body) as ResendInboundWebhookPayload;
 
+    // Capture into diagnostics BEFORE the event-type gate — a payload that
+    // is not "email.received" used to produce a `completed` row with zero
+    // counters, zero errorDetails and zero diagnostics, indistinguishable
+    // from a healthy no-op. If Resend ever changes shape, this is the only
+    // place that would show it.
+    diagnostics.emailId = event.data?.email_id;
+    diagnostics.fromAddress = event.data?.from;
+    diagnostics.toAddresses = event.data?.to;
+    diagnostics.subject = event.data?.subject;
+
     if (event.type !== "email.received") {
-      // Not an inbound email event — ignore silently
       await finalizeSyncLog(syncLog.id, "completed", {
         messagesScanned: 0,
         documentsCreated: 0,
         duplicatesSkipped: 0,
         errorCount: 0,
+        errorDetails: [`דולג: אירוע שאינו email.received (${event.type})`],
+        ...diagnostics,
       });
       return NextResponse.json({ received: true, skipped: true });
     }
@@ -247,8 +259,6 @@ export async function POST(request: NextRequest) {
     const { email_id, from, to, subject } = event.data;
     messagesScanned = 1;
 
-    // Capture into diagnostics immediately — anything that fails after this
-    // point will still have from/to/subject/email_id stored in gmail_sync_log.
     diagnostics.emailId = email_id;
     diagnostics.fromAddress = from;
     diagnostics.toAddresses = to;
@@ -629,13 +639,21 @@ export async function POST(request: NextRequest) {
             gmailMessageId: email_id,
           });
 
-          if (bodyResult.skippedDuplicate) {
-            duplicatesSkipped++;
-          } else if (bodyResult.success && bodyResult.document) {
-            documentsCreated++;
-          } else {
-            errorCount++;
-            errorDetails.push(bodyResult.error ?? "שגיאה בעיבוד");
+          switch (classifyProcessOutcome(bodyResult)) {
+            case "created":
+              documentsCreated++;
+              break;
+            case "duplicate":
+            case "skipped":
+              // A re-delivery, or a parser that deliberately refused to
+              // store this document. Neither lost anything, so neither
+              // may raise errorCount — that is what marks the run failed
+              // and what the daily digest counts.
+              duplicatesSkipped++;
+              break;
+            default:
+              errorCount++;
+              errorDetails.push(bodyResult.error ?? "שגיאה בעיבוד");
           }
         }
 
@@ -948,15 +966,19 @@ export async function POST(request: NextRequest) {
             gmailMessageId: `${email_id}#${attachment.id}`,
           });
 
-          if (attResult.skippedDuplicate) {
-            duplicatesSkipped++;
-          } else if (attResult.success && attResult.document) {
-            documentsCreated++;
-          } else {
-            errorCount++;
-            errorDetails.push(
-              `${attachment.filename}: ${attResult.error ?? "שגיאה בעיבוד"}`
-            );
+          switch (classifyProcessOutcome(attResult)) {
+            case "created":
+              documentsCreated++;
+              break;
+            case "duplicate":
+            case "skipped":
+              duplicatesSkipped++;
+              break;
+            default:
+              errorCount++;
+              errorDetails.push(
+                `${attachment.filename}: ${attResult.error ?? "שגיאה בעיבוד"}`
+              );
           }
         }
 
@@ -983,8 +1005,12 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Step 8: Finalize sync log ─────────────────────────────────────
-    const status =
-      errorCount > 0 && documentsCreated === 0 ? "failed" : "completed";
+    // Any error means something was lost. The old rule (`&& documentsCreated
+    // === 0`) reported a 4-attachment email that stored 1 and lost 3 as
+    // `completed`, which hid it from the health cron's failedRuns filter and
+    // from the daily digest. Deliberate skips no longer reach errorCount at
+    // all (see classifyProcessOutcome), so this can be strict.
+    const status = errorCount > 0 ? "failed" : "completed";
 
     await finalizeSyncLog(syncLog.id, status, {
       messagesScanned,
@@ -1195,23 +1221,15 @@ async function recordInboundReviewOutcome(args: {
       proposedFranchiseeId = args.franchiseeMatch.franchiseeId;
       proposedFranchiseeName = args.franchiseeMatch.franchiseeName;
       franchiseeConfidence = args.franchiseeMatch.confidence.toFixed(3);
-      if (args.processResult?.skippedDuplicate) {
-        // Don't pollute the queue with re-deliveries — gmail_sync_log
-        // already counts them via duplicates_skipped.
-        return;
-      }
-      if (args.processResult?.success && !args.processResult.document) {
-        // A parser that deliberately refused to persist returns success with
-        // no document — 10bis "הודעת תשלום" remittance advices, the Cibus
-        // daily snapshot, ezcount receipts. That is a DECISION, not a failure.
-        //
-        // The check below keys on `success && document`, so these fell through
-        // to `status = "failed"` with the useless reason "processing failed".
-        // On 2026-08-10 that put 16 payment advices in the review queue as
-        // failures and counted each as a created document, while nothing was
-        // written. Reut reads that board to find real problems.
-        return;
-      }
+      const outcome = args.processResult
+        ? classifyProcessOutcome(args.processResult)
+        : "failed";
+      // A re-delivery is already counted by gmail_sync_log.duplicates_skipped,
+      // and a deliberate parser refusal is a decision, not a problem. Neither
+      // belongs on the board Reut reads to find real problems. Same classifier
+      // as the counter blocks above, on purpose — these two used to disagree.
+      if (outcome === "duplicate" || outcome === "skipped") return;
+
       if (args.processResult?.success && args.processResult.document) {
         // Borderline matches (0.85 ≤ confidence < 0.95 or filename/subject
         // strategies that fall in the same band) commit normally but get
@@ -1421,15 +1439,19 @@ async function processBufferFile(
       gmailMessageId: file.dedupKey,
     });
 
-    if (result.skippedDuplicate) {
-      outcome.duplicate++;
-    } else if (result.success && result.document) {
-      outcome.created++;
-    } else {
-      outcome.errorCount++;
-      outcome.errorDetails.push(
-        `${file.fileName}: ${result.error ?? "שגיאה בעיבוד"}`,
-      );
+    switch (classifyProcessOutcome(result)) {
+      case "created":
+        outcome.created++;
+        break;
+      case "duplicate":
+      case "skipped":
+        outcome.duplicate++;
+        break;
+      default:
+        outcome.errorCount++;
+        outcome.errorDetails.push(
+          `${file.fileName}: ${result.error ?? "שגיאה בעיבוד"}`,
+        );
     }
   }
 

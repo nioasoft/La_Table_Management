@@ -11,6 +11,7 @@ import { database } from "@/db";
 import { clientDocument, client, clientFranchisee, franchisee } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { getApprovalsByFranchisee } from "@/data-access/client-reconciliation-approval";
+import { mirrorAmounts } from "@/lib/client-reconciliation-mirror";
 
 const THRESHOLD = 30; // NIS
 
@@ -189,12 +190,16 @@ export async function GET(request: NextRequest) {
       let absoluteDifference: number | null = null;
       let status: ByFranchiseeRow["status"];
 
+      const mirrored = mirrorAmounts(c.code, clientAmt, tabitAmt);
+
       if (clientAmt !== null && tabitAmt !== null) {
         difference = clientAmt - tabitAmt;
         absoluteDifference = Math.abs(difference);
         status = absoluteDifference <= THRESHOLD ? "ok" : "mismatch";
-      } else if (c.code === "GIFTCARD" && tabitAmt !== null) {
-        // Gift Card: Tabit is the sole source of truth — auto-approve
+      } else if (mirrored.autoOk) {
+        // One-sided client by design (GIFTCARD/LATABLE/LATABLEMARK have only
+        // Tabit; HEVER only a client report). The missing column is mirrored
+        // from the one that exists — see client-reconciliation-mirror.ts.
         difference = 0;
         absoluteDifference = 0;
         status = "ok";
@@ -213,9 +218,8 @@ export async function GET(request: NextRequest) {
         clientId,
         clientName: c.name,
         clientCode: c.code,
-        // Gift Card: use Tabit amount as client amount
-        clientAmount: clientAmt ?? (c.code === "GIFTCARD" ? tabitAmt : null),
-        tabitAmount: tabitAmt,
+        clientAmount: mirrored.clientAmount,
+        tabitAmount: mirrored.tabitAmount,
         clientFileDocId: cf?.hasUrl ? cf.docId : null,
         clientFileName: cf?.name ?? null,
         tabitFileDocId: tf?.hasUrl ? tf.docId : null,

@@ -26,13 +26,7 @@
 
 import type { ClientDocumentProcessingResult } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
-
-// Import from /lib/pdf-parse.js directly — the package's index.js runs a
-// debug file-read at module load when `module.parent` is null (breaks Turbopack builds).
-// ESM-safe loader (works in both Next.js CJS bundles and tsx ESM scripts).
-import { createRequire } from "node:module";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = createRequire(import.meta.url)("pdf-parse/lib/pdf-parse.js");
+import { extractPdfText } from "../pdf-text";
 
 /** Hebrew month names mapped to month numbers (1-12) */
 const HEBREW_MONTHS: Record<string, number> = {
@@ -98,7 +92,7 @@ export async function parseTenbisInvoice(
   const warnings: string[] = [];
 
   try {
-    const data = await pdfParse(buffer);
+    const data = await extractPdfText(buffer);
     const text = data.text as string;
 
     if (!text || text.length < 50) {

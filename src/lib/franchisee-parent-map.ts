@@ -63,6 +63,13 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
       "פאט ויני עזריאלי בעמ",
       "פט ויני עזריאלי",
       "פאט ויני עזריאלי",
+      // The franchisee row's own name. Needed since 2026-09-09: when the
+      // ח.פ route resolves a document (516161361 covers BOTH restaurants),
+      // the candidate handed to this gate is the franchisee name, not the
+      // "לכבוד" legal-entity string. The content gate below is what keeps
+      // this safe — it still requires a נתנזון בורגר marker and still
+      // blocks on VINNI.
+      "ויני עזריאלי חיפה",
     ],
     operatingFranchiseeId: "ab020323-fefe-4543-9a69-16d14dd54b99",
     operatingFranchiseeName: "נתנזון עזריאלי חיפה",
