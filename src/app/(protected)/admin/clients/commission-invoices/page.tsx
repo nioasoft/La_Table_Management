@@ -303,7 +303,9 @@ export default function CommissionInvoicesPage() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
   const { data: clients } = useClients({ active: true });
-  const { data: filterFranchisees } = useFranchisees({ category: "all" });
+  // Real franchisees only — "other" rows (דון פדרו) exist for supplier-file
+  // matching and have no business in a franchisee filter (Reut, 2026-09-09).
+  const { data: filterFranchisees } = useFranchisees();
 
   const { data: flatRows, isLoading: rowsLoading } = useInvoiceVerificationFlat(
     periodMonth,
