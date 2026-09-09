@@ -27,6 +27,7 @@
 import type { ClientDocumentProcessingResult, ClientParsedLineItem } from "./types";
 import { extractAllocationNumber } from "./extract-allocation-number";
 import { extractPdfText } from "../pdf-text";
+import os from "node:os";
 
 /**
  * Dynamic imports for OCR dependencies. String-variable imports prevent
@@ -122,7 +123,13 @@ async function renderPdfPageToPng(buffer: Buffer): Promise<Buffer | null> {
 async function ocrImage(imageBuffer: Buffer): Promise<string> {
   const tess = await loadTesseract();
   const recognize = tess.default?.recognize ?? tess.recognize;
-  const { data } = await recognize(imageBuffer, "heb+eng");
+  // Language data is fetched from the tesseract CDN and cached on disk. The
+  // default cache path is the working directory, which on Vercel is the
+  // read-only /var/task — the write fails (quietly) and every invocation
+  // re-downloads heb.traineddata. /tmp is writable and survives warm reuse.
+  const { data } = await recognize(imageBuffer, "heb+eng", {
+    cachePath: os.tmpdir(),
+  });
   return data.text;
 }
 
