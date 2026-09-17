@@ -3438,6 +3438,8 @@ export const he = {
       eventsCommission: "עמלת אירועים",
       additionalBenefits: "הטבות נוספות",
       additionalBenefitsPlaceholder: "תיאור הטבות נוספות",
+      paymentTerms: "תנאי תשלום",
+      paymentTermsPlaceholder: "לדוגמה: שוטף + 30",
       invoiceGeneration: "הפקת חשבונית",
       notes: "הערות",
       notesPlaceholder: "הערות נוספות",

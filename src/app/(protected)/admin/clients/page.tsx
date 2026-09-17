@@ -104,6 +104,7 @@ interface ClientFormData {
   takeawayCommission: string;
   eventsCommission: string;
   additionalBenefits: string;
+  paymentTerms: string;
   invoiceGeneration: boolean;
   journalEntryGeneration: boolean;
   notes: string;
@@ -132,6 +133,7 @@ const initialFormData: ClientFormData = {
   takeawayCommission: "",
   eventsCommission: "",
   additionalBenefits: "",
+  paymentTerms: "",
   invoiceGeneration: false,
   journalEntryGeneration: false,
   notes: "",
@@ -306,6 +308,7 @@ export default function ClientsPage() {
       takeawayCommission: c.takeawayCommission ?? "",
       eventsCommission: c.eventsCommission ?? "",
       additionalBenefits: c.additionalBenefits ?? "",
+      paymentTerms: c.paymentTerms ?? "",
       invoiceGeneration: c.invoiceGeneration,
       journalEntryGeneration: c.journalEntryGeneration,
       notes: c.notes ?? "",
@@ -399,6 +402,7 @@ export default function ClientsPage() {
       takeawayCommission: formData.takeawayCommission.trim() || null,
       eventsCommission: formData.eventsCommission.trim() || null,
       additionalBenefits: formData.additionalBenefits.trim() || null,
+      paymentTerms: formData.paymentTerms.trim() || null,
       invoiceGeneration: formData.invoiceGeneration,
       journalEntryGeneration: formData.journalEntryGeneration,
       notes: formData.notes.trim() || null,
@@ -933,7 +937,7 @@ export default function ClientsPage() {
               </div>
             )}
 
-            {/* Row 3c – Hashavshevet item key (מפתח פריט) */}
+            {/* Row 3c – Hashavshevet item key (מפתח פריט) + payment terms */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="client-hashavshevetItemKey">
@@ -946,6 +950,18 @@ export default function ClientsPage() {
                     updateField("hashavshevetItemKey", e.target.value)
                   }
                   placeholder={he.clients.form.hashavshevetItemKeyPlaceholder}
+                  disabled={isSubmitting}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="client-paymentTerms">
+                  {he.clients.form.paymentTerms}
+                </Label>
+                <Input
+                  id="client-paymentTerms"
+                  value={formData.paymentTerms}
+                  onChange={(e) => updateField("paymentTerms", e.target.value)}
+                  placeholder={he.clients.form.paymentTermsPlaceholder}
                   disabled={isSubmitting}
                 />
               </div>

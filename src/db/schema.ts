@@ -3241,6 +3241,7 @@ export const client = pgTable(
     hashavshevetItemKeyByBrand: jsonb("hashavshevet_item_key_by_brand").$type<
       Record<string, string>
     >(),
+    paymentTerms: text("payment_terms"), // תנאי תשלום מול הלקוח, טקסט חופשי
     fileFormat: text("file_format"), // Expected file format: "pdf", "excel", "csv"
     gmailSearchQuery: text("gmail_search_query"), // Gmail API search query for auto-fetch
     gmailSenderEmail: text("gmail_sender_email"), // Sender email for verification

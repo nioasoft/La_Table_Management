@@ -260,6 +260,13 @@
       "when": 1785628800000,
       "tag": "0073_franchisee_billing_stale_ack",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1785715200000,
+      "tag": "0074_client_payment_terms",
+      "breakpoints": true
     }
   ]
 }

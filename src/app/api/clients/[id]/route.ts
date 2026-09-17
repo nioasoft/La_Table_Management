@@ -67,6 +67,7 @@ export async function PATCH(
       takeawayCommission,
       eventsCommission,
       additionalBenefits,
+      paymentTerms,
       invoiceGeneration,
       journalEntryGeneration,
       notes,
@@ -114,6 +115,8 @@ export async function PATCH(
       updateData.eventsCommission = eventsCommission || null;
     if (additionalBenefits !== undefined)
       updateData.additionalBenefits = additionalBenefits || null;
+    if (paymentTerms !== undefined)
+      updateData.paymentTerms = paymentTerms?.trim() || null;
     if (invoiceGeneration !== undefined)
       updateData.invoiceGeneration = invoiceGeneration;
     if (journalEntryGeneration !== undefined)
