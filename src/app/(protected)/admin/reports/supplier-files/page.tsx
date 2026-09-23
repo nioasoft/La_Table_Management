@@ -45,7 +45,7 @@ import {
   type SummaryCardData,
 } from "@/components/reports";
 import type { SettlementPeriodType } from "@/db/schema";
-import { getPeriodByKey } from "@/lib/settlement-periods";
+import { getPeriodByKey, getPeriodTypeLabel } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatDateHe, formatNumber } from "@/lib/report-utils";
 import { toast } from "sonner";
@@ -542,6 +542,7 @@ export default function SupplierFilesReportPage() {
   const [selectedSupplier, setSelectedSupplier] = useState("");
   const [selectedBrand, setSelectedBrand] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("");
+  const [selectedFrequency, setSelectedFrequency] = useState<SettlementPeriodType | "all" | "">("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
@@ -570,10 +571,11 @@ export default function SupplierFilesReportPage() {
     if (selectedSupplier && selectedSupplier !== "all") params.set("supplierId", selectedSupplier);
     if (selectedBrand && selectedBrand !== "all") params.set("brandId", selectedBrand);
     if (selectedStatus && selectedStatus !== "all") params.set("status", selectedStatus);
+    if (selectedFrequency && selectedFrequency !== "all") params.set("frequency", selectedFrequency);
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
     return params.toString();
-  }, [selectedSupplier, selectedBrand, selectedStatus, startDate, endDate]);
+  }, [selectedSupplier, selectedBrand, selectedStatus, selectedFrequency, startDate, endDate]);
 
   // Fetch report
   const fetchReport = useCallback(async () => {
@@ -634,6 +636,8 @@ export default function SupplierFilesReportPage() {
     setPeriodType(newPeriodType);
     setPeriodKey(newPeriodKey);
     setUseCustomDateRange(!newPeriodType);
+    // Annual view = annual suppliers only (Reut's request); other periods keep all suppliers.
+    setSelectedFrequency(newPeriodType === "annual" ? "annual" : "");
 
     if (newPeriodKey) {
       const period = getPeriodByKey(newPeriodKey);
@@ -649,6 +653,7 @@ export default function SupplierFilesReportPage() {
     setSelectedSupplier("");
     setSelectedBrand("");
     setSelectedStatus("");
+    setSelectedFrequency("");
     setStartDate("");
     setEndDate("");
     setPeriodType("");
@@ -786,6 +791,27 @@ export default function SupplierFilesReportPage() {
                   {statuses.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
                       {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="w-[132px]">
+              <Label htmlFor="frequency" className="text-xs mb-1 block">תדירות ספק</Label>
+              <Select
+                value={selectedFrequency}
+                onValueChange={(v) => setSelectedFrequency(v as SettlementPeriodType | "all")}
+                dir="rtl"
+              >
+                <SelectTrigger id="frequency" className="h-9">
+                  <SelectValue placeholder="כל התדירויות" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">כל התדירויות</SelectItem>
+                  {(["monthly", "quarterly", "semi_annual", "annual"] as const).map((f) => (
+                    <SelectItem key={f} value={f}>
+                      {getPeriodTypeLabel(f)}
                     </SelectItem>
                   ))}
                 </SelectContent>

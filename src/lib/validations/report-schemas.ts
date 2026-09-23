@@ -261,6 +261,11 @@ export const supplierFilesFiltersSchema = z
         message: "סטטוס לא תקין",
       })
       .optional(),
+    frequency: z
+      .enum(["monthly", "quarterly", "semi_annual", "annual"], {
+        message: "תדירות לא תקינה",
+      })
+      .optional(),
   })
   .merge(dateRangeSchema);
 

@@ -14,6 +14,7 @@ import {
   franchisee,
   type SupplierFileProcessingResult,
   type SupplierFileMapping,
+  type SettlementPeriodType,
 } from "@/db/schema";
 import { eq, and, desc, gte, lte, inArray } from "drizzle-orm";
 import { unstable_cache } from "next/cache";
@@ -94,6 +95,8 @@ export interface SupplierFilesFilters {
   startDate?: string;
   endDate?: string;
   status?: string;
+  /** Supplier settlement frequency — "annual" shows only annual suppliers */
+  frequency?: SettlementPeriodType;
 }
 
 export interface FilterOption {
@@ -226,6 +229,9 @@ export async function getSupplierFilesReport(
   }
   if (filters.supplierId) {
     conditions.push(eq(supplierFileUpload.supplierId, filters.supplierId));
+  }
+  if (filters.frequency) {
+    conditions.push(eq(supplier.settlementFrequency, filters.frequency));
   }
   if (filters.status) {
     conditions.push(eq(supplierFileUpload.processingStatus, filters.status as "pending" | "processing" | "auto_approved" | "needs_review" | "approved" | "rejected"));
@@ -733,6 +739,7 @@ export interface FranchiseeBreakdownFilters {
   startDate?: string;
   endDate?: string;
   brandId?: string;
+  frequency?: SettlementPeriodType;
 }
 
 /**
@@ -757,6 +764,10 @@ export async function getFranchiseeBreakdownReport(
 
   if (filters.endDate) {
     conditions.push(lte(supplierFileUpload.periodEndDate, filters.endDate));
+  }
+
+  if (filters.frequency) {
+    conditions.push(eq(supplier.settlementFrequency, filters.frequency));
   }
 
   // Note: Brand filtering is done at franchisee-match level below, not at supplier level.

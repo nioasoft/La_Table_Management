@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
       status: searchParams.get("status") || undefined,
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,
+      frequency: searchParams.get("frequency") || undefined,
     };
 
     // Validate filters using Zod schema
@@ -48,6 +49,7 @@ export async function GET(request: NextRequest) {
       status: validatedData.status,
       startDate: validatedData.startDate ? formatDateAsLocal(validatedData.startDate) : undefined,
       endDate: validatedData.endDate ? formatDateAsLocal(validatedData.endDate) : undefined,
+      frequency: validatedData.frequency,
     };
 
     // Get report data and filter options in parallel
@@ -58,6 +60,7 @@ export async function GET(request: NextRequest) {
         startDate: filters.startDate,
         endDate: filters.endDate,
         brandId: filters.brandId,
+        frequency: filters.frequency,
       }),
     ]);
 

@@ -11,6 +11,7 @@ import {
   type SupplierFilesFilters,
 } from "@/data-access/supplier-file-reports";
 import { formatDateAsLocal } from "@/lib/date-utils";
+import { supplierFilesFiltersSchema } from "@/lib/validations/report-schemas";
 import { createBrandMatrixSheets } from "./brand-matrix";
 
 // Format currency for Excel (round to whole shekels)
@@ -181,6 +182,15 @@ export async function GET(request: NextRequest) {
       startDate: searchParams.get("startDate") || undefined,
       endDate: searchParams.get("endDate") || undefined,
     };
+
+    const frequency = searchParams.get("frequency");
+    if (frequency) {
+      const parsed = supplierFilesFiltersSchema.safeParse({ frequency });
+      if (!parsed.success) {
+        return NextResponse.json({ error: "פרמטרים לא תקינים" }, { status: 400 });
+      }
+      filters.frequency = parsed.data.frequency;
+    }
 
     // Fetch report data
     const report = await getSupplierFilesReport(filters);
