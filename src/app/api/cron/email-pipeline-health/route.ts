@@ -12,8 +12,8 @@
  *
  *   • Any client has an error rate over `ERROR_RATE_THRESHOLD` (20%)
  *     across ≥3 runs (low-volume noise filtered out).
- *   • Any client that normally produces inbound documents has gone
- *     quiet for `QUIET_HOURS` (36h) without a single new doc.
+ *   • Cibus (the only daily sender, on the shared webhook) has gone
+ *     `QUIET_HOURS` (36h) without a single inbound email.
  *   • Any (client, franchisee) that delivered in either of the two
  *     preceding months is missing a commission_invoice, a client_report,
  *     or BOTH for the most recent month. Half-missing historically means
@@ -54,6 +54,8 @@ const TRACKED_CLIENT_CODES = ["CIBUS", "TENBIS", "HAAT", "WOLT", "MISHLOCHA"];
 const ERROR_RATE_THRESHOLD = 0.2; // 20%
 const MIN_RUNS_FOR_RATE = 3;
 const QUIET_HOURS = 36;
+/** Clients that email every day; silence from any other is normal. */
+const DAILY_INBOUND_CLIENT_CODES = ["CIBUS"];
 const LOOKBACK_HOURS = 24;
 
 /**
@@ -537,7 +539,14 @@ function buildAlerts(
     // genuine "webhook/routing is broken" signal. Per-period completeness is
     // covered by the missing-pair alerts, which is the right tool for
     // "the month's documents never showed up".
+    //
+    // Only Cibus actually mails daily. The other four go 2–4 weeks between
+    // bursts, and their mid-month noise (Wolt SHAAM notices, Mishloha
+    // feedback) is logged with client_code NULL by the silent-skip filter —
+    // so the alert fired 4×/day for 5+ weeks (audited 2026-09-28). Cibus
+    // shares the one webhook, so its silence still means "routing is broken".
     if (
+      DAILY_INBOUND_CLIENT_CODES.includes(s.clientCode) &&
       s.hoursSinceLastInbound !== null &&
       s.hoursSinceLastInbound > QUIET_HOURS
     ) {

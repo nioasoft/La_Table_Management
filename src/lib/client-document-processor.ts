@@ -37,6 +37,8 @@ import {
   upsertOccasionalClientFromTabit,
   upsertOccasionalClientDocument,
 } from "@/data-access/occasional-clients";
+import { tenbisUsesJournalEntries } from "@/data-access/client-reconciliation-approval";
+import { reportSlotPrecedence } from "@/lib/report-slot-precedence";
 import type {
   ClientDocumentProcessingResult,
   ClientParsedLineItem,
@@ -305,13 +307,34 @@ export async function processClientDocument(
       };
     }
 
+    // 10bis self-billed: the franchisee's ezcount invoice outranks 10bis's own
+    // transaction report in the client_report slot, whatever the arrival order.
+    const precedence =
+      existingDoc.length > 0 &&
+      source === "gmail_fetch" &&
+      parserCode === "TENBIS" &&
+      documentType === "client_report"
+        ? reportSlotPrecedence({
+            selfBilled: tenbisUsesJournalEntries(finalPeriodMonth, finalPeriodYear),
+            occupantInvoiceNumber: existingDoc[0].invoiceNumber,
+            incomingInvoiceNumber: resolvedInvoiceNumber,
+          })
+        : "default";
+    if (precedence === "skip") {
+      console.log(
+        `[client-document-processor] "${fileName}" has no invoice number; invoice ${existingDoc[0].invoiceNumber} keeps the slot — skipping`
+      );
+      return { success: true, document: null, processingResult, skippedDuplicate: false };
+    }
+    const replace = allowReplace || precedence === "replace";
+
     // Split period: a SECOND file covering a DIFFERENT part of the same month
     // is not a conflict, it is the rest of the month. Try to merge before the
     // overwrite guard below refuses it.
     if (
       existingDoc.length > 0 &&
       source === "gmail_fetch" &&
-      !allowReplace &&
+      !replace &&
       existingDoc[0].gmailMessageId !== (gmailMessageId ?? null)
     ) {
       const merged = await tryMergeAsPart({
@@ -346,7 +369,7 @@ export async function processClientDocument(
     if (
       existingDoc.length > 0 &&
       source === "gmail_fetch" &&
-      !allowReplace &&
+      !replace &&
       existingDoc[0].gmailMessageId !== (gmailMessageId ?? null)
     ) {
       console.warn(
@@ -1072,7 +1095,7 @@ export async function processMultiTenantReport(
 
     const franchiseeId = match.matchedFranchisee.id;
     const [existing] = await database
-      .select({ id: clientDocument.id })
+      .select({ id: clientDocument.id, invoiceNumber: clientDocument.invoiceNumber })
       .from(clientDocument)
       .where(
         and(
@@ -1084,6 +1107,18 @@ export async function processMultiTenantReport(
         ),
       )
       .limit(1);
+
+    // A section of 10bis's report never overwrites the franchisee's invoice.
+    if (
+      parserCode === "TENBIS" &&
+      reportSlotPrecedence({
+        selfBilled: tenbisUsesJournalEntries(periodMonth, periodYear),
+        occupantInvoiceNumber: existing?.invoiceNumber ?? null,
+        incomingInvoiceNumber: null,
+      }) === "skip"
+    ) {
+      continue;
+    }
 
     const commissionRate =
       section.totalAmount > 0

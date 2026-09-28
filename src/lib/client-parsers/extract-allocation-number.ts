@@ -16,8 +16,8 @@ export function extractAllocationNumber(text: string): string | undefined {
   // whitespace/newlines between the digits and the label.
   const patterns = [
     /(?<!\d)(\d{9})(?!\d)\s*\n?\s*(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)/, // "091097208\nהקצאה מספר"
-    /(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)\s*\n?\s*(?<!\d)(\d{9})(?!\d)/, // "מספר הקצאה 091097208"
-    /(?:מספר|רפסמ)\s*(?:הקצאה|הצקה)\s*\n?\s*(?<!\d)(\d{9})(?!\d)/, // "מספר הקצאה" reversed-words
+    /(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)\s*:?\s*\n?\s*(?<!\d)(\d{9})(?!\d)/, // "מספר הקצאה 091097208"
+    /(?:מספר|רפסמ)\s*(?:הקצאה|הצקה)\s*:?\s*\n?\s*(?<!\d)(\d{9})(?!\d)/, // "מספר הקצאה" reversed-words
     /(?<!\d)(\d{9})(?!\d)\s*\n?\s*(?:מספר|רפסמ)\s*(?:הקצאה|הצקה)/, // digits then "מספר הקצאה"
   ];
 
@@ -38,11 +38,14 @@ export function extractAllocationNumber(text: string): string | undefined {
   // adjacent to the label and take the trailing 9 digits (the allocation — the
   // leading digits are the timestamp). Anchored to the label so stray ח.פ. /
   // invoice numbers elsewhere in the document are never picked up.
-  const gluedBeforeLabel = [
+  // Logical-order extraction puts the label first ("הקצאה מספר: 2026…167",
+  // קסטרא × משלוחה 10082, Aug 2026) — same glue, same trailing 9 digits.
+  const glued = [
     /(\d{17,})\s*\n?\s*(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)/, // digits then "הקצאה מספר"
     /(\d{17,})\s*\n?\s*(?:מספר|רפסמ)\s*(?:הקצאה|הצקה)/, // digits then "מספר הקצאה"
+    /(?:הקצאה|הצקה)\s*(?:מספר|רפסמ)\s*:?\s*\n?\s*(\d{17,})/, // "הקצאה מספר:" then digits
   ];
-  for (const pattern of gluedBeforeLabel) {
+  for (const pattern of glued) {
     const match = text.match(pattern);
     if (match?.[1]) {
       return match[1].slice(-9);

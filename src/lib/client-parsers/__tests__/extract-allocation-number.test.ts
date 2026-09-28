@@ -27,6 +27,18 @@ describe("extractAllocationNumber", () => {
     expect(extractAllocationNumber(text)).toBe("091056762");
   });
 
+  // Same glue, label FIRST (logical order). Real string from קסטרא טומאיי ×
+  // משלוחה, invoice 10082, August 2026 — ₪47,838 stored with no allocation.
+  it("extracts the allocation when the glued run follows the label", () => {
+    const text =
+      "חשבונית מס מספר 10082 -\nהקצאה מספר: 20260901223326886244090167\nפריטים:";
+    expect(extractAllocationNumber(text)).toBe("244090167");
+  });
+
+  it("extracts an isolated allocation after a label with a colon", () => {
+    expect(extractAllocationNumber("הקצאה מספר: 244090167\n")).toBe("244090167");
+  });
+
   it("does not extract a stray ח.פ. number that is not next to the label", () => {
     expect(
       extractAllocationNumber('ח.פ. 516229903\nחשבונית מס מספר 10054')
