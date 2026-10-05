@@ -53,8 +53,6 @@
     "@react-email/components": "^1.0.4",
     "@react-pdf/renderer": "^4.3.2",
     "@tanstack/react-query": "^5.90.16",
-    "@tanstack/react-router": "^1.146.2",
-    "@tanstack/react-start": "^1.146.3",
     "@vercel/blob": "^2.0.0",
     "adm-zip": "^0.5.16",
     "better-auth": "^1.4.10",
