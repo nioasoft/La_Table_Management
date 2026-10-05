@@ -29,11 +29,18 @@ export const franchiseeBillingApprovalResponseSchema = z.object({
  * A hand-triggered notice to one franchisee whose approved row carries a
  * discount. Never sent automatically, never to the whole month.
  */
+/** The closing every discount notice carries unless rewritten for one send. */
+export const DEFAULT_DISCOUNT_CLOSING =
+  "הסכום שנדחה אינו מבוטל. נעדכן אתכם לגבי מועד חיובו.\n\nהחשבונית תגיע בנפרד.";
+
 export const franchiseeBillingDiscountEmailSchema = z.strictObject({
   billingId: z.string().trim().min(1).max(100),
   emails: z.array(z.string().trim().email().max(254)).min(1).max(20),
   /** Render what would be sent and deliver nothing. */
   preview: z.boolean().default(false),
+  /** Per-send rewrites of the notice; omitted means the default wording. */
+  subject: z.string().trim().min(1, "הנושא ריק").max(200).optional(),
+  closingText: z.string().trim().min(1, "פסקת הסיום ריקה").max(2000).optional(),
 });
 
 export const franchiseeBillingDiscountPreviewResponseSchema = z.object({

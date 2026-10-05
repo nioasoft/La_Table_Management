@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calculateRoyalty, type RoyaltyTier } from "@/lib/royalty";
+import { calculateRoyalty, findTierIndex, type RoyaltyTier } from "@/lib/royalty";
 
 const VAT = 0.18;
 
@@ -573,5 +573,27 @@ describe("marginal royalty tiers", () => {
 
     expect(result.tierRate).toBe(0);
     expect(result.royalty).toBe(0);
+  });
+});
+
+describe("findTierIndex", () => {
+  const tiers = [
+    { upTo: 700_000, rate: 0 },
+    { upTo: null, rate: 5 },
+  ];
+
+  it("keeps a month exactly on the threshold in the lower band", () => {
+    expect(findTierIndex(tiers, "gross", 700_000, 0.18)).toBe(0);
+    expect(findTierIndex(tiers, "gross", 700_000.01, 0.18)).toBe(1);
+  });
+
+  it("lifts a net threshold by VAT before comparing gross", () => {
+    expect(findTierIndex(tiers, "net", 800_000, 0.18)).toBe(0);
+    expect(findTierIndex(tiers, "net", 826_001, 0.18)).toBe(1);
+  });
+
+  it("lands in the open-ended last band, and -1 when nothing matches", () => {
+    expect(findTierIndex(tiers, "gross", 5_000_000, 0.18)).toBe(1);
+    expect(findTierIndex([{ upTo: 10, rate: 1 }], "gross", 11, 0.18)).toBe(-1);
   });
 });

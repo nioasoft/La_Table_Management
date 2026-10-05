@@ -148,6 +148,12 @@ const billingScreenRowSchema = z.object({
   grossBase: z.string(),
   netBase: z.string(),
   tierRate: z.string(),
+  tiers: z.array(z.object({
+    upTo: z.number().nullable(),
+    rate: z.number(),
+    marginal: z.boolean().optional(),
+  })).nullable().optional(),
+  tierBasis: z.enum(["gross", "net"]).optional(),
   discountRatePoints: z.string(),
   discountValue: z.string(),
   royalty: z.string(),

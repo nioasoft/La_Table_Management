@@ -11,6 +11,8 @@ import {
 } from "@react-email/components";
 import * as React from "react";
 
+import { DEFAULT_DISCOUNT_CLOSING } from "@/schemas/franchisee-billing-approval";
+
 const HEBREW_MONTHS = [
   "ינואר",
   "פברואר",
@@ -39,6 +41,10 @@ export interface FranchiseeBillingEmailProps {
   readonly royaltyFull: string;
   readonly discountValue: string;
   readonly royalty: string;
+  /** Replaces the default subject for this one send. */
+  readonly subject?: string;
+  /** Replaces the closing paragraphs; a blank line starts a new paragraph. */
+  readonly closingText?: string;
 }
 
 function monthName(month: number): string {
@@ -77,10 +83,18 @@ function rate(value: string): string {
 export function franchiseeBillingEmailSubject(
   props: Pick<
     FranchiseeBillingEmailProps,
-    "franchiseeName" | "periodMonth" | "periodYear"
+    "franchiseeName" | "periodMonth" | "periodYear" | "subject"
   >,
 ): string {
+  if (props.subject?.trim()) return props.subject.trim();
   return `חיוב תמלוגים · ${props.franchiseeName} · ${monthName(props.periodMonth)} ${props.periodYear}`;
+}
+
+function closingParagraphs(closingText: string | undefined): string[] {
+  return (closingText?.trim() || DEFAULT_DISCOUNT_CLOSING)
+    .split(/\n\s*\n/)
+    .map((text) => text.trim())
+    .filter(Boolean);
 }
 
 function ChargeRow({
@@ -153,10 +167,11 @@ export function FranchiseeBillingEmail(
             />
           </Section>
 
-          <Text style={paragraph}>
-            הסכום שנדחה אינו מבוטל. נעדכן אתכם לגבי מועד חיובו.
-          </Text>
-          <Text style={paragraph}>החשבונית תגיע בנפרד.</Text>
+          {closingParagraphs(props.closingText).map((text, index) => (
+            <Text key={index} style={paragraph}>
+              {text}
+            </Text>
+          ))}
           <Text style={signature}>
             בברכה,
             <br />

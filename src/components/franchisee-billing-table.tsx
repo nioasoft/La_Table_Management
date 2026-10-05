@@ -5,8 +5,10 @@ import { CheckCircle2, LockKeyhole, Search } from "lucide-react";
 
 import { FranchiseeBillingDiscountCell } from "@/components/franchisee-billing-discount-cell";
 import { FranchiseeBillingDiscountEmail } from "@/components/franchisee-billing-discount-email";
+import { FranchiseeBillingReopenRow } from "@/components/franchisee-billing-reopen-row";
 import { FranchiseeBillingNoRevenueCell } from "@/components/franchisee-billing-no-revenue-cell";
 import { BillingNumber } from "@/components/franchisee-billing-number";
+import { FranchiseeBillingTiersTooltip } from "@/components/franchisee-billing-tiers-tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -40,6 +42,8 @@ interface FranchiseeBillingTableProps {
   ) => Promise<void>;
   /** Refreshes the month so the "נשלח ב-" marker appears without a reload. */
   readonly onNoticeSent: () => Promise<unknown>;
+  /** Refreshes the month after an approved row went back to draft. */
+  readonly onRowReopened: () => Promise<unknown>;
 }
 
 const currencyColumns = [
@@ -87,9 +91,30 @@ export function totalsByBrand(
   return [...totals.values()];
 }
 
-function BrandTotalsRow({ totals }: { readonly totals: BrandTotals }) {
+/** The whole group's line under the brand lines, for the "all brands" view. */
+export function groupTotals(brands: readonly BrandTotals[]): BrandTotals {
+  return brands.reduce<BrandTotals>(
+    (sum, brand) => ({
+      brandName: sum.brandName,
+      grossBase: sum.grossBase + brand.grossBase,
+      netBase: sum.netBase + brand.netBase,
+      royalty: sum.royalty + brand.royalty,
+      marketing: sum.marketing + brand.marketing,
+      total: sum.total + brand.total,
+    }),
+    { brandName: "קבוצה", grossBase: 0, netBase: 0, royalty: 0, marketing: 0, total: 0 },
+  );
+}
+
+function BrandTotalsRow({
+  totals,
+  className = "font-semibold",
+}: {
+  readonly totals: BrandTotals;
+  readonly className?: string;
+}) {
   return (
-    <TableRow className="font-semibold">
+    <TableRow className={className}>
       <TableCell className="sticky start-0 z-10 bg-muted">
         סה״כ {totals.brandName}
       </TableCell>
@@ -121,6 +146,7 @@ export function FranchiseeBillingTable({
   onSaveDiscount,
   onSaveNoRevenueReason,
   onNoticeSent,
+  onRowReopened,
 }: FranchiseeBillingTableProps) {
   const [discountPreviews, setDiscountPreviews] = useState<
     Readonly<Record<string, number>>
@@ -137,6 +163,8 @@ export function FranchiseeBillingTable({
       (brand === ALL_BRANDS || row.brandName === brand) &&
       (query === "" || row.franchiseeName.includes(query)),
   );
+
+  const brandTotals = totalsByBrand(visibleRows);
 
   const updatePreview = (billingId: string, discountValue: number) => {
     setDiscountPreviews((current) => ({
@@ -250,7 +278,14 @@ export function FranchiseeBillingTable({
                   className={`sticky start-0 z-10 font-medium ${stickyBackground}`}
                 >
                   <div className="space-y-1.5">
-                    <span className="block">{row.franchiseeName}</span>
+                    <FranchiseeBillingTiersTooltip
+                      tiers={row.tiers}
+                      tierBasis={row.tierBasis}
+                      grossBase={row.grossBase}
+                      netBase={row.netBase}
+                    >
+                      {row.franchiseeName}
+                    </FranchiseeBillingTiersTooltip>
                     {isStale ? (
                       <Badge variant="destructive">מקובץ קודם</Badge>
                     ) : isApproved ? (
@@ -300,6 +335,13 @@ export function FranchiseeBillingTable({
                         row={row}
                         onSent={onNoticeSent}
                       />
+                      {isApproved && (
+                        <FranchiseeBillingReopenRow
+                          billingId={row.id}
+                          franchiseeName={row.franchiseeName}
+                          onReopened={onRowReopened}
+                        />
+                      )}
                     </div>
                   ) : (
                     <FranchiseeBillingDiscountCell
@@ -350,11 +392,17 @@ export function FranchiseeBillingTable({
             );
           })}
         </TableBody>
-        {visibleRows.length > 0 && (
+        {brandTotals.length > 0 && (
           <TableFooter>
-            {totalsByBrand(visibleRows).map((totals) => (
+            {brandTotals.map((totals) => (
               <BrandTotalsRow key={totals.brandName} totals={totals} />
             ))}
+            {brand === ALL_BRANDS && brandTotals.length > 1 && (
+              <BrandTotalsRow
+                totals={groupTotals(brandTotals)}
+                className="border-t-2 border-foreground/30 font-bold"
+              />
+            )}
           </TableFooter>
         )}
       </Table>

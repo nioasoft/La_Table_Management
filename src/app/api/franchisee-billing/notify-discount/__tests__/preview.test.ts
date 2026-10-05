@@ -48,4 +48,30 @@ describe("buildDiscountNoticePreview", () => {
 
     expect(preview.html).not.toContain("שיווק");
   });
+
+  it("uses the subject and closing rewritten for this send", async () => {
+    const preview = await buildDiscountNoticePreview(
+      row,
+      [{ name: "ליאור", email: "liorfit1@gmail.com" }],
+      {
+        subject: "חיוב תמלוגים אוגוסט · בשני תשלומים",
+        closingText: "החיוב יפוצל לשני תשלומים.\n\nתודה על שיתוף הפעולה.",
+      },
+    );
+
+    expect(preview.subject).toBe("חיוב תמלוגים אוגוסט · בשני תשלומים");
+    expect(preview.html).toContain("החיוב יפוצל לשני תשלומים.");
+    expect(preview.html).toContain("תודה על שיתוף הפעולה.");
+    expect(preview.html).not.toContain("הסכום שנדחה אינו מבוטל");
+    expect(preview.html).toContain("רעות לוי");
+  });
+
+  it("keeps the default closing when nothing was rewritten", async () => {
+    const preview = await buildDiscountNoticePreview(row, [
+      { name: "ליאור", email: "liorfit1@gmail.com" },
+    ]);
+
+    expect(preview.html).toContain("הסכום שנדחה אינו מבוטל");
+    expect(preview.html).toContain("החשבונית תגיע בנפרד.");
+  });
 });

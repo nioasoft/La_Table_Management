@@ -15,7 +15,10 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
+  DEFAULT_DISCOUNT_CLOSING,
   franchiseeBillingDiscountPreviewResponseSchema,
   type FranchiseeBillingDiscountPreview,
 } from "@/schemas/franchisee-billing-approval";
@@ -40,17 +43,35 @@ function apiErrorMessage(value: unknown): string | null {
   return null;
 }
 
+/** The admin's rewrites for this send; null subject keeps the default one. */
+interface NoticeEdits {
+  readonly subject: string | null;
+  readonly closingText: string;
+}
+
+const DEFAULT_EDITS: NoticeEdits = {
+  subject: null,
+  closingText: DEFAULT_DISCOUNT_CLOSING,
+};
+
 async function postDiscountNotice(
   billingId: string,
   emails: readonly string[],
   preview: boolean,
+  edits: NoticeEdits,
 ): Promise<unknown> {
   const response = await fetchWithTimeout(
     "/api/franchisee-billing/notify-discount",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ billingId, emails, preview }),
+      body: JSON.stringify({
+        billingId,
+        emails,
+        preview,
+        subject: edits.subject?.trim() || undefined,
+        closingText: edits.closingText.trim() || undefined,
+      }),
       timeout: 60_000,
     },
   );
@@ -96,6 +117,15 @@ export function FranchiseeBillingDiscountEmail({
     useState<FranchiseeBillingDiscountPreview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [edits, setEdits] = useState<NoticeEdits>(DEFAULT_EDITS);
+  // What the preview was rendered with. The send uses exactly this, and is
+  // held back while typing has not reached the preview yet.
+  const [appliedEdits, setAppliedEdits] = useState<NoticeEdits>(DEFAULT_EDITS);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedEdits(edits), 600);
+    return () => clearTimeout(timer);
+  }, [edits]);
 
   const billingId = row.id;
   const selectedKey = [...selected].sort().join(",");
@@ -111,6 +141,7 @@ export function FranchiseeBillingDiscountEmail({
         billingId,
         selectedKey.split(","),
         true,
+        appliedEdits,
       );
       const parsed =
         franchiseeBillingDiscountPreviewResponseSchema.safeParse(body);
@@ -129,7 +160,7 @@ export function FranchiseeBillingDiscountEmail({
     } finally {
       setIsPreviewing(false);
     }
-  }, [billingId, selectedKey]);
+  }, [billingId, selectedKey, appliedEdits]);
 
   // Reloads whenever the chosen recipients change, so what is on screen is
   // always the mail the send button would actually produce.
@@ -153,7 +184,7 @@ export function FranchiseeBillingDiscountEmail({
     setPending(true);
     setError(null);
     try {
-      await postDiscountNotice(row.id, selected, false);
+      await postDiscountNotice(row.id, selected, false, appliedEdits);
       setOpen(false);
       await onSent();
     } catch (sendError: unknown) {
@@ -174,7 +205,12 @@ export function FranchiseeBillingDiscountEmail({
         open={open}
         onOpenChange={(next) => {
           setOpen(next);
-          if (next) setError(null);
+          if (next) {
+            setError(null);
+            // A rewrite is for one send — every opening starts from the default.
+            setEdits(DEFAULT_EDITS);
+            setAppliedEdits(DEFAULT_EDITS);
+          }
         }}
       >
         <DialogTrigger asChild>
@@ -244,6 +280,54 @@ export function FranchiseeBillingDiscountEmail({
             </div>
           )}
 
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label htmlFor={`${row.id}-subject`} className="text-sm font-medium">
+                נושא
+              </label>
+              <Input
+                id={`${row.id}-subject`}
+                dir="rtl"
+                maxLength={200}
+                value={edits.subject ?? preview?.subject ?? ""}
+                onChange={(event) =>
+                  setEdits((current) => ({ ...current, subject: event.target.value }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label htmlFor={`${row.id}-closing`} className="text-sm font-medium">
+                  פסקת סיום
+                </label>
+                {(edits.subject !== null ||
+                  edits.closingText !== DEFAULT_DISCOUNT_CLOSING) && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => setEdits(DEFAULT_EDITS)}
+                  >
+                    חזרה לנוסח הקבוע
+                  </Button>
+                )}
+              </div>
+              <Textarea
+                id={`${row.id}-closing`}
+                dir="rtl"
+                rows={4}
+                maxLength={2000}
+                value={edits.closingText}
+                onChange={(event) =>
+                  setEdits((current) => ({ ...current, closingText: event.target.value }))}
+              />
+              <p className="text-xs text-muted-foreground">
+                טבלת הסכומים והחתימה קבועות. שורה ריקה מתחילה פסקה חדשה. השינוי
+                חל על השליחה הזו בלבד.
+              </p>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <p className="text-sm font-medium">תצוגה מקדימה</p>
             {isPreviewing && (
@@ -291,7 +375,7 @@ export function FranchiseeBillingDiscountEmail({
               onClick={() => void send()}
               disabled={
                 pending || isPreviewing || preview === null ||
-                selected.length === 0
+                selected.length === 0 || edits !== appliedEdits
               }
             >
               {pending ? (

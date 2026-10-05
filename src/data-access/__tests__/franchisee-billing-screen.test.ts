@@ -891,3 +891,52 @@ describe("totalsByBrand", () => {
     ]);
   });
 });
+
+describe("groupTotals", () => {
+  it("adds the brand lines into one group line", async () => {
+    const { groupTotals } = await import(
+      "@/components/franchisee-billing-table"
+    );
+    expect(
+      groupTotals([
+        { brandName: "ויני", grossBase: 400, netBase: 340, royalty: 40, marketing: 8, total: 56 },
+        { brandName: "קינג קונג", grossBase: 200, netBase: 170, royalty: 20, marketing: 4, total: 28 },
+      ]),
+    ).toEqual({
+      brandName: "קבוצה",
+      grossBase: 600,
+      netBase: 510,
+      royalty: 60,
+      marketing: 12,
+      total: 84,
+    });
+  });
+});
+
+describe("tierPosition", () => {
+  const tiers = [
+    { upTo: 700_000, rate: 0 },
+    { upTo: null, rate: 5 },
+  ];
+
+  it("names the band and how far the month is from the next one", async () => {
+    const { tierPosition } = await import(
+      "@/components/franchisee-billing-tiers-tooltip"
+    );
+    expect(tierPosition(tiers, "gross", 650_000, 550_847.46)).toEqual({
+      basisAmount: 650_000,
+      tierIndex: 0,
+      gapToNext: 50_000,
+    });
+  });
+
+  it("measures a net scale against the net revenue", async () => {
+    const { tierPosition } = await import(
+      "@/components/franchisee-billing-tiers-tooltip"
+    );
+    const position = tierPosition(tiers, "net", 944_000, 800_000);
+    expect(position.tierIndex).toBe(1);
+    expect(position.basisAmount).toBe(800_000);
+    expect(position.gapToNext).toBeNull();
+  });
+});

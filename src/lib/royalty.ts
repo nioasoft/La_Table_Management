@@ -65,6 +65,26 @@ function blendedRate(
 }
 
 /**
+ * The scale band a month falls in, or -1 when no band matches. Thresholds are
+ * entered in the scale's basis, but the comparison is always on gross — a net
+ * threshold is lifted by VAT. The billing screen's tier hover shares this so
+ * it can never disagree with the charge.
+ */
+export function findTierIndex(
+  tiers: readonly RoyaltyTier[],
+  tierBasis: RoyaltyTierBasis,
+  grossBase: number,
+  vat: number,
+): number {
+  return tiers.findIndex((tier) => {
+    if (tier.upTo === null) return true;
+    const threshold =
+      tierBasis === "net" ? tier.upTo * (1 + vat) : tier.upTo;
+    return grossBase <= threshold;
+  });
+}
+
+/**
  * Calculates one franchisee royalty and marketing charge without I/O or rounding.
  */
 export function calculateRoyalty(
@@ -79,12 +99,7 @@ export function calculateRoyalty(
   const netBase = grossBase / (1 + vat);
 
   // Intentionally select the tier on gross, then apply its rate to net.
-  const selectedIndex = tiers.findIndex((tier) => {
-    if (tier.upTo === null) return true;
-    const threshold =
-      tierBasis === "net" ? tier.upTo * (1 + vat) : tier.upTo;
-    return grossBase <= threshold;
-  });
+  const selectedIndex = findTierIndex(tiers, tierBasis, grossBase, vat);
   const selectedTier: RoyaltyTier | undefined = tiers[selectedIndex];
   if (!selectedTier) {
     throw new Error(

@@ -34,11 +34,19 @@ export interface DiscountNoticePreview {
   readonly recipients: readonly string[];
 }
 
+/** What the admin rewrote for this one send; absent fields keep the default. */
+export interface DiscountNoticeEdits {
+  readonly subject?: string;
+  readonly closingText?: string;
+}
+
 export function discountNoticeProps(
   row: DiscountNoticeSource,
   ownerName: string,
+  edits: DiscountNoticeEdits = {},
 ): FranchiseeBillingEmailProps {
   return {
+    ...edits,
     ownerName,
     franchiseeName: row.franchiseeName,
     periodYear: row.periodYear,
@@ -62,10 +70,11 @@ export function discountNoticeProps(
 export async function buildDiscountNoticePreview(
   row: DiscountNoticeSource,
   recipients: readonly DiscountNoticeRecipient[],
+  edits: DiscountNoticeEdits = {},
 ): Promise<DiscountNoticePreview> {
   const [first] = recipients;
   if (!first) throw new Error("a preview needs at least one recipient");
-  const props = discountNoticeProps(row, first.name);
+  const props = discountNoticeProps(row, first.name, edits);
   return {
     subject: franchiseeBillingEmailSubject(props),
     html: await render(FranchiseeBillingEmail(props)),

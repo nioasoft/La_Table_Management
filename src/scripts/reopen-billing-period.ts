@@ -8,6 +8,7 @@
  */
 import { and, eq, inArray, isNull } from "drizzle-orm";
 
+import { createDeleteBillingLedgerQuery } from "@/data-access/franchisee-billing-screen-queries";
 import { database } from "@/db";
 import * as schema from "@/db/schema";
 
@@ -61,7 +62,16 @@ async function main(): Promise<void> {
   }
   const reopened = await database
     .update(schema.franchiseeBilling)
-    .set({ status: "draft", approvedAt: null, approvedBy: null })
+    .set({
+      status: "draft",
+      approvedAt: null,
+      approvedBy: null,
+      tiersSnapshot: null,
+      tierBasisSnapshot: null,
+      marketingRateSnapshot: null,
+      vatRateSnapshot: null,
+      accountKeySnapshot: null,
+    })
     .where(
       and(
         inArray(
@@ -73,7 +83,12 @@ async function main(): Promise<void> {
       ),
     )
     .returning({ id: schema.franchiseeBilling.id });
-  console.log(`reopened ${reopened.length} rows`);
+  // The lock wrote one deferral entry per discounted row. Left behind, the
+  // next lock writes another and the franchisee's balance counts it twice.
+  for (const { id } of reopened) {
+    await createDeleteBillingLedgerQuery(database, id);
+  }
+  console.log(`reopened ${reopened.length} rows (deferral entries cleared)`);
 }
 
 void main().then(() => process.exit(0));

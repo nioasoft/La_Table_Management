@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildDiscountNoticePreview,
   discountNoticeProps,
+  type DiscountNoticeEdits,
 } from "@/app/api/franchisee-billing/notify-discount/preview";
 import { ownerRecipients } from "@/data-access/franchisee-owner-recipients";
 import * as schema from "@/db/schema";
@@ -118,8 +119,9 @@ export function blockReason(row: DiscountNoticeRow): string | null {
 async function deliver(
   row: DiscountNoticeRow,
   recipient: { readonly name: string; readonly email: string },
+  edits: DiscountNoticeEdits,
 ): Promise<{ readonly success: boolean; readonly error?: string }> {
-  const props = discountNoticeProps(row, recipient.name);
+  const props = discountNoticeProps(row, recipient.name, edits);
   const element = FranchiseeBillingEmail(props);
   const [html, text, emailService] = await Promise.all([
     render(element),
@@ -197,8 +199,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const edits = {
+      subject: validation.data.subject,
+      closingText: validation.data.closingText,
+    };
     if (validation.data.preview) {
-      const preview = await buildDiscountNoticePreview(row, recipients);
+      const preview = await buildDiscountNoticePreview(row, recipients, edits);
       return NextResponse.json({
         success: true,
         data: { preview },
@@ -210,7 +216,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     let sent = 0;
     for (const recipient of recipients) {
       try {
-        const result = await deliver(row, recipient);
+        const result = await deliver(row, recipient, edits);
         if (result.success) {
           sent += 1;
         } else {

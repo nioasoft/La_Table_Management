@@ -13,6 +13,7 @@ import type {
 import { ownerRecipients } from "@/data-access/franchisee-owner-recipients";
 import * as schema from "@/db/schema";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
+import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
 
 type BillingReadDatabase = Pick<NodePgDatabase<typeof schema>, "select">;
 type BillingUpdateDatabase = Pick<NodePgDatabase<typeof schema>, "update">;
@@ -259,6 +260,9 @@ function billingRowSelection(
     grossBase: billing.grossBase,
     netBase: billing.netBase,
     tierRate: billing.tierRate,
+    // The scale the row was billed on: frozen at approval, live before it.
+    tiers: sql<RoyaltyTier[] | null>`coalesce(${billing.tiersSnapshot}, ${schema.franchisee.royaltyTiers})`,
+    tierBasis: sql<RoyaltyTierBasis>`coalesce(${billing.tierBasisSnapshot}, ${schema.franchisee.royaltyTierBasis})`,
     discountRatePoints: billing.discountRatePoints,
     discountValue: billing.discountValue,
     royalty: billing.royalty,
