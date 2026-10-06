@@ -7,13 +7,7 @@ import { toast } from "sonner";
 import { BillingNumber } from "@/components/franchisee-billing-number";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import type { FranchiseeBillingScreenPayload } from "@/schemas/franchisee-billing-screen";
 
 type ApprovedDifference =
@@ -277,32 +271,15 @@ function AnomalyItem({
 
       {assignable && (
         <div className="flex flex-wrap items-center gap-2">
-          <Select
-            dir="rtl"
-            value={franchiseeId}
-            onValueChange={setFranchiseeId}
+          <FranchiseeCombobox
+            franchisees={franchisees}
+            selectedId={franchiseeId || null}
+            onChange={(id) => setFranchiseeId(id ?? "")}
+            placeholder="בחרי זכיין לשיוך"
+            searchPlaceholder="חפשי זכיין..."
+            triggerClassName="h-8 w-64 bg-background"
             disabled={pending !== null}
-          >
-            <SelectTrigger
-              dir="rtl"
-              aria-label="שיוך השורה לזכיין"
-              className="h-8 w-64 bg-background"
-            >
-              <SelectValue placeholder="בחרי זכיין לשיוך" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              {franchisees.map((franchisee) => (
-                <SelectItem
-                  key={franchisee.id}
-                  dir="rtl"
-                  value={franchisee.id}
-                  className="text-end"
-                >
-                  {franchisee.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
           <Button
             type="button"
             size="sm"

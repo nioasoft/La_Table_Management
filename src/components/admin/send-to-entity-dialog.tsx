@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -403,22 +404,14 @@ export default function SendToEntityDialog({
 
             <div className="space-y-2">
               <Label>{entityType === "supplier" ? "ספק" : "זכיין"} *</Label>
-              <Select value={entityId} onValueChange={handleEntitySelect}>
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      entityType === "supplier" ? "בחר ספק" : "בחר זכיין"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {entities.map((e) => (
-                    <SelectItem key={e.id} value={e.id}>
-                      {e.name} ({e.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FranchiseeCombobox
+                franchisees={entities.map((e) => ({ id: e.id, name: `${e.name} (${e.code})` }))}
+                selectedId={entityId || null}
+                onChange={(id) => id && handleEntitySelect(id)}
+                placeholder={entityType === "supplier" ? "בחר ספק" : "בחר זכיין"}
+                searchPlaceholder={entityType === "supplier" ? "חפש ספק..." : "חפש זכיין..."}
+                triggerClassName="w-full"
+              />
             </div>
           </div>
 

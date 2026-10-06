@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -224,25 +225,14 @@ export function ReportFilters({
       {showFranchiseeFilter && (
         <div className="w-[110px]">
           <Label htmlFor="franchisee" className="text-xs mb-1 block">זכיין</Label>
-          <Select
-            value={filters.franchiseeId || "all"}
-            onValueChange={(value) => onFilterChange("franchiseeId", value === "all" ? "" : value)}
+          <FranchiseeCombobox
+            franchisees={franchisees.map((f) => ({ id: f.id, name: f.name ?? f.id }))}
+            selectedId={filters.franchiseeId || null}
+            onChange={(id) => onFilterChange("franchiseeId", id ?? "")}
+            allLabel="כל הזכיינים"
             disabled={disabledFilters.franchisee}
-          >
-            <SelectTrigger id="franchisee" dir="rtl" className="[&>span]:text-end h-9" aria-label="בחר זכיין">
-              <SelectValue placeholder="כל הזכיינים" />
-            </SelectTrigger>
-            <SelectContent dir="rtl">
-              <SelectItem value="all" className="text-end">
-                כל הזכיינים
-              </SelectItem>
-              {franchisees.map((franchisee) => (
-                <SelectItem key={franchisee.id} value={franchisee.id} className="text-end">
-                  {franchisee.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            triggerClassName="h-9 w-full min-w-0"
+          />
         </div>
       )}
 

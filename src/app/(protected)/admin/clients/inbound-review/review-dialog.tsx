@@ -24,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -275,25 +276,16 @@ export function ReviewDialog({
             <Label htmlFor="franchisee" className="text-xs">
               זכיין
             </Label>
-            <Select value={franchiseeId} onValueChange={setFranchiseeId} dir="rtl">
-              <SelectTrigger id="franchisee">
-                <SelectValue placeholder="בחר זכיין" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[400px]">
-                {dropdownItems.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    <span>
-                      {item.name}
-                      {item.subtitle && (
-                        <span className="ms-2 text-xs text-muted-foreground">
-                          {item.subtitle}
-                        </span>
-                      )}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FranchiseeCombobox
+              franchisees={dropdownItems.map((item) => ({
+                id: item.id,
+                name: item.subtitle ? `${item.name} · ${item.subtitle}` : item.name,
+              }))}
+              selectedId={franchiseeId || null}
+              onChange={(id) => setFranchiseeId(id ?? "")}
+              placeholder="בחר זכיין"
+              triggerClassName="w-full"
+            />
           </div>
 
           <div className="space-y-1">

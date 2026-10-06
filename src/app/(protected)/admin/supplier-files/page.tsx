@@ -14,15 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -72,6 +64,7 @@ import type { Supplier, SupplierFileMapping, Franchisee, SupplierFileProcessingR
 import { formatCurrency } from "@/lib/translations";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { hasCustomParser } from "@/lib/custom-parsers/custom-parser-codes";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { SupplierCombobox } from "@/components/supplier-files/supplier-combobox";
 import { UploadHistoryPanel } from "@/components/supplier-files/upload-history-panel";
 import { PeriodSelector, type PeriodWithStatus } from "@/components/supplier-files/period-selector";
@@ -242,7 +235,6 @@ export default function SupplierFilesPage() {
   const [editingRow, setEditingRow] = useState<ProcessedRow | null>(null);
   const [selectedFranchiseeId, setSelectedFranchiseeId] = useState<string>("");
   const [addAsAlias, setAddAsAlias] = useState(true);
-  const [franchiseeSearch, setFranchiseeSearch] = useState("");
 
   // Blacklist state
   const [blacklistingRow, setBlacklistingRow] = useState<ProcessedRow | null>(null);
@@ -323,14 +315,10 @@ export default function SupplierFilesPage() {
     return [...franchisees].sort((a, b) => a.name.localeCompare(b.name, 'he'));
   }, [franchisees]);
 
-  const filteredFranchisees = useMemo(() => {
-    if (!franchiseeSearch) return sortedFranchisees;
-    const search = franchiseeSearch.toLowerCase();
-    return sortedFranchisees.filter(f =>
-      f.name.toLowerCase().includes(search) ||
-      f.code.toLowerCase().includes(search)
-    );
-  }, [sortedFranchisees, franchiseeSearch]);
+  const franchiseeOptions = useMemo(
+    () => sortedFranchisees.map((f) => ({ id: f.id, name: `${f.name} (${f.code})` })),
+    [sortedFranchisees]
+  );
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
   const isMultiFile = (selectedSupplier?.fileMapping?.maxUploadFiles ?? 1) > 1;
@@ -1108,7 +1096,6 @@ export default function SupplierFilesPage() {
     await applyMatch(editingRow, selectedFranchiseeId, addAsAlias);
     setEditingRow(null);
     setSelectedFranchiseeId("");
-    setFranchiseeSearch("");
   }, [editingRow, selectedFranchiseeId, addAsAlias, applyMatch]);
 
   // Handle blacklist
@@ -1766,7 +1753,6 @@ export default function SupplierFilesPage() {
                                             ""
                                           );
                                           setAddAsAlias(true);
-                                          setFranchiseeSearch("");
                                         }}
                                       >
                                         <Edit className="h-3.5 w-3.5" />
@@ -1815,29 +1801,16 @@ export default function SupplierFilesPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            <div>
-              <label className="text-sm font-medium">חיפוש זכיין</label>
-              <Input
-                placeholder="חפש לפי שם או קוד..."
-                value={franchiseeSearch}
-                onChange={(e) => setFranchiseeSearch(e.target.value)}
-                className="mt-2"
-              />
-            </div>
-            <div>
+            <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">בחר זכיין</label>
-              <Select value={selectedFranchiseeId} onValueChange={setSelectedFranchiseeId}>
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="בחר זכיין..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {filteredFranchisees.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name} ({f.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FranchiseeCombobox
+                franchisees={franchiseeOptions}
+                selectedId={selectedFranchiseeId || null}
+                onChange={(id) => setSelectedFranchiseeId(id ?? "")}
+                placeholder="בחר זכיין..."
+                searchPlaceholder="חפש לפי שם או קוד..."
+                triggerClassName="w-full"
+              />
             </div>
             <div className="flex items-center gap-2">
               <Checkbox

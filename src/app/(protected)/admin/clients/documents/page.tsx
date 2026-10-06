@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -869,23 +870,18 @@ export default function ClientDocumentsPage() {
                   return (
                     <div className="space-y-2">
                       <Label>זכיין</Label>
-                      <Select
-                        value={uploadFranchiseeId}
-                        onValueChange={setUploadFranchiseeId}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="בחר זכיין..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(allFranchisees ?? []).map(
-                            (f: { id: string; name: string; code: string }) => (
-                              <SelectItem key={f.id} value={f.id}>
-                                {f.name} ({f.code})
-                              </SelectItem>
-                            )
-                          )}
-                        </SelectContent>
-                      </Select>
+                      <FranchiseeCombobox
+                        franchisees={(allFranchisees ?? []).map(
+                          (f: { id: string; name: string; code: string }) => ({
+                            id: f.id,
+                            name: `${f.name} (${f.code})`,
+                          })
+                        )}
+                        selectedId={uploadFranchiseeId || null}
+                        onChange={(id) => setUploadFranchiseeId(id ?? "")}
+                        placeholder="בחר זכיין..."
+                        triggerClassName="w-full"
+                      />
                     </div>
                   );
                 })()}

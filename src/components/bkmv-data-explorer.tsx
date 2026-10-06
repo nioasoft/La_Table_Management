@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import { useBkmvYears, useBkmvYearData } from "@/queries/bkmv-year";
 import { formatAmount } from "@/lib/bkmvdata-parser";
 import type { MonthlyBreakdown, MonthlyBreakdownEntry } from "@/lib/bkmvdata-parser";
@@ -238,24 +239,17 @@ export function BkmvDataExplorer() {
             {/* Franchisee selector */}
             <div className="space-y-2">
               <Label>זכיין</Label>
-              <Select
-                value={selectedFranchiseeId ?? ""}
-                onValueChange={(v) => {
-                  setSelectedFranchiseeId(v);
+              <FranchiseeCombobox
+                franchisees={franchisees.map((f) => ({ id: f.id, name: `${f.name} (${f.code})` }))}
+                selectedId={selectedFranchiseeId}
+                onChange={(id) => {
+                  if (!id) return;
+                  setSelectedFranchiseeId(id);
                   setSelectedYear(null);
                 }}
-              >
-                <SelectTrigger className="w-[220px]">
-                  <SelectValue placeholder="בחר זכיין..." />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {franchisees.map((f) => (
-                    <SelectItem key={f.id} value={f.id}>
-                      {f.name} ({f.code})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="בחר זכיין..."
+                triggerClassName="w-[220px]"
+              />
             </div>
 
             {/* Year selector */}

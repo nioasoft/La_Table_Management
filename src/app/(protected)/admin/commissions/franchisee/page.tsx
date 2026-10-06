@@ -6,6 +6,7 @@ import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
+import { FranchiseeCombobox } from "@/components/franchisee-combobox";
 import {
   Card,
   CardContent,
@@ -370,18 +371,16 @@ export default function FranchiseePurchaseReportPage() {
         <CardContent>
           <div className="space-y-2 max-w-md">
             <Label htmlFor="franchisee">זכיין</Label>
-            <Select value={selectedFranchisee} onValueChange={handleFranchiseeChange}>
-              <SelectTrigger id="franchisee">
-                <SelectValue placeholder="בחר זכיין..." />
-              </SelectTrigger>
-              <SelectContent>
-                {franchisees.map((f) => (
-                  <SelectItem key={f.id} value={f.id}>
-                    {f.name} ({f.code}) - {f.brandNameHe}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <FranchiseeCombobox
+              franchisees={franchisees.map((f) => ({
+                id: f.id,
+                name: `${f.name} (${f.code}) - ${f.brandNameHe}`,
+              }))}
+              selectedId={selectedFranchisee || null}
+              onChange={(id) => handleFranchiseeChange(id ?? "")}
+              placeholder="בחר זכיין..."
+              triggerClassName="w-full"
+            />
           </div>
           {selectedFranchisee && (
             <Button onClick={fetchReport} className="mt-4" disabled={isLoading}>

@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/command";
 
 interface FranchiseeComboboxProps {
-  franchisees: Array<{ id: string; name: string }>;
+  franchisees: ReadonlyArray<{ id: string; name: string }>;
   selectedId: string | null;
   onChange: (id: string | null) => void;
   /** Trigger text shown when nothing is selected. */
@@ -44,6 +44,7 @@ interface FranchiseeComboboxProps {
   /** When set, renders a clear/"all" item with this label (filter mode). */
   allLabel?: string;
   triggerClassName?: string;
+  disabled?: boolean;
 }
 
 export function FranchiseeCombobox({
@@ -54,6 +55,7 @@ export function FranchiseeCombobox({
   searchPlaceholder = "חפש זכיין...",
   allLabel,
   triggerClassName,
+  disabled,
 }: FranchiseeComboboxProps) {
   const [open, setOpen] = useState(false);
   const selected = selectedId
@@ -68,13 +70,14 @@ export function FranchiseeCombobox({
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          disabled={disabled}
           className={cn(
             "min-w-[200px] justify-between font-normal",
             triggerClassName
           )}
           dir="rtl"
         >
-          <span className={cn(!selected && "text-muted-foreground")}>
+          <span className={cn("truncate", !selected && "text-muted-foreground")}>
             {selected?.name ?? placeholder}
           </span>
           <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
