@@ -16,6 +16,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -363,6 +364,23 @@ export default function CommissionInvoicesPage() {
     return { invoices, matched, mismatch, missing };
   }, [flatRows]);
 
+  // Column sums for the table footer. Sums whatever is on screen, so the
+  // franchisee filter is respected; a null amount counts as zero.
+  const columnTotals = useMemo(() => {
+    const rows = flatRows ?? [];
+    let reportTotal = 0;
+    let invoiceTotal = 0;
+    let invoiceExVatTotal = 0;
+    let differenceTotal = 0;
+    for (const r of rows) {
+      reportTotal += r.reportTotalAmount ?? 0;
+      invoiceTotal += r.invoiceAmount ?? 0;
+      invoiceExVatTotal += r.invoiceAmountExVat ?? 0;
+      differenceTotal += r.difference ?? 0;
+    }
+    return { reportTotal, invoiceTotal, invoiceExVatTotal, differenceTotal };
+  }, [flatRows]);
+
   return (
     <div className="space-y-6" dir="rtl">
       {/* Header */}
@@ -482,6 +500,9 @@ export default function CommissionInvoicesPage() {
                   {!selectedFranchiseeId && <TableHead>זכיין</TableHead>}
                   <TableHead className="text-start">סכום דוח לקוח</TableHead>
                   <TableHead className="text-start">סכום חשבונית</TableHead>
+                  <TableHead className="text-start">
+                    סכום חשבונית לפני מע&quot;מ
+                  </TableHead>
                   <TableHead className="text-start">הפרש</TableHead>
                   <TableHead className="text-center">סטטוס</TableHead>
                   <TableHead className="text-center">הערה</TableHead>
@@ -550,6 +571,11 @@ export default function CommissionInvoicesPage() {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <span className="tabular-nums">
+                        {formatAmountDetailed(row.invoiceAmountExVat)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       {row.difference !== null ? (
                         <span
                           className={cn(
@@ -590,6 +616,35 @@ export default function CommissionInvoicesPage() {
                   </TableRow>
                 ))}
               </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="font-medium">סה&quot;כ</TableCell>
+                  {!selectedFranchiseeId && <TableCell />}
+                  <TableCell className="tabular-nums font-medium">
+                    {formatAmountDetailed(columnTotals.reportTotal)}
+                  </TableCell>
+                  <TableCell className="tabular-nums font-medium">
+                    {formatAmountDetailed(columnTotals.invoiceTotal)}
+                  </TableCell>
+                  <TableCell className="tabular-nums font-medium">
+                    {formatAmountDetailed(columnTotals.invoiceExVatTotal)}
+                  </TableCell>
+                  <TableCell
+                    className={cn(
+                      "tabular-nums font-medium",
+                      Math.abs(columnTotals.differenceTotal) > 30
+                        ? "text-amber-600"
+                        : "text-muted-foreground"
+                    )}
+                  >
+                    {columnTotals.differenceTotal > 0 ? "+" : ""}
+                    {formatAmountDetailed(columnTotals.differenceTotal)}
+                  </TableCell>
+                  <TableCell />
+                  <TableCell />
+                  <TableCell />
+                </TableRow>
+              </TableFooter>
             </Table>
           </CardContent>
         </Card>

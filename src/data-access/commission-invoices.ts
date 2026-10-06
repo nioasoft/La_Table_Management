@@ -14,12 +14,37 @@ import {
   franchisee,
 } from "@/db/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import { getVatRateForDate } from "@/data-access/vatRates";
 
 // ============================================================================
 // CONSTANTS
 // ============================================================================
 
 export const COMMISSION_INVOICE_THRESHOLD = 30; // NIS
+
+/**
+ * VAT multiplier for a settlement period (e.g. 1.18).
+ *
+ * Period-scoped, not "current": the page navigates months and Israeli VAT was
+ * 17% before 2025, so stripping a flat 18% would misstate every historical
+ * period. Same approach as the Hashavshevet export route.
+ *
+ * Local date arithmetic only — toISOString() would shift the last day of the
+ * month back into the previous one (Israel is UTC+2/3).
+ */
+async function getPeriodVatMultiplier(
+  periodMonth: number,
+  periodYear: number
+): Promise<number> {
+  const lastDayOfPeriod = new Date(periodYear, periodMonth, 0);
+  return 1 + (await getVatRateForDate(lastDayOfPeriod));
+}
+
+/** Strip VAT off a with-VAT amount, rounded to agorot. Null passes through. */
+function stripVat(amount: number | null, vatMultiplier: number): number | null {
+  if (amount === null) return null;
+  return Math.round((amount / vatMultiplier) * 100) / 100;
+}
 
 // ============================================================================
 // TYPES
@@ -36,7 +61,14 @@ export interface InvoiceVerificationRow {
   franchiseeName: string;
   // Invoice side (from commission_invoice document)
   invoiceDocumentId: string | null;
-  invoiceAmount: number | null; // pre-VAT (= totalAmount on commission_invoice doc)
+  /**
+   * With-VAT grand total (= totalAmount on the commission_invoice doc). Every
+   * invoice parser stores the with-VAT figure on purpose, so that it is
+   * comparable to the client report totals, which are with-VAT throughout.
+   */
+  invoiceAmount: number | null;
+  /** invoiceAmount with the period's VAT stripped — display only. */
+  invoiceAmountExVat: number | null;
   invoiceFileName: string | null;
   invoiceSource: "manual_upload" | "gmail_fetch" | null;
   invoiceNotes: string | null; // free-text review notes from clientDocument.reviewNotes
@@ -243,6 +275,7 @@ export async function getInvoiceVerification(
   );
 
   // 6. Build verification rows
+  const vatMultiplier = await getPeriodVatMultiplier(periodMonth, periodYear);
   const rows: InvoiceVerificationRow[] = [];
 
   for (const fId of franchiseeIds) {
@@ -283,6 +316,7 @@ export async function getInvoiceVerification(
       franchiseeName: name,
       invoiceDocumentId: invoice?.id ?? null,
       invoiceAmount,
+      invoiceAmountExVat: stripVat(invoiceAmount, vatMultiplier),
       invoiceFileName: invoice?.fileName ?? null,
       invoiceSource: invoice?.source ?? null,
       invoiceNotes: invoice?.reviewNotes ?? null,
@@ -497,7 +531,7 @@ export async function getInvoiceVerificationAll(
   periodYear: number,
   franchiseeIdFilter?: string | null
 ): Promise<InvoiceVerificationFlatRow[]> {
-  const [clients, links, franchisees, invoiceDocs, reportDocs] =
+  const [clients, links, franchisees, invoiceDocs, reportDocs, vatMultiplier] =
     await Promise.all([
       database
         .select({
@@ -558,6 +592,7 @@ export async function getInvoiceVerificationAll(
             eq(clientDocument.documentType, "client_report")
           )
         ),
+      getPeriodVatMultiplier(periodMonth, periodYear),
     ]);
 
   const franchiseeNameById = new Map(franchisees.map((f) => [f.id, f.name]));
@@ -664,6 +699,7 @@ export async function getInvoiceVerificationAll(
         franchiseeName: name,
         invoiceDocumentId: invoice?.id ?? null,
         invoiceAmount,
+        invoiceAmountExVat: stripVat(invoiceAmount, vatMultiplier),
         invoiceFileName: invoice?.fileName ?? null,
         invoiceSource: invoice?.source ?? null,
         invoiceNotes: invoice?.reviewNotes ?? null,
