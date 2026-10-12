@@ -437,7 +437,12 @@ export default function AdminSuppliersPage() {
       const response = await fetchWithTimeout(`/api/suppliers/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ isArchived: true, isActive: false, isHidden: true }),
+        body: JSON.stringify({
+          isArchived: true,
+          isActive: false,
+          isHidden: true,
+          inactiveFrom: editingSupplier?.inactiveFrom || formatDateAsLocal(new Date()),
+        }),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -506,6 +511,11 @@ export default function AdminSuppliersPage() {
 
     if (!formData.code || !formData.name) {
       setFormError("Code and name are required");
+      return;
+    }
+
+    if (!formData.isActive && !formData.inactiveFrom) {
+      setFormError(he.admin.suppliers.form.fields.inactiveFromRequired);
       return;
     }
 
@@ -742,7 +752,7 @@ export default function AdminSuppliersPage() {
                     {!formData.isActive && (
                       <div className="flex items-center gap-2">
                         <Label htmlFor="inactiveFrom" className="text-sm whitespace-nowrap">
-                          {he.admin.suppliers.form.fields.inactiveFrom}
+                          {he.admin.suppliers.form.fields.inactiveFrom} *
                         </Label>
                         <Input
                           id="inactiveFrom"
@@ -751,6 +761,7 @@ export default function AdminSuppliersPage() {
                           onChange={(e) => setFormData({ ...formData, inactiveFrom: e.target.value })}
                           disabled={isSubmitting}
                           className="h-8 w-40"
+                          required
                           title={he.admin.suppliers.form.fields.inactiveFromDescription}
                         />
                       </div>

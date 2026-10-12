@@ -568,7 +568,8 @@ export const he = {
 
           isActive: "פעיל",
           inactiveFrom: "לא פעיל מתאריך",
-          inactiveFromDescription: "תקופות שהתחילו לפני התאריך עדיין יידרשו בדוח. ריק = לא נשלחות יותר בקשות דוח",
+          inactiveFromDescription: "תקופות שהתחילו לפני התאריך עדיין יידרשו בדוח; מהתאריך והלאה לא נשלחות בקשות",
+          inactiveFromRequired: "יש להזין ממתי הספק לא פעיל",
           isHidden: "הסתר מדוחות עמלות",
           isHiddenDescription: "ספק מוסתר לא יופיע בדוחות עמלות (לדוגמה: הדברה, ביטוח, סליקה)",
           bkmvAliases: "שמות חלופיים",

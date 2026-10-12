@@ -13,6 +13,7 @@ import {
   getSuppliersWithBrands,
 } from "@/data-access/suppliers";
 import { randomUUID } from "crypto";
+import { inactiveFromError } from "@/lib/supplier-activity";
 import type { SupplierFileMapping, CommissionException } from "@/db/schema";
 
 /**
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
       vatIncluded,
       vatExempt,
       isActive,
+      inactiveFrom,
       brandIds,
       fileMapping,
       commissionExceptions,
@@ -153,6 +155,11 @@ export async function POST(request: NextRequest) {
       : null;
 
     const supplierId = randomUUID();
+    const dateError = inactiveFromError(isActive !== false, inactiveFrom);
+    if (dateError) {
+      return NextResponse.json({ error: dateError }, { status: 400 });
+    }
+
     const newSupplier = await createSupplier({
       id: supplierId,
       code,
@@ -181,6 +188,7 @@ export async function POST(request: NextRequest) {
         ? String(franchiseeFundPercentage)
         : null,
       isActive: isActive !== undefined ? isActive : true,
+      inactiveFrom: isActive === false ? inactiveFrom : null,
       isKosher: isKosher !== undefined ? isKosher : true,
       createdBy: user.id,
     });

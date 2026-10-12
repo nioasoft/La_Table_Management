@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { supplierOwesPeriod } from "../supplier-activity";
+import { supplierOwesPeriod, inactiveFromError } from "../supplier-activity";
 
 describe("supplierOwesPeriod", () => {
   const q3 = "2026-07-01";
@@ -24,5 +24,19 @@ describe("supplierOwesPeriod", () => {
 
   it("undated period of an inactive supplier is not owed", () => {
     expect(supplierOwesPeriod({ isActive: false, inactiveFrom: "2026-10-01" }, null)).toBe(false);
+  });
+});
+
+describe("inactiveFromError", () => {
+  it("requires a date for an inactive supplier", () => {
+    expect(inactiveFromError(false, null)).not.toBeNull();
+    expect(inactiveFromError(false, "")).not.toBeNull();
+    expect(inactiveFromError(false, "2026-07-01")).toBeNull();
+  });
+  it("active supplier needs no date", () => {
+    expect(inactiveFromError(true, null)).toBeNull();
+  });
+  it("rejects a malformed date", () => {
+    expect(inactiveFromError(false, "01/07/2026")).not.toBeNull();
   });
 });
