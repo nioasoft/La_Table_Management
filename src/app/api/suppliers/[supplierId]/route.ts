@@ -15,6 +15,7 @@ import {
   validateFileMapping,
 } from "@/data-access/suppliers";
 import { createAuditContext } from "@/data-access/auditLog";
+import { cancelFileRequestsNoLongerOwed } from "@/data-access/fileRequests";
 import type { UpdateSupplierDataWithCommissionChange } from "@/data-access/suppliers";
 import type { SupplierFileMapping, CommissionException } from "@/db/schema";
 
@@ -90,6 +91,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       vatIncluded,
       vatExempt,
       isActive,
+      inactiveFrom,
       brandIds,
       fileMapping,
       commissionExceptions,
@@ -148,6 +150,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (vatIncluded !== undefined) updateData.vatIncluded = vatIncluded;
     if (vatExempt !== undefined) updateData.vatExempt = vatExempt;
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (inactiveFrom !== undefined) {
+      if (inactiveFrom !== null && !/^\d{4}-\d{2}-\d{2}$/.test(inactiveFrom)) {
+        return NextResponse.json({ error: "Invalid inactiveFrom date" }, { status: 400 });
+      }
+      updateData.inactiveFrom = inactiveFrom;
+    }
+    // Reactivating wipes the date so a later deactivation starts clean.
+    if (isActive === true) updateData.inactiveFrom = null;
     if (isKosher !== undefined) updateData.isKosher = isKosher;
 
     // Handle file mapping update
@@ -280,6 +290,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     // Update brand associations if provided
     if (brandIds !== undefined && Array.isArray(brandIds)) {
       await setSupplierBrands(supplierId, brandIds);
+    }
+
+    // Stop "please upload" emails right away for periods it no longer owes.
+    if (!updatedSupplier.isActive) {
+      await cancelFileRequestsNoLongerOwed(supplierId);
     }
 
     // Fetch updated brands

@@ -634,6 +634,10 @@ export const supplier = pgTable(
     isActive: boolean("is_active")
       .$default(() => true)
       .notNull(),
+    // When an inactive supplier stopped working with us (YYYY-MM-DD). Periods
+    // that began before it are still owed a report; later ones are never
+    // requested. null + inactive = owes nothing. See supplierOwesPeriod().
+    inactiveFrom: date("inactive_from"),
     // Hidden suppliers are excluded from commission reports but preserved in database
     // Used for irrelevant suppliers like pest control, insurance, payment processing
     isHidden: boolean("is_hidden")

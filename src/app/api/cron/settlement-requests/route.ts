@@ -10,7 +10,8 @@ import {
   type SettlementFrequency,
   type SettlementPeriodType,
 } from "@/db/schema";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, or, inArray, isNotNull } from "drizzle-orm";
+import { supplierOwesPeriod } from "@/lib/supplier-activity";
 import { createFileRequest } from "@/data-access/fileRequests";
 import { getOrCreateSettlementPeriodByPeriodKey } from "@/data-access/settlements";
 import { formatDateAsLocal } from "@/lib/date-utils";
@@ -65,7 +66,9 @@ function getActiveFrequencies(): SettlementFrequency[] {
   return ["monthly", "quarterly", "semi_annual", "annual"];
 }
 
-// Get suppliers by settlement frequency
+// Get suppliers by settlement frequency. Includes deactivated suppliers that
+// have an inactive-from date — they may still owe their last period; the
+// caller filters with supplierOwesPeriod().
 async function getSuppliersByFrequency(
   frequency: SettlementFrequency
 ): Promise<Supplier[]> {
@@ -74,7 +77,7 @@ async function getSuppliersByFrequency(
     .from(supplier)
     .where(
       and(
-        eq(supplier.isActive, true),
+        or(eq(supplier.isActive, true), isNotNull(supplier.inactiveFrom)),
         eq(supplier.settlementFrequency, frequency)
       )
     ) as unknown as Promise<Supplier[]>;
@@ -310,6 +313,7 @@ async function processFrequency(
   const suppliers = await getSuppliersByFrequency(frequency);
 
   for (const supplierData of suppliers) {
+    if (!supplierOwesPeriod(supplierData, periodStartIso)) continue;
     try {
       const recipientEmail = supplierData.contactEmail || supplierData.secondaryContactEmail;
 

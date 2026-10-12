@@ -567,6 +567,8 @@ export const he = {
           paymentTermsPlaceholder: "לדוגמה: שוטף + 30",
 
           isActive: "פעיל",
+          inactiveFrom: "לא פעיל מתאריך",
+          inactiveFromDescription: "תקופות שהתחילו לפני התאריך עדיין יידרשו בדוח. ריק = לא נשלחות יותר בקשות דוח",
           isHidden: "הסתר מדוחות עמלות",
           isHiddenDescription: "ספק מוסתר לא יופיע בדוחות עמלות (לדוגמה: הדברה, ביטוח, סליקה)",
           bkmvAliases: "שמות חלופיים",

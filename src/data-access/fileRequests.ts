@@ -15,7 +15,9 @@ import {
   type UploadLink,
   type EmailTemplate,
 } from "@/db/schema";
-import { eq, and, desc, lt, lte, or, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, lt, lte, or, isNull, sql, inArray } from "drizzle-orm";
+import { getPeriodByKey } from "@/lib/settlement-periods";
+import { supplierOwesPeriod } from "@/lib/supplier-activity";
 import { randomUUID } from "crypto";
 import {
   generateSecureUploadLink,
@@ -301,6 +303,50 @@ export async function updateFileRequest(
 /**
  * Update file request status
  */
+/**
+ * Cancel open supplier report requests the supplier no longer owes because it
+ * was deactivated (see supplierOwesPeriod). Called right after a supplier is
+ * deactivated and at the start of the reminder crons, so an inactive supplier
+ * never gets another "please upload" email for a period it didn't work.
+ * Returns the cancelled request ids.
+ */
+export async function cancelFileRequestsNoLongerOwed(
+  supplierId?: string
+): Promise<string[]> {
+  const rows = await database
+    .select({
+      id: fileRequest.id,
+      metadata: fileRequest.metadata,
+      isActive: supplier.isActive,
+      inactiveFrom: supplier.inactiveFrom,
+      fiscalYearStartMonth: supplier.fiscalYearStartMonth,
+    })
+    .from(fileRequest)
+    .innerJoin(supplier, eq(supplier.id, fileRequest.entityId))
+    .where(
+      and(
+        eq(fileRequest.entityType, "supplier"),
+        inArray(fileRequest.status, ["pending", "sent"]),
+        eq(supplier.isActive, false),
+        supplierId ? eq(supplier.id, supplierId) : undefined
+      )
+    );
+
+  const cancelled: string[] = [];
+  for (const row of rows) {
+    const periodKey = (row.metadata as Record<string, unknown> | null)?.periodKey;
+    const period =
+      typeof periodKey === "string"
+        ? getPeriodByKey(periodKey, row.fiscalYearStartMonth ?? 1)
+        : null;
+    const periodStart = period ? formatDateAsLocal(period.startDate) : null;
+    if (supplierOwesPeriod(row, periodStart)) continue;
+    await updateFileRequestStatus(row.id, "cancelled");
+    cancelled.push(row.id);
+  }
+  return cancelled;
+}
+
 export async function updateFileRequestStatus(
   id: string,
   status: FileRequestStatus,

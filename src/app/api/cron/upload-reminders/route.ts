@@ -13,6 +13,7 @@ import {
   sendFileRequestReminder,
   updateFileRequest,
   updateFileRequestStatus,
+  cancelFileRequestsNoLongerOwed,
 } from "@/data-access/fileRequests";
 import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AdminEscalationEmail } from "@/emails/admin-escalation";
@@ -328,6 +329,14 @@ async function processReminders(dryRun: boolean): Promise<ReminderResult> {
     errors: [],
     requests: [],
   };
+
+  // Deactivated suppliers stop getting reminders for periods they no longer
+  // owe (Pasta La Casa, 2026-10: deactivated, still reminded the next day).
+  if (!dryRun) {
+    for (const id of await cancelFileRequestsNoLongerOwed()) {
+      results.requests.push(`${id} (cancelled: supplier inactive for this period)`);
+    }
+  }
 
   const allRequests = await getSentFileRequests();
   const now = new Date();

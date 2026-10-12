@@ -3,6 +3,7 @@ import {
   processScheduledFileRequests,
   expireOutdatedFileRequests,
   sendDueDateReminders,
+  cancelFileRequestsNoLongerOwed,
 } from "@/data-access/fileRequests";
 import { startCronLog } from "@/lib/cron-logger";
 
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
         errors: string[];
       };
       expired?: number;
+      cancelledInactive?: number;
       reminders?: {
         sent: number;
         failed: number;
@@ -61,6 +63,10 @@ export async function POST(request: NextRequest) {
     } = {};
 
     const cronLog = await startCronLog("file-requests");
+
+    // Deactivated suppliers: drop requests for periods they no longer owe
+    // before anything below can email them.
+    results.cancelledInactive = (await cancelFileRequestsNoLongerOwed()).length;
 
     // Process scheduled file requests
     if (action === "all" || action === "scheduled") {

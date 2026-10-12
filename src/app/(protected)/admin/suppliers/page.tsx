@@ -126,6 +126,7 @@ interface SupplierFormData {
   vatIncluded: boolean;
   vatExempt: boolean;
   isActive: boolean;
+  inactiveFrom: string;
   isHidden: boolean;
   isKosher: boolean;
   brandIds: string[];
@@ -159,6 +160,7 @@ const initialFormData: SupplierFormData = {
   vatIncluded: false,
   vatExempt: false,
   isActive: true,
+  inactiveFrom: "",
   isHidden: false,
   isKosher: true,
   brandIds: [],
@@ -396,6 +398,7 @@ export default function AdminSuppliersPage() {
 
       const submitData = {
         ...data,
+        inactiveFrom: data.inactiveFrom || null,
         defaultCommissionRate: data.defaultCommissionRate || null,
         commissionExceptions: formDataToCommissionExceptions(data.commissionExceptions),
         ...(isCommissionChanging && {
@@ -533,6 +536,7 @@ export default function AdminSuppliersPage() {
       vatIncluded: supplier.vatIncluded || false,
       vatExempt: supplier.vatExempt || false,
       isActive: supplier.isActive,
+      inactiveFrom: supplier.inactiveFrom || "",
       isHidden: supplier.isHidden || false,
       isKosher: supplier.isKosher ?? true,
       brandIds: supplier.brands?.map((b) => b.id) || [],
@@ -734,6 +738,23 @@ export default function AdminSuppliersPage() {
                         {he.admin.suppliers.form.fields.isActive}
                       </Label>
                     </div>
+
+                    {!formData.isActive && (
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="inactiveFrom" className="text-sm whitespace-nowrap">
+                          {he.admin.suppliers.form.fields.inactiveFrom}
+                        </Label>
+                        <Input
+                          id="inactiveFrom"
+                          type="date"
+                          value={formData.inactiveFrom}
+                          onChange={(e) => setFormData({ ...formData, inactiveFrom: e.target.value })}
+                          disabled={isSubmitting}
+                          className="h-8 w-40"
+                          title={he.admin.suppliers.form.fields.inactiveFromDescription}
+                        />
+                      </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                       <Checkbox
