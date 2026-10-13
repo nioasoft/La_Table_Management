@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 import {
   Table,
   TableBody,
@@ -81,14 +83,30 @@ interface ReviewStats {
   rejectedToday: number;
 }
 
+/** One review POST. Throws a user-readable Hebrew message on failure. */
+async function postReview(fileId: string, action: "approve" | "reject", notes: string) {
+  const response = await fetchWithTimeout("/api/supplier-files/review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileId, action, notes }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    // 4xx carry a Hebrew reason (already approved, wrong state); 5xx don't.
+    throw new Error(response.status < 500 && body?.error ? body.error : "שגיאה בעדכון הקובץ");
+  }
+  return response.json();
+}
+
 export default function SupplierFilesReviewPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const [selectedFile, setSelectedFile] = useState<ReviewFile | null>(null);
+  // Approve is one click; only reject opens a dialog (the reason is required).
+  const [rejectingFile, setRejectingFile] = useState<ReviewFile | null>(null);
   const [reviewNotes, setReviewNotes] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [dialogAction, setDialogAction] = useState<"approve" | "reject" | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   const { data: session, isPending } = authClient.useSession();
   const userRole = session ? (session.user as { role?: string })?.role : undefined;
@@ -108,42 +126,83 @@ export default function SupplierFilesReviewPage() {
 
   const files: ReviewFile[] = reviewData?.files || [];
   const stats: ReviewStats = reviewData?.stats || { pending: 0, approvedToday: 0, rejectedToday: 0 };
+  // A file with a processing error can't be approved (server refuses too).
+  const approvableIds = files.filter((f) => !f.processingResult?.error).map((f) => f.id);
+  const selectedApprovable = approvableIds.filter((id) => selectedIds.has(id));
+  const allSelected = approvableIds.length > 0 && selectedApprovable.length === approvableIds.length;
+
+  const invalidateQueue = () => {
+    queryClient.invalidateQueries({ queryKey: ["supplier-files", "review"] });
+    queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
+  };
 
   // Review action mutation
   const reviewMutation = useMutation({
-    mutationFn: async ({ fileId, action, notes }: { fileId: string; action: "approve" | "reject"; notes: string }) => {
-      const response = await fetchWithTimeout("/api/supplier-files/review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileId, action, notes }),
+    mutationFn: ({ fileId, action, notes }: { fileId: string; action: "approve" | "reject"; notes: string }) =>
+      postReview(fileId, action, notes),
+    onSuccess: (_data, { fileId, action }) => {
+      invalidateQueue();
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(fileId);
+        return next;
       });
-      if (!response.ok) throw new Error("Failed to process review");
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["supplier-files", "review"] });
-      queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
-      setIsDialogOpen(false);
-      setSelectedFile(null);
+      setRejectingFile(null);
       setReviewNotes("");
+      toast.success(action === "approve" ? "הקובץ אושר" : "הקובץ נדחה");
+    },
+    onError: (err) => {
+      console.error("Supplier file review failed:", err);
+      toast.error(err.message);
     },
   });
 
-  const handleOpenDialog = useCallback((file: ReviewFile, action: "approve" | "reject") => {
-    setSelectedFile(file);
-    setDialogAction(action);
-    setReviewNotes("");
-    setIsDialogOpen(true);
-  }, []);
+  const handleConfirmReject = useCallback(() => {
+    if (!rejectingFile) return;
+    reviewMutation.mutate({ fileId: rejectingFile.id, action: "reject", notes: reviewNotes });
+  }, [rejectingFile, reviewNotes, reviewMutation]);
 
-  const handleConfirmAction = useCallback(() => {
-    if (!selectedFile || !dialogAction) return;
-    reviewMutation.mutate({
-      fileId: selectedFile.id,
-      action: dialogAction,
-      notes: reviewNotes,
+  const toggleSelected = (fileId: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(fileId)) next.delete(fileId);
+      else next.add(fileId);
+      return next;
     });
-  }, [selectedFile, dialogAction, reviewNotes, reviewMutation]);
+
+  // ponytail: sequential on purpose — each approve re-syncs commissions for its
+  // (supplier, period); parallel runs of sibling files could race on that sync.
+  const handleBulkApprove = async () => {
+    const ids = selectedApprovable;
+    if (ids.length === 0) return;
+    const failures: string[] = [];
+    setBulkProgress({ done: 0, total: ids.length });
+    for (const [i, id] of ids.entries()) {
+      try {
+        await postReview(id, "approve", "");
+      } catch (err) {
+        const name = files.find((f) => f.id === id)?.fileName ?? id;
+        console.error("Bulk approve failed for", id, err);
+        failures.push(`${name}: ${err instanceof Error ? err.message : "שגיאה"}`);
+      }
+      setBulkProgress({ done: i + 1, total: ids.length });
+    }
+    setBulkProgress(null);
+    setSelectedIds(new Set());
+    invalidateQueue();
+    const approved = ids.length - failures.length;
+    if (approved > 0) toast.success(`${approved} קבצים אושרו`);
+    if (failures.length > 0) {
+      toast.error(`${failures.length} קבצים לא אושרו`, {
+        description: (
+          <ul className="list-disc ps-4">
+            {failures.map((f) => <li key={f}>{f}</li>)}
+          </ul>
+        ),
+        duration: 15000,
+      });
+    }
+  };
 
   const formatDate = (dateStr: string) => {
     return new Intl.DateTimeFormat("he-IL", {
@@ -240,8 +299,30 @@ export default function SupplierFilesReviewPage() {
         <CardHeader>
           <CardTitle>קבצים לבדיקה</CardTitle>
           <CardDescription>
-            לחץ על &quot;פרטים&quot; לצפייה בפרטי ההתאמות, או אשר/דחה קובץ ישירות
+            לחץ על &quot;פרטים&quot; לצפייה בפרטי ההתאמות, או אשר/דחה קובץ ישירות.
+            לאישור כמה קבצים יחד — סמני אותם ולחצי &quot;אשר נבחרים&quot;.
           </CardDescription>
+          {selectedApprovable.length > 0 && (
+            <div className="flex items-center gap-3 pt-2">
+              <Button
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handleBulkApprove}
+                disabled={!!bulkProgress}
+              >
+                {bulkProgress ? (
+                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                ) : (
+                  <Check className="h-4 w-4 ms-2" />
+                )}
+                {bulkProgress
+                  ? `מאשר ${bulkProgress.done}/${bulkProgress.total}...`
+                  : `אשר נבחרים (${selectedApprovable.length})`}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} disabled={!!bulkProgress}>
+                נקה בחירה
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -265,6 +346,14 @@ export default function SupplierFilesReviewPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        onCheckedChange={(v) => setSelectedIds(v === true ? new Set(approvableIds) : new Set())}
+                        disabled={approvableIds.length === 0 || !!bulkProgress}
+                        aria-label="בחר את כל הקבצים לאישור"
+                      />
+                    </TableHead>
                     <TableHead className="text-end">שם קובץ</TableHead>
                     <TableHead className="text-end">ספק</TableHead>
                     <TableHead className="text-end">תאריך העלאה</TableHead>
@@ -275,7 +364,15 @@ export default function SupplierFilesReviewPage() {
                 </TableHeader>
                 <TableBody>
                   {files.map((file) => (
-                    <TableRow key={file.id}>
+                    <TableRow key={file.id} data-state={selectedIds.has(file.id) ? "selected" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(file.id)}
+                          onCheckedChange={() => toggleSelected(file.id)}
+                          disabled={!!file.processingResult?.error || !!bulkProgress}
+                          aria-label={`בחר ${file.fileName}`}
+                        />
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-muted-foreground" />
@@ -364,17 +461,25 @@ export default function SupplierFilesReviewPage() {
                             size="sm"
                             variant="default"
                             className="bg-green-600 hover:bg-green-700"
-                            onClick={() => handleOpenDialog(file, "approve")}
-                            disabled={!!file.processingResult?.error}
+                            onClick={() => reviewMutation.mutate({ fileId: file.id, action: "approve", notes: "" })}
+                            disabled={!!file.processingResult?.error || reviewMutation.isPending || !!bulkProgress}
                             title={file.processingResult?.error ? "לא ניתן לאשר קובץ עם שגיאת עיבוד — יש לדחות ולהעלות מחדש" : undefined}
                           >
-                            <Check className="h-4 w-4 ms-1" />
+                            {reviewMutation.isPending && reviewMutation.variables?.fileId === file.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin ms-1" />
+                            ) : (
+                              <Check className="h-4 w-4 ms-1" />
+                            )}
                             אשר
                           </Button>
                           <Button
                             size="sm"
                             variant="destructive"
-                            onClick={() => handleOpenDialog(file, "reject")}
+                            onClick={() => {
+                              setReviewNotes("");
+                              setRejectingFile(file);
+                            }}
+                            disabled={reviewMutation.isPending || !!bulkProgress}
                           >
                             <X className="h-4 w-4 ms-1" />
                             דחה
@@ -390,58 +495,50 @@ export default function SupplierFilesReviewPage() {
         </CardContent>
       </Card>
 
-      {/* Confirmation Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+      {/* Reject Dialog — approve has no dialog, it's one click */}
+      <Dialog open={!!rejectingFile} onOpenChange={(open) => !open && setRejectingFile(null)}>
+        <DialogContent dir="rtl">
           <DialogHeader>
-            <DialogTitle>
-              {dialogAction === "approve" ? "אישור קובץ" : "דחיית קובץ"}
-            </DialogTitle>
+            <DialogTitle>דחיית קובץ</DialogTitle>
             <DialogDescription>
-              {dialogAction === "approve"
-                ? "האם אתה בטוח שברצונך לאשר את הקובץ? פעולה זו תסמן את הקובץ כמאושר ותסיים את תהליך הבדיקה."
-                : "האם אתה בטוח שברצונך לדחות את הקובץ? יש לציין סיבה לדחייה."}
+              האם אתה בטוח שברצונך לדחות את הקובץ? יש לציין סיבה לדחייה.
             </DialogDescription>
           </DialogHeader>
-          {selectedFile && (
+          {rejectingFile && (
             <div className="py-4">
               <div className="bg-muted rounded-lg p-3 mb-4">
-                <p className="font-medium">{selectedFile.fileName}</p>
-                {selectedFile.supplier && (
+                <p className="font-medium">{rejectingFile.fileName}</p>
+                {rejectingFile.supplier && (
                   <p className="text-sm text-muted-foreground">
-                    ספק: {selectedFile.supplier.name}
+                    ספק: {rejectingFile.supplier.name}
                   </p>
                 )}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  הערות {dialogAction === "reject" ? "(חובה)" : "(אופציונלי)"}
-                </label>
+                <label className="text-sm font-medium">הערות (חובה)</label>
                 <Textarea
                   value={reviewNotes}
                   onChange={(e) => setReviewNotes(e.target.value)}
-                  placeholder={dialogAction === "approve" ? "הערות נוספות..." : "סיבת הדחייה..."}
+                  placeholder="סיבת הדחייה..."
                   rows={3}
                 />
               </div>
             </div>
           )}
           <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+            <Button variant="outline" onClick={() => setRejectingFile(null)}>
               ביטול
             </Button>
             <Button
-              variant={dialogAction === "approve" ? "default" : "destructive"}
-              onClick={handleConfirmAction}
-              disabled={reviewMutation.isPending || (dialogAction === "reject" && !reviewNotes.trim())}
+              variant="destructive"
+              onClick={handleConfirmReject}
+              disabled={reviewMutation.isPending || !reviewNotes.trim()}
             >
               {reviewMutation.isPending ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin ms-2" />
                   מעבד...
                 </>
-              ) : dialogAction === "approve" ? (
-                "אשר קובץ"
               ) : (
                 "דחה קובץ"
               )}

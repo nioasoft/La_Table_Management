@@ -23,6 +23,7 @@ import {
   Calendar,
   CheckCircle2,
   Info,
+  Search,
 } from "lucide-react";
 import {
   ReportLayout,
@@ -227,6 +228,7 @@ export default function HashavshevetExportPage() {
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
+  const [supplierSearch, setSupplierSearch] = useState("");
   const [startDocNumber, setStartDocNumber] = useState("5001");
   // Default ON: only export rows whose latest reconciliation comparison is
   // approved. Unchecking falls back to legacy behavior (file-level approval).
@@ -435,6 +437,14 @@ export default function HashavshevetExportPage() {
     }
   };
 
+  const visibleSuppliers = useMemo(() => {
+    const q = supplierSearch.trim().toLowerCase();
+    if (!q) return suppliers;
+    return suppliers.filter((s) =>
+      [s.name, s.code, s.hashavshevetCode].some((v) => v?.toLowerCase().includes(q))
+    );
+  }, [suppliers, supplierSearch]);
+
   // Handle supplier toggle
   const handleSupplierToggle = (supplierId: string) => {
     setSelectedSupplierIds((prev) =>
@@ -445,12 +455,16 @@ export default function HashavshevetExportPage() {
   };
 
   // Handle select all suppliers
+  // Acts on the visible (searched) list, so "search → בחר הכל" picks just the matches.
+  const allVisibleSelected =
+    visibleSuppliers.length > 0 && visibleSuppliers.every((s) => selectedSupplierIds.includes(s.id));
   const handleSelectAllSuppliers = () => {
-    if (selectedSupplierIds.length === suppliers.length) {
-      setSelectedSupplierIds([]);
-    } else {
-      setSelectedSupplierIds(suppliers.map((s) => s.id));
-    }
+    const visibleIds = visibleSuppliers.map((s) => s.id);
+    setSelectedSupplierIds((prev) =>
+      allVisibleSelected
+        ? prev.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...prev, ...visibleIds]))
+    );
   };
 
   // Handle filter reset
@@ -462,6 +476,7 @@ export default function HashavshevetExportPage() {
     setUseCustomDateRange(true);
     setSelectedBrandId("");
     setSelectedSupplierIds([]);
+    setSupplierSearch("");
     setStartDocNumber("5001");
     setOnlyApproved(true);
     setReport(null);
@@ -678,17 +693,33 @@ export default function HashavshevetExportPage() {
                 onClick={handleSelectAllSuppliers}
                 className="h-7 text-xs"
               >
-                {selectedSupplierIds.length === suppliers.length ? "בטל הכל" : "בחר הכל"}
+                {allVisibleSelected ? "בטל הכל" : "בחר הכל"}
               </Button>
             </div>
+            {suppliers.length > 0 && (
+              <div className="relative">
+                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={supplierSearch}
+                  onChange={(e) => setSupplierSearch(e.target.value)}
+                  placeholder="חיפוש ספק לפי שם, קוד או מפתח חשבשבת..."
+                  className="h-9 ps-9"
+                  aria-label="חיפוש ספק"
+                />
+              </div>
+            )}
             {suppliers.length === 0 ? (
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>אין ספקים פעילים במערכת.</AlertDescription>
               </Alert>
+            ) : visibleSuppliers.length === 0 ? (
+              <p className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/20">
+                לא נמצאו ספקים התואמים ל&quot;{supplierSearch}&quot;
+              </p>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 max-h-64 overflow-y-auto p-2 border rounded-md bg-muted/20">
-                {suppliers.map((supplier) => {
+                {visibleSuppliers.map((supplier) => {
                   const isSelected = selectedSupplierIds.includes(supplier.id);
                   return (
                     <button

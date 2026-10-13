@@ -145,7 +145,6 @@ export default function SupplierFileDetailPage() {
   }, []);
 
   const [reviewNotes, setReviewNotes] = useState("");
-  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [editingMatch, setEditingMatch] = useState<FranchiseeMatch | null>(null);
   const [selectedFranchisee, setSelectedFranchisee] = useState<string>("");
@@ -194,7 +193,11 @@ export default function SupplierFileDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId, action, notes }),
       });
-      if (!response.ok) throw new Error("Failed to process review");
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        // 4xx carry a Hebrew reason (already approved, wrong state); 5xx don't.
+        throw new Error(response.status < 500 && body?.error ? body.error : "שגיאה בעדכון הקובץ");
+      }
       return response.json() as Promise<{
         success: boolean;
         message: string;
@@ -209,6 +212,10 @@ export default function SupplierFileDetailPage() {
         );
       }
       router.push(backHref);
+    },
+    onError: (err) => {
+      console.error("Supplier file review failed:", err);
+      toast.error(err.message);
     },
   });
 
@@ -273,8 +280,8 @@ export default function SupplierFileDetailPage() {
   });
 
   const handleApprove = useCallback(() => {
-    reviewMutation.mutate({ action: "approve", notes: reviewNotes });
-  }, [reviewMutation, reviewNotes]);
+    reviewMutation.mutate({ action: "approve", notes: "" });
+  }, [reviewMutation]);
 
   const handleReject = useCallback(() => {
     reviewMutation.mutate({ action: "reject", notes: reviewNotes });
@@ -418,9 +425,14 @@ export default function SupplierFileDetailPage() {
               <Button
                 variant="default"
                 className="bg-green-600 hover:bg-green-700"
-                onClick={() => setIsApproveDialogOpen(true)}
+                onClick={handleApprove}
+                disabled={reviewMutation.isPending}
               >
-                <Check className="h-4 w-4 ms-2" />
+                {reviewMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin ms-2" />
+                ) : (
+                  <Check className="h-4 w-4 ms-2" />
+                )}
                 אשר קובץ
               </Button>
               <Button
@@ -701,45 +713,6 @@ export default function SupplierFileDetailPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Approve Dialog */}
-      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>אישור קובץ</DialogTitle>
-            <DialogDescription>
-              האם אתה בטוח שברצונך לאשר את הקובץ? פעולה זו תסמן את הקובץ כמאושר.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <label className="text-sm font-medium">הערות (אופציונלי)</label>
-            <Textarea
-              value={reviewNotes}
-              onChange={(e) => setReviewNotes(e.target.value)}
-              placeholder="הערות נוספות..."
-              rows={3}
-              className="mt-2"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>
-              ביטול
-            </Button>
-            <Button
-              className="bg-green-600 hover:bg-green-700"
-              onClick={handleApprove}
-              disabled={reviewMutation.isPending}
-            >
-              {reviewMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin ms-2" />
-              ) : (
-                <Check className="h-4 w-4 ms-2" />
-              )}
-              אשר קובץ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Reject Dialog */}
       <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
