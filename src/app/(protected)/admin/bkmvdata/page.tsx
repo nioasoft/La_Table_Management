@@ -3,7 +3,8 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback, useMemo, useRef, useEffect, type DragEvent } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import Link from "next/link";
 import { withBack } from "@/lib/back-link";
 import { authClient } from "@/lib/auth-client";
@@ -182,6 +183,8 @@ function formatDateHebrew(date: Date | null): string {
   }).format(date);
 }
 
+const BKMV_TABS = ["upload", "history", "explorer"] as const;
+
 export default function BkmvDataPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -243,11 +246,7 @@ export default function BkmvDataPage() {
 
   // History and upload state. The tab is seeded from ?tab= so the review page's
   // "חזרה" can land back on the tab the file was opened from.
-  const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const tab = searchParams.get("tab");
-    return tab === "history" || tab === "explorer" ? tab : "upload";
-  });
+  const [activeTab, setActiveTab] = useUrlTab(BKMV_TABS, "upload");
   const [historyFilterFranchisee, setHistoryFilterFranchisee] = useState<string>("all");
   const [historyFilterStatus, setHistoryFilterStatus] = useState<string>("all");
   const [historySearchQuery, setHistorySearchQuery] = useState<string>("");

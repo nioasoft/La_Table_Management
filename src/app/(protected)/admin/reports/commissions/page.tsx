@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -193,7 +194,10 @@ const supplierColumns: ColumnDef<CommissionSummaryBySupplier>[] = [
 // COMPONENT
 // ============================================================================
 
+const REPORT_TABS = ["byBrand", "byPeriod", "bySupplier", "details"] as const;
+
 export default function CommissionsReportPage() {
+  const [activeTab, setActiveTab] = useUrlTab(REPORT_TABS, "byBrand");
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [report, setReport] = useState<CommissionReport | null>(null);
@@ -391,7 +395,7 @@ export default function CommissionsReportPage() {
           <ReportSummaryCards cards={summaryCards} columns={4} />
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="byBrand" className="w-full" dir="rtl">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
             <TabsList className="flex w-full gap-1">
               <TabsTrigger value="byBrand" className="flex items-center gap-2">
                 <Building2 className="h-4 w-4" />

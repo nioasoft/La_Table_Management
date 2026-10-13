@@ -1,5 +1,6 @@
 "use client";
 
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, FileSpreadsheet, Loader2, RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -243,8 +244,10 @@ function resolveTab(value: string): FranchiseeBillingAnnualType | null {
 
 export default function FranchiseeBillingAnnualReportsPage() {
   const [currentYear] = useState(() => new Date().getFullYear());
-  const [reportType, setReportType] =
-    useState<FranchiseeBillingAnnualType>("turnover");
+  const [reportType, setReportType] = useUrlTab(
+    franchiseeBillingAnnualTypeSchema.options,
+    "turnover"
+  );
   const [year, setYear] = useState(currentYear);
   const [brandId, setBrandId] = useState<string | null>(null);
   const years = Array.from(

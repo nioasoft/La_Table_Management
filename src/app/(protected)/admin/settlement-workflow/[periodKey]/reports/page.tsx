@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -115,7 +116,10 @@ const adjustmentTypeLabels: Record<string, string> = {
   other: "אחר",
 };
 
+const REPORT_TABS = ["byBrand", "bySupplier", "adjustments"] as const;
+
 export default function ReportsPage() {
+  const [activeTab, setActiveTab] = useUrlTab(REPORT_TABS, "byBrand");
   const router = useRouter();
   const params = useParams();
   const periodKey = decodeURIComponent(params.periodKey as string);
@@ -289,7 +293,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="byBrand" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="byBrand" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />

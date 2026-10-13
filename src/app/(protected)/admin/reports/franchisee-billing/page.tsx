@@ -1,5 +1,6 @@
 "use client";
 
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/franchisee-billing-report-request";
 import {
   franchiseeBillingReportResponseSchema,
+  franchiseeBillingReportTypeSchema,
   type FranchiseeBillingReportPayload,
   type FranchiseeBillingReportType,
 } from "@/schemas/franchisee-billing-reports";
@@ -425,8 +427,10 @@ export default function FranchiseeBillingReportsPage() {
     const date = new Date();
     return { year: date.getFullYear(), month: date.getMonth() + 1 };
   });
-  const [reportType, setReportType] =
-    useState<FranchiseeBillingReportType>("summary");
+  const [reportType, setReportType] = useUrlTab(
+    franchiseeBillingReportTypeSchema.options,
+    "summary"
+  );
   const [year, setYear] = useState(initialPeriod.year);
   const [month, setMonth] = useState(initialPeriod.month);
   const [brandId, setBrandId] = useState<string | null>(null);

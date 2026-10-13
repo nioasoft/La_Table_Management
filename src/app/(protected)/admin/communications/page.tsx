@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -65,11 +66,17 @@ const EmailLogsContent = dynamic(
   }
 );
 
+const COMMUNICATION_TABS = [
+  "email-templates",
+  "reminders",
+  "schedules",
+  "cron-monitor",
+  "email-logs",
+] as const;
+
 export default function CommunicationsPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const initialTab = searchParams.get("tab") || "email-templates";
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, handleTabChange] = useUrlTab(COMMUNICATION_TABS, "email-templates");
   const [showSendDialog, setShowSendDialog] = useState(false);
 
   const { data: session, isPending } = authClient.useSession();
@@ -84,14 +91,6 @@ export default function CommunicationsPage() {
       </div>
     );
   }
-
-  const handleTabChange = (value: string) => {
-    setActiveTab(value);
-    // Update URL without full navigation
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", value);
-    window.history.replaceState({}, "", url.toString());
-  };
 
   return (
     <div className="container mx-auto p-6">

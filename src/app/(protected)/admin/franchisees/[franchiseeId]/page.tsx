@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
@@ -224,6 +225,8 @@ const formatPercent = (rate: number): string => {
   return `${rate.toFixed(2)}%`;
 };
 
+const FRANCHISEE_TABS = ["overview", "royalties", "contacts", "documents", "reminders", "purchases", "history"] as const;
+
 export default function FranchiseeDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -243,7 +246,7 @@ export default function FranchiseeDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useUrlTab(FRANCHISEE_TABS, "overview");
 
   // Documents state
   const [documents, setDocuments] = useState<DocumentWithUploader[]>([]);

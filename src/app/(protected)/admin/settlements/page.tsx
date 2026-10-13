@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -105,11 +106,13 @@ interface CreateSettlementDialog {
   isSubmitting: boolean;
 }
 
+const SETTLEMENT_TABS = ["monthly", "quarterly", "semi_annual", "annual"] as const;
+
 export default function SettlementsPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [periodsData, setPeriodsData] = useState<PeriodsResponse | null>(null);
-  const [activeTab, setActiveTab] = useState<SettlementPeriodType>("quarterly");
+  const [activeTab, setActiveTab] = useUrlTab(SETTLEMENT_TABS, "quarterly");
   const [createDialog, setCreateDialog] = useState<CreateSettlementDialog>({
     isOpen: false,
     period: null,
@@ -330,7 +333,7 @@ export default function SettlementsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as SettlementPeriodType)} dir="rtl">
+          <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
             <TabsList className="flex w-full gap-1 mb-6">
               {frequencyTabs.map((tab) => (
                 <TabsTrigger key={tab.value} value={tab.value} className="flex items-center gap-2">

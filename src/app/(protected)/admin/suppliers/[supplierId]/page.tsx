@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -199,6 +200,8 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+const SUPPLIER_TABS = ["overview", "commission", "documents", "uploads", "products"] as const;
+
 export default function SupplierCardPage() {
   const router = useRouter();
   const params = useParams();
@@ -214,7 +217,7 @@ export default function SupplierCardPage() {
   const [crossReferences, setCrossReferences] = useState<
     CrossReferenceWithDetails[]
   >([]);
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useUrlTab(SUPPLIER_TABS, "overview");
   const [loadingStates, setLoadingStates] = useState({
     commissionHistory: false,
     documents: false,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useSearchParams } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -204,26 +204,14 @@ function CommissionInput({
   );
 }
 
+const CLIENT_TABS = ["clients", "occasional"] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Main Page Component
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function ClientsPage() {
-  const searchParams = useSearchParams();
-  const initialTab: "clients" | "occasional" =
-    searchParams.get("tab") === "occasional" ? "occasional" : "clients";
-  const [activeTab, setActiveTab] = useState<"clients" | "occasional">(
-    initialTab
-  );
-
-  const handleTabChange = (value: string) => {
-    const next: "clients" | "occasional" =
-      value === "occasional" ? "occasional" : "clients";
-    setActiveTab(next);
-    const url = new URL(window.location.href);
-    url.searchParams.set("tab", next);
-    window.history.replaceState({}, "", url.toString());
-  };
+  const [activeTab, handleTabChange] = useUrlTab(CLIENT_TABS, "clients");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClient, setEditingClient] =

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import Link from "next/link";
 import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
@@ -39,12 +40,14 @@ interface DocumentWithUploader extends Document {
   uploaderEmail?: string | null;
 }
 
+const BRAND_TABS = ["overview", "documents"] as const;
+
 export default function BrandDetailPage() {
   const params = useParams();
   const router = useRouter();
   const brandId = params.brandId as string;
 
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useUrlTab(BRAND_TABS, "overview");
   const [documents, setDocuments] = useState<DocumentWithUploader[]>([]);
   const [documentsLoaded, setDocumentsLoaded] = useState(false);
   const [documentsLoading, setDocumentsLoading] = useState(false);

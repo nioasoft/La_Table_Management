@@ -4,6 +4,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import {
@@ -173,7 +174,10 @@ const getStatusBadge = (status: string) => {
   return <Badge variant={config.variant}>{config.label}</Badge>;
 };
 
+const REPORT_TABS = ["byBrand", "byPeriod", "bySupplier", "details"] as const;
+
 export default function CommissionReportPage() {
+  const [activeTab, setActiveTab] = useUrlTab(REPORT_TABS, "byBrand");
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -566,7 +570,7 @@ export default function CommissionReportPage() {
           </div>
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="byBrand" className="w-full" dir="rtl">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
             <TabsList className="flex w-full gap-1">
               <TabsTrigger value="byBrand" className="flex items-center gap-2">
                 לפי מותג

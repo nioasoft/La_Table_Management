@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -319,12 +320,14 @@ const uploadedFileColumns: ColumnDef<UnifiedFile>[] = supplierFileColumns;
 // COMPONENT
 // ============================================================================
 
+const FILE_TABS = ["all", "supplier", "uploaded"] as const;
+
 export default function FilesReportPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [report, setReport] = useState<UnifiedFilesReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("all");
+  const [activeTab, setActiveTab] = useUrlTab(FILE_TABS, "all");
 
   // Use shared report filters hook
   const {
@@ -562,7 +565,7 @@ export default function FilesReportPage() {
           )}
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
             <TabsList className="grid w-full grid-cols-3 h-9">
               <TabsTrigger value="all" className="text-sm">
                 <Files className="h-3.5 w-3.5 me-1.5" />

@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { authClient } from "@/lib/auth-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -270,7 +271,10 @@ const brandColumns: ColumnDef<DepositSummaryByBrand>[] = [
 // COMPONENT
 // ============================================================================
 
+const REPORT_TABS = ["byFranchisee", "byBrand", "details"] as const;
+
 export default function DepositsReportPage() {
+  const [activeTab, setActiveTab] = useUrlTab(REPORT_TABS, "byFranchisee");
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [report, setReport] = useState<DepositsReport | null>(null);
@@ -613,7 +617,7 @@ export default function DepositsReportPage() {
           )}
 
           {/* Tabs for different views */}
-          <Tabs defaultValue="byFranchisee" className="w-full" dir="rtl">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full" dir="rtl">
             <TabsList className="flex w-full gap-1">
               <TabsTrigger value="byFranchisee" className="flex items-center gap-2">
                 <Store className="h-4 w-4" />

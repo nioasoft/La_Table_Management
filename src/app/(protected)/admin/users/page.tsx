@@ -3,6 +3,7 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useUrlTab } from "@/hooks/use-url-tab";
 import { useQueryClient } from "@tanstack/react-query";
 import { authClient } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,8 @@ interface UserWithExtras extends User {
 
 type FilterTab = "all" | "pending" | "active" | "suspended";
 
+const USER_TABS = ["all", "pending", "active", "suspended"] as const;
+
 export default function AdminUsersPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -72,7 +75,7 @@ export default function AdminUsersPage() {
     suspended: number;
     byRole: Record<UserRole, number>;
   } | null>(null);
-  const [activeTab, setActiveTab] = useState<FilterTab>("all");
+  const [activeTab, setActiveTab] = useUrlTab(USER_TABS, "all");
   const [searchQuery, setSearchQuery] = useState("");
   const [approvingUserId, setApprovingUserId] = useState<string | null>(null);
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
@@ -461,7 +464,7 @@ export default function AdminUsersPage() {
           </Button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as FilterTab)} dir="rtl">
+        <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">
           <TabsList className="flex w-full max-w-xl gap-1">
             <TabsTrigger value="all" className="gap-2">
               {he.admin.users.tabs.all}
