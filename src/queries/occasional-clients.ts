@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { OccasionalClient } from "@/db/schema";
+import type { OccasionalClientWithRestaurants } from "@/data-access/occasional-clients";
 
 interface ListOptions {
   includeIgnored?: boolean;
@@ -32,7 +33,7 @@ export interface OccasionalNeedingNamesResponse {
 
 async function fetchOccasionalClients(
   opts?: ListOptions
-): Promise<OccasionalClient[]> {
+): Promise<OccasionalClientWithRestaurants[]> {
   const params = new URLSearchParams();
   if (opts?.includeIgnored) params.set("includeIgnored", "true");
   const url = `/api/admin/occasional-clients${

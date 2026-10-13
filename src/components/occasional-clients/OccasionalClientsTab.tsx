@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { Fragment, useState, useMemo, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,7 @@ import {
   Eye,
   Link2,
   Loader2,
+  Store,
   Trash2,
   Users,
 } from "lucide-react";
@@ -59,6 +60,7 @@ import {
 } from "@/queries/occasional-clients";
 import { useClients } from "@/queries/clients";
 import type { OccasionalClient } from "@/db/schema";
+import { groupByRestaurant } from "@/lib/group-by-restaurant";
 
 interface ClientLite {
   id: string;
@@ -434,9 +436,12 @@ export function OccasionalClientsTab() {
     return data.filter(
       (r) =>
         r.tabitColumnName.toLowerCase().includes(q) ||
-        (r.hashavshevetName ?? "").toLowerCase().includes(q)
+        (r.hashavshevetName ?? "").toLowerCase().includes(q) ||
+        r.franchisees.some((f) => f.name.toLowerCase().includes(q))
     );
   }, [data, filter]);
+
+  const groups = useMemo(() => groupByRestaurant(filteredRows), [filteredRows]);
 
   const handleSave = async (
     id: string,
@@ -520,8 +525,8 @@ export function OccasionalClientsTab() {
               )}
             </div>
             <p className="text-sm text-muted-foreground">
-              עמודות שזוהו בקבצי טאביט ואינן ממופות ללקוח רשום. הזן שם בחשבשבת
-              כדי שייכלל בייצוא חשבוניות לקוחות לזכיין.
+              עמודות שזוהו בקבצי טאביט ואינן ממופות ללקוח רשום, מקובצות לפי
+              מסעדה. הזן שם בחשבשבת כדי שייכלל בייצוא חשבוניות לקוחות לזכיין.
             </p>
           </div>
         </div>
@@ -586,16 +591,31 @@ export function OccasionalClientsTab() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRows.map((row) => (
-                    <EditableRow
-                      key={row.id}
-                      row={row}
-                      onSave={handleSave}
-                      onToggleIgnore={handleToggleIgnore}
-                      onLink={(r) => setLinkTarget(r)}
-                      onDelete={(r) => setDeleteTarget(r)}
-                      isToggling={updateMutation.isPending}
-                    />
+                  {groups.map((group) => (
+                    <Fragment key={group.key}>
+                      <TableRow className="bg-muted/50 hover:bg-muted/50">
+                        <TableCell colSpan={5} className="py-2">
+                          <div className="flex items-center gap-2 font-semibold text-sm">
+                            <Store className="h-4 w-4 text-muted-foreground" />
+                            {group.name}
+                            <Badge variant="secondary" className="text-xs tabular-nums">
+                              {group.rows.length}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {group.rows.map((row) => (
+                        <EditableRow
+                          key={`${group.key}:${row.id}`}
+                          row={row}
+                          onSave={handleSave}
+                          onToggleIgnore={handleToggleIgnore}
+                          onLink={(r) => setLinkTarget(r)}
+                          onDelete={(r) => setDeleteTarget(r)}
+                          isToggling={updateMutation.isPending}
+                        />
+                      ))}
+                    </Fragment>
                   ))}
                 </TableBody>
               </Table>

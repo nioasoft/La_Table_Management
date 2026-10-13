@@ -2,6 +2,7 @@ import { database } from "@/db";
 import {
   client,
   clientDocument,
+  franchisee,
   occasionalClient,
   occasionalClientDocument,
   type OccasionalClient,
@@ -21,13 +22,18 @@ export interface ListOccasionalClientsOptions {
   includeIgnored?: boolean;
 }
 
+/** An occasional client plus the restaurants whose Tabit files it appeared in. */
+export type OccasionalClientWithRestaurants = OccasionalClient & {
+  franchisees: Array<{ id: string; name: string }>;
+};
+
 /**
  * List occasional clients, ordered by first-seen descending (newest first).
  * By default excludes ignored rows — pass `includeIgnored: true` to see all.
  */
 export async function listOccasionalClients(
   options: ListOccasionalClientsOptions = {}
-): Promise<OccasionalClient[]> {
+): Promise<OccasionalClientWithRestaurants[]> {
   const { includeIgnored = false } = options;
 
   const query = database
@@ -38,11 +44,32 @@ export async function listOccasionalClients(
       desc(occasionalClient.firstSeenAt),
       asc(occasionalClient.tabitColumnName)
     );
+  const rows = includeIgnored
+    ? await query
+    : await query.where(eq(occasionalClient.ignored, false));
+  if (rows.length === 0) return [];
 
-  if (includeIgnored) {
-    return query;
-  }
-  return query.where(eq(occasionalClient.ignored, false));
+  const links = await database
+    .selectDistinct({
+      occasionalClientId: occasionalClientDocument.occasionalClientId,
+      id: franchisee.id,
+      name: franchisee.name,
+    })
+    .from(occasionalClientDocument)
+    .innerJoin(franchisee, eq(franchisee.id, occasionalClientDocument.franchiseeId))
+    .where(
+      inArray(
+        occasionalClientDocument.occasionalClientId,
+        rows.map((r) => r.id)
+      )
+    );
+
+  return rows.map((r) => ({
+    ...r,
+    franchisees: links
+      .filter((l) => l.occasionalClientId === r.id)
+      .map(({ id, name }) => ({ id, name })),
+  }));
 }
 
 /**
