@@ -18,7 +18,11 @@
  * contiguous pass catches this permutation.
  */
 import { describe, it, expect } from "vitest";
-import { matchFranchiseeName, normalizeName } from "../franchisee-matcher";
+import {
+  findConflictingFranchisee,
+  matchFranchiseeName,
+  normalizeName,
+} from "../franchisee-matcher";
 import type { Franchisee } from "@/db/schema";
 
 // Minimal fixture covering the "shared ויני" family that actually
@@ -171,5 +175,31 @@ describe("Latin → Hebrew brand-token normalisation", () => {
       minConfidence: 0.6,
     });
     expect(result.matchedFranchisee?.id).toBe("vinni-regba");
+  });
+});
+
+describe("findConflictingFranchisee — manual upload to the wrong branch", () => {
+  const kk = (id: string, name: string): Franchisee =>
+    ({ id, name, code: id, brandId: null, aliases: [], isActive: true }) as unknown as Franchisee;
+  const KING_KONG = [
+    kk("horev", 'קינג קונג חורב בע"מ'),
+    kk("hadera", 'קינג קונג חדרה בע"מ'),
+    kk("big", 'קינג קונג ביג בע"מ'),
+    kk("motzkin", 'קינג קונג מוצקין בע"מ'),
+  ];
+
+  it("flags חורב's invoice uploaded to its sibling branches (prod 2026-10-12)", () => {
+    for (const selected of ["hadera", "big", "motzkin"]) {
+      expect(findConflictingFranchisee('קינג קונג חורב בע"מ', KING_KONG, selected)?.id).toBe("horev");
+    }
+  });
+
+  it("accepts the document on its own branch", () => {
+    expect(findConflictingFranchisee('קינג קונג חורב בע"מ', KING_KONG, "horev")).toBeNull();
+  });
+
+  it("stays silent when the name points nowhere confidently", () => {
+    expect(findConflictingFranchisee("קינג קונג", KING_KONG, "hadera")).toBeNull();
+    expect(findConflictingFranchisee("", KING_KONG, "hadera")).toBeNull();
   });
 });

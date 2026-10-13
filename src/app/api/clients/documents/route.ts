@@ -17,8 +17,11 @@ import {
   processTabitUpload,
   processHeverUpload,
 } from "@/lib/client-document-processor";
-import { getInvoiceParser } from "@/lib/client-parsers";
-import { matchFranchiseeName } from "@/lib/franchisee-matcher";
+import { getClientParser, getInvoiceParser } from "@/lib/client-parsers";
+import {
+  findConflictingFranchisee,
+  matchFranchiseeName,
+} from "@/lib/franchisee-matcher";
 import { database } from "@/db";
 import { client, franchisee, type Franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -86,6 +89,34 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/** The franchisee the file itself names, when it is not the selected one. */
+async function detectOtherFranchisee(
+  buffer: Buffer,
+  mimeType: string,
+  parserCode: string,
+  documentType: "client_report" | "commission_invoice",
+  selectedId: string
+): Promise<Franchisee | null> {
+  const parser =
+    documentType === "commission_invoice"
+      ? getInvoiceParser(parserCode)
+      : getClientParser(parserCode);
+  if (!parser) return null;
+  let name: string | undefined;
+  try {
+    name = (await parser(buffer, mimeType)).data?.franchiseeName;
+  } catch (err) {
+    console.warn("[documents-upload] pre-parse for franchisee check failed:", err);
+    return null;
+  }
+  if (!name) return null;
+  const active = (await database
+    .select()
+    .from(franchisee)
+    .where(eq(franchisee.isActive, true))) as Franchisee[];
+  return findConflictingFranchisee(name, active, selectedId);
 }
 
 export async function POST(request: NextRequest) {
@@ -278,6 +309,28 @@ export async function POST(request: NextRequest) {
 
     if (!resolvedFranchiseeId) {
       return NextResponse.json({ error: "נדרש זכיין" }, { status: 400 });
+    }
+
+    // The file's own content outranks the dropdown: a file that names another
+    // franchisee needs an explicit confirm (2026-10-12: חורב's Mishloha
+    // invoice was uploaded to ביג, חדרה and מוצקין as well, without a word).
+    if (franchiseeId && formData.get("confirmFranchiseeMismatch") !== "true") {
+      const other = await detectOtherFranchisee(
+        buffer,
+        file.type || "application/pdf",
+        parserCode,
+        documentType as "client_report" | "commission_invoice",
+        franchiseeId
+      );
+      if (other) {
+        return NextResponse.json(
+          {
+            error: `לפי תוכן הקובץ הוא שייך ל"${other.name}" ולא לזכיין שנבחר`,
+            franchiseeMismatch: { detectedFranchiseeName: other.name },
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Process through unified pipeline

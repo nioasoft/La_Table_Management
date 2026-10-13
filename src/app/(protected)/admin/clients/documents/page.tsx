@@ -327,6 +327,10 @@ export default function ClientDocumentsPage() {
       }
     }
 
+    handleUploadSubmit(formData);
+  };
+
+  const handleUploadSubmit = (formData: FormData) => {
     uploadMutation.mutate(formData, {
       onSuccess: (data) => {
         if ((data.tabitUpload || data.heverUpload) && data.summary) {
@@ -347,7 +351,15 @@ export default function ClientDocumentsPage() {
         setUploadDialogOpen(false);
         resetUploadForm();
       },
-      onError: (error: Error) => {
+      onError: (error: Error & { franchiseeMismatch?: boolean }) => {
+        if (
+          error.franchiseeMismatch &&
+          confirm(`${error.message}.\nלהעלות בכל זאת לזכיין שנבחר?`)
+        ) {
+          formData.set("confirmFranchiseeMismatch", "true");
+          handleUploadSubmit(formData);
+          return;
+        }
         toast.error(error.message);
       },
     });

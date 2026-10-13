@@ -123,7 +123,10 @@ export function useUploadClientDocument() {
       });
       if (!res.ok) {
         const errorData = await res.json();
-        throw new Error(errorData.error || "שגיאה בהעלאת מסמך");
+        // franchiseeMismatch: the server wants an explicit confirm, not a failure.
+        throw Object.assign(new Error(errorData.error || "שגיאה בהעלאת מסמך"), {
+          franchiseeMismatch: Boolean(errorData.franchiseeMismatch),
+        });
       }
       return res.json();
     },

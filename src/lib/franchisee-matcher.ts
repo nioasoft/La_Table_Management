@@ -573,6 +573,35 @@ export function matchFranchiseeNames(
 }
 
 /**
+ * Score a name must reach to count as "this file names that franchisee".
+ * Sibling branches of one brand score up to 0.93 against each other
+ * ("קינג קונג חורב" vs "קינג קונג חדרה"), so anything below this is noise.
+ */
+const NEAR_EXACT_MATCH = 0.95;
+
+/**
+ * The franchisee a document's own name points to, when that is clearly NOT
+ * the one an admin selected — or null when the name is unknown, ambiguous,
+ * or also fits the selection. Built after 2026-10-12, when חורב's Mishloha
+ * invoice was uploaded to ביג, חדרה and מוצקין as well and took all three slots.
+ */
+export function findConflictingFranchisee(
+  documentName: string,
+  franchisees: Franchisee[],
+  selectedId: string
+): Franchisee | null {
+  const m = matchFranchiseeName(documentName, franchisees, {
+    minConfidence: NEAR_EXACT_MATCH,
+    maxAlternatives: franchisees.length,
+  });
+  if (!m.matchedFranchisee) return null;
+  const fitsSelection =
+    m.matchedFranchisee.id === selectedId ||
+    m.alternatives.some((a) => a.franchisee.id === selectedId);
+  return fitsSelection ? null : m.matchedFranchisee;
+}
+
+/**
  * Match franchisee names from parsed file data
  * Returns augmented data with match results
  */

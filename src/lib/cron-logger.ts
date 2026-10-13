@@ -13,7 +13,8 @@ export type CronJobName =
   | "email-pipeline-health"
   | "inbound-review-summary"
   | "franchisee-alias-collision"
-  | "build-reconciliation-sessions";
+  | "build-reconciliation-sessions"
+  | "retry-ezcount-links";
 
 export type CronTriggerType = "cron" | "manual";
 
