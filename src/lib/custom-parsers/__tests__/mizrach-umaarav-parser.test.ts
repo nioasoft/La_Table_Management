@@ -63,3 +63,65 @@ describe("parseMizrachUmaaravFile", () => {
     expect(r.data[0].franchisee).toContain("קינג קונג ביג");
   });
 });
+
+// Q3-2026: the supplier added a "שם סוכן" column in A, shifting every column
+// right by one. The section-title and totals rows still sit in column A.
+const Q3_AGENT_COLUMN: unknown[][] = [
+  ["קאסטרה 17% רבעון 3 2026"],
+  [],
+  [],
+  ["שם סוכן", "מס' לקוח", "שם לקוח", "יול-26", "אוג-26", "ספט-26", "סכום כולל"],
+  ["אורן זארי", "105381", 'קינג קונג ביג בע"מ', "10,415.25", "10,420.34", "13,330.50", "34,166.09"],
+  ["", "106205", 'קינג קונג חורב בע"מ', "11,210.18", "15,601.70", "10,040.68", "36,852.56"],
+  ["סכום כולל", "", "", "21,625.43", "26,022.04", "23,371.18", "71,018.65"],
+  [],
+  ["חשבונית ספק", "קוד : 600020", "הסכם 922", "", "", "17%", "12,073.17"],
+  [],
+  ["קאסטרה 10% רבעון 3 2026"],
+  ["שם סוכן", "מס' לקוח", "שם לקוח", "יול-26", "אוג-26", "ספט-26", "סכום כולל"],
+  ["יובל בן דוד", "107787", 'קינג קונג חדרה בע"מ', "", "143.80", "-128.05", "15.75"],
+  ["סכום כולל", "", "", "", "143.80", "-128.05", "15.75"],
+  [],
+  ["חשבונית ספק", "קוד : 600020", "הסכם 922", "", "", "10%", "1.58"],
+];
+
+describe("parseMizrachUmaaravFile — Q3-2026 agent column", () => {
+  it("locates name and total columns by header, not position", () => {
+    const r = parseMizrachUmaaravFile(xlsx(Q3_AGENT_COLUMN));
+
+    expect(r.success).toBe(true);
+    expect(r.data.map(d => d.franchisee).sort()).toEqual(
+      ['קינג קונג ביג בע"מ', 'קינג קונג חדרה בע"מ', 'קינג קונג חורב בע"מ'].sort()
+    );
+    // Names are names — never the agent or the customer number
+    for (const row of r.data) expect(row.franchisee).not.toMatch(/^\d+$|אורן|יובל/);
+
+    const big = r.data.find(d => d.franchisee.includes("ביג"))!;
+    expect(big.netAmount).toBe(34166);
+    expect(big.preCalculatedCommission).toBe(5808); // 34,166.09 * 17%
+
+    const hadera = r.data.find(d => d.franchisee.includes("חדרה"))!;
+    expect(hadera.preCalculatedCommission).toBe(2); // 15.75 * 10%
+  });
+
+  it("does not read the supplier's invoice line as a section", () => {
+    const r = parseMizrachUmaaravFile(xlsx(Q3_AGENT_COLUMN));
+    expect(r.data.some(d => d.franchisee.includes("הסכם"))).toBe(false);
+  });
+
+  it("fails loudly when a titled section has no recognizable header", () => {
+    const broken: unknown[][] = [
+      ["קאסטרה 17% רבעון 3 2026"],
+      ["מס' לקוח", "שם לקוח", "יול-26", "סכום כולל"],
+      ["105381", 'קינג קונג ביג בע"מ', "100", "100"],
+      ["סכום כולל", "", "100", "100"],
+      [],
+      ["קאסטרה 10% רבעון 3 2026"],
+      ["something else entirely"],
+      ["105381", 'קינג קונג ביג בע"מ', "50", "50"],
+    ];
+    const r = parseMizrachUmaaravFile(xlsx(broken));
+    expect(r.success).toBe(false);
+    expect(r.errors[0].details).toContain("10%");
+  });
+});

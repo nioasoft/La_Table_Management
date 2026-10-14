@@ -5,9 +5,10 @@
  * Structure:
  *   - Sheet: "AlmogERP&CRM"
  *   - Row 1: Headers
- *   - Column B: Franchisee name ("שם לקוח")
- *   - Column F: Sale amount ("סה"כ קניות (ש"ח)") - use for cross-reference
- *   - Column G: Pre-calculated commission ("עמלת רשת (ש"ח)") - use directly as commission
+ *   - "שם לקוח": Franchisee name
+ *   - "סה"כ קניות (ש"ח)": Sale amount - use for cross-reference
+ *   - "עמלת רשת (ש"ח)": Pre-calculated commission - use directly as commission
+ *   Columns are located by header: Q3-2026 moved them from B/F/G to B/H/I.
  *
  * The parser aggregates all rows by franchisee (including negative amounts for returns/credits)
  * and returns the pre-calculated commission to be used directly.
@@ -20,11 +21,6 @@ import {
   roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
-
-// Column indices (0-based)
-const FRANCHISEE_COL = 1; // Column B
-const SALE_AMOUNT_COL = 5; // Column F - סה"כ קניות
-const COMMISSION_COL = 6; // Column G - עמלת רשת
 
 // Row configuration
 const HEADER_ROW = 0; // Row 1 (0-indexed)
@@ -118,33 +114,24 @@ export function parseFandangoFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Validate headers
-    const headers = rawData[HEADER_ROW] || [];
-    const franchiseeHeader = String(headers[FRANCHISEE_COL] || "");
-    const saleHeader = String(headers[SALE_AMOUNT_COL] || "");
-    const commissionHeader = String(headers[COMMISSION_COL] || "");
+    // Locate columns by header — the supplier reorders them between exports.
+    // No positional fallback: a wrong column parses silently as ₪0.
+    const headers = (rawData[HEADER_ROW] || []).map((h) => String(h || ""));
+    const FRANCHISEE_COL = headers.findIndex((h) => h.includes("שם לקוח"));
+    const SALE_AMOUNT_COL = headers.findIndex((h) => h.includes("קניות"));
+    // "אחוז עמלת רשת" is the rate column — not the amount
+    const COMMISSION_COL = headers.findIndex((h) => h.includes("עמלת רשת") && !h.includes("אחוז"));
 
-    // Log header validation for debugging
-    if (!franchiseeHeader.includes("לקוח")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected franchisee column header at B, found: "${franchiseeHeader}"`,
-        })
-      );
-    }
-    if (!saleHeader.includes("קניות")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected sale amount header at F, found: "${saleHeader}"`,
-        })
-      );
-    }
-    if (!commissionHeader.includes("עמלה")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected commission header at G, found: "${commissionHeader}"`,
-        })
-      );
+    const missing = [
+      FRANCHISEE_COL < 0 && "שם לקוח",
+      SALE_AMOUNT_COL < 0 && 'סה"כ קניות',
+      COMMISSION_COL < 0 && "עמלת רשת",
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      const details = `Missing column header(s): ${missing.join(", ")}`;
+      errors.push(createFileProcessingError("PARSE_ERROR", { details }));
+      legacyErrors.push(details);
+      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
     // Aggregate amounts by franchisee

@@ -48,6 +48,7 @@ import {
 import { deleteCommissionsBySourceFile } from "@/data-access/commissions";
 import { getVatProductNames, syncSupplierProducts } from "@/data-access/supplier-products";
 import { filterFileLevelAnomalies } from "@/types/file-anomalies";
+import { formatErrorForDisplay } from "@/lib/file-processing-errors";
 
 /**
  * GET /api/public/upload/[token] - Get upload link info (public, no auth required)
@@ -667,8 +668,11 @@ export async function POST(
           if (!processResult.success || processResult.data.length === 0) {
             console.error("Failed to process supplier file:", processResult.errors);
 
+            // details carries the actual reason ("Missing column header(s): …");
+            // message alone is the generic "Failed to parse the file"
+            const firstError = processResult.errors?.[0];
             const parserErrorMessage =
-              processResult.errors?.[0]?.message ||
+              (firstError && formatErrorForDisplay(firstError)) ||
               (processResult.data.length === 0
                 ? "לא נמצאו נתונים לעיבוד בקובץ"
                 : "כשל בעיבוד קובץ הספק");
@@ -689,7 +693,7 @@ export async function POST(
             await updateUploadedFileProcessingStatus(uploadedFileRecord.id, "needs_review");
             supplierProcessingResult = {
               processed: false,
-              error: processResult.errors?.[0]?.message || "Failed to process file",
+              error: parserErrorMessage,
               supplierName: supplier.name,
               supplierFileId: supplierFileRecord.id,
             };

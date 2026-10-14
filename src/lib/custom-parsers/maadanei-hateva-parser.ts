@@ -5,8 +5,9 @@
  * Structure:
  *   - Sheet: "DataSheet"
  *   - Row 1: Headers
- *   - Column B: Franchisee name ("שם לקוח")
- *   - Column G: Amount ("הכנסה")
+ *   - "שם לקוח": Franchisee name
+ *   - Amount: "הכנסה" (per-product report, col G) or "סכום בשקלים"
+ *     (per-month report from Q3-2026, col F) — located by header
  *
  * The parser aggregates all rows by franchisee and returns one total per franchisee.
  */
@@ -18,10 +19,6 @@ import {
   roundAmount,
 } from "../file-processor";
 import { createFileProcessingError } from "../file-processing-errors";
-
-// Column indices (0-based)
-const FRANCHISEE_COL = 1; // Column B
-const AMOUNT_COL = 6; // Column G - הכנסה
 
 // Row configuration
 const HEADER_ROW = 0; // Row 1 (0-indexed)
@@ -115,24 +112,22 @@ export function parseMaadaneiHatevaFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
     }
 
-    // Validate headers
-    const headers = rawData[HEADER_ROW] || [];
-    const franchiseeHeader = String(headers[FRANCHISEE_COL] || "");
-    const amountHeader = String(headers[AMOUNT_COL] || "");
+    // Locate columns by header — the supplier switches report layouts.
+    // No positional fallback: a wrong column parses silently as ₪0.
+    const headers = (rawData[HEADER_ROW] || []).map((h) => String(h || ""));
+    const FRANCHISEE_COL = headers.findIndex((h) => h.includes("שם לקוח"));
+    const incomeCol = headers.findIndex((h) => h.includes("הכנסה"));
+    const AMOUNT_COL = incomeCol >= 0 ? incomeCol : headers.findIndex((h) => h.includes("סכום"));
 
-    if (!franchiseeHeader.includes("לקוח")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected franchisee column header at B, found: "${franchiseeHeader}"`,
-        })
-      );
-    }
-    if (!amountHeader.includes("הכנסה")) {
-      warnings.push(
-        createFileProcessingError("PARSE_ERROR", {
-          details: `Expected amount header at G, found: "${amountHeader}"`,
-        })
-      );
+    const missing = [
+      FRANCHISEE_COL < 0 && "שם לקוח",
+      AMOUNT_COL < 0 && "הכנסה / סכום בשקלים",
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      const details = `Missing column header(s): ${missing.join(", ")}`;
+      errors.push(createFileProcessingError("PARSE_ERROR", { details }));
+      legacyErrors.push(details);
+      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
     // Aggregate amounts by franchisee

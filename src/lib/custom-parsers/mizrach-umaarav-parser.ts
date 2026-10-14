@@ -6,7 +6,8 @@
  *
  *   Section 1 (17%):
  *   - Row 0: Title "קאסטרה 17% רבעון X"
- *   - Row 2: Headers (מס' לקוח, שם לקוח, אוק, נוב, דצמ, סכום כולל)
+ *   - Row 1-3: Headers (מס' לקוח, שם לקוח, אוק, נוב, דצמ, סכום כולל) — since
+ *     Q3-2026 preceded by a "שם סוכן" column, so columns are found by header
  *   - Row 3+: Data rows
  *   - Ends with "סכום כולל" row
  *
@@ -45,6 +46,8 @@ interface Section {
   headerRow: number;
   dataStartRow: number;
   dataEndRow: number;
+  nameCol: number;
+  totalCol: number;
 }
 
 interface FranchiseeAmounts {
@@ -80,10 +83,13 @@ function parseCurrency(value: unknown): number {
 }
 
 /**
- * Detect sections in the file by looking for title rows with percentage
+ * Detect sections in the file by looking for title rows with percentage.
+ * A titled section whose header can't be read is reported in `broken` rather
+ * than dropped — losing the 10% section silently would under-bill.
  */
-function detectSections(data: unknown[][]): Section[] {
+function detectSections(data: unknown[][]): { sections: Section[]; broken: string[] } {
   const sections: Section[] = [];
+  const broken: string[] = [];
 
   for (let i = 0; i < data.length; i++) {
     const row = data[i];
@@ -98,17 +104,24 @@ function detectSections(data: unknown[][]): Section[] {
     if (match17 || match10) {
       const commissionRate = match17 ? 17 : 10;
 
-      // Find header row (contains "מס' לקוח" and "שם לקוח")
+      // Find header row and its columns by text — the supplier shifts columns
       let headerRow = -1;
+      let nameCol = -1;
+      let totalCol = -1;
       for (let j = i + 1; j < Math.min(i + 5, data.length); j++) {
-        const checkRow = data[j];
-        if (checkRow && String(checkRow[0] || "").includes("מס' לקוח")) {
+        const cells = (data[j] ?? []).map(c => String(c ?? "").trim());
+        nameCol = cells.findIndex(c => c.includes("שם לקוח"));
+        totalCol = cells.findIndex(c => c.includes("סכום כולל"));
+        if (nameCol >= 0 && totalCol >= 0) {
           headerRow = j;
           break;
         }
       }
 
-      if (headerRow === -1) continue;
+      if (headerRow === -1) {
+        broken.push(`${commissionRate}%`);
+        continue;
+      }
 
       // Find data end (row with "סכום כולל" in first column)
       let dataEndRow = data.length;
@@ -126,11 +139,13 @@ function detectSections(data: unknown[][]): Section[] {
         headerRow,
         dataStartRow: headerRow + 1,
         dataEndRow,
+        nameCol,
+        totalCol,
       });
     }
   }
 
-  return sections;
+  return { sections, broken };
 }
 
 /**
@@ -172,7 +187,14 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
     }
 
     // Detect sections
-    const sections = detectSections(rawData);
+    const { sections, broken } = detectSections(rawData);
+
+    if (broken.length > 0) {
+      const details = `Section ${broken.join(", ")} has a title but no "שם לקוח" + "סכום כולל" header row`;
+      errors.push(createFileProcessingError("PARSE_ERROR", { details }));
+      legacyErrors.push(details);
+      return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
+    }
 
     if (sections.length === 0) {
       errors.push(
@@ -189,10 +211,8 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
 
     // Process each section and aggregate by franchisee
     for (const section of sections) {
-      // Column indices based on the header structure:
-      // A: מס' לקוח, B: שם לקוח, C-E: months, F: סכום כולל
-      const franchiseeColIndex = 1; // Column B - שם לקוח
-      const totalColIndex = 5; // Column F - סכום כולל
+      const franchiseeColIndex = section.nameCol;
+      const totalColIndex = section.totalCol;
 
       for (let i = section.dataStartRow; i < section.dataEndRow; i++) {
         const row = rawData[i];

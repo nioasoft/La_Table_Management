@@ -10,6 +10,7 @@ import { processSupplierFile } from "@/lib/file-processor";
 import { getCurrentVatRate } from "@/data-access/vatRates";
 import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { getVatProductNames } from "@/data-access/supplier-products";
+import { formatErrorForDisplay } from "@/lib/file-processing-errors";
 import {
   type Anomaly,
   filterFileLevelAnomalies,
@@ -194,8 +195,9 @@ export async function reprocessFileRow(
         success: false,
         fileId: file.id,
         fileName: file.originalFileName,
-        error:
-          processResult.errors?.[0]?.message ?? "Failed to process file",
+        error: processResult.errors?.[0]
+          ? formatErrorForDisplay(processResult.errors[0])
+          : "Failed to process file",
       };
     }
 
