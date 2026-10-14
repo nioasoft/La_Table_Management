@@ -23,6 +23,10 @@ import {
 export interface MultiSelectOption {
   value: string;
   label: string;
+  /** Extra search terms (e.g. codes) matched by the search box but not shown. */
+  keywords?: string[];
+  /** Short red tag shown at the end of the row (e.g. a data problem). */
+  badge?: string;
 }
 
 export interface MultiSelectProps {
@@ -94,12 +98,12 @@ export function MultiSelect({
                 <Badge
                   key={selected[i]}
                   variant="secondary"
-                  className="mr-1 mb-1 text-xs"
+                  className="text-xs"
                 >
                   {label}
-                  <button
-                    type="button"
-                    className="mr-1 ring-offset-background rounded-full outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  <span
+                    role="button"
+                    className="ms-1 ring-offset-background rounded-full outline-hidden focus:ring-2 focus:ring-ring focus:ring-offset-2"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -108,7 +112,7 @@ export function MultiSelect({
                   >
                     <X className="h-3 w-3" />
                     <span className="sr-only">הסר {label}</span>
-                  </button>
+                  </span>
                 </Badge>
               ))
             ) : (
@@ -117,10 +121,10 @@ export function MultiSelect({
               </Badge>
             )}
           </div>
-          <div className="flex items-center gap-1 mr-2">
+          <div className="flex items-center gap-1 ms-2">
             {selected.length > 0 && (
-              <button
-                type="button"
+              <span
+                role="button"
                 className="rounded-full p-0.5 hover:bg-accent"
                 onMouseDown={(e) => {
                   e.preventDefault();
@@ -130,13 +134,13 @@ export function MultiSelect({
               >
                 <X className="h-4 w-4 text-muted-foreground" />
                 <span className="sr-only">נקה הכל</span>
-              </button>
+              </span>
             )}
             <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
           </div>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
+      <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command>
           <CommandInput placeholder={searchPlaceholder} />
           <CommandList>
@@ -148,11 +152,12 @@ export function MultiSelect({
                   <CommandItem
                     key={option.value}
                     value={option.label}
+                    keywords={option.keywords}
                     onSelect={() => handleSelect(option.value)}
                   >
                     <div
                       className={cn(
-                        "ml-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                        "me-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
                         isSelected
                           ? "bg-primary text-primary-foreground"
                           : "opacity-50 [&_svg]:invisible"
@@ -160,7 +165,12 @@ export function MultiSelect({
                     >
                       <Check className="h-4 w-4" />
                     </div>
-                    <span>{option.label}</span>
+                    <span className="flex-1">{option.label}</span>
+                    {option.badge && (
+                      <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-4 shrink-0">
+                        {option.badge}
+                      </Badge>
+                    )}
                   </CommandItem>
                 );
               })}

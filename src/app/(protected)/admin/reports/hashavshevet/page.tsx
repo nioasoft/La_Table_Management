@@ -23,8 +23,8 @@ import {
   Calendar,
   CheckCircle2,
   Info,
-  Search,
 } from "lucide-react";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import {
   ReportLayout,
   ReportSummaryCards,
@@ -37,7 +37,6 @@ import type { SettlementPeriodType } from "@/db/schema";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatNumber } from "@/lib/report-utils";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 // ============================================================================
@@ -228,7 +227,6 @@ export default function HashavshevetExportPage() {
   const [useCustomDateRange, setUseCustomDateRange] = useState(true);
   const [selectedBrandId, setSelectedBrandId] = useState<string>("");
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
-  const [supplierSearch, setSupplierSearch] = useState("");
   const [startDocNumber, setStartDocNumber] = useState("5001");
   // Default ON: only export rows whose latest reconciliation comparison is
   // approved. Unchecking falls back to legacy behavior (file-level approval).
@@ -437,35 +435,25 @@ export default function HashavshevetExportPage() {
     }
   };
 
-  const visibleSuppliers = useMemo(() => {
-    const q = supplierSearch.trim().toLowerCase();
-    if (!q) return suppliers;
-    return suppliers.filter((s) =>
-      [s.name, s.code, s.hashavshevetCode].some((v) => v?.toLowerCase().includes(q))
-    );
-  }, [suppliers, supplierSearch]);
+  // Dropdown options — searchable by name, internal code or Hashavshevet key.
+  // An empty selection means "all suppliers" (the API applies no supplier filter).
+  const supplierOptions = useMemo<MultiSelectOption[]>(
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: s.name,
+        keywords: [s.code, s.hashavshevetCode].filter((v): v is string => !!v),
+        badge: s.hashavshevetCode ? undefined : "חסר קוד",
+      })),
+    [suppliers]
+  );
 
-  // Handle supplier toggle
-  const handleSupplierToggle = (supplierId: string) => {
-    setSelectedSupplierIds((prev) =>
-      prev.includes(supplierId)
-        ? prev.filter((id) => id !== supplierId)
-        : [...prev, supplierId]
-    );
-  };
-
-  // Handle select all suppliers
-  // Acts on the visible (searched) list, so "search → בחר הכל" picks just the matches.
-  const allVisibleSelected =
-    visibleSuppliers.length > 0 && visibleSuppliers.every((s) => selectedSupplierIds.includes(s.id));
-  const handleSelectAllSuppliers = () => {
-    const visibleIds = visibleSuppliers.map((s) => s.id);
-    setSelectedSupplierIds((prev) =>
-      allVisibleSelected
-        ? prev.filter((id) => !visibleIds.includes(id))
-        : Array.from(new Set([...prev, ...visibleIds]))
-    );
-  };
+  // Bring the results (and any warnings above them) into view after "הצג נתונים",
+  // instead of leaving the user to scroll past the filters to find them.
+  const resultsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (report) resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [report]);
 
   // Handle filter reset
   const handleResetFilters = () => {
@@ -476,7 +464,6 @@ export default function HashavshevetExportPage() {
     setUseCustomDateRange(true);
     setSelectedBrandId("");
     setSelectedSupplierIds([]);
-    setSupplierSearch("");
     setStartDocNumber("5001");
     setOnlyApproved(true);
     setReport(null);
@@ -563,25 +550,27 @@ export default function HashavshevetExportPage() {
             ספקים ללא קוד חשבשבת ({suppliersMissingCode.length})
           </AlertTitle>
           <AlertDescription>
-            <p className="mb-2">
-              הספקים הבאים אינם מוגדרים עם קוד חשבשבת ולא ייכללו ביצוא. סדרי
-              אותם בעמוד הספק:
-            </p>
-            <ul className="list-disc list-inside space-y-1">
-              {suppliersMissingCode.map((s) => (
-                <li key={s.id}>
-                  <a
-                    href={`/admin/suppliers/${s.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline hover:no-underline"
-                  >
-                    {s.name}
-                    {s.code ? ` (${s.code})` : ""}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <details>
+              <summary className="cursor-pointer">
+                לא ייכללו בייצוא עד שיוגדר להם קוד בעמוד הספק.{" "}
+                <span className="underline">הצג ספקים</span>
+              </summary>
+              <ul className="list-disc list-inside space-y-1 mt-2">
+                {suppliersMissingCode.map((s) => (
+                  <li key={s.id}>
+                    <a
+                      href={`/admin/suppliers/${s.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:no-underline"
+                    >
+                      {s.name}
+                      {s.code ? ` (${s.code})` : ""}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </details>
           </AlertDescription>
         </Alert>
       )}
@@ -675,82 +664,32 @@ export default function HashavshevetExportPage() {
           </div>
 
           {/* Supplier Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-sm font-medium">
-                ספקים
-                <span className="ms-2 text-xs text-muted-foreground font-normal">
-                  {selectedSupplierIds.length > 0
-                    ? `${selectedSupplierIds.length} מתוך ${suppliers.length} נבחרו`
-                    : `${suppliers.length} ספקים זמינים`}
-                  {suppliersMissingCode.length > 0 &&
-                    ` (${suppliersMissingCode.length} ללא קוד חשבשבת)`}
-                </span>
-              </Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSelectAllSuppliers}
-                className="h-7 text-xs"
-              >
-                {allVisibleSelected ? "בטל הכל" : "בחר הכל"}
-              </Button>
-            </div>
-            {suppliers.length > 0 && (
-              <div className="relative">
-                <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  value={supplierSearch}
-                  onChange={(e) => setSupplierSearch(e.target.value)}
-                  placeholder="חיפוש ספק לפי שם, קוד או מפתח חשבשבת..."
-                  className="h-9 ps-9"
-                  aria-label="חיפוש ספק"
-                />
-              </div>
-            )}
+          <div className="space-y-2 max-w-2xl">
+            <Label className="text-sm font-medium">
+              ספקים
+              <span className="ms-2 text-xs text-muted-foreground font-normal">
+                {selectedSupplierIds.length > 0
+                  ? `${selectedSupplierIds.length} מתוך ${suppliers.length} נבחרו`
+                  : `${suppliers.length} ספקים זמינים`}
+                {suppliersMissingCode.length > 0 &&
+                  ` (${suppliersMissingCode.length} ללא קוד חשבשבת)`}
+              </span>
+            </Label>
             {suppliers.length === 0 ? (
               <Alert>
                 <Info className="h-4 w-4" />
                 <AlertDescription>אין ספקים פעילים במערכת.</AlertDescription>
               </Alert>
-            ) : visibleSuppliers.length === 0 ? (
-              <p className="text-sm text-muted-foreground p-2 border rounded-md bg-muted/20">
-                לא נמצאו ספקים התואמים ל&quot;{supplierSearch}&quot;
-              </p>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1 max-h-64 overflow-y-auto p-2 border rounded-md bg-muted/20">
-                {visibleSuppliers.map((supplier) => {
-                  const isSelected = selectedSupplierIds.includes(supplier.id);
-                  return (
-                    <button
-                      key={supplier.id}
-                      type="button"
-                      onClick={() => handleSupplierToggle(supplier.id)}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-start transition-colors",
-                        "hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        isSelected && "bg-primary/10 hover:bg-primary/15"
-                      )}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        tabIndex={-1}
-                        className="pointer-events-none"
-                        aria-hidden
-                      />
-                      <span className="truncate flex-1">{supplier.name}</span>
-                      {!supplier.hashavshevetCode && (
-                        <Badge
-                          variant="destructive"
-                          className="text-[10px] px-1.5 py-0 h-4 shrink-0"
-                        >
-                          חסר קוד
-                        </Badge>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <MultiSelect
+                options={supplierOptions}
+                selected={selectedSupplierIds}
+                onChange={setSelectedSupplierIds}
+                placeholder="כל הספקים"
+                searchPlaceholder="חיפוש ספק לפי שם, קוד או מפתח חשבשבת..."
+                emptyText="לא נמצאו ספקים"
+                maxDisplay={5}
+              />
             )}
           </div>
 
@@ -791,191 +730,193 @@ export default function HashavshevetExportPage() {
         </CardContent>
       </Card>
 
-      {/* Error State */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>שגיאה</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Missing Hashavshevet code — surfaced from preview response so user
-          sees the issue before attempting export. Doubles as the export-blocked
-          panel when exportBlockedSuppliers is set. */}
-      {(() => {
-        const missing =
-          exportBlockedSuppliers ??
-          (report?.summary.missingHashavshevet?.length
-            ? report.summary.missingHashavshevet
-            : null);
-        if (!missing || missing.length === 0) return null;
-        const isBlocking = exportBlockedSuppliers !== null;
-        return (
+      <div ref={resultsRef} className="space-y-6 scroll-mt-4">
+        {/* Error State */}
+        {error && (
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>
-              {isBlocking
-                ? "לא ניתן לייצא — חסר כרטיס חשבשבת"
-                : "אזהרה: ספקים ללא כרטיס חשבשבת"}
-            </AlertTitle>
-            <AlertDescription>
-              <p className="mb-2">
+            <AlertTitle>שגיאה</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Missing Hashavshevet code — surfaced from preview response so user
+            sees the issue before attempting export. Doubles as the export-blocked
+            panel when exportBlockedSuppliers is set. */}
+        {(() => {
+          const missing =
+            exportBlockedSuppliers ??
+            (report?.summary.missingHashavshevet?.length
+              ? report.summary.missingHashavshevet
+              : null);
+          if (!missing || missing.length === 0) return null;
+          const isBlocking = exportBlockedSuppliers !== null;
+          return (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>
                 {isBlocking
-                  ? "ספקים הבאים בתקופה זו אינם מוגדרים עם קוד חשבשבת. סדרי אותם לפני ההורדה:"
-                  : "ספקים הבאים בתקופה זו לא ייכללו ביצוא עד שתגדירי להם קוד חשבשבת:"}
-              </p>
-              <ul className="list-disc list-inside space-y-1">
-                {missing.map((s) => (
-                  <li key={s.id}>
-                    <a
-                      href={`/admin/suppliers/${s.id}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline hover:no-underline"
-                    >
-                      {s.name}
-                      {s.code ? ` (${s.code})` : ""}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+                  ? "לא ניתן לייצא — חסר כרטיס חשבשבת"
+                  : "אזהרה: ספקים ללא כרטיס חשבשבת"}
+              </AlertTitle>
+              <AlertDescription>
+                <p className="mb-2">
+                  {isBlocking
+                    ? "ספקים הבאים בתקופה זו אינם מוגדרים עם קוד חשבשבת. סדרי אותם לפני ההורדה:"
+                    : "ספקים הבאים בתקופה זו לא ייכללו ביצוא עד שתגדירי להם קוד חשבשבת:"}
+                </p>
+                <ul className="list-disc list-inside space-y-1">
+                  {missing.map((s) => (
+                    <li key={s.id}>
+                      <a
+                        href={`/admin/suppliers/${s.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:no-underline"
+                      >
+                        {s.name}
+                        {s.code ? ` (${s.code})` : ""}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          );
+        })()}
+
+        {/* Duplicate Warning */}
+        {duplicateWarning && (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>אזהרה: ייצוא כפול אפשרי</AlertTitle>
+            <AlertDescription>
+              תקופה זו יוצאה בעבר בתאריך{" "}
+              {new Date(duplicateWarning.exportedAt).toLocaleDateString("he-IL")}{" "}
+              ({duplicateWarning.entryCount} שורות, {formatCurrency(duplicateWarning.totalAmount)}).
+              ייתכן שמדובר בייצוא כפול.
             </AlertDescription>
           </Alert>
-        );
-      })()}
+        )}
 
-      {/* Duplicate Warning */}
-      {duplicateWarning && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>אזהרה: ייצוא כפול אפשרי</AlertTitle>
-          <AlertDescription>
-            תקופה זו יוצאה בעבר בתאריך{" "}
-            {new Date(duplicateWarning.exportedAt).toLocaleDateString("he-IL")}{" "}
-            ({duplicateWarning.entryCount} שורות, {formatCurrency(duplicateWarning.totalAmount)}).
-            ייתכן שמדובר בייצוא כפול.
-          </AlertDescription>
-        </Alert>
-      )}
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        )}
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      )}
+        {/* Report Content */}
+        {!isLoading && report && (
+          <>
+            {/* Summary Cards */}
+            <ReportSummaryCards cards={summaryCards} columns={4} />
 
-      {/* Report Content */}
-      {!isLoading && report && (
-        <>
-          {/* Summary Cards */}
-          <ReportSummaryCards cards={summaryCards} columns={4} />
+            {/* Export Button */}
+            {report.entries.length > 0 && (
+              <Card>
+                <CardContent className="py-4">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle2 className="h-5 w-5 text-green-500" />
+                      <div>
+                        <p className="font-medium">
+                          {report.entries.length} שורות מוכנות לייצוא
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          סה״כ עמלות: {formatCurrency(report.summary.totalCommission)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="startDocNumber" className="text-sm whitespace-nowrap">
+                          מספר מסמך התחלתי:
+                        </Label>
+                        <Input
+                          id="startDocNumber"
+                          type="number"
+                          value={startDocNumber}
+                          onChange={(e) => setStartDocNumber(e.target.value)}
+                          className="w-24 h-9"
+                          min="1"
+                        />
+                      </div>
+                      <Button onClick={handleExport} disabled={isExporting} size="lg">
+                        {isExporting ? (
+                          <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4 me-2" />
+                        )}
+                        ייצא לחשבשבת
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Export Button */}
-          {report.entries.length > 0 && (
+            {/* Data Table */}
             <Card>
-              <CardContent className="py-4">
-                <div className="flex items-center justify-between flex-wrap gap-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
-                    <div>
-                      <p className="font-medium">
-                        {report.entries.length} שורות מוכנות לייצוא
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        סה״כ עמלות: {formatCurrency(report.summary.totalCommission)}
-                      </p>
-                    </div>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  תצוגה מקדימה
+                </CardTitle>
+                <CardDescription>
+                  הנתונים שייוצאו לקובץ Excel בפורמט חשבשבת
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {report.entries.length === 0 ? (
+                  <div className="text-center py-8">
+                    <FileSpreadsheet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2">אין נתונים</h3>
+                    <p className="text-muted-foreground">
+                      לא נמצאו נתוני עמלות לתקופה והספקים שנבחרו.
+                      <br />
+                      ודא שלספקים הנבחרים יש קוד חשבשבת ונתוני עמלות בתקופה.
+                    </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="startDocNumber" className="text-sm whitespace-nowrap">
-                        מספר מסמך התחלתי:
-                      </Label>
-                      <Input
-                        id="startDocNumber"
-                        type="number"
-                        value={startDocNumber}
-                        onChange={(e) => setStartDocNumber(e.target.value)}
-                        className="w-24 h-9"
-                        min="1"
-                      />
-                    </div>
-                    <Button onClick={handleExport} disabled={isExporting} size="lg">
-                      {isExporting ? (
-                        <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                      ) : (
-                        <Download className="h-4 w-4 me-2" />
-                      )}
-                      ייצא לחשבשבת
-                    </Button>
-                  </div>
+                ) : (
+                  <ReportDataTable
+                    data={entriesWithDocNumbers}
+                    columns={entryColumns}
+                    rowKey={(row) => `${row.supplierId}-${row.franchiseeId}-${row.docNumber}`}
+                    searchPlaceholder="חיפוש ספק או זכיין..."
+                    emptyMessage="אין נתונים להצגה"
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Format Info */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Info className="h-4 w-4" />
+                  פורמט הקובץ
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-sm text-muted-foreground space-y-1">
+                  <p>הקובץ מכיל 8 עמודות בפורמט הנדרש לייבוא לחשבשבת:</p>
+                  <ul className="list-disc list-inside ps-2 space-y-0.5">
+                    <li><strong>מפתח חשבון</strong> - קוד הספק בחשבשבת</li>
+                    <li><strong>שם</strong> - ריק</li>
+                    <li><strong>מפתח פריט</strong> - &quot;עמלות &quot; + שם הזכיין</li>
+                    <li><strong>שם פריט</strong> - ריק</li>
+                    <li><strong>כמות</strong> - 1</li>
+                    <li><strong>מחיר</strong> - סכום העמלה</li>
+                    <li><strong>סוג המסמך</strong> - 11</li>
+                    <li><strong>מספר מסמך</strong> - מספר רץ החל מהמספר שנבחר</li>
+                  </ul>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* Data Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5" />
-                תצוגה מקדימה
-              </CardTitle>
-              <CardDescription>
-                הנתונים שייוצאו לקובץ Excel בפורמט חשבשבת
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {report.entries.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileSpreadsheet className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">אין נתונים</h3>
-                  <p className="text-muted-foreground">
-                    לא נמצאו נתוני עמלות לתקופה והספקים שנבחרו.
-                    <br />
-                    ודא שלספקים הנבחרים יש קוד חשבשבת ונתוני עמלות בתקופה.
-                  </p>
-                </div>
-              ) : (
-                <ReportDataTable
-                  data={entriesWithDocNumbers}
-                  columns={entryColumns}
-                  rowKey={(row) => `${row.supplierId}-${row.franchiseeId}-${row.docNumber}`}
-                  searchPlaceholder="חיפוש ספק או זכיין..."
-                  emptyMessage="אין נתונים להצגה"
-                />
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Format Info */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Info className="h-4 w-4" />
-                פורמט הקובץ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p>הקובץ מכיל 8 עמודות בפורמט הנדרש לייבוא לחשבשבת:</p>
-                <ul className="list-disc list-inside ps-2 space-y-0.5">
-                  <li><strong>מפתח חשבון</strong> - קוד הספק בחשבשבת</li>
-                  <li><strong>שם</strong> - ריק</li>
-                  <li><strong>מפתח פריט</strong> - &quot;עמלות &quot; + שם הזכיין</li>
-                  <li><strong>שם פריט</strong> - ריק</li>
-                  <li><strong>כמות</strong> - 1</li>
-                  <li><strong>מחיר</strong> - סכום העמלה</li>
-                  <li><strong>סוג המסמך</strong> - 11</li>
-                  <li><strong>מספר מסמך</strong> - מספר רץ החל מהמספר שנבחר</li>
-                </ul>
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </ReportLayout>
   );
 }
