@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -31,6 +33,10 @@ import {
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
 import { toast } from "sonner";
+import { ReportPeriodSelector } from "@/components/reports/report-period-selector";
+import { getPeriodByKey } from "@/lib/settlement-periods";
+import { formatDateAsLocal, periodInRange } from "@/lib/date-utils";
+import type { SettlementPeriodType } from "@/db/schema";
 
 type SessionStatus = "in_progress" | "completed" | "file_approved" | "file_rejected";
 
@@ -71,7 +77,12 @@ const PENDING_FILE_STATUSES = new Set(["pending", "processing", "needs_review"])
 export default function SessionsListPage() {
   const router = useRouter();
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [periodFilter, setPeriodFilter] = useState<string>("all");
+  // Same picker as the reports: monthly/quarterly/semi-annual/annual or a
+  // custom range. Empty from/to = no period filter.
+  const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
+  const [periodKey, setPeriodKey] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [buildingKey, setBuildingKey] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -86,41 +97,40 @@ export default function SessionsListPage() {
   const deleteSession = useDeleteReconciliationSession();
   const createSession = useCreateReconciliationSession();
 
-  // Periods come from the rows themselves rather than a month/quarter picker,
-  // so the list only ever offers periods that actually exist — on either side,
-  // since a period with no session at all appears only in the missing list.
-  const periods = useMemo(() => {
-    const seen = new Map<string, string>();
-    const add = (start: string | null, end: string | null) => {
-      if (!start || !end) return;
-      const key = `${start}_${end}`;
-      if (!seen.has(key)) seen.set(key, formatPeriod(start, end));
-    };
-    for (const s of sessions ?? []) add(s.periodStartDate, s.periodEndDate);
-    for (const m of missing ?? []) add(m.periodStartDate, m.periodEndDate);
-    return [...seen.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [sessions, missing]);
+  // Picking a period fills from/to; switching to custom keeps them as a
+  // starting point. Overlap, not exact match — a quarter shows its months too.
+  const handlePeriodChange = (type: SettlementPeriodType | "", key: string) => {
+    setPeriodType(type);
+    setPeriodKey(key);
+    const period = key ? getPeriodByKey(key) : null;
+    if (period) {
+      setFromDate(formatDateAsLocal(period.startDate));
+      setToDate(formatDateAsLocal(period.endDate));
+    }
+  };
+
+  const clearPeriod = () => {
+    setPeriodType("");
+    setPeriodKey("");
+    setFromDate("");
+    setToDate("");
+  };
 
   const visibleSessions = useMemo(
     () =>
-      (sessions ?? []).filter(
-        (s) =>
-          periodFilter === "all" ||
-          `${s.periodStartDate}_${s.periodEndDate}` === periodFilter
+      (sessions ?? []).filter((s) =>
+        periodInRange(s.periodStartDate, s.periodEndDate, fromDate, toDate)
       ),
-    [sessions, periodFilter]
+    [sessions, fromDate, toDate]
   );
 
-  // Undated files have no period to filter on — they stay visible under "all"
-  // only, otherwise they'd look like they belong to whatever period is picked.
+  // Undated files stay visible only with no period picked (see periodInRange).
   const visibleMissing = useMemo(
     () =>
-      (missing ?? []).filter(
-        (m) =>
-          periodFilter === "all" ||
-          `${m.periodStartDate}_${m.periodEndDate}` === periodFilter
+      (missing ?? []).filter((m) =>
+        periodInRange(m.periodStartDate, m.periodEndDate, fromDate, toDate)
       ),
-    [missing, periodFilter]
+    [missing, fromDate, toDate]
   );
 
   const handleBuildSession = async (row: (typeof visibleMissing)[number]) => {
@@ -194,9 +204,9 @@ export default function SessionsListPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4">
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
+      <div className="flex flex-wrap items-end gap-4">
+        <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
+          <SelectTrigger className="w-[200px] h-9">
             <SelectValue placeholder="סנן לפי סטטוס" />
           </SelectTrigger>
           <SelectContent>
@@ -207,19 +217,45 @@ export default function SessionsListPage() {
           </SelectContent>
         </Select>
 
-        <Select value={periodFilter} onValueChange={setPeriodFilter} dir="rtl">
-          <SelectTrigger className="w-[220px]">
-            <SelectValue placeholder="סנן לפי תקופה" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">כל התקופות</SelectItem>
-            {periods.map(([key, label]) => (
-              <SelectItem key={key} value={key}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ReportPeriodSelector
+          periodType={periodType}
+          periodKey={periodKey}
+          onChange={handlePeriodChange}
+          showCustomRange={true}
+          layout="horizontal"
+          showLabels={true}
+        />
+
+        {!periodType && (
+          <>
+            <div className="w-[144px]">
+              <Label htmlFor="fromDate" className="text-xs mb-1 block">מתאריך</Label>
+              <Input
+                id="fromDate"
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div className="w-[144px]">
+              <Label htmlFor="toDate" className="text-xs mb-1 block">עד תאריך</Label>
+              <Input
+                id="toDate"
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          </>
+        )}
+
+        {(fromDate || toDate) && (
+          <Button variant="ghost" size="sm" className="h-9" onClick={clearPeriod}>
+            כל התקופות
+          </Button>
+        )}
       </div>
 
       {/* Sessions Table */}

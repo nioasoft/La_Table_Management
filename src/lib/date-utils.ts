@@ -47,3 +47,20 @@ export function clampDateValue(value: string): string {
 
   return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
+
+/**
+ * Whether an inclusive YYYY-MM-DD period overlaps an inclusive filter range.
+ * Empty `from`/`to` leave that side open; with both empty everything passes.
+ * A row with no period only passes when no bound is set — otherwise it would
+ * look like it belongs to whatever range was picked.
+ */
+export function periodInRange(
+  start: string | null,
+  end: string | null,
+  from: string,
+  to: string
+): boolean {
+  if (!from && !to) return true;
+  if (!start || !end) return false;
+  return (!from || end >= from) && (!to || start <= to);
+}
