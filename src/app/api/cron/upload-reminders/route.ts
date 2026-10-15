@@ -15,6 +15,7 @@ import {
   updateFileRequestStatus,
   cancelFileRequestsNoLongerOwed,
 } from "@/data-access/fileRequests";
+import { getSupplierById } from "@/data-access/suppliers";
 import { sendDirectEmail, renderTemplateWithFallback } from "@/lib/email/service";
 import { AdminEscalationEmail } from "@/emails/admin-escalation";
 import { BkmvOwnerEscalationEmail } from "@/emails/bkmv-owner-escalation";
@@ -228,8 +229,15 @@ async function sendSupplierEscalation(
 
   if (dryRun) return { success: true };
 
+  // recipientName is the supplier's contact person (e.g. "אורלי"), not the
+  // supplier — two suppliers share that contact, so the name comes from the supplier row.
+  const supplierRow = await getSupplierById(req.entityId);
+  const supplierName = supplierRow?.name || req.recipientName || req.recipientEmail;
+
   const vars = {
-    supplier_name: req.recipientName || req.recipientEmail,
+    supplier_name: supplierName,
+    contact_name: req.recipientName || "—",
+    contact_email: req.recipientEmail,
     period: periodDescription,
     original_sent_date: req.sentAt
       ? new Date(req.sentAt).toLocaleDateString("he-IL")
@@ -245,14 +253,15 @@ async function sendSupplierEscalation(
 
   return sendDirectEmail({
     to: ADMIN_EMAIL,
-    subject: `התראה: הספק ${req.recipientName || req.recipientEmail} לא העלה דוח`,
+    subject: `התראה: הספק ${supplierName} לא העלה דוח`,
     html,
     text,
     entityType: "admin_escalation",
     entityId: req.id,
     metadata: {
       fileRequestId: req.id,
-      supplierName: req.recipientName,
+      supplierName,
+      contactName: req.recipientName,
       escalationType: "supplier_no_upload",
     },
   });

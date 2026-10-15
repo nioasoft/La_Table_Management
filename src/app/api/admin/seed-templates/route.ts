@@ -137,10 +137,12 @@ const SEED_TEMPLATES = [
     category: "custom",
     description: "התראה פנימית כשספק לא מגיב אחרי תזכורות",
     subject: "התראה: הספק {{supplier_name}} לא העלה דוח",
-    variables: ["supplier_name", "period", "original_sent_date", "reminders_sent"],
+    variables: ["supplier_name", "contact_name", "contact_email", "period", "original_sent_date", "reminders_sent"],
     render: () =>
       AdminEscalationEmail({
         supplier_name: "{{supplier_name}}",
+        contact_name: "{{contact_name}}",
+        contact_email: "{{contact_email}}",
         period: "{{period}}",
         original_sent_date: "{{original_sent_date}}",
         reminders_sent: "{{reminders_sent}}",

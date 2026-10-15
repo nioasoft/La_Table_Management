@@ -7,6 +7,8 @@ import { EmailLayout } from "./components/email-layout";
 
 interface AdminEscalationEmailProps {
   supplier_name?: string;
+  contact_name?: string;
+  contact_email?: string;
   period?: string;
   original_sent_date?: string;
   reminders_sent?: string;
@@ -14,6 +16,8 @@ interface AdminEscalationEmailProps {
 
 export function AdminEscalationEmail({
   supplier_name = "{{supplier_name}}",
+  contact_name = "{{contact_name}}",
+  contact_email = "{{contact_email}}",
   period = "{{period}}",
   original_sent_date = "{{original_sent_date}}",
   reminders_sent = "{{reminders_sent}}",
@@ -30,6 +34,8 @@ export function AdminEscalationEmail({
           התקופה <strong>{period}</strong>.
         </Text>
         <Text style={detailsText}>
+          👤 איש קשר: {contact_name} ({contact_email})
+          <br />
           📅 תאריך שליחת הבקשה המקורית: {original_sent_date}
           <br />
           🔔 מספר תזכורות שנשלחו: {reminders_sent}
