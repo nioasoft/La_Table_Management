@@ -869,7 +869,14 @@ export async function POST(
                 })),
               });
 
-              if (duplicates.length > 0 && !replaceFileId) {
+              // Replace only a file THIS request's duplicate check found (same
+              // supplier, period, franchisees) — never the raw client id, or any
+              // link holder could wipe another supplier's file and commissions.
+              const replaceTarget = replaceFileId
+                ? duplicates.find((d) => d.fileId === replaceFileId)?.fileId
+                : undefined;
+
+              if (duplicates.length > 0 && !replaceTarget) {
                 // Duplicate found and user hasn't confirmed replacement - return 409
                 console.log("[Upload Route] Returning 409 DUPLICATE_FILE error");
 
@@ -931,17 +938,17 @@ export async function POST(
                 );
               }
 
-              // If replaceFileId is provided, clean up old commissions and mark old record as rejected
-              if (replaceFileId) {
-                console.log("[Upload Route] Replacing file:", replaceFileId);
-                const deletedCount = await deleteCommissionsBySourceFile(replaceFileId);
+              // Replacement confirmed: clean up old commissions and mark old record as rejected
+              if (replaceTarget) {
+                console.log("[Upload Route] Replacing file:", replaceTarget);
+                const deletedCount = await deleteCommissionsBySourceFile(replaceTarget);
                 if (deletedCount > 0) {
-                  console.log(`[Upload Route] Deleted ${deletedCount} commissions from replaced file ${replaceFileId}`);
+                  console.log(`[Upload Route] Deleted ${deletedCount} commissions from replaced file ${replaceTarget}`);
                 }
                 // reviewed_by is a FK to user — "system" failed it, AFTER the
                 // old file's commissions were already deleted above.
                 await reviewSupplierFile(
-                  replaceFileId,
+                  replaceTarget,
                   "reject",
                   null,
                   "הוחלף בקובץ חדש"
