@@ -89,7 +89,7 @@ interface SupplierFile {
 
 const t = he.admin.suppliers.detail.processedFiles;
 
-const statusConfig = {
+export const statusConfig = {
   auto_approved: {
     label: t.statuses.auto_approved,
     icon: CheckCircle2,

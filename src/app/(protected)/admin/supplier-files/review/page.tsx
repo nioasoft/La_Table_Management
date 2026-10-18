@@ -2,7 +2,7 @@
 
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ import {
   Clock,
 } from "lucide-react";
 import Link from "next/link";
+import { SupplierUploadsList } from "@/components/supplier-files/supplier-uploads-list";
 
 interface ReviewFile {
   id: string;
@@ -99,6 +100,13 @@ async function postReview(fileId: string, action: "approve" | "reject", notes: s
 }
 
 export default function SupplierFilesReviewPage() {
+  // The upload-history panel's "צפייה בכל ההעלאות" links here with
+  // ?supplierId= — that means all of the supplier's uploads, not the queue.
+  const supplierId = useSearchParams().get("supplierId");
+  return supplierId ? <SupplierUploadsList supplierId={supplierId} /> : <ReviewQueue />;
+}
+
+function ReviewQueue() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
