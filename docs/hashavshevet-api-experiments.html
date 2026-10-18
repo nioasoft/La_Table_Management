@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>חשבשבת API — יומן ניסויים</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#6b6a66;--line:#e2e0da;--card:#fff;--acc:#1f5f8b;--warn:#a5520f;--warnbg:#fff4e8;--okbg:#eef6ee;--code:#f3f1ec}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe7;--mut:#a3a19b;--line:#33322f;--card:#1f1f1d;--acc:#7cb6e0;--warn:#f0a35e;--warnbg:#2c2216;--okbg:#18261a;--code:#262522}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:30px;margin:0 0 4px}
+h2{font-size:22px;margin:44px 0 12px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:18px;margin:26px 0 8px}
+h4{font-size:16px;margin:18px 0 6px}
+.sub{color:var(--mut);margin:0 0 20px}
+a{color:var(--acc)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);padding:12px 14px;border-radius:8px;overflow-x:auto;direction:ltr;text-align:left;line-height:1.5}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:14px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:right;vertical-align:top}
+th{background:var(--code)}
+td:first-child code,td:first-child{white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.warn{background:var(--warnbg);border-color:var(--warn)}
+.warn b:first-child{color:var(--warn)}
+.ok{background:var(--okbg)}
+nav.toc{columns:2;column-gap:32px;font-size:15px}
+nav.toc a{display:block;padding:2px 0;text-decoration:none}
+@media (max-width:640px){nav.toc{columns:1}}
+img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px;margin:6px 0;background:#fff}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:12px 0}
+.flow div{flex:1 1 150px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px}
+.flow div b{display:block;font-size:13px;color:var(--acc)}
+.ref{border:1px solid var(--line);border-radius:10px;padding:4px 18px 14px;margin:18px 0;background:var(--card)}
+.refh{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.src{font-size:13px;font-weight:normal}
+.ltr{direction:ltr;unicode-bidi:embed}
+details summary{cursor:pointer;font-weight:600}
+</style>
+
+</head>
+<body><div class="wrap">
+
+<h1>חשבשבת API — יומן ניסויים וממצאים</h1>
+<p class="sub">מה עשינו בחיבור ל-H-Connect, מה עבד, מה נשבר ולמה, ומה נשאר פתוח. נכתב ב-14/10/2026. כל הניסויים בוצעו על <b>החברה לדוגמא (demo)</b> בלבד. לתיעוד הרשמי של ה-API ראו <a href="hashavshevet-api-guide.html">hashavshevet-api-guide.html</a>.</p>
+
+<nav class="toc card">
+<a href="#status">1. סטטוס בקצרה</a>
+<a href="#setup">2. מה הוגדר ואיפה</a>
+<a href="#flow">3. איך זה עובד בפועל אצלנו</a>
+<a href="#code">4. הקוד והסקריפטים</a>
+<a href="#troubles">5. תקלות שנתקלנו בהן ופתרונן</a>
+<a href="#masofon">6. התנהגות מסופון 2 (נבדקה)</a>
+<a href="#fields">7. ממצאים על שדות ונתונים</a>
+<a href="#demo">8. מה נמצא עכשיו בחברה לדוגמא</a>
+<a href="#mapping">9. מיפוי למה שהמערכת מוציאה היום</a>
+<a href="#open">10. פתוח / השלבים הבאים</a>
+</nav>
+
+<h2 id="status">1. סטטוס בקצרה</h2>
+<table>
+<tr><th>יכולת</th><th>ממשק</th><th>מצב</th></tr>
+<tr><td>חיבור, חתימה, הרשאה</td><td>—</td><td>✓ עובד</td></tr>
+<tr><td>פקודות יומן, כולל כרטיסים לפי שם ומע"מ</td><td><code>movein</code></td><td>✓ נקלט</td></tr>
+<tr><td>הקמת כרטיסי חשבון</td><td><code>heshin</code></td><td>✓ נקלט</td></tr>
+<tr><td>חשבוניות עם פריט קיים</td><td><code>imovein</code></td><td>✓ נקלט, מע"מ חושב אוטומטית, מספר מסמך לפי הספרור של החברה</td></tr>
+<tr><td>הקמת פריטים</td><td><code>itemin</code></td><td>✗ מסופון 2 מדווח "הצלחה" אבל לא מקים. פנינו לתמיכה</td></tr>
+<tr><td>חשבונית עם כמה שורות</td><td><code>imovein</code></td><td>? לא נבדק. צריך שהפריט <code>שיווק</code> יוקם</td></tr>
+<tr><td>קליטה אוטומטית במסופון 2</td><td>—</td><td>✓ רץ לבד בשרת</td></tr>
+</table>
+<div class="card ok"><b>שורה תחתונה:</b> אפשר לשלוח מהמערכת שלנו גם פקודות יומן וגם חשבוניות, והן נקלטות לחשבשבת בלי שאף אחד נוגע בהן. הדבר היחיד שחסום הוא הקמת פריטים דרך ה-API, ובעבודה האמיתית לא צריך את זה, כי הפריטים כבר קיימים בחברות.</div>
+
+<h2 id="setup">2. מה הוגדר ואיפה</h2>
+<h3>אצלנו (משתני סביבה)</h3>
+<p>ב-<code>.env</code> (מוחרג מ-git), ארבעה משתנים:</p>
+<table>
+<tr><th>משתנה</th><th>מה זה</th><th>מאיפה</th></tr>
+<tr><td><code>HCONNECT_STATION</code></td><td>GUID של התחנה (השרת של רעות)</td><td>חשבשבת ← כלים מתקדמים ← פרטי התחברות ל-Mobile</td></tr>
+<tr><td><code>HCONNECT_COMPANY</code></td><td>שם קובץ החברה באנגלית. כרגע <code>demo</code></td><td>חלון החלפת חברה, עמודת "שם קובץ"</td></tr>
+<tr><td><code>HCONNECT_PASSPORT_ID</code></td><td>מזהה הספק (בית התוכנה, כלומר אנחנו)</td><td>הגדרות ← הגדרות H-Connect, עמודת <b>"מזהה ספק"</b>, להעתיק תו-לתו</td></tr>
+<tr><td><code>HCONNECT_TOKEN</code></td><td>הסוד שאיתו חותמים כל בקשה</td><td>אותו מסך, עמודת Token</td></tr>
+</table>
+<p>כששליחה תרוץ מהשרת (Vercel), אותם ארבעה משתנים צריכים להיכנס גם לשם. את הטוקן לא מעתיקים לצ'אט, למסמכים או לקוד.</p>
+
+<h3>אצל רעות (חשבשבת)</h3>
+<ul>
+<li><b>הגדרות H-Connect</b> הוקמו לכל 12 החברות, עבור הממשקים <code>movein</code>, <code>imovein</code>, <code>itemin</code>, <code>heshin</code> ו-<code>kupain</code>.</li>
+<li><b>קבצי הפעלה של מסופון 2</b> הוגדרו רק לשתי חברות: <code>DEMO</code> (מספר חברה 21) ו-<code>SHEPUDAYAROE</code>. שם כל קובץ בנוי כך: <code>&lt;מספר חברה&gt;_&lt;ממשק&gt;_&lt;מזהה ספק&gt;.bat</code>, למשל <code>21_movein_33030.bat</code>.</li>
+<li>מסופון 2 <b>רץ אוטומטית</b>, אין צורך להפעיל אותו ידנית.</li>
+</ul>
+
+<h2 id="flow">3. איך זה עובד בפועל אצלנו</h2>
+<div class="flow">
+<div><b>1 · המערכת שלנו</b>בונה שורות, חותמת ושולחת POST ל-<code class="ltr">ws.wizground.com/api</code></div>
+<div><b>2 · תשובה מיידית</b>"ok", או שגיאה. שגיאות בסוג שדה חוזרות כבר כאן, ואז שום דבר לא נכתב</div>
+<div><b>3 · קובץ בשרת של רעות</b><code class="ltr">C:\hash7\Hconnect\21_movein_33030_&lt;guid&gt;.dat</code></div>
+<div><b>4 · מסופון 2 (אוטומטי)</b>קולט לחשבשבת וכותב לוג ok/err ל-<code class="ltr">C:\Hash7\rep\Err</code></div>
+<div><b>5 · אחרי קליטה</b>הקובץ משנה שם ל-<code class="ltr">...MASOFON2.BAK</code>, ולכן הרצה חוזרת לא קולטת אותו שוב</div>
+</div>
+<div class="card warn"><b>"ok" מה-API לא אומר שהנתונים בחשבשבת.</b> הוא רק אומר שהקובץ הגיע לשרת. האישור האמיתי הוא לוג <code>.ok</code> של מסופון 2, או בדיקה בחשבשבת עצמה. שגיאות של מסופון 2 (חשבון שלא קיים, פריט חסר וכו') לא חוזרות דרך ה-API.</div>
+<h3>קריאת הלוגים</h3>
+<ul>
+<li>שמות הקבצים: <code>21_movein_33030.bat.ok.DMY-14.10.26.HMS-14.47.06.txt</code> לקליטה מוצלחת, ו-<code>...bat.err...</code> לשגיאה.</li>
+<li>הם כתובים בקידוד <b>cp1255</b>, ולכן במק העברית נראית כג'יבריש. כדי לקרוא: <code class="ltr">iconv -f CP1255 -t UTF-8 &lt;file&gt;</code>.</li>
+<li>השורה הראשונה בלוג מראה מה קובץ ההפעלה הריץ. למשל <code class="ltr">DEMO -8 -c:\hash7\hconnect\21_movein_33030_*.dat</code>: הפרמטר השני (‎-8) הוא סוג הייבוא, והשלישי הוא הקבצים שמסופון 2 מחפש. רוב התקלות שהיו לנו נראו כבר בשורה הזו.</li>
+<li>כל שורת שגיאה מורכבת מ: הערך שנכשל, תיאור השגיאה, ומספר השורה בקובץ.</li>
+</ul>
+
+<h2 id="code">4. הקוד והסקריפטים</h2>
+<table>
+<tr><th>קובץ</th><th>מה עושה</th></tr>
+<tr><td><code>src/lib/hconnect.ts</code></td><td>הליבה: חותם (<code>md5(JSON(pluginData)+token)</code>) ושולח. משבץ בגוף הבקשה את אותה מחרוזת בדיוק שנחתמה, כדי שהחתימה לא תישבר. בודק את מגבלת 4MB, ורושם ללוג בלי הטוקן.</td></tr>
+<tr><td><code>scripts/hconnect-smoke.ts</code></td><td>בדיקת עשן: מקים חשבונות <code>99901</code>/<code>99902</code> ושולח שתי פקודות ₪1 מולם ל-<code>40001</code>.</td></tr>
+<tr><td><code>scripts/hconnect-demo-scenarios.ts</code></td><td>שלוש ההוצאות שלנו כפקודות יומן: חובה ללקוח (ברוטו), זכות להכנסות (נטו) וזכות למע"מ. המזהה שלנו נכנס ל-<code>Ref2</code>.</td></tr>
+<tr><td><code>scripts/hconnect-demo-invoices.ts</code></td><td>הקמת פריטים (<code>itemin</code>) ושליחת חשבוניות (<code>imovein</code>) במבנה של ייצואי האקסל.</td></tr>
+</table>
+<p>כל הסקריפטים <b>מסרבים לרוץ אם החברה ב-<code>.env</code> אינה <code>demo</code></b>. הרצה:</p>
+<pre><code>npx dotenv -e .env -- npx tsx scripts/hconnect-smoke.ts</code></pre>
+<p class="sub">הקוד הזה עדיין לא נכנס ל-commit.</p>
+
+<h2 id="troubles">5. תקלות שנתקלנו בהן ופתרונן</h2>
+<table>
+<tr><th>#</th><th>מה ראינו</th><th>הסיבה</th><th>הפתרון</th></tr>
+<tr><td>1</td><td>תשובת API: <code>you are not allowed to use movein module</code> (שגיאה 10 בתיעוד)</td><td>הערך ב-<code>HCONNECT_PASSPORT_ID</code> שגוי. ההבדל באותיות גדולות וקטנות בשם הממשק או החברה לא היה הבעיה, את זה בדקנו</td><td>להעתיק את "מזהה ספק" ממסך הגדרות H-Connect תו-לתו</td></tr>
+<tr><td>2</td><td>לוג heshin: <code>21_heshin_33030.bat: File Not Found(SetDsn)</code></td><td>בקובץ ההפעלה, העמודה "קובץ מיובא" הצביעה על קובץ ה-<code>.bat</code> עצמו</td><td>לשנות ל-<code class="ltr">c:\hash7\hconnect\21_heshin_33030_*.dat</code></td></tr>
+<tr><td>3</td><td>לוג movein: "כרטיס קופת תלושי שי / אשראי לא יכול להיות ריק"</td><td>תסמין של תקלה 4. לא חסרה הגדרה בחברה</td><td>(מילאנו <code>15007</code> בשדה קופת תלושי שי. זה לא מזיק, אבל זה לא היה הפתרון)</td></tr>
+<tr><td>4</td><td>לוג movein: "ביבוא קבלות לקבוע ניתן לקלוט מזומן (2,12)..." והערכים נקראים בעמודות הלא נכונות (<code>00</code> כמפתח חשבון, <code>1.00</code> כקוד מטבע)</td><td>"סוג היבוא" בקובץ ההפעלה של movein היה <b>תנועות קופה</b> (קבלות)</td><td>לשנות ל-<b>תנועות הנהלת חשבונות</b>. הלקח: שגיאות קופה על קובץ של פקודות יומן אומרות שצריך לבדוק קודם את סוג הייבוא</td></tr>
+<tr><td>5</td><td>"מפתח חשבון לא קיים" (כרטיסים <code>100</code>/<code>101</code>, <code>עמלות רשת</code>)</td><td>הכרטיס לא קיים בחברה. <code>עמלות רשת</code> הוא בכלל <b>פריט</b> ולא כרטיס</td><td>להקים את הכרטיס, או לשלוח לכרטיס קיים. מסופון 2 <b>לא</b> מקים כרטיסים לבד, וזה טוב</td></tr>
+<tr><td>6</td><td>תשובת API מיידית: <code>quantity: type error, 1 is not decimal</code></td><td>שדות עשרוניים חייבים נקודה עשרונית</td><td>לשלוח <code>"1.000"</code> ולא <code>"1"</code>. שום דבר לא נכתב לשרת, כי ה-API בודק את סוגי השדות לפני הכתיבה</td></tr>
+<tr><td>7</td><td>לוג itemin: "קליטת פריטים הסתיימה בהצלחה", אבל הפריטים לא באינדקס. החשבוניות נכשלו עם "מפתח פריט לא מופיע בבסיס הנתונים"</td><td>לא ידוע. כנראה הגדרה במסופון 2 שמאפשרת רק לעדכן פריטים קיימים, או אישור ידני כלשהו</td><td><b>פתוח, מחכים לתמיכה.</b> בינתיים מקימים פריטים ידנית (<code>הכנסותת</code> כבר הוקם)</td></tr>
+</table>
+
+<h2 id="masofon">6. התנהגות מסופון 2 (נבדקה)</h2>
+<ul>
+<li><b>כרטיס שלא קיים נדחה עם שגיאה,</b> ולא מוקם כרטיס חדש בשקט.</li>
+<li><b>קובץ שנדחה נשאר בתיקייה</b> ונקלט בהרצה הבאה, אחרי שמתקנים את הסיבה (למשל מקימים את הכרטיס). לכן אין צורך לשלוח שוב.</li>
+<li><b>קובץ שנקלט הופך ל-<code>.BAK</code>,</b> ולכן הרצה חוזרת לא מכפילה אותו (בדקנו עם פקודת ₪123).</li>
+<li><b>קליטה חלקית קורית:</b> מתוך קובץ עם 4 פקודות, 3 נקלטו ואחת נדחתה.</li>
+</ul>
+<div class="card warn"><b>הסיכון שנובע מזה:</b> קובץ שנקלט חלקית נשאר בתיקייה, ומסופון 2 ינסה לקלוט אותו שוב בכל הרצה. אם נשלח גרסה מתוקנת של אותן פקודות, הישנה עלולה להיקלט מאוחר יותר ולגרום לכפילות. <b>כלל:</b> לפני ששולחים תיקון לקובץ שנדחה, מוחקים את הקובץ הישן מ-<code class="ltr">C:\hash7\Hconnect</code>.</div>
+
+<h2 id="fields">7. ממצאים על שדות ונתונים</h2>
+<table>
+<tr><th>נושא</th><th>ממצא</th></tr>
+<tr><td>כרטיסים ופריטים לפי שם</td><td>מפתחות בעברית (<code>אברהמי</code>, <code>ויני ע</code>, <code>סיבוס</code>, <code>הכנסותת</code>) עובדים. גם <code>מע"מ</code> עם המרכאות עובד.</td></tr>
+<tr><td>אסמכתא</td><td>רעות רושמת את המזהה שלנו ב-<b>אסמכתא 2</b> (<code>Ref2</code>), ולא באסמכתא (<code>Reference</code>). זה תואם לעמודה A "אסמתכא 2" בייצוא האקסל.</td></tr>
+<tr><td>מספר חשבונית</td><td>חשבשבת <b>מתעלמת</b> מה-<code>Reference</code> שאנחנו שולחים, ונותנת את המספר הבא בספרור. כך רצוי. אנחנו לא יודעים איזה מספר יצא, כי ה-API לא מחזיר אותו. כדי לקשר חשבונית לשורה אצלנו שמים את המזהה שלנו ב-<code>Ref2</code>. כדי לקרוא את המספר בחזרה צריך את <code>reports</code>.</td></tr>
+<tr><td>מע"מ בחשבוניות</td><td>שולחים מחיר <b>לפני</b> מע"מ, וחשבשבת מוסיפה את המע"מ לבד.</td></tr>
+<tr><td>מע"מ בפקודות יומן</td><td>מפצלים בעצמנו: חובה ברוטו, זכות 1 נטו, זכות 2 מע"מ לכרטיס <code>מע"מ</code>.</td></tr>
+<tr><td>מספר הקצאה</td><td>לחשבוניות שאנחנו מפיקים, מספר ההקצאה מתקבל אוטומטית בהפקה, ולכן לא שולחים אותו. בפקודות יומן של פלטפורמות שמנפיקות לעצמן (וולט, משלוחה, 10ביס) מספר ההקצאה מגיע מהחשבונית שלהן (עמודה K היום), ולשם יש את <code>TaxAPINumber</code>. תמיד שולחים אותו כמחרוזת.</td></tr>
+<tr><td>סוגי ערכים</td><td>הכול נשלח כמחרוזות. בשדות עשרוניים חייבת להיות נקודה (<code>"1.000"</code>, <code>"5000.00"</code>).</td></tr>
+<tr><td>תאריכים</td><td><code>dd/mm/yyyy</code> עובד. לעולם לא <code>toISOString()</code>.</td></tr>
+<tr><td>הקובץ שנוחת בשרת</td><td>קובץ CSV מופרד בפסיקים בקידוד cp1255, והשדות בסדר של קובץ הפרמטרים (prm). למשל: <code>ויני ע,910004,1,,,,,14/10/2026,...,הכנסותת,1.000,5000.00</code>.</td></tr>
+<tr><td>סוג מסמך</td><td>בחשבוניות שלחנו <code>DocumentID=1</code> (חשבונית) וזה עבד. ייצואי האקסל של היום משתמשים בסוג <b>11</b>, שלא מופיע בתיעוד של <code>imovein</code>. צריך לברר עם רעות.</td></tr>
+</table>
+
+<h2 id="demo">8. מה נמצא עכשיו בחברה לדוגמא</h2>
+<p>כדי שלא נתבלבל בהמשך, הנה כל מה שנכנס לחברה לדוגמא במהלך הניסויים:</p>
+<table>
+<tr><th>סוג</th><th>מה</th><th>מקור</th></tr>
+<tr><td>כרטיסים</td><td><code>99901</code>, <code>99902</code> ("בדיקת API La Table 1/2")</td><td>דרך ה-API (<code>heshin</code>)</td></tr>
+<tr><td>כרטיסים</td><td><code>100</code>, <code>101</code></td><td>הוקמו ידנית</td></tr>
+<tr><td>כרטיסים</td><td><code>אברהמי</code>, <code>ויני ע</code>, <code>סיבוס</code>, <code>מע"מ</code> (וגם <code>40001</code> הכנסות שהיה קיים)</td><td>הוקמו ידנית לניסויים</td></tr>
+<tr><td>פריטים</td><td><code>הכנסותת</code></td><td>הוקם ידנית. <code>עמלות רשת</code>, <code>שיווק</code> ו-<code>עמלות לקוחות</code> לא קיימים</td></tr>
+<tr><td>הגדרת חברה</td><td>קופת תלושי שי = <code>15007</code></td><td>מולא ידנית (תקלה 3)</td></tr>
+<tr><td>פקודות יומן</td><td><code>900001</code> ‏(100→101 ‏₪1), <code>900002</code>/<code>900003</code> ‏(9990x→40001 ‏₪1), <code>900004</code> ‏(₪123), <code>900102</code>–<code>900104</code> (תרחישי ויני ע וסיבוס), <code>900105</code> (אברהמי ₪1,180 כולל מע"מ)</td><td>דרך ה-API</td></tr>
+<tr><td>חשבונית</td><td>ויני ע, פריט <code>הכנסותת</code> ‏₪5,000 + מע"מ (מספר המסמך לפי הספרור של חשבשבת)</td><td>דרך ה-API</td></tr>
+</table>
+<p class="sub">פקודה <code>900101</code> (עמלות רשת) נדחתה והקובץ שלה נמחק. גם קובץ החשבוניות הראשון (4 שורות, פריטים חסרים) נמחק ידנית.</p>
+
+<h2 id="mapping">9. מיפוי למה שהמערכת מוציאה היום</h2>
+<p>כל ייצואי החשבוניות לחשבשבת (עמלות ספקים, תמלוגים ושיווק, עמלות לקוחות) הם כרגע קבצי אקסל במבנה "חוזים": מפתח חשבון, מפתח פריט, כמות, מחיר וסוג מסמך. המבנה הזה מתאים ישירות ל-<code>imovein</code>:</p>
+<table>
+<tr><th>זרימה</th><th>route היום</th><th>מפתח חשבון</th><th>מפתח פריט</th><th>ממשק API</th></tr>
+<tr><td>עמלות ספקים</td><td><code>reports/hashavshevet/export</code></td><td>כרטיס הספק (<code>hashavshevetCode</code>)</td><td><code>עמלות &lt;זכיין&gt;</code> (או פריט שהוגדר לזכיין)</td><td><code>imovein</code></td></tr>
+<tr><td>תמלוגים ושיווק</td><td><code>franchisee-billing/hashavshevet-export</code></td><td>כרטיס הזכיין</td><td><code>הכנסותת</code> / <code>שיווק</code></td><td><code>imovein</code></td></tr>
+<tr><td>עמלות לקוחות</td><td><code>reports/hashavshevet/client-export</code></td><td>כרטיס הלקוח</td><td><code>עמלות &lt;זכיין&gt;</code></td><td><code>imovein</code></td></tr>
+<tr><td>חשבוניות לקוחות של זכיין</td><td><code>franchisee-client-invoices-export</code></td><td>כרטיס הלקוח</td><td><code>ארוחות</code> / <code>גיפט</code> / פריט מותאם</td><td><code>imovein</code></td></tr>
+<tr><td>פקודות יומן (וולט, משלוחה, 10ביס, חבר)</td><td><code>franchisee-journal-entries-export</code></td><td colspan="2">11 עמודות A–K, כל אחת מתאימה לשדה של movein (<code>Ref2</code>, תאריכים, חובה/זכות 1/זכות 2, פרטים, <code>TaxAPINumber</code>)</td><td><code>movein</code></td></tr>
+</table>
+
+<h2 id="open">10. פתוח / השלבים הבאים</h2>
+<h3>לבירור</h3>
+<ul>
+<li>☐ <b>itemin לא מקים פריטים.</b> מחכים לתמיכה (תקלה 7).</li>
+<li>☐ <b>חשבונית עם שתי שורות</b> (תמלוגים ושיווק באותה חשבונית). צריך להקים קודם את הפריט <code>שיווק</code>.</li>
+<li>☐ <b>סוג מסמך 11 או 1.</b> מה זה 11 בחברות של רעות, ואיזה סוג לשלוח דרך ה-API.</li>
+<li>☐ <b>הגנה מכפילויות:</b> האם "פסילת מסמכים שיגרמו לכפילות" בודקת לפי אסמכתא או לפי אסמכתא 2? אם לפי אסמכתא, נמלא אותה במזהה פנימי שלנו.</li>
+<li>☐ <b><code>TransType</code></b> (קוד סוג תנועה) שרעות משתמשת בו בפקודות יומן. בניסויים שלחנו <code>00</code>.</li>
+<li>☐ <b>SHEPUDAYAROE:</b> לוודא שבקבצי ההפעלה שלה אין את טעויות 2 ו-4 לפני ששולחים לשם משהו. זו כנראה חברה אמיתית, וכל שליחה לשם רק באישור.</li>
+<li>☐ איך מתאימים בין 12 החברות בחשבשבת לבין Panikon, Pedvili ו-Ventami, ומה שם הקובץ באנגלית של כל אחת.</li>
+</ul>
+<h3>שלב 1: "שלח לחשבשבת" במערכת</h3>
+<ol>
+<li>להוציא את בניית השורות מכל route ייצוא לפונקציה משותפת, כדי שהאקסל וה-API יוצאים מאותם נתונים. האקסל נשאר כגיבוי.</li>
+<li>כפתור "שלח לחשבשבת" ליד כל כפתור ייצוא, עם בחירת חברה.</li>
+<li>טבלת <code>hashavshevet_push_log</code>: מה נשלח, מתי, לאיזו חברה ועם איזה מזהה. היא מונעת שליחה כפולה, ובדרך פותרת את החוסר במעקב "מה כבר יוצא".</li>
+<li>פיצול לבקשות של עד 4MB, ולוג מובנה של כל שליחה.</li>
+<li>אופציונלי: דוח <code>reports</code> שמחזיר את מספרי החשבוניות שהוקצו, ומאשר שמה ששלחנו נקלט.</li>
+</ol>
+
+</div></body></html>
