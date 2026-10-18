@@ -30,7 +30,7 @@ import {
   type SupplierFileMapping,
 } from "@/db/schema";
 import { eq, and, desc, sql, count, max, gte, lte, or, ne, isNotNull, isNull, inArray } from "drizzle-orm";
-import { getAmountForPeriod } from "@/lib/bkmvdata-parser";
+import { getAmountForPeriod, trustedSupplierId } from "@/lib/bkmvdata-parser";
 import { getVatRateForDate, DEFAULT_VAT_RATE } from "@/data-access/vatRates";
 import { calculateNetFromGross, roundAmount } from "@/lib/file-processor";
 import { getDatabaseError } from "@/lib/drizzle-errors";
@@ -689,7 +689,7 @@ export async function createReconciliationSession(
 
       if (file.filePeriodStart === periodStartDate && file.filePeriodEnd === periodEndDate) {
         for (const match of bkmvResult.supplierMatches) {
-          if (match.matchedSupplierId === supplierId) {
+          if (trustedSupplierId(match) === supplierId) {
             const netAmount = supplierData[0].vatExempt
               ? roundAmount(match.amount)
               : roundAmount(calculateNetFromGross(match.amount, vatRate));

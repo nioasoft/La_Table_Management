@@ -78,6 +78,7 @@ export {
   groupIntoConsecutiveRuns,
   groupMonthlyBreakdownByYear,
   aggregateSupplierMatchesFromBreakdown,
+  trustedSupplierId,
 } from './monthly-breakdown';
 
 // Formatters

@@ -6,6 +6,7 @@
  */
 
 import { database } from "@/db";
+import { trustedSupplierId } from "@/lib/bkmvdata-parser";
 import {
   commission,
   supplier,
@@ -189,9 +190,10 @@ export async function getSettlementSimpleReport(
     if (!result.supplierMatches) continue;
 
     for (const match of result.supplierMatches) {
-      if (!match.matchedSupplierId) continue;
+      const supplierId = trustedSupplierId(match);
+      if (!supplierId) continue;
 
-      const key = `${file.franchiseeId}:${match.matchedSupplierId}`;
+      const key = `${file.franchiseeId}:${supplierId}`;
       const existing = bkmvAmountsMap.get(key);
 
       // Sum amounts if multiple entries (shouldn't happen normally but just in case)

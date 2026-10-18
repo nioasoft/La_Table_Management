@@ -30,7 +30,7 @@ import { uploadedFile, franchiseeBkmvYear } from "@/db/schema";
 import type { BkmvProcessingResult } from "@/db/schema";
 import { isNotNull, eq, sql, asc } from "drizzle-orm";
 import { getDocument } from "@/lib/storage";
-import { parseBkmvData, buildMonthlyBreakdown } from "@/lib/bkmvdata-parser";
+import { parseBkmvData, buildMonthlyBreakdown, trustedSupplierId } from "@/lib/bkmvdata-parser";
 import { upsertFromFullBreakdown } from "@/data-access/franchisee-bkmv-year";
 import { changedMonths, groupIntoConsecutiveRuns } from "@/lib/bkmvdata/monthly-breakdown";
 import { markFranchiseeSessionsStale } from "@/data-access/reconciliation-v2";
@@ -106,7 +106,7 @@ async function main() {
     // Reuse the matches already confirmed for this file — never rematch here.
     const supplierIdMap = new Map<string, string | null>();
     for (const m of existing.supplierMatches ?? []) {
-      supplierIdMap.set(m.bkmvName, m.matchedSupplierId);
+      supplierIdMap.set(m.bkmvName, trustedSupplierId(m));
     }
 
     const rebuilt = buildMonthlyBreakdown(parseResult.transactions, supplierIdMap);

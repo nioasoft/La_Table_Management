@@ -3,6 +3,7 @@ import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
 import {
   parseBkmvData,
   buildMonthlyBreakdown,
+  trustedSupplierId,
 } from "@/lib/bkmvdata-parser";
 import { getDocument } from "@/lib/storage";
 import { database } from "@/db";
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
         const supplierIdMap = new Map<string, string | null>();
         if (existingResult.supplierMatches) {
           for (const m of existingResult.supplierMatches) {
-            supplierIdMap.set(m.bkmvName, m.matchedSupplierId);
+            supplierIdMap.set(m.bkmvName, trustedSupplierId(m));
           }
         }
 

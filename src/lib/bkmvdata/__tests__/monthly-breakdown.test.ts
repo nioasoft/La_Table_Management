@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { changedMonths, groupIntoConsecutiveRuns } from "../monthly-breakdown";
+import { changedMonths, groupIntoConsecutiveRuns, trustedSupplierId } from "../monthly-breakdown";
 import type { MonthlyBreakdown } from "../types";
 
 const entry = (
@@ -80,5 +80,27 @@ describe("groupIntoConsecutiveRuns", () => {
 
   it("returns nothing for no months", () => {
     expect(groupIntoConsecutiveRuns([])).toEqual([]);
+  });
+});
+
+describe("trustedSupplierId", () => {
+  const m = (confidence: number, matchType: string, matchedSupplierId: string | null = "sup-1") => ({
+    matchedSupplierId,
+    confidence,
+    matchType,
+  });
+
+  it("keeps exact and manual matches", () => {
+    expect(trustedSupplierId(m(1, "exact_alias"))).toBe("sup-1");
+    expect(trustedSupplierId(m(1, "manual"))).toBe("sup-1");
+  });
+
+  it("drops anything below 100% — even a 96% suggestion", () => {
+    expect(trustedSupplierId(m(0.96, "fuzzy_alias"))).toBeNull();
+    expect(trustedSupplierId(m(0.61, "fuzzy_name"))).toBeNull();
+  });
+
+  it("returns null when nothing is matched", () => {
+    expect(trustedSupplierId(m(1, "blacklisted", null))).toBeNull();
   });
 });

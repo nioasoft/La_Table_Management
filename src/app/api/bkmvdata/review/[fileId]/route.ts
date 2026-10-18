@@ -12,6 +12,7 @@ import { getFranchiseeById } from "@/data-access/franchisees";
 import { getSupplierById, updateSupplier } from "@/data-access/suppliers";
 import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
 import type { BkmvProcessingResult } from "@/db/schema";
+import { trustedSupplierId } from "@/lib/bkmvdata-parser";
 
 /**
  * GET /api/bkmvdata/review/[fileId] - Get detailed file info for review
@@ -241,10 +242,10 @@ export async function PATCH(
     const fuzzyMatches = updatedMatches.filter(m => m.matchedSupplierId && m.confidence < 1).length;
     const unmatched = updatedMatches.filter(m => !m.matchedSupplierId).length;
 
-    // Build updated supplier ID map from all matches
+    // Build updated supplier ID map from all matches — fuzzy ones map to null
     const supplierIdMap = new Map<string, string | null>();
     for (const match of updatedMatches) {
-      supplierIdMap.set(match.bkmvName, match.matchedSupplierId);
+      supplierIdMap.set(match.bkmvName, trustedSupplierId(match));
     }
 
     // Rebuild monthlyBreakdown supplier IDs to stay in sync

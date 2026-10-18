@@ -3,6 +3,24 @@ import { SUPPLIER_SKIP_PATTERNS } from './constants';
 import { formatYearMonth } from './formatters';
 
 /**
+ * The supplier a BKMV name counts toward — only when matched 100% (exact or
+ * manual). A fuzzy suggestion stays a suggestion until someone confirms it
+ * (Reut, 2026-10-18: "אם הספק לא מותאם 100% במבנה אחיד שלא יופיע לי בדוח
+ * התאמות"). Before this, a fuzzy match leaked into the breakdown whenever it
+ * was rebuilt from stored matches — e.g. "קינג קו" → וונג שו at 65%.
+ */
+export function trustedSupplierId(match: {
+  matchedSupplierId: string | null;
+  confidence: number;
+  matchType: string;
+}): string | null {
+  if (!match.matchedSupplierId) return null;
+  return match.confidence === 1 || match.matchType === "manual"
+    ? match.matchedSupplierId
+    : null;
+}
+
+/**
  * Build monthly breakdown from transactions
  * Groups credit transactions by month and supplier name
  */
