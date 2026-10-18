@@ -431,6 +431,20 @@ export async function getPeriodsWithoutSession(): Promise<SessionlessPeriod[]> {
 // ============================================================================
 
 /**
+ * Which brand-compatible branches get a 0/0 row. A supplier marked "כשר" is
+ * expected only at kosher branches (Reut, 2026-10-15: יבולי גורמה showed every
+ * non-kosher ויני/קינג קונג branch at 0/0). Only the zero rows are filtered —
+ * a non-kosher branch with an amount on either side enters earlier, from the
+ * supplier file or BKMV, and is never hidden.
+ */
+export function zeroRowCandidates<T extends { isKosher: boolean }>(
+  brandCompatible: T[],
+  supplierIsKosher: boolean
+): T[] {
+  return supplierIsKosher ? brandCompatible.filter((f) => f.isKosher) : brandCompatible;
+}
+
+/**
  * Create a new reconciliation session with comparisons.
  * Supports multi-file suppliers: pass supplierFileIds to merge franchiseeMatches from multiple files.
  */
@@ -450,6 +464,7 @@ export async function createReconciliationSession(
       name: supplier.name,
       code: supplier.code,
       vatExempt: supplier.vatExempt,
+      isKosher: supplier.isKosher,
     })
     .from(supplier)
     .where(eq(supplier.id, supplierId))
@@ -756,7 +771,7 @@ export async function createReconciliationSession(
     }
   }
 
-  // Pass 2: Get all compatible franchisees (by brand + kosher) for zero-amount row generation
+  // Pass 2: Get all compatible franchisees (by brand, then kosher) for zero-amount row generation
   const compatConditions = [
     eq(franchisee.isActive, true),
     eq(franchisee.category, "regular"),
@@ -771,18 +786,20 @@ export async function createReconciliationSession(
       `[createReconciliationSession] ${supplierData[0].code}: no brand mapping and no history to infer one — zero-amount rows skipped`
     );
   } else {
-    // ponytail: brand is the only compatibility filter. supplier.is_kosher used to
-    // hide kosher franchisees from a non-kosher supplier's zero rows, but the flag
-    // is an unmaintained default (33 of 41 suppliers false) and the data disproves
-    // the premise — kosher branches transact with "non-kosher" suppliers constantly
-    // (ויני חדרה bought ₪35,460 from רסטרטו Q2-2026). All it did was silently drop
-    // branches like קינג קונג מוצקין from the row set, which reads as a bug.
+    // Brand, then kosher in one direction only (zeroRowCandidates). The reverse —
+    // a NON-kosher supplier hiding kosher branches — was tried and removed: kosher
+    // branches transact with "non-kosher" suppliers constantly (ויני חדרה bought
+    // ₪35,460 from רסטרטו Q2-2026), so it silently dropped branches like קינג קונג
+    // מוצקין from the row set, which reads as a bug.
     compatConditions.push(inArray(franchisee.brandId, [...brandIdSet]));
   }
-  const allCompatible = brandIdSet.size === 0 ? [] : await database
-    .select({ id: franchisee.id })
-    .from(franchisee)
-    .where(and(...compatConditions));
+  const allCompatible = brandIdSet.size === 0 ? [] : zeroRowCandidates(
+    await database
+      .select({ id: franchisee.id, isKosher: franchisee.isKosher })
+      .from(franchisee)
+      .where(and(...compatConditions)),
+    supplierData[0].isKosher
+  );
 
   // Add zero-amount rows for compatible franchisees missing from supplier file
   for (const f of allCompatible) {
