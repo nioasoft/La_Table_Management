@@ -191,7 +191,7 @@ export async function updateSupplierFileProcessing(
 export async function reviewSupplierFile(
   fileId: string,
   action: "approve" | "reject",
-  reviewedBy: string,
+  reviewedBy: string | null, // null = no user (supplier replaced it via upload link)
   notes?: string
 ): Promise<SupplierFileUpload | null> {
   const status = action === "approve" ? "approved" : "rejected";

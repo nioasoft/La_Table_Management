@@ -38,7 +38,7 @@ import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
 import { requiresCustomParser } from "@/lib/custom-parsers";
-import { getPeriodsForFrequency, getPeriodByKey } from "@/lib/settlement-periods";
+import { getPeriodsForFrequency, getPeriodByKey, snapPeriodToFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
 import { createSupplierFileUpload, findDuplicateSupplierFiles, reviewSupplierFile } from "@/data-access/supplier-file-uploads";
 import {
@@ -760,6 +760,22 @@ export async function POST(
               }
             }
 
+            // Row dates are not the period: a quarterly report whose dates stop
+            // on Jul 16 is still Q3. Snap to the supplier's frequency (same as
+            // the admin upload route) BEFORE the duplicate check, so a re-sent
+            // report replaces the old one instead of becoming a second period
+            // (עלה עלה "יולי-אוג׳", פרסקו "יולי-יולי", 2026-10).
+            if (periodStartDate && periodEndDate && supplier.settlementFrequency) {
+              const snap = snapPeriodToFrequency(
+                periodStartDate,
+                periodEndDate,
+                supplier.settlementFrequency,
+                supplier.fiscalYearStartMonth ?? 1
+              );
+              periodStartDate = snap.startDate;
+              periodEndDate = snap.endDate;
+            }
+
             // Determine processing status
             const shouldAutoApprove = unmatched === 0 && needsReview === 0;
             const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
@@ -922,10 +938,12 @@ export async function POST(
                 if (deletedCount > 0) {
                   console.log(`[Upload Route] Deleted ${deletedCount} commissions from replaced file ${replaceFileId}`);
                 }
+                // reviewed_by is a FK to user — "system" failed it, AFTER the
+                // old file's commissions were already deleted above.
                 await reviewSupplierFile(
                   replaceFileId,
                   "reject",
-                  "system",
+                  null,
                   "הוחלף בקובץ חדש"
                 );
               }
