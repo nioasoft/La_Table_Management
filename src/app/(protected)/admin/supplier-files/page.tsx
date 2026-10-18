@@ -647,6 +647,8 @@ export default function SupplierFilesPage() {
       matchStats: recalculatedStats,
       franchiseeMatches,
       processedAt: new Date().toISOString(),
+      // The save route reads these to keep a grand-total mismatch out of auto_approved
+      anomalies: processingResult.anomalies,
     };
 
     const saveResponse = await fetchWithTimeout("/api/supplier-files", {

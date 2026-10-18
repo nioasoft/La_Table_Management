@@ -37,6 +37,7 @@ import { getBlacklistedNamesSet } from "@/data-access/bkmvBlacklist";
 import { getSmallSupplierNamesSet } from "@/data-access/bkmvSmallSuppliers";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { processSupplierFile, getCurrentVatRate } from "@/lib/file-processor";
+import { supplierFileUploadStatus } from "@/lib/supplier-file-status";
 import { requiresCustomParser } from "@/lib/custom-parsers";
 import { getPeriodsForFrequency, getPeriodByKey, snapPeriodToFrequency } from "@/lib/settlement-periods";
 import type { SettlementPeriodType } from "@/db/schema";
@@ -776,9 +777,12 @@ export async function POST(
               periodEndDate = snap.endDate;
             }
 
-            // Determine processing status
-            const shouldAutoApprove = unmatched === 0 && needsReview === 0;
-            const processingStatus = shouldAutoApprove ? "auto_approved" : "needs_review";
+            // Auto-approve only when every row matched exactly AND the parser's
+            // sum agrees with the file's own grand total
+            const processingStatus = supplierFileUploadStatus(
+              unmatched + needsReview,
+              processResult.anomalies
+            );
 
             // Determine match type for each result
             const getMatchType = (r: typeof matchedResults[0]): "exact" | "exact_code" | "fuzzy" | "manual" | "blacklisted" | "none" => {
@@ -1019,7 +1023,7 @@ export async function POST(
                 unmatched,
               },
               processingStatus,
-              autoApproved: shouldAutoApprove,
+              autoApproved: processingStatus === "auto_approved",
             };
 
             // Only notify if file needs manual review

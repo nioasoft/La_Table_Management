@@ -296,6 +296,16 @@ export const FILE_PROCESSING_ERROR_CODES = {
     suggestion: 'Check the data in the specified row for any formatting issues',
   },
 
+  // Emitted only by parsers that check their sum against the file's own total.
+  // Keeps the file out of auto_approved (see supplierFileUploadStatus).
+  GRAND_TOTAL_MISMATCH: {
+    code: 'GRAND_TOTAL_MISMATCH',
+    category: 'validation' as const,
+    severity: 'warning' as const,
+    message: "Parsed total does not match the file's own grand total",
+    suggestion: 'Compare the parsed franchisees with the file — a franchisee block may have been skipped',
+  },
+
   // System errors
   SYSTEM_ERROR: {
     code: 'SYSTEM_ERROR',

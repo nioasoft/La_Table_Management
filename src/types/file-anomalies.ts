@@ -25,6 +25,7 @@ export type AnomalyCode =
   | "ZERO_AMOUNT_FRANCHISEE"
   | "VAT_RATE_MISMATCH"
   | "SUPPLIER_HEADER_TOTAL_GAP"
+  | "GRAND_TOTAL_MISMATCH"
   // Match-level
   | "UNKNOWN_BUSINESS_ID"
   | "BIZ_ID_MISMATCH"

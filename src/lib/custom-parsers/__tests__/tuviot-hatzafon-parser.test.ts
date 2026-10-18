@@ -39,6 +39,7 @@ describe("parseTuviotHatzafonFile — Q3-2026 quarterly blocks", () => {
 
     expect(r.data.find((d) => d.franchisee.includes("עזריאלי"))).toBeUndefined();
     expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0].code).toBe("GRAND_TOTAL_MISMATCH");
     expect(r.warnings[0].details).toContain("ייתכן שזכיין לא נקלט");
   });
 });

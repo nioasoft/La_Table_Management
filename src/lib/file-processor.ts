@@ -747,6 +747,23 @@ function attachGenericAnomalies(result: FileProcessingResult): void {
     });
   }
 
+  // A parser's sum disagreeing with the file's own total means rows were lost.
+  // As an anomaly it is persisted with the upload on every path, so the save
+  // routes keep the file out of auto_approved (supplierFileUploadStatus).
+  for (const w of result.warnings ?? []) {
+    if (w.code !== "GRAND_TOTAL_MISMATCH") continue;
+    anomalies.push({
+      code: "GRAND_TOTAL_MISMATCH",
+      severity: "warning",
+      messageHe: w.details ?? 'סכום הזכיינים שנקלטו שונה מסה"כ בקובץ — ייתכן שזכיין לא נקלט',
+      details: {
+        explanationHe:
+          "הקובץ לא יאושר אוטומטית: יש להשוות את רשימת הזכיינים מול הקובץ ולוודא שאף בלוק לא דולג.",
+      },
+      suggestedActions: [{ type: "acknowledge_only", labelHe: "הבנתי, להמשיך" }],
+    });
+  }
+
   if (anomalies.length > 0) {
     result.anomalies = [...(result.anomalies ?? []), ...anomalies];
   }

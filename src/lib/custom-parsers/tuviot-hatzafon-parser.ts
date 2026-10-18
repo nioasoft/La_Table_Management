@@ -268,7 +268,7 @@ export function parseTuviotHatzafonFile(buffer: Buffer): FileProcessingResult {
       const details =
         `סכום הזכיינים שנקלטו (₪${fmt(totalNetAmount)}) שונה מסה"כ כללי בקובץ ` +
         `(₪${fmt(grandTotal)}) — ייתכן שזכיין לא נקלט`;
-      warnings.push(createFileProcessingError("ROW_PARSE_ERROR", { details }));
+      warnings.push(createFileProcessingError("GRAND_TOTAL_MISMATCH", { details }));
       legacyWarnings.push(details);
     }
 

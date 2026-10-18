@@ -110,6 +110,8 @@ describe("parseFrescoFile — block layout (current export)", () => {
 
     expect(r.success).toBe(true);
     expect(r.legacyWarnings.some((w) => w.includes("כללי"))).toBe(true);
+    // the code that keeps the file out of auto_approved
+    expect(r.warnings.map((w) => w.code)).toContain("GRAND_TOTAL_MISMATCH");
   });
 
   it("fails loudly when no block and no pivot can be found", () => {

@@ -121,6 +121,8 @@ interface Block {
 interface BlockScan {
   blocks: Block[];
   warnings: string[];
+  /** Block/sheet sums that disagree with the file's own סה"כ — rows were lost */
+  totalGaps?: string[];
   totalRows: number;
   skippedRows: number;
 }
@@ -132,6 +134,7 @@ interface BlockScan {
 function scanBlockLayout(workbook: XLSX.WorkBook): BlockScan {
   const blocks = new Map<string, Block>();
   const warnings: string[] = [];
+  const totalGaps: string[] = [];
   let totalRows = 0;
   let skippedRows = 0;
 
@@ -226,7 +229,7 @@ function scanBlockLayout(workbook: XLSX.WorkBook): BlockScan {
         declaredTotal !== null &&
         Math.abs(roundAmount(declaredTotal) - netAmount) > TOTAL_TOLERANCE
       ) {
-        warnings.push(
+        totalGaps.push(
           `פער בבלוק "${franchisee}": סכום השורות ${netAmount.toLocaleString("he-IL")} ` +
             `מול "סה"כ" בקובץ ${roundAmount(declaredTotal).toLocaleString("he-IL")}`
         );
@@ -254,14 +257,14 @@ function scanBlockLayout(workbook: XLSX.WorkBook): BlockScan {
       sheetGrandTotal !== null &&
       Math.abs(roundAmount(sheetGrandTotal) - sheetSum) > TOTAL_TOLERANCE
     ) {
-      warnings.push(
+      totalGaps.push(
         `גיליון "${sheetName}": סכום הבלוקים ${sheetSum.toLocaleString("he-IL")} ` +
           `אינו תואם ל"סה"כ כללי" בקובץ ${roundAmount(sheetGrandTotal).toLocaleString("he-IL")}`
       );
     }
   }
 
-  return { blocks: [...blocks.values()], warnings, totalRows, skippedRows };
+  return { blocks: [...blocks.values()], warnings, totalGaps, totalRows, skippedRows };
 }
 
 /** Legacy "גיליון2" pivot: row label in col A, summed amount in col B */
@@ -343,6 +346,10 @@ export function parseFrescoFile(
     for (const warning of scan.warnings) {
       legacyWarnings.push(warning);
       warnings.push(createFileProcessingError("PARSE_ERROR", { details: warning }));
+    }
+    for (const gap of scan.totalGaps ?? []) {
+      legacyWarnings.push(gap);
+      warnings.push(createFileProcessingError("GRAND_TOTAL_MISMATCH", { details: gap }));
     }
 
     if (scan.blocks.length === 0) {

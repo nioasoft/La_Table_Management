@@ -17,6 +17,7 @@ import { snapPeriodToFrequency, derivePeriodKey } from "@/lib/settlement-periods
 import type { SupplierFileProcessingResult, SettlementPeriodType } from "@/db/schema";
 import { markSupplierSettlementRequestSubmitted } from "@/data-access/fileRequests";
 import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
+import { supplierFileUploadStatus } from "@/lib/supplier-file-status";
 
 /**
  * GET /api/supplier-files - Get list of supplier file uploads
@@ -298,17 +299,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Determine the processing status based on match results
-    const { matchStats } = processingResult as SupplierFileProcessingResult;
-    let processingStatus: "auto_approved" | "needs_review";
-
-    if (matchStats.unmatched === 0 && matchStats.fuzzyMatches === 0) {
-      // All rows are exactly matched - auto approve
-      processingStatus = "auto_approved";
-    } else {
-      // Has unmatched or fuzzy matches - needs review
-      processingStatus = "needs_review";
-    }
+    // Auto-approve only when every row matched exactly AND the parser's sum
+    // agrees with the file's own grand total
+    const { matchStats, anomalies } = processingResult as SupplierFileProcessingResult;
+    const processingStatus = supplierFileUploadStatus(
+      matchStats.unmatched + matchStats.fuzzyMatches,
+      anomalies
+    );
 
     // Create the record
     const newFile = await createSupplierFileUpload({
