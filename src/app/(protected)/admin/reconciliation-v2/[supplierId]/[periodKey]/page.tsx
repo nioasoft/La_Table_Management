@@ -298,11 +298,19 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/admin/reconciliation-v2">
-            <Button variant="ghost" size="icon">
-              <ArrowRight className="h-5 w-5" />
-            </Button>
-          </Link>
+          {/* Back to wherever we came from (e.g. the filtered sessions list keeps
+              its filters in the URL). A tab opened straight on a session link
+              has nothing to go back to — fall back to the supplier picker. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="חזרה"
+            onClick={() =>
+              window.history.length > 1 ? router.back() : router.push("/admin/reconciliation-v2")
+            }
+          >
+            <ArrowRight className="h-5 w-5" />
+          </Button>
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Scale className="h-6 w-6 text-primary" />

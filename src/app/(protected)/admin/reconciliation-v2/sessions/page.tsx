@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -76,13 +76,27 @@ const PENDING_FILE_STATUSES = new Set(["pending", "processing", "needs_review"])
 
 export default function SessionsListPage() {
   const router = useRouter();
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  // Same picker as the reports: monthly/quarterly/semi-annual/annual or a
-  // custom range. Empty from/to = no period filter.
-  const [periodType, setPeriodType] = useState<SettlementPeriodType | "">("");
-  const [periodKey, setPeriodKey] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Filters live in the URL so Back from a session (and a shared link) lands
+  // on the same filtered list. Same picker as the reports: monthly/quarterly/
+  // semi-annual/annual or a custom range. Empty from/to = no period filter.
+  const statusFilter = searchParams.get("status") ?? "all";
+  const periodType = (searchParams.get("periodType") ?? "") as SettlementPeriodType | "";
+  const periodKey = searchParams.get("periodKey") ?? "";
+  const fromDate = searchParams.get("from") ?? "";
+  const toDate = searchParams.get("to") ?? "";
+
+  const setFilters = (patch: Record<string, string>) => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) params.set(key, value);
+      else params.delete(key);
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  };
+
   const [buildingKey, setBuildingKey] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -100,21 +114,18 @@ export default function SessionsListPage() {
   // Picking a period fills from/to; switching to custom keeps them as a
   // starting point. Overlap, not exact match — a quarter shows its months too.
   const handlePeriodChange = (type: SettlementPeriodType | "", key: string) => {
-    setPeriodType(type);
-    setPeriodKey(key);
     const period = key ? getPeriodByKey(key) : null;
-    if (period) {
-      setFromDate(formatDateAsLocal(period.startDate));
-      setToDate(formatDateAsLocal(period.endDate));
-    }
+    setFilters({
+      periodType: type,
+      periodKey: key,
+      ...(period && {
+        from: formatDateAsLocal(period.startDate),
+        to: formatDateAsLocal(period.endDate),
+      }),
+    });
   };
 
-  const clearPeriod = () => {
-    setPeriodType("");
-    setPeriodKey("");
-    setFromDate("");
-    setToDate("");
-  };
+  const clearPeriod = () => setFilters({ periodType: "", periodKey: "", from: "", to: "" });
 
   const visibleSessions = useMemo(
     () =>
@@ -205,7 +216,11 @@ export default function SessionsListPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-end gap-4">
-        <Select value={statusFilter} onValueChange={setStatusFilter} dir="rtl">
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => setFilters({ status: v === "all" ? "" : v })}
+          dir="rtl"
+        >
           <SelectTrigger className="w-[200px] h-9">
             <SelectValue placeholder="סנן לפי סטטוס" />
           </SelectTrigger>
@@ -234,7 +249,7 @@ export default function SessionsListPage() {
                 id="fromDate"
                 type="date"
                 value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
+                onChange={(e) => setFilters({ from: e.target.value })}
                 className="h-9"
               />
             </div>
@@ -244,7 +259,7 @@ export default function SessionsListPage() {
                 id="toDate"
                 type="date"
                 value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
+                onChange={(e) => setFilters({ to: e.target.value })}
                 className="h-9"
               />
             </div>
