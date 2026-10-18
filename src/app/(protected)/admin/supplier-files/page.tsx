@@ -74,6 +74,11 @@ import { useSupplierFileReviewCount } from "@/queries/supplier-file-uploads";
 import { getPeriodByKey } from "@/lib/settlement-periods";
 import type { Anomaly, AnomalyAction } from "@/types/file-anomalies";
 import { looksLikeHtmlTableFile } from "@/lib/html-table-file";
+import {
+  persistUploadRowChange,
+  type UploadRowChange,
+  type UploadRowChangeResult,
+} from "@/lib/persist-upload-row-change";
 
 /**
  * Convert XLS file to XLSX format in the browser. Vercel WAF blocks raw XLS
@@ -370,20 +375,10 @@ export default function SupplierFilesPage() {
     setOverlappingFranchiseeNames([]);
   }, []);
 
-  // Add alias mutation
-  const addAliasMutation = useMutation({
-    mutationFn: async ({ franchiseeId, aliasName }: { franchiseeId: string; aliasName: string }) => {
-      const response = await fetchWithTimeout(`/api/franchisees/${franchiseeId}/aliases`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ alias: aliasName }),
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to add alias");
-      }
-      return response.json();
-    },
+  // Row match/blacklist change — goes to the saved file once there is one
+  const rowChangeMutation = useMutation({
+    mutationFn: ({ fileId, change }: { fileId: string | null; change: UploadRowChange }) =>
+      persistUploadRowChange(fileId, change),
   });
 
   // Internal save function - handles the actual API call
@@ -1050,18 +1045,22 @@ export default function SupplierFilesPage() {
     const selectedFranchisee = franchisees.find(f => f.id === franchiseeId);
     if (!selectedFranchisee) return;
 
-    // Add alias if requested
-    if (alsoAddAlias && row.franchisee) {
-      try {
-        await addAliasMutation.mutateAsync({
-          franchiseeId,
-          aliasName: row.franchisee,
-        });
-      } catch (error) {
-        console.error("Failed to add alias:", error);
-        // Continue anyway - the manual match will still work
-      }
+    let outcome: UploadRowChangeResult;
+    try {
+      outcome = await rowChangeMutation.mutateAsync({
+        fileId: savedFileId,
+        change: { originalName: row.franchisee, franchiseeId, addAsAlias: alsoAddAlias && !!row.franchisee },
+      });
+    } catch (error) {
+      console.error("Row match change failed:", error);
+      outcome = { ok: false };
     }
+    if (!outcome.ok) {
+      toast.error(outcome.message ?? "שמירת ההתאמה נכשלה");
+      return;
+    }
+    if (outcome.warning) toast.warning(outcome.warning);
+    else if (outcome.message) toast.success(outcome.message);
 
     // Update the processing result with the manual match
     setProcessingResult(prev => {
@@ -1089,7 +1088,7 @@ export default function SupplierFilesPage() {
         } : undefined,
       };
     });
-  }, [franchisees, addAliasMutation]);
+  }, [franchisees, rowChangeMutation, savedFileId]);
 
   const handleSaveMatch = useCallback(async () => {
     if (!editingRow || !selectedFranchiseeId) return;
@@ -1099,8 +1098,23 @@ export default function SupplierFilesPage() {
   }, [editingRow, selectedFranchiseeId, addAsAlias, applyMatch]);
 
   // Handle blacklist
-  const handleBlacklist = useCallback(() => {
+  const handleBlacklist = useCallback(async () => {
     if (!blacklistingRow || !processingResult) return;
+
+    let outcome: UploadRowChangeResult;
+    try {
+      outcome = await rowChangeMutation.mutateAsync({
+        fileId: savedFileId,
+        change: { originalName: blacklistingRow.franchisee, blacklist: true, notes: blacklistNotes || undefined },
+      });
+    } catch (error) {
+      console.error("Row blacklist failed:", error);
+      outcome = { ok: false };
+    }
+    if (!outcome.ok) {
+      toast.error(outcome.message ?? "סימון השורה נכשל");
+      return;
+    }
 
     // Update the processing result to mark as blacklisted
     setProcessingResult(prev => {
@@ -1126,7 +1140,7 @@ export default function SupplierFilesPage() {
 
     setBlacklistingRow(null);
     setBlacklistNotes("");
-  }, [blacklistingRow, processingResult]);
+  }, [blacklistingRow, processingResult, blacklistNotes, rowChangeMutation, savedFileId]);
 
   // Get effective match for a row
   const getEffectiveMatch = (row: ProcessedRow) => {
@@ -1731,7 +1745,7 @@ export default function SupplierFilesPage() {
                                           size="sm"
                                           variant="ghost"
                                           className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                          disabled={addAliasMutation.isPending}
+                                          disabled={rowChangeMutation.isPending}
                                           onClick={() =>
                                             applyMatch(row, row.matchResult!.matchedFranchisee!.id, true)
                                           }
@@ -1829,9 +1843,9 @@ export default function SupplierFilesPage() {
             </Button>
             <Button
               onClick={handleSaveMatch}
-              disabled={addAliasMutation.isPending || !selectedFranchiseeId}
+              disabled={rowChangeMutation.isPending || !selectedFranchiseeId}
             >
-              {addAliasMutation.isPending ? (
+              {rowChangeMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin me-2" />
               ) : (
                 <Plus className="h-4 w-4 me-2" />
@@ -1868,6 +1882,7 @@ export default function SupplierFilesPage() {
             </Button>
             <Button
               onClick={handleBlacklist}
+              disabled={rowChangeMutation.isPending}
               className="bg-gray-600 hover:bg-gray-700"
             >
               <Ban className="h-4 w-4 me-2" />
