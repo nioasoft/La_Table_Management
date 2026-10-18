@@ -167,10 +167,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.franchiseAgreementEnd = franchiseAgreementEnd;
     if (status !== undefined) {
       updateData.status = status;
-      // Auto-sync isActive when status changes (unless isActive was explicitly provided)
-      if (isActive === undefined) {
-        updateData.isActive = status === "active";
-      }
+      // status is the source of truth for isActive. The edit form echoes back
+      // the isActive it loaded, so letting that win left a franchisee marked
+      // "לא פעיל" still active everywhere that filters on isActive (dashboard,
+      // BKMV requests).
+      updateData.isActive = status === "active";
     }
     if (notes !== undefined) updateData.notes = notes;
     if (hashavshevetItemKey !== undefined) updateData.hashavshevetItemKey = hashavshevetItemKey;
@@ -178,7 +179,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       updateData.hashavshevetRevenueAccount =
         hashavshevetRevenueAccount === "" ? null : hashavshevetRevenueAccount;
     }
-    if (isActive !== undefined) updateData.isActive = isActive;
+    if (isActive !== undefined && status === undefined) updateData.isActive = isActive;
     if (isKosher !== undefined) updateData.isKosher = isKosher;
     if (royaltyPatch) {
       updateData.royaltyTiers = royaltyPatch.royaltyTiers;
