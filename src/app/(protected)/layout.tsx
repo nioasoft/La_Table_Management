@@ -79,21 +79,18 @@ function ProtectedLayoutContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isPending) return;
 
-    // Check if user is logged in
-    if (!session) {
-      router.push("/sign-in");
+    // No valid session, or suspended. proxy.ts only checks that the session
+    // cookie EXISTS and bounces /sign-in back to /dashboard, so a dead cookie
+    // (expired/deleted session) or a suspended user's cookie would ping-pong
+    // forever on a spinner. Sign out first: it clears the cookie server-side.
+    if (!session || userStatus === "suspended") {
+      authClient.signOut().finally(() => router.push("/sign-in"));
       return;
     }
 
     // Check if user is pending
     if (userStatus === "pending") {
       router.push("/pending-approval");
-      return;
-    }
-
-    // Check if user is suspended
-    if (userStatus === "suspended") {
-      router.push("/sign-in");
       return;
     }
   }, [session, isPending, router, userStatus]);
