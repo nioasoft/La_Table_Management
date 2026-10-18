@@ -18,9 +18,12 @@ import type { SupplierFileProcessingResult, SettlementPeriodType } from "@/db/sc
 import { markSupplierSettlementRequestSubmitted } from "@/data-access/fileRequests";
 import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
 import { supplierFileUploadStatus } from "@/lib/supplier-file-status";
+import { supplierFileUploadsQuerySchema } from "@/schemas/supplier-file-uploads";
 
 /**
  * GET /api/supplier-files - Get list of supplier file uploads
+ * Query: supplierId, status (comma list), limit, offset,
+ *        periodStart + periodEnd (files whose period overlaps the range)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -28,21 +31,27 @@ export async function GET(request: NextRequest) {
     if (isAuthError(authResult)) return authResult;
 
     const { searchParams } = new URL(request.url);
-    const supplierId = searchParams.get("supplierId") || undefined;
-    const statusParam = searchParams.get("status");
-    const status = statusParam ? statusParam.split(",") : undefined;
-    const limit = searchParams.get("limit")
-      ? parseInt(searchParams.get("limit")!)
-      : undefined;
-    const offset = searchParams.get("offset")
-      ? parseInt(searchParams.get("offset")!)
-      : undefined;
+    const parsed = supplierFileUploadsQuerySchema.safeParse(
+      Object.fromEntries(searchParams)
+    );
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: parsed.error.issues[0]?.message ?? "פרמטרים לא תקינים" },
+        { status: 400 }
+      );
+    }
+    const { supplierId, status, limit, offset, periodStart, periodEnd } =
+      parsed.data;
 
     const result = await getSupplierFileUploads({
       supplierId,
       status,
       limit,
       offset,
+      periodOverlap:
+        periodStart && periodEnd
+          ? { start: periodStart, end: periodEnd }
+          : undefined,
     });
 
     return NextResponse.json(result);

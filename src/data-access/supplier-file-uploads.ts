@@ -350,8 +350,8 @@ export async function getSupplierFileReviewCount(): Promise<number> {
 export async function getSupplierFileUploads(options?: {
   supplierId?: string;
   status?: string[];
-  periodStartDate?: string;
-  periodEndDate?: string;
+  /** YYYY-MM-DD range; keeps files whose period overlaps it (NULL periods drop out). */
+  periodOverlap?: { start: string; end: string };
   limit?: number;
   offset?: number;
 }): Promise<{
@@ -370,15 +370,10 @@ export async function getSupplierFileUploads(options?: {
     );
   }
 
-  if (options?.periodStartDate) {
+  if (options?.periodOverlap) {
     conditions.push(
-      sql`${supplierFileUpload.periodStartDate} >= ${options.periodStartDate}`
-    );
-  }
-
-  if (options?.periodEndDate) {
-    conditions.push(
-      sql`${supplierFileUpload.periodEndDate} <= ${options.periodEndDate}`
+      lte(supplierFileUpload.periodStartDate, options.periodOverlap.end),
+      gte(supplierFileUpload.periodEndDate, options.periodOverlap.start)
     );
   }
 

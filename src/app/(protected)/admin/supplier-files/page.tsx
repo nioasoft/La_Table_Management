@@ -326,6 +326,19 @@ export default function SupplierFilesPage() {
   );
 
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
+
+  // The upload history below lists the files of the period picked in step 2.
+  const historyPeriod = useMemo(() => {
+    const period = selectedPeriodKey ? getPeriodByKey(selectedPeriodKey) : null;
+    return period
+      ? {
+          start: formatDateAsLocal(period.startDate),
+          end: formatDateAsLocal(period.endDate),
+          nameHe: period.nameHe,
+        }
+      : undefined;
+  }, [selectedPeriodKey]);
+
   const isMultiFile = (selectedSupplier?.fileMapping?.maxUploadFiles ?? 1) > 1;
 
   // Track if initial selection from URL has been done
@@ -1459,11 +1472,15 @@ export default function SupplierFilesPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">היסטוריית העלאות - {selectedSupplier.name}</CardTitle>
+            {historyPeriod && (
+              <CardDescription>קבצים שהועלו ל{historyPeriod.nameHe}</CardDescription>
+            )}
           </CardHeader>
           <CardContent>
             <UploadHistoryPanel
               supplierId={selectedSupplierId}
               supplierName={selectedSupplier.name}
+              period={historyPeriod}
             />
           </CardContent>
         </Card>

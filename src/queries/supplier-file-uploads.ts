@@ -7,10 +7,17 @@ export const supplierFileUploadKeys = {
   lists: () => [...supplierFileUploadKeys.all, "list"] as const,
   list: (filters: Record<string, unknown>) =>
     [...supplierFileUploadKeys.lists(), filters] as const,
-  bySupplier: (supplierId: string) =>
-    [...supplierFileUploadKeys.lists(), { supplierId }] as const,
-  reviewCount: () => [...supplierFileUploadKeys.all, "review", "count"] as const,
+  bySupplier: (supplierId: string, filters?: Record<string, unknown>) =>
+    [...supplierFileUploadKeys.lists(), { supplierId, ...filters }] as const,
+  reviewCount: () =>
+    [...supplierFileUploadKeys.all, "review", "count"] as const,
 };
+
+/** YYYY-MM-DD local dates of a settlement period. */
+export interface UploadPeriodRange {
+  start: string;
+  end: string;
+}
 
 interface SupplierFileUploadsResponse {
   files: SupplierFileUploadWithSupplier[];
@@ -19,27 +26,39 @@ interface SupplierFileUploadsResponse {
 
 async function fetchSupplierFileUploads(
   supplierId?: string,
-  limit?: number
+  limit?: number,
+  period?: UploadPeriodRange
 ): Promise<SupplierFileUploadsResponse> {
   const params = new URLSearchParams();
   if (supplierId) params.set("supplierId", supplierId);
   if (limit) params.set("limit", String(limit));
+  if (period) {
+    params.set("periodStart", period.start);
+    params.set("periodEnd", period.end);
+  }
 
-  const res = await fetchWithTimeout(`/api/supplier-files?${params.toString()}`);
+  const res = await fetchWithTimeout(
+    `/api/supplier-files?${params.toString()}`
+  );
   if (!res.ok) throw new Error("Failed to fetch supplier file uploads");
   return res.json();
 }
 
 /**
- * Hook to fetch upload history for a specific supplier
+ * Hook to fetch upload history for a specific supplier.
+ * With `period`, only files whose period overlaps it.
  */
 export function useSupplierUploadHistory(
   supplierId: string,
-  options?: { limit?: number; enabled?: boolean }
+  options?: { limit?: number; enabled?: boolean; period?: UploadPeriodRange }
 ) {
+  const limit = options?.limit ?? 10;
   return useQuery({
-    queryKey: supplierFileUploadKeys.bySupplier(supplierId),
-    queryFn: () => fetchSupplierFileUploads(supplierId, options?.limit ?? 10),
+    queryKey: supplierFileUploadKeys.bySupplier(supplierId, {
+      limit,
+      period: options?.period,
+    }),
+    queryFn: () => fetchSupplierFileUploads(supplierId, limit, options?.period),
     enabled: options?.enabled !== false && !!supplierId,
   });
 }

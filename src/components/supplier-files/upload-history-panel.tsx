@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useSupplierUploadHistory } from "@/queries/supplier-file-uploads";
+import {
+  useSupplierUploadHistory,
+  type UploadPeriodRange,
+} from "@/queries/supplier-file-uploads";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -36,6 +39,8 @@ import Link from "next/link";
 interface UploadHistoryPanelProps {
   supplierId: string;
   supplierName: string;
+  /** When set, list only the files whose period overlaps it. */
+  period?: UploadPeriodRange & { nameHe: string };
 }
 
 const statusConfig = {
@@ -63,15 +68,34 @@ const statusConfig = {
 };
 
 const INITIAL_ITEMS = 5;
+// A quarter runs up to ~80 files (per-franchisee suppliers); the API caps at 200.
+const PERIOD_LIMIT = 200;
 
 export function UploadHistoryPanel({
   supplierId,
   supplierName,
+  period,
 }: UploadHistoryPanelProps) {
   const [showAll, setShowAll] = useState(false);
-  const { data, isLoading, error } = useSupplierUploadHistory(supplierId, {
-    limit: 10,
+  const latest = useSupplierUploadHistory(supplierId, { limit: 10 });
+  const forPeriod = useSupplierUploadHistory(supplierId, {
+    limit: PERIOD_LIMIT,
+    period: period && { start: period.start, end: period.end },
+    enabled: !!period,
   });
+  const { data, isLoading, error } = period ? forPeriod : latest;
+  // "View all" always counts every upload, not just the selected period's.
+  const allTotal = latest.data?.total;
+  const viewAllLink = (
+    <div className="text-center">
+      <Link
+        href={`/admin/supplier-files/review?supplierId=${supplierId}`}
+        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
+        צפייה בכל ההעלאות{allTotal != null && ` (${allTotal})`}
+      </Link>
+    </div>
+  );
 
   if (isLoading) {
     return (
@@ -91,9 +115,16 @@ export function UploadHistoryPanel({
 
   if (files.length === 0) {
     return (
-      <div className="text-center py-8 text-muted-foreground text-sm">
-        <FileSpreadsheet className="h-10 w-10 mx-auto mb-3 opacity-40" />
-        <p>אין היסטוריית העלאות לספק זה</p>
+      <div className="space-y-3">
+        <div className="text-center py-8 text-muted-foreground text-sm">
+          <FileSpreadsheet className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          <p>
+            {period
+              ? `לא הועלו קבצים ל${period.nameHe}`
+              : "אין היסטוריית העלאות לספק זה"}
+          </p>
+        </div>
+        {period && viewAllLink}
       </div>
     );
   }
@@ -210,14 +241,7 @@ export function UploadHistoryPanel({
       )}
 
       {/* View all link */}
-      <div className="text-center">
-        <Link
-          href={`/admin/supplier-files/review?supplierId=${supplierId}`}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          צפייה בכל ההעלאות ({data?.total || 0})
-        </Link>
-      </div>
+      {viewAllLink}
     </div>
   );
 }
