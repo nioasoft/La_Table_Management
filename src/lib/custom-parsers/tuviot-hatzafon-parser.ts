@@ -45,6 +45,10 @@ const FRANCHISEE_INDICATORS = [
 // Column index for quarterly total
 const TOTAL_COL = 20;
 
+function parseNumber(cell: string): number {
+  return parseFloat(cell.replace(/[,\s]/g, ""));
+}
+
 /**
  * Detect if the file is in the new simple format (2 columns: name, amount)
  */
@@ -115,8 +119,12 @@ function parseSimpleFormat(rawData: unknown[][]): Map<string, number> {
 /**
  * Parse the old complex format with franchisee sections and quarterly totals
  */
-function parseComplexFormat(rawData: unknown[][]): Map<string, number> {
+function parseComplexFormat(rawData: unknown[][]): {
+  amounts: Map<string, number>;
+  grandTotal: number | null;
+} {
   const franchiseeAmounts: Map<string, number> = new Map();
+  let grandTotal: number | null = null;
   let currentFranchisee = "";
 
   // Start from row 3 (after headers)
@@ -127,8 +135,10 @@ function parseComplexFormat(rawData: unknown[][]): Map<string, number> {
     const nameCell = String(row[1] || "").trim();
     const totalCell = String(row[TOTAL_COL] || "").trim();
 
-    // Skip grand total row
+    // Grand total label row — its value sits in the next row
     if (totalCell === 'סה"כ כללי' || totalCell.includes("סה״כ כללי")) {
+      const value = parseNumber(String(rawData[i + 1]?.[TOTAL_COL] ?? ""));
+      grandTotal = isNaN(value) ? null : value;
       break;
     }
 
@@ -147,18 +157,19 @@ function parseComplexFormat(rawData: unknown[][]): Map<string, number> {
     }
 
     // Check if this is a summary row (name is empty, has total value)
+    // Blank "0.00" spacer rows can sit between the products and the real
+    // total (Q3-2026 ויני עזריאלי) — they must not close the block.
     if (currentFranchisee && !nameCell && totalCell) {
-      const amount = parseFloat(totalCell.replace(/[,\s]/g, ""));
+      const amount = parseNumber(totalCell);
       if (!isNaN(amount) && amount !== 0) {
         const existing = franchiseeAmounts.get(currentFranchisee) || 0;
         franchiseeAmounts.set(currentFranchisee, existing + amount);
+        currentFranchisee = "";
       }
-      // Reset after getting total
-      currentFranchisee = "";
     }
   }
 
-  return franchiseeAmounts;
+  return { amounts: franchiseeAmounts, grandTotal };
 }
 
 /**
@@ -208,6 +219,7 @@ export function parseTuviotHatzafonFile(buffer: Buffer): FileProcessingResult {
 
     // Detect format and parse accordingly
     let franchiseeAmounts: Map<string, number>;
+    let grandTotal: number | null = null;
 
     if (isSimpleFormat(rawData)) {
       // New simple format
@@ -219,7 +231,7 @@ export function parseTuviotHatzafonFile(buffer: Buffer): FileProcessingResult {
         legacyErrors.push("File is empty or too short for complex format");
         return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, 0);
       }
-      franchiseeAmounts = parseComplexFormat(rawData);
+      ({ amounts: franchiseeAmounts, grandTotal } = parseComplexFormat(rawData));
     }
 
     // Convert to ParsedRowData
@@ -246,6 +258,18 @@ export function parseTuviotHatzafonFile(buffer: Buffer): FileProcessingResult {
       totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
       processedRows++;
+    }
+
+    // A block the parser lost shows up as a gap against the file's own total
+    // (each row is rounded to whole shekels, so allow ₪0.5 drift per row)
+    const tolerance = processedRows * 0.5 + 1;
+    if (grandTotal !== null && Math.abs(totalNetAmount - grandTotal) > tolerance) {
+      const fmt = (n: number) => n.toLocaleString("he-IL", { maximumFractionDigits: 2 });
+      const details =
+        `סכום הזכיינים שנקלטו (₪${fmt(totalNetAmount)}) שונה מסה"כ כללי בקובץ ` +
+        `(₪${fmt(grandTotal)}) — ייתכן שזכיין לא נקלט`;
+      warnings.push(createFileProcessingError("ROW_PARSE_ERROR", { details }));
+      legacyWarnings.push(details);
     }
 
     if (processedRows === 0) {
