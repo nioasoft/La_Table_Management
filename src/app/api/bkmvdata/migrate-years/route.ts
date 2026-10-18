@@ -84,8 +84,9 @@ export async function POST(request: NextRequest) {
         file.franchiseeId,
         bkmvResult.monthlyBreakdown,
         bkmvResult.supplierMatches || null,
-        file.id,
-        { forceOverwrite: true }
+        // No forceOverwrite: each file merges only the months it owns
+        // (archive-ownership), so the replay converges on every month's owner.
+        file.id
       );
 
       for (const y of result.updated) {

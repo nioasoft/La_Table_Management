@@ -81,6 +81,16 @@ export {
   trustedSupplierId,
 } from './monthly-breakdown';
 
+// Year-archive ownership (which file owns each archive month)
+export {
+  STRAY_MONTH_RATIO,
+  monthTxnCounts,
+  archiveMonthOwners,
+  withTrustedSupplierIds,
+  canonicalArchiveMonths,
+} from './archive-ownership';
+export type { ArchiveSourceFile, ArchiveFileMonths } from './archive-ownership';
+
 // Formatters
 export { formatAmount } from './formatters';
 

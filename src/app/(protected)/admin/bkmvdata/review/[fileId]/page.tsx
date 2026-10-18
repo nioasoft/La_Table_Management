@@ -427,7 +427,8 @@ export default function FileDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
       setEditingMatch(null);
       setSelectedNewSupplier("");
-      toast.success(data?.message || "ההתאמה נשמרה");
+      // supersededMonths: a newer BKMV file owns those months, so the archive kept its data
+      (data?.supersededMonths?.length ? toast.warning : toast.success)(data?.message || "ההתאמה נשמרה");
     },
     onError: (err: Error) => {
       toast.error(err.message || "שמירת ההתאמה נכשלה");
@@ -452,7 +453,7 @@ export default function FileDetailsPage() {
       queryClient.invalidateQueries({ queryKey: ["bkmvdata", "review", fileId] });
       setUnmatchingMatch(null);
       setEditingMatch(null);
-      toast.success(data?.message || "ההתאמה בוטלה");
+      (data?.supersededMonths?.length ? toast.warning : toast.success)(data?.message || "ההתאמה בוטלה");
     },
     onError: (err: Error) => {
       toast.error(err.message || "ביטול ההתאמה נכשל");
@@ -643,6 +644,10 @@ export default function FileDetailsPage() {
 
   const { file, franchisee, processingResult, supplierMatches, revenueAccounts, allAccountSummaries, savedRevenueCodes } = fileData;
   const isReviewed = file.processingStatus === "approved" || file.processingStatus === "rejected";
+  // Approved files keep manual match + unmatch: a partial (<100%) match only
+  // counts in the reconciliation once confirmed manually (trustedSupplierId).
+  // Rejected files stay read-only.
+  const canEditMatches = file.processingStatus !== "rejected";
 
   return (
     <div className="container mx-auto px-4 py-3">
@@ -1142,7 +1147,7 @@ export default function FileDetailsPage() {
                 לחץ &quot;סמן כהכנסה&quot; כדי לשמור חשבון כהכנסות לזכיין. השינוי נשמר מיד.
                 {isReviewed && (
                   <span className="block mt-0.5 text-amber-600">
-                    ניתן לעדכן סיווג הכנסות גם בקובץ מאושר — שאר ההתאמות נעולות לאחר אישור.
+                    ניתן לעדכן סיווג הכנסות גם בקובץ מאושר.
                   </span>
                 )}
               </CardDescription>
@@ -1226,7 +1231,7 @@ export default function FileDetailsPage() {
         <CardHeader className="pb-2 pt-3 px-4">
           <CardTitle className="text-sm font-semibold">טבלת התאמות ספקים</CardTitle>
           <CardDescription className="text-xs">
-            {!isReviewed && "לחץ על עריכה כדי לשנות התאמה או להוסיף כינוי לספק"}
+            {canEditMatches && "לחץ על עריכה כדי לשנות התאמה או להוסיף כינוי לספק. התאמה חלקית (פחות מ-100%) לא נספרת בהצלבה עד שמאשרים אותה בעריכה."}
           </CardDescription>
         </CardHeader>
         <CardContent className="px-4 pb-3 pt-0">
@@ -1262,13 +1267,13 @@ export default function FileDetailsPage() {
                   <TableHead className="text-right text-xs py-2">עסקאות</TableHead>
                   <TableHead className="text-right text-xs py-2">ספק מותאם</TableHead>
                   <TableHead className="text-right text-xs py-2">סטטוס</TableHead>
-                  {!isReviewed && <TableHead className="text-right text-xs py-2">פעולות</TableHead>}
+                  {canEditMatches && <TableHead className="text-right text-xs py-2">פעולות</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredMatches.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isReviewed ? 5 : 6} className="text-center py-4 text-sm text-muted-foreground">
+                    <TableCell colSpan={canEditMatches ? 6 : 5} className="text-center py-4 text-sm text-muted-foreground">
                       {searchQuery.trim() ? "לא נמצאו תוצאות" : "אין נתוני התאמות"}
                     </TableCell>
                   </TableRow>
@@ -1304,7 +1309,7 @@ export default function FileDetailsPage() {
                         )}
                       </TableCell>
                       <TableCell className="py-1.5">{getMatchBadge(match)}</TableCell>
-                      {!isReviewed && (
+                      {canEditMatches && (
                         <TableCell className="py-1.5">
                           <div className="flex gap-0.5">
                             <Button
@@ -1333,8 +1338,8 @@ export default function FileDetailsPage() {
                                 בטל התאמה
                               </Button>
                             )}
-                            {/* Show blacklist + small supplier buttons for unmatched items */}
-                            {!match.matchedSupplierId && match.matchType !== "blacklisted" && match.matchType !== "small_supplier" && (
+                            {/* Show blacklist + small supplier buttons for unmatched items (pre-approval only) */}
+                            {!isReviewed && !match.matchedSupplierId && match.matchType !== "blacklisted" && match.matchType !== "small_supplier" && (
                               <>
                                 <Button
                                   size="sm"
@@ -1448,7 +1453,7 @@ export default function FileDetailsPage() {
 
       {/* Edit Match Dialog */}
       <Dialog open={!!editingMatch} onOpenChange={(open) => !open && setEditingMatch(null)}>
-        <DialogContent>
+        <DialogContent dir="rtl">
           <DialogHeader>
             <DialogTitle>עריכת התאמה</DialogTitle>
             <DialogDescription>
@@ -1460,7 +1465,7 @@ export default function FileDetailsPage() {
           <div className="py-4 space-y-4">
             <div>
               <label className="text-sm font-medium">בחר ספק</label>
-              <Select value={selectedNewSupplier} onValueChange={setSelectedNewSupplier}>
+              <Select value={selectedNewSupplier} onValueChange={setSelectedNewSupplier} dir="rtl">
                 <SelectTrigger className="mt-2">
                   <SelectValue placeholder="בחר ספק..." />
                 </SelectTrigger>

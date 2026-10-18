@@ -6,6 +6,7 @@ import {
   updateUploadedFileProcessingStatus,
 } from "@/data-access/uploadLinks";
 import { logAuditEvent, createAuditContext } from "@/data-access/auditLog";
+import { syncBkmvArchiveForStatusChange } from "@/data-access/bkmv-archive-ownership";
 
 /**
  * POST /api/bkmvdata/review/[fileId]/reprocess
@@ -63,6 +64,9 @@ export async function POST(
       null,
       null
     );
+    // A rejected file's reprocess skipped the archive write (rejected files never
+    // write) — now that it is live again it takes back the months it owns.
+    await syncBkmvArchiveForStatusChange(fileId, previousStatus, "needs_review");
 
     const auditContext = createAuditContext({ user }, request);
     await logAuditEvent(

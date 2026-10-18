@@ -8,9 +8,11 @@
 import { database } from "@/db";
 import {
   franchiseeBkmvYear,
+  uploadedFile,
   type FranchiseeBkmvYear,
 } from "@/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
+import { getLiveBkmvFileMonths, flagSessionsStaleForMonths } from "@/data-access/bkmv-archive-ownership";
 import {
   type MonthlyBreakdown,
   groupMonthlyBreakdownByYear,
@@ -18,7 +20,8 @@ import {
   getAmountForPeriod,
   mergeMonthlyBreakdown,
   changedMonths,
-  groupIntoConsecutiveRuns,
+  archiveMonthOwners,
+  monthTxnCounts,
 } from "@/lib/bkmvdata-parser";
 
 type SupplierMatchEntry = {
@@ -176,6 +179,13 @@ export async function upsertBkmvYearData(
 /**
  * Process a full MonthlyBreakdown, split by year, and upsert each year.
  * Returns summary of which years were updated vs skipped.
+ *
+ * Archive ownership (src/lib/bkmvdata/archive-ownership.ts) is enforced here so
+ * every writer — uploads, reprocess, review edits, scripts — obeys it: a
+ * rejected file never writes, a stray sliver of a month never replaces a full
+ * one, and months a NEWER live file owns stay with it (`ownedByNewer`).
+ * Before this, a stray month or an older file overwrote whole archive months
+ * (קינג קונג רעננה Sep 2025: ₪4.26M → ₪3,835 from a 2026 file).
  */
 export async function upsertFromFullBreakdown(
   franchiseeId: string,
@@ -188,10 +198,40 @@ export async function upsertFromFullBreakdown(
   skipped: number[];
   merged: number[];
   changedMonths: string[];
+  ownedByNewer: string[];
 }> {
-  if (!monthlyBreakdown || Object.keys(monthlyBreakdown).length === 0) {
-    return { updated: [], skipped: [], merged: [], changedMonths: [] };
+  const nothing = { updated: [], skipped: [], merged: [], changedMonths: [], ownedByNewer: [] };
+  if (!monthlyBreakdown || Object.keys(monthlyBreakdown).length === 0) return nothing;
+
+  let ownedByNewer: string[] = [];
+  if (sourceFileId) {
+    const [source] = await database
+      .select({ status: uploadedFile.processingStatus, createdAt: uploadedFile.createdAt })
+      .from(uploadedFile)
+      .where(eq(uploadedFile.id, sourceFileId))
+      .limit(1);
+    if (source?.status === "rejected") return nothing;
+    if (source) {
+      const others = await getLiveBkmvFileMonths(franchiseeId, sourceFileId);
+      const owners = archiveMonthOwners([
+        ...others,
+        { id: sourceFileId, createdAt: source.createdAt, monthTxns: monthTxnCounts(monthlyBreakdown) },
+      ]);
+      const createdAt = new Map(others.map((f) => [f.id, f.createdAt]));
+      const months = Object.keys(monthlyBreakdown);
+      ownedByNewer = months
+        .filter((m) => {
+          const owner = owners.get(m);
+          return owner && owner !== sourceFileId && createdAt.get(owner)! > source.createdAt;
+        })
+        .sort();
+      const breakdown = monthlyBreakdown;
+      monthlyBreakdown = Object.fromEntries(
+        months.filter((m) => owners.get(m) === sourceFileId).map((m) => [m, breakdown[m]])
+      );
+    }
   }
+  if (Object.keys(monthlyBreakdown).length === 0) return { ...nothing, ownedByNewer };
 
   const byYear = groupMonthlyBreakdownByYear(monthlyBreakdown);
   const updated: number[] = [];
@@ -225,13 +265,9 @@ export async function upsertFromFullBreakdown(
 
   // A franchisee's BKMV data just changed — any active reconciliation session
   // that includes this franchisee and overlaps the CHANGED months now has a
-  // stale franchisee-side amount. Flag those sessions so the UI prompts a
-  // rebuild. מבנה אחיד files are cumulative from January, so flagging by the
-  // file's whole span would re-flag every closed period of the year on each
-  // quarterly upload — hence changed months only, grouped into runs so an
-  // upload touching Jan and Jul doesn't drag Feb–Jun along. Best-effort;
-  // dynamic import avoids a circular dependency with reconciliation-v2
-  // (which imports from this module).
+  // stale franchisee-side amount. מבנה אחיד files are cumulative from January,
+  // so flagging by the file's whole span would re-flag every closed period of
+  // the year on each quarterly upload — hence changed months only.
   //
   // skipStaleMarking is for bulk backfills that replay SEVERAL overlapping
   // files for the same franchisee: each replay is diffed against the state the
@@ -241,22 +277,9 @@ export async function upsertFromFullBreakdown(
   const months = [
     ...new Set(monthsChanged.filter((k) => /^\d{4}-\d{2}$/.test(k))),
   ].sort();
+  if (!opts?.skipStaleMarking) await flagSessionsStaleForMonths(franchiseeId, months);
 
-  try {
-    if (months.length > 0 && !opts?.skipStaleMarking) {
-      const { markFranchiseeSessionsStale } = await import("@/data-access/reconciliation-v2");
-      for (const [first, last] of groupIntoConsecutiveRuns(months)) {
-        const [ey, em] = last.split("-").map(Number);
-        // new Date(year, month, 0).getDate() → last day of that 1-indexed month
-        const periodEnd = `${last}-${String(new Date(ey, em, 0).getDate()).padStart(2, "0")}`;
-        await markFranchiseeSessionsStale(franchiseeId, `${first}-01`, periodEnd);
-      }
-    }
-  } catch (staleErr) {
-    console.error("Failed to flag reconciliation sessions stale after BKMV upsert:", staleErr);
-  }
-
-  return { updated, skipped, merged, changedMonths: months };
+  return { updated, skipped, merged, changedMonths: months, ownedByNewer };
 }
 
 /**

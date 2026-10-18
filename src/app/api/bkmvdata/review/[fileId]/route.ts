@@ -12,7 +12,7 @@ import { getFranchiseeById } from "@/data-access/franchisees";
 import { getSupplierById, updateSupplier } from "@/data-access/suppliers";
 import { getFranchiseeRevenueCodesList } from "@/data-access/franchisee-revenue-codes";
 import type { BkmvProcessingResult } from "@/db/schema";
-import { trustedSupplierId } from "@/lib/bkmvdata-parser";
+import { withTrustedSupplierIds } from "@/lib/bkmvdata-parser";
 
 /**
  * GET /api/bkmvdata/review/[fileId] - Get detailed file info for review
@@ -192,6 +192,14 @@ export async function PATCH(
         { status: 404 }
       );
     }
+    // Approved files stay editable (a partial match only counts once confirmed
+    // manually), but a rejected file's data must never re-enter the year archive.
+    if (file.processingStatus === "rejected") {
+      return NextResponse.json(
+        { error: "לא ניתן לערוך התאמות בקובץ שנדחה" },
+        { status: 409 }
+      );
+    }
 
     const processingResult = file.bkmvProcessingResult as BkmvProcessingResult | null;
     if (!processingResult) {
@@ -242,31 +250,12 @@ export async function PATCH(
     const fuzzyMatches = updatedMatches.filter(m => m.matchedSupplierId && m.confidence < 1).length;
     const unmatched = updatedMatches.filter(m => !m.matchedSupplierId).length;
 
-    // Build updated supplier ID map from all matches — fuzzy ones map to null
-    const supplierIdMap = new Map<string, string | null>();
-    for (const match of updatedMatches) {
-      supplierIdMap.set(match.bkmvName, trustedSupplierId(match));
-    }
-
-    // Rebuild monthlyBreakdown supplier IDs to stay in sync
-    let updatedMonthlyBreakdown = processingResult.monthlyBreakdown;
-    if (updatedMonthlyBreakdown) {
-      const rebuilt: typeof updatedMonthlyBreakdown = {};
-      for (const [month, suppliers] of Object.entries(updatedMonthlyBreakdown)) {
-        rebuilt[month] = suppliers.map(entry => ({
-          ...entry,
-          // When this name is in the current matches, use its mapped id — even if it
-          // resolved to null via an unmatch. A plain `?? entry.supplierId` would keep
-          // the OLD supplier id after an unmatch, leaving a phantom in the year archive
-          // (the report reads monthlyBreakdown by supplierId). Only fall back to the
-          // entry's existing id for names not present in the matches at all.
-          supplierId: supplierIdMap.has(entry.supplierName)
-            ? supplierIdMap.get(entry.supplierName) ?? null
-            : entry.supplierId,
-        }));
-      }
-      updatedMonthlyBreakdown = rebuilt;
-    }
+    // Rebuild monthlyBreakdown supplier IDs to stay in sync — fuzzy ones map to
+    // null, and an unmatched name loses its OLD id instead of leaving a phantom in
+    // the year archive (the report reads monthlyBreakdown by supplierId).
+    const updatedMonthlyBreakdown = processingResult.monthlyBreakdown
+      ? withTrustedSupplierIds(processingResult.monthlyBreakdown, updatedMatches)
+      : processingResult.monthlyBreakdown;
 
     const updatedResult: BkmvProcessingResult = {
       ...processingResult,
@@ -288,20 +277,7 @@ export async function PATCH(
     );
 
     // Re-archive to year-based BKMV table with updated matches
-    const franchiseeId = file.franchiseeId;
-    if (franchiseeId && updatedMonthlyBreakdown) {
-      try {
-        const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
-        await upsertFromFullBreakdown(
-          franchiseeId,
-          updatedMonthlyBreakdown,
-          updatedResult.supplierMatches,
-          fileId
-        );
-      } catch (yearError) {
-        console.error("Error archiving BKMV year data:", yearError);
-      }
-    }
+    const supersededMonths = await rearchiveFile(file, updatedResult);
 
     // Optionally add as alias to the supplier.
     // Isolated in try/catch so a failure here doesn't roll back the match update above.
@@ -320,16 +296,19 @@ export async function PATCH(
       }
     }
 
+    const baseMessage = unmatch
+      ? `ההתאמה של "${bkmvName}" בוטלה`
+      : addAsAlias && aliasUpdated
+        ? `התאמה עודכנה והכינוי "${bkmvName}" נוסף לספק ${newSupplier!.name}`
+        : addAsAlias && !aliasUpdated
+          ? `התאמה עודכנה לספק ${newSupplier!.name} (הוספת כינוי נכשלה)`
+          : `התאמה עודכנה לספק ${newSupplier!.name}`;
+
     return NextResponse.json({
       success: true,
       aliasUpdated,
-      message: unmatch
-        ? `ההתאמה של "${bkmvName}" בוטלה`
-        : addAsAlias && aliasUpdated
-          ? `התאמה עודכנה והכינוי "${bkmvName}" נוסף לספק ${newSupplier!.name}`
-          : addAsAlias && !aliasUpdated
-            ? `התאמה עודכנה לספק ${newSupplier!.name} (הוספת כינוי נכשלה)`
-            : `התאמה עודכנה לספק ${newSupplier!.name}`,
+      message: baseMessage + supersededNote(supersededMonths),
+      supersededMonths,
       updatedStats: updatedResult.matchStats,
     });
   } catch (error) {
@@ -506,6 +485,12 @@ async function handleSmallSupplierMarking(
         { status: 404 }
       );
     }
+    if (file.processingStatus === "rejected") {
+      return NextResponse.json(
+        { error: "לא ניתן לערוך התאמות בקובץ שנדחה" },
+        { status: 409 }
+      );
+    }
 
     const processingResult = file.bkmvProcessingResult as BkmvProcessingResult | null;
     if (!processingResult) {
@@ -550,24 +535,11 @@ async function handleSmallSupplierMarking(
     );
 
     // Re-archive to year-based BKMV table
-    const franchiseeId = file.franchiseeId;
-    if (franchiseeId && updatedResult.monthlyBreakdown) {
-      try {
-        const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
-        await upsertFromFullBreakdown(
-          franchiseeId,
-          updatedResult.monthlyBreakdown,
-          updatedResult.supplierMatches,
-          fileId
-        );
-      } catch (yearError) {
-        console.error("Error archiving BKMV year data:", yearError);
-      }
-    }
+    const supersededMonths = await rearchiveFile(file, updatedResult);
 
     return NextResponse.json({
       success: true,
-      message: `"${bkmvName}" סומן כספק קטן ללא עמלה`,
+      message: `"${bkmvName}" סומן כספק קטן ללא עמלה` + supersededNote(supersededMonths),
       updatedStats: updatedResult.matchStats,
     });
   } catch (error) {
@@ -577,4 +549,39 @@ async function handleSmallSupplierMarking(
       { status: 500 }
     );
   }
+}
+
+/**
+ * Re-archive an edited file into franchisee_bkmv_year. upsertFromFullBreakdown
+ * leaves months a NEWER BKMV file owns with it (re-archiving an old file there
+ * would roll its data back) and flags reconciliation sessions overlapping the
+ * actually-changed months stale ("בנה מחדש"). Best-effort: the file edit itself
+ * is already saved. Returns the months a newer file kept.
+ */
+async function rearchiveFile(
+  file: { id: string; franchiseeId: string | null },
+  result: BkmvProcessingResult
+): Promise<string[]> {
+  if (!file.franchiseeId || !result.monthlyBreakdown) return [];
+  try {
+    const { upsertFromFullBreakdown } = await import("@/data-access/franchisee-bkmv-year");
+    const { ownedByNewer } = await upsertFromFullBreakdown(
+      file.franchiseeId,
+      result.monthlyBreakdown,
+      result.supplierMatches,
+      file.id
+    );
+    return ownedByNewer;
+  } catch (yearError) {
+    console.error("Error archiving BKMV year data:", yearError);
+    return [];
+  }
+}
+
+/** Hebrew suffix telling the user which months stayed with a newer file. */
+function supersededNote(months: string[]): string {
+  if (months.length === 0) return "";
+  const fmt = (m: string) => m.split("-").reverse().join("/");
+  const range = months.length === 1 ? fmt(months[0]) : `${fmt(months[0])}–${fmt(months[months.length - 1])}`;
+  return `. חודשים ${range} מכוסים בקובץ מבנה אחיד חדש יותר ולא עודכנו בארכיון — יש לעדכן את ההתאמה בקובץ החדש`;
 }

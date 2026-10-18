@@ -11,6 +11,7 @@ import {
 } from "@/data-access/uploadLinks";
 import { getFranchiseeById } from "@/data-access/franchisees";
 import { logAuditEvent, createAuditContext } from "@/data-access/auditLog";
+import { syncBkmvArchiveForStatusChange } from "@/data-access/bkmv-archive-ownership";
 import type { BkmvProcessingResult } from "@/db/schema";
 
 /**
@@ -129,6 +130,10 @@ export async function POST(request: NextRequest) {
       user.id,
       notes || null
     );
+
+    // Upload-time archiving already wrote this file's months — a reject hands
+    // them back to the next owner (an un-reject takes them back).
+    await syncBkmvArchiveForStatusChange(fileId, previousStatus, newStatus);
 
     // Create audit log entry for the review action
     const auditContext = createAuditContext({ user }, request);
