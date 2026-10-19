@@ -42,6 +42,32 @@ export function normalizeBusinessId(id: string | null | undefined): string | nul
 }
 
 /**
+ * Check whether an ID is a structurally valid Israeli ח.פ / ת.ז:
+ * 8–9 digits after normalization, left-padded to 9, passing the check digit
+ * (weights 1,2,1,2…, digit-sum of each product, total % 10 === 0).
+ *
+ * Supplier customer codes (e.g. "629") fail this, so they can never be
+ * offered as a ח.פ overwrite.
+ *
+ * @example
+ * isValidIsraeliBusinessId("516148947") // true
+ * isValidIsraeliBusinessId("515289702") // false (bad check digit)
+ * isValidIsraeliBusinessId("00629")     // false (too short)
+ */
+export function isValidIsraeliBusinessId(id: string | null | undefined): boolean {
+  const normalized = normalizeBusinessId(id);
+  if (!normalized || normalized.length < 8 || normalized.length > 9) return false;
+
+  const padded = normalized.padStart(9, '0');
+  let total = 0;
+  for (let i = 0; i < 9; i++) {
+    const product = Number(padded[i]) * (i % 2 === 0 ? 1 : 2);
+    total += product > 9 ? product - 9 : product;
+  }
+  return total % 10 === 0;
+}
+
+/**
  * Check if two business IDs match (after normalization).
  *
  * @param id1 - First business ID

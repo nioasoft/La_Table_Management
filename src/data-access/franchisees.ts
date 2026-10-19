@@ -1,6 +1,6 @@
 import { database } from "@/db";
 import { formatDateAsLocal } from "@/lib/date-utils";
-import { normalizeBusinessId } from "@/lib/business-id-utils";
+import { isValidIsraeliBusinessId, normalizeBusinessId } from "@/lib/business-id-utils";
 import {
   franchisee,
   franchiseeStatusHistory,
@@ -1002,7 +1002,10 @@ export async function matchFranchiseeNamesFromFile<
   for (const row of parsedData) {
     let matchResult: FranchiseeMatchResult | null = null;
 
-    // First, try to match by franchiseeId (business ID / מספר עוסק) if available
+    // First, try to match by franchiseeId (business ID / מספר עוסק) if available.
+    // ponytail: not gated on isValidIsraeliBusinessId — an exact hit on a stored
+    // company_id can't suggest an overwrite, and prod holds placeholder IDs
+    // (999999999 / 888888888) that fail the check digit.
     if (row.franchiseeId) {
       const normalizedBusinessId = normalizeBusinessId(row.franchiseeId);
 
@@ -1093,6 +1096,9 @@ export function computeMatchAnomalies<
   }
 >(rows: T[], allFranchisees: Franchisee[]): Anomaly[] {
   const anomalies: Anomaly[] = [];
+  // A franchiseeId that fails the ח.פ check digit is a parser bug (e.g. a
+  // supplier customer code) — never offer it as a company_id overwrite.
+  const invalidBizIds = new Set<string>();
 
   // ── 1. UNKNOWN_BUSINESS_ID — group by file's biz_id ─────────────────────
   // Each unknown biz_id may map to many file rows. Collapse them into one
@@ -1112,6 +1118,10 @@ export function computeMatchAnomalies<
     if (!r.franchiseeId) continue;
     const normalized = normalizeBusinessId(r.franchiseeId);
     if (!normalized) continue;
+    if (!isValidIsraeliBusinessId(normalized)) {
+      invalidBizIds.add(normalized);
+      continue;
+    }
     const existing = unknownGroups.get(normalized) ?? {
       bizId: normalized,
       addresses: new Set<string>(),
@@ -1185,6 +1195,10 @@ export function computeMatchAnomalies<
     const dbNorm = normalizeBusinessId(matched.companyId ?? "");
     if (!fileNorm || !dbNorm) continue;
     if (fileNorm === dbNorm) continue;
+    if (!isValidIsraeliBusinessId(fileNorm)) {
+      invalidBizIds.add(fileNorm);
+      continue;
+    }
 
     anomalies.push({
       code: "BIZ_ID_MISMATCH",
@@ -1266,6 +1280,12 @@ export function computeMatchAnomalies<
         typeof r.rowNumber === "number" ? [r.rowNumber] : undefined,
       affectedAmount: r.netAmount ?? r.grossAmount,
     });
+  }
+
+  if (invalidBizIds.size > 0) {
+    console.warn(
+      `[computeMatchAnomalies] Ignored franchiseeId values failing the ח.פ check digit (parser emitting non-business IDs?): ${Array.from(invalidBizIds).join(", ")}`
+    );
   }
 
   return anomalies;
