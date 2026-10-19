@@ -31,6 +31,10 @@ const VAT_RATE = 0.18;
 const TITLE_PERCENT = /(\d+(?:\.\d+)?)\s*%/; // inside "קאסטרה 10% רבעון 3 2026"
 const BARE_PERCENT = /^(\d+(?:\.\d+)?)\s*%$/; // the invoice line's rate cell
 const HEBREW = /[\u05D0-\u05EA]/;
+// The file only says WHICH section is which — the rates are contractual
+// (הסכם 922), never taken from the file. ponytail: hardcoded, move to supplier
+// config if the agreement changes.
+const CONTRACT_RATES = new Set([17, 10]);
 
 interface Section {
   titleRate: number | null;
@@ -122,6 +126,8 @@ function detectSections(data: unknown[][]): { sections: Section[]; broken: strin
       broken.push(`קטע ${i + 1}: בכותרת ${s.titleRate}% ובשורת החשבונית ${s.invoiceRate}%`);
     } else if (s.titleRate === null && s.invoiceRate === null) {
       broken.push(`קטע ${i + 1}: לא נמצא אחוז עמלה — אין כותרת "קאסטרה N%" ואין שורת חשבונית ספק`);
+    } else if (!CONTRACT_RATES.has((s.titleRate ?? s.invoiceRate)!)) {
+      broken.push(`קטע ${i + 1}: ${s.titleRate ?? s.invoiceRate}% אינו אחוז בהסכם עם הספק (17% / 10%)`);
     }
   });
 

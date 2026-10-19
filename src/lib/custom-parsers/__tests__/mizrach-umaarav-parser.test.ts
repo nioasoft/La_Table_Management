@@ -194,6 +194,16 @@ describe("parseMizrachUmaaravFile — sections without a title", () => {
     expect(r.errors[0].details).toContain("17%");
   });
 
+  it("rejects a rate outside the contract, even when title and invoice line agree", () => {
+    const lowered = Q3_EDITED_NO_10_TITLE.map((row, i) =>
+      i === 0 ? ["קאסטרה 5% רבעון 3 2026"] : row[4] === "17%" ? [...row.slice(0, 4), "5%", "2,424.46"] : row
+    );
+    const r = parseMizrachUmaaravFile(xlsx(lowered));
+
+    expect(r.success).toBe(false);
+    expect(r.errors[0].details).toContain("5% אינו אחוז בהסכם");
+  });
+
   it("warns when the commission disagrees with the supplier's own invoice line", () => {
     const tampered = Q3_EDITED_NO_10_TITLE.map(row => (row[5] === "8,243.15" ? [...row.slice(0, 5), "9,000.00"] : row));
     const r = parseMizrachUmaaravFile(xlsx(tampered));
