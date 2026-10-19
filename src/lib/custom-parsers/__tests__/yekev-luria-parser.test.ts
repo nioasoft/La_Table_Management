@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import * as XLSX from "xlsx";
 import { parseYekevLuriaFile } from "../yekev-luria-parser";
 
 const fixturesDir = resolve(__dirname, "fixtures");
@@ -47,5 +48,50 @@ describe("parseYekevLuriaFile — customer-summary layout (2026-07 export)", () 
     expect(anomaly.severity).toBe("warning");
     expect(anomaly.messageHe).toContain("01/01/26");
     expect(anomaly.messageHe).toContain("30/06/26");
+  });
+});
+
+describe("parseYekevLuriaFile — block layout document types", () => {
+  // Q3-2026 export (upload c06fc4fc) listed every sale twice: as "הזמנה"
+  // (order, doc 7/…) and as "חשבונית מס" (doc 1/…). Summing both billed
+  // 189,330 instead of 94,301. Only invoices and credit notes are sales.
+  const header = [null, 'סך הכל ש"ח לאחר הנחה', null, 'סך הכל ש"ח', "מחיר ליחידה", "כמות", "תאריך", "מספר מסמך", null, "סוג מסמך", null, null, "שם לקוח"];
+  const line = (amount: number, docType: string, customer: string) =>
+    [null, amount, null, amount, null, null, 46208, "1/1", null, docType, null, null, customer];
+  const sub = [null, null, null, null, null, null, null, null, null, null, null, "סה''כ מכירות יין"];
+
+  function workbook(rows: unknown[][]): Buffer {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "דוח מכירות לפי פריטים");
+    return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  }
+
+  const buffer = workbook([
+    [null, null, null, null, null, null, null, null, null, null, null, null, "מכירות יין אדום פריט מספר 7"],
+    [],
+    header,
+    line(100, "חשבונית מס", "קינג קונג חדרה נוי אדרי 50685501"),
+    line(100, "הזמנה", "קינג קונג חדרה נוי אדרי 50685501"),
+    line(-10, "חשבונית מס זיכוי", "קינג קונג חדרה נוי אדרי 50685501"),
+    line(50, "חשבונית מס", "פט ויני כרמיאל מרים 50685580"),
+    line(999, "הזמנה", "מינה טומאיי שרונה בע\"מ שגיא 50685600"),
+    sub,
+  ]);
+
+  it("counts invoices and credit notes, never orders", () => {
+    const r = parseYekevLuriaFile(buffer);
+
+    expect(r.success).toBe(true);
+    expect(r.summary.totalNetAmount).toBe(140);
+    expect(r.data.map((d) => [d.franchisee, d.netAmount])).toEqual([
+      ["קינג קונג חדרה נוי אדרי", 90],
+      ["פט ויני כרמיאל מרים", 50],
+    ]);
+  });
+
+  it("warns about the skipped order rows instead of dropping them silently", () => {
+    const r = parseYekevLuriaFile(buffer);
+    const w = r.warnings.find((x) => x.code === "LURIA_NON_INVOICE_ROWS_SKIPPED");
+    expect(w?.message).toContain("הזמנה");
   });
 });

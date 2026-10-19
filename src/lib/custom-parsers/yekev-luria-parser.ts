@@ -30,6 +30,8 @@
  *   1. Walk the rows once with a SEARCHING / IN_BLOCK state machine.
  *   2. Inside a block, sum column B per cleaned customer name across all items
  *      (credit invoices arrive as negative numbers and naturally net out).
+ *      Only "חשבונית…" document types count — from Q3-2026 the export also
+ *      lists every order ("הזמנה") next to its invoice, which doubled totals.
  *   3. Emit one ParsedRowData per franchisee. File values are net (pre-VAT);
  *      gross = net × 1.18. preCalculatedCommission is not provided.
  */
@@ -53,6 +55,10 @@ const SHEET_PREFIX = "דוח מכירות";
 
 const HEADER_TOTAL_AFTER_DISCOUNT = 'סך הכל ש"ח לאחר הנחה';
 const HEADER_CUSTOMER_NAME = "שם לקוח";
+const HEADER_DOC_TYPE = "סוג מסמך";
+// "חשבונית מס", "חשבונית מס זיכוי", "חשבונית מס קבלה" are sales; orders,
+// delivery notes and receipts duplicate them.
+const INVOICE_DOC_TYPE_PREFIX = "חשבונית";
 
 const BLOCK_HEADER_RE = /^מכירות .+?\s+פריט מספר\s+\S+/;
 const SUBTOTAL_PREFIX = 'סה"כ מכירות';
@@ -137,6 +143,7 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
     }
 
     const aggregates = new Map<string, AggregatedRow>();
+    const skippedByDocType = new Map<string, number>();
     let blocksFound = 0;
 
     let i = 0;
@@ -178,6 +185,7 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
       const header = rows[columnHeaderIdx] ?? [];
       const totalAfterDiscountCol = findColumn(header, HEADER_TOTAL_AFTER_DISCOUNT);
       const customerNameCol = findColumn(header, HEADER_CUSTOMER_NAME);
+      const docTypeCol = findColumn(header, HEADER_DOC_TYPE);
 
       if (totalAfterDiscountCol === -1 || customerNameCol === -1) {
         const w = createCustomError(
@@ -224,6 +232,13 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
           continue;
         }
 
+        const docType = docTypeCol === -1 ? "" : String(row[docTypeCol] ?? "").trim();
+        if (docType && !docType.startsWith(INVOICE_DOC_TYPE_PREFIX)) {
+          skippedByDocType.set(docType, (skippedByDocType.get(docType) ?? 0) + netSale);
+          i++;
+          continue;
+        }
+
         const codeMatch = rawName.match(TRAILING_CUSTOMER_CODE_RE);
         const supplierCustomerCode = codeMatch ? codeMatch[1] : null;
         const cleanedName = rawName.replace(TRAILING_CUSTOMER_CODE_RE, "").trim() || rawName;
@@ -243,6 +258,18 @@ export function parseYekevLuriaFile(buffer: Buffer): FileProcessingResult {
 
         i++;
       }
+    }
+
+    if (skippedByDocType.size > 0) {
+      const summary = Array.from(skippedByDocType, ([type, sum]) => `${type}: ${roundAmount(sum)}`).join(", ");
+      const w = createCustomError(
+        "LURIA_NON_INVOICE_ROWS_SKIPPED",
+        "validation",
+        "warning",
+        `Skipped non-invoice document rows (they duplicate invoiced sales): ${summary}`,
+      );
+      warnings.push(w);
+      legacyWarnings.push(w.message);
     }
 
     if (blocksFound === 0) {
