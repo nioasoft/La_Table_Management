@@ -1,28 +1,20 @@
 /**
  * Custom parser for מזרח ומערב (MIZRACH_UMAARAV) supplier files
  *
- * File structure:
- *   The file contains TWO separate sections with different commission rates:
+ * File structure (one sheet, one block per commission rate):
+ *   - Title "קאסטרה 17% רבעון X" / "קאסטרה 10% רבעון X"
+ *   - Header row: [שם סוכן,] מס' לקוח, שם לקוח, <months>, סכום כולל
+ *   - Data rows, then a totals row with an empty name
+ *   - The supplier's invoice line: "קוד : 600020 | הסכם 922 | 17% | 55,252.45"
  *
- *   Section 1 (17%):
- *   - Row 0: Title "קאסטרה 17% רבעון X"
- *   - Row 1-3: Headers (מס' לקוח, שם לקוח, אוק, נוב, דצמ, סכום כולל) — since
- *     Q3-2026 preceded by a "שם סוכן" column, so columns are found by header
- *   - Row 3+: Data rows
- *   - Ends with "סכום כולל" row
+ * A header row opens a section — NOT the title. A manually edited Q3-2026 file
+ * lost the 10% title, and the title-driven parser billed those rows at 17%.
+ * The rate comes from the title, or else from the invoice line; a section with
+ * neither (or with both disagreeing) fails the file. The invoice line's amount
+ * is the supplier's own commission and is checked against ours.
  *
- *   Section 2 (10%):
- *   - Starts after empty rows following section 1
- *   - Row N: Title "קאסטרה 10% רבעון X"
- *   - Row N+2: Headers
- *   - Row N+3+: Data rows
- *   - Ends with "סכום כולל" row
- *
- * Solution:
- *   - Detect section boundaries by looking for "17%" and "10%" in titles
- *   - Parse each section and collect amounts per franchisee
- *   - Aggregate same franchisee from different sections into one row
- *   - Calculate preCalculatedCommission = (amount17 * 0.17) + (amount10 * 0.10)
+ * Same franchisee across sections → one row; preCalculatedCommission is the
+ * blended Σ(amount × rate), since supplier.default_commission_rate can't mix.
  */
 
 import * as XLSX from "xlsx";
@@ -36,24 +28,17 @@ import { createFileProcessingError } from "../file-processing-errors";
 // VAT rate in Israel
 const VAT_RATE = 0.18;
 
-// Commission rates
-const COMMISSION_RATE_17 = 0.17;
-const COMMISSION_RATE_10 = 0.10;
+const TITLE_PERCENT = /(\d+(?:\.\d+)?)\s*%/; // inside "קאסטרה 10% רבעון 3 2026"
+const BARE_PERCENT = /^(\d+(?:\.\d+)?)\s*%$/; // the invoice line's rate cell
+const HEBREW = /[\u05D0-\u05EA]/;
 
 interface Section {
-  commissionRate: number;
-  startRow: number;
-  headerRow: number;
-  dataStartRow: number;
-  dataEndRow: number;
+  titleRate: number | null;
+  invoiceRate: number | null;
+  invoiceAmount: number | null; // the supplier's own commission for this section
   nameCol: number;
   totalCol: number;
-}
-
-interface FranchiseeAmounts {
-  amount17: number; // Sum of amounts from 17% section
-  amount10: number; // Sum of amounts from 10% section
-  firstRowNumber: number; // First row where this franchisee appeared
+  rows: { name: string; total: number }[];
 }
 
 /**
@@ -83,67 +68,62 @@ function parseCurrency(value: unknown): number {
 }
 
 /**
- * Detect sections in the file by looking for title rows with percentage.
- * A titled section whose header can't be read is reported in `broken` rather
- * than dropped — losing the 10% section silently would under-bill.
+ * Walk the sheet once: a title (any column) closes the current section and
+ * names the next one's rate, a header row opens a section, an invoice line
+ * gives the section its fallback rate. Unusable sections are reported in
+ * `broken` — a section billed at the wrong rate must never pass silently.
  */
 function detectSections(data: unknown[][]): { sections: Section[]; broken: string[] } {
   const sections: Section[] = [];
   const broken: string[] = [];
+  let current: Section | null = null;
+  let pendingTitleRate: number | null = null;
 
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    if (!row || !row[0]) continue;
+  for (const raw of data) {
+    const cells = (raw ?? []).map(c => String(c ?? "").trim());
 
-    const firstCell = String(row[0]).trim();
-
-    // Look for section titles like "קאסטרה 17% רבעון" or "קאסטרה 10% רבעון"
-    const match17 = firstCell.includes("17%");
-    const match10 = firstCell.includes("10%");
-
-    if (match17 || match10) {
-      const commissionRate = match17 ? 17 : 10;
-
-      // Find header row and its columns by text — the supplier shifts columns
-      let headerRow = -1;
-      let nameCol = -1;
-      let totalCol = -1;
-      for (let j = i + 1; j < Math.min(i + 5, data.length); j++) {
-        const cells = (data[j] ?? []).map(c => String(c ?? "").trim());
-        nameCol = cells.findIndex(c => c.includes("שם לקוח"));
-        totalCol = cells.findIndex(c => c.includes("סכום כולל"));
-        if (nameCol >= 0 && totalCol >= 0) {
-          headerRow = j;
-          break;
-        }
-      }
-
-      if (headerRow === -1) {
-        broken.push(`${commissionRate}%`);
-        continue;
-      }
-
-      // Find data end (row with "סכום כולל" in first column)
-      let dataEndRow = data.length;
-      for (let j = headerRow + 1; j < data.length; j++) {
-        const checkRow = data[j];
-        if (checkRow && String(checkRow[0] || "").includes("סכום כולל")) {
-          dataEndRow = j;
-          break;
-        }
-      }
-
-      sections.push({
-        commissionRate,
-        startRow: i,
-        headerRow,
-        dataStartRow: headerRow + 1,
-        dataEndRow,
-        nameCol,
-        totalCol,
-      });
+    const title = cells.find(c => HEBREW.test(c) && TITLE_PERCENT.test(c));
+    if (title) {
+      if (pendingTitleRate !== null) broken.push(`כותרת ${pendingTitleRate}% בלי שורת כותרות עמודות`);
+      pendingTitleRate = Number(title.match(TITLE_PERCENT)![1]);
+      current = null;
+      continue;
     }
+
+    const nameCol = cells.findIndex(c => c.includes("שם לקוח"));
+    const totalCol = cells.findIndex(c => c.includes("סכום כולל"));
+    if (nameCol >= 0 && totalCol >= 0) {
+      current = { titleRate: pendingTitleRate, invoiceRate: null, invoiceAmount: null, nameCol, totalCol, rows: [] };
+      sections.push(current);
+      pendingTitleRate = null;
+      continue;
+    }
+    if (!current) continue;
+
+    const rateCol = cells.findIndex(c => BARE_PERCENT.test(c));
+    if (rateCol >= 0) {
+      current.invoiceRate ??= Number(cells[rateCol].match(BARE_PERCENT)![1]);
+      current.invoiceAmount ??= parseCurrency(raw[rateCol + 1]) || null;
+      continue;
+    }
+
+    // Skip empty/zero rows (incl. the totals row, whose name is empty).
+    // Negative rows are kept — credit lines (e.g. old legal entity of a
+    // franchisee) must net against the positive rows.
+    const name = cells[current.nameCol];
+    const total = parseCurrency(raw[current.totalCol]);
+    if (name && total !== 0) current.rows.push({ name, total });
   }
+
+  if (pendingTitleRate !== null) broken.push(`כותרת ${pendingTitleRate}% בלי שורת כותרות עמודות`);
+
+  sections.forEach((s, i) => {
+    if (s.titleRate !== null && s.invoiceRate !== null && s.titleRate !== s.invoiceRate) {
+      broken.push(`קטע ${i + 1}: בכותרת ${s.titleRate}% ובשורת החשבונית ${s.invoiceRate}%`);
+    } else if (s.titleRate === null && s.invoiceRate === null) {
+      broken.push(`קטע ${i + 1}: לא נמצא אחוז עמלה — אין כותרת "קאסטרה N%" ואין שורת חשבונית ספק`);
+    }
+  });
 
   return { sections, broken };
 }
@@ -190,7 +170,7 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
     const { sections, broken } = detectSections(rawData);
 
     if (broken.length > 0) {
-      const details = `Section ${broken.join(", ")} has a title but no "שם לקוח" + "סכום כולל" header row`;
+      const details = broken.join("; ");
       errors.push(createFileProcessingError("PARSE_ERROR", { details }));
       legacyErrors.push(details);
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
@@ -206,50 +186,38 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
       return createResult(false, data, errors, warnings, legacyErrors, legacyWarnings, rawData.length);
     }
 
-    // Map to aggregate amounts by franchisee name
-    const franchiseeMap = new Map<string, FranchiseeAmounts>();
+    // Aggregate by franchisee name across sections
+    const franchiseeMap = new Map<string, { net: number; commission: number }>();
+    const rates: number[] = [];
 
-    // Process each section and aggregate by franchisee
     for (const section of sections) {
-      const franchiseeColIndex = section.nameCol;
-      const totalColIndex = section.totalCol;
+      const rate = (section.titleRate ?? section.invoiceRate)!; // detectSections guarantees one
+      rates.push(rate);
 
-      for (let i = section.dataStartRow; i < section.dataEndRow; i++) {
-        const row = rawData[i];
-        if (!row) continue;
+      let sectionNet = 0;
+      for (const { name, total } of section.rows) {
+        const entry = franchiseeMap.get(name) ?? { net: 0, commission: 0 };
+        entry.net += total;
+        entry.commission += total * rate / 100;
+        franchiseeMap.set(name, entry);
+        sectionNet += total;
+      }
 
-        const franchiseeName = String(row[franchiseeColIndex] || "").trim();
-        const totalAmount = parseCurrency(row[totalColIndex]);
-
-        // Skip empty rows or rows with zero total. Negative rows are kept —
-        // credit lines (e.g. old legal entity of a franchisee) must net against
-        // the positive rows; commission sync sums per matched franchisee.
-        if (!franchiseeName || totalAmount === 0) continue;
-
-        // Get or create entry for this franchisee
-        let entry = franchiseeMap.get(franchiseeName);
-        if (!entry) {
-          entry = {
-            amount17: 0,
-            amount10: 0,
-            firstRowNumber: i + 1,
-          };
-          franchiseeMap.set(franchiseeName, entry);
-        }
-
-        // Add amount to the appropriate commission rate bucket
-        if (section.commissionRate === 17) {
-          entry.amount17 += totalAmount;
-        } else {
-          entry.amount10 += totalAmount;
-        }
+      // The supplier's invoice line is their own commission for this section
+      const ours = sectionNet * rate / 100;
+      if (section.invoiceAmount !== null && Math.abs(ours - section.invoiceAmount) > 1) {
+        const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        const details =
+          `עמלת קטע ${rate}% שחושבה (₪${fmt(ours)}) שונה מהעמלה בשורת החשבונית של הספק ` +
+          `(₪${fmt(section.invoiceAmount)}) — ייתכן שזכיין לא נקלט או שהאחוז שגוי`;
+        warnings.push(createFileProcessingError("GRAND_TOTAL_MISMATCH", { details }));
+        legacyWarnings.push(details);
       }
     }
 
     // Convert aggregated data to ParsedRowData
     let totalNetAmount = 0;
     let totalGrossAmount = 0;
-    let totalPreCalculatedCommission = 0;
     let processedRows = 0;
     let rowNumber = 1;
 
@@ -259,14 +227,9 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
     );
 
     for (const [franchiseeName, amounts] of sortedFranchisees) {
-      // Calculate total net amount (sum of both sections)
-      const netAmount = roundAmount(amounts.amount17 + amounts.amount10);
+      const netAmount = roundAmount(amounts.net);
       const grossAmount = roundAmount(netAmount * (1 + VAT_RATE));
-
-      // Calculate pre-calculated commission based on rates
-      const preCalculatedCommission = roundAmount(
-        (amounts.amount17 * COMMISSION_RATE_17) + (amounts.amount10 * COMMISSION_RATE_10)
-      );
+      const preCalculatedCommission = roundAmount(amounts.commission);
 
       data.push({
         franchisee: franchiseeName,
@@ -280,7 +243,6 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
 
       totalNetAmount += netAmount;
       totalGrossAmount += grossAmount;
-      totalPreCalculatedCommission += preCalculatedCommission;
       processedRows++;
     }
 
@@ -295,7 +257,7 @@ export function parseMizrachUmaaravFile(buffer: Buffer): FileProcessingResult {
     }
 
     // Add info about sections found
-    const sectionsSummary = sections.map(s => `${s.commissionRate}%`).join(", ");
+    const sectionsSummary = rates.map(r => `${r}%`).join(", ");
     if (sections.length > 0) {
       warnings.push(
         createFileProcessingError("PARSE_ERROR", {

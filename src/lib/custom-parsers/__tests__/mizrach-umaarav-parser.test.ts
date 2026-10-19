@@ -125,3 +125,80 @@ describe("parseMizrachUmaaravFile — Q3-2026 agent column", () => {
     expect(r.errors[0].details).toContain("10%");
   });
 });
+
+// Q3-2026 as re-uploaded after a manual edit (2026-10-14): column A ("שם סוכן")
+// was deleted, taking the "קאסטרה 10%" title and the "סכום כולל" labels with
+// it. The 10% section is recognizable only by its header and the supplier's
+// invoice line — the old title-driven parser billed it at 17%.
+const Q3_EDITED_NO_10_TITLE: unknown[][] = [
+  ["קאסטרה 17% רבעון 3 2026"],
+  [],
+  [],
+  ["מס' לקוח", "שם לקוח", "יול-26", "אוג-26", "ספט-26", "סכום כולל"],
+  ["101818", 'אודון ניהול ואחזקות בע"מ - מינה קיריון', "5,382.35", "4,969.44", "3,971.25", "14,323.04"],
+  ["105381", 'קינג קונג ביג בע"מ', "10,415.25", "10,420.34", "13,330.50", "34,166.09"],
+  ["", "", "15,797.60", "15,389.78", "17,301.75", "48,489.13"],
+  [],
+  ["קוד : 600020 ", "הסכם 922", "", "", "17%", "8,243.15"],
+  [],
+  [],
+  [],
+  [],
+  ["מס' לקוח", "שם לקוח", "יול-26", "אוג-26", "ספט-26", "סכום כולל"],
+  ["101818", 'אודון ניהול ואחזקות בע"מ - מינה קיריון', "1,623.58", "2,105.98", "677.07", "4,406.63"],
+  ["", "", "1,623.58", "2,105.98", "677.07", "4,406.63"],
+  [],
+  ["קוד : 600020 ", "הסכם 922", "", "", "10%", "440.66"],
+];
+
+describe("parseMizrachUmaaravFile — sections without a title", () => {
+  it("bills a title-less section at its invoice-line rate, not the previous section's", () => {
+    const r = parseMizrachUmaaravFile(xlsx(Q3_EDITED_NO_10_TITLE));
+
+    expect(r.success).toBe(true);
+    const udon = r.data.find(d => d.franchisee.includes("אודון"))!;
+    expect(udon.netAmount).toBe(18730); // 14,323.04 + 4,406.63
+    expect(udon.preCalculatedCommission).toBe(2876); // 14,323.04*17% + 4,406.63*10% — prod billed 3,184
+    expect(r.warnings.some(w => w.code === "GRAND_TOTAL_MISMATCH")).toBe(false);
+  });
+
+  it("never reads the supplier's invoice line as a franchisee", () => {
+    const r = parseMizrachUmaaravFile(xlsx(Q3_EDITED_NO_10_TITLE));
+    expect(r.data.map(d => d.franchisee)).toEqual(
+      expect.not.arrayContaining([expect.stringContaining("הסכם")])
+    );
+    expect(r.data).toHaveLength(2);
+  });
+
+  it("finds a title that is not in column A", () => {
+    const moved = Q3_AGENT_COLUMN.map((row, i) => (i === 0 ? ["", ...row] : row));
+    const r = parseMizrachUmaaravFile(xlsx(moved));
+
+    expect(r.success).toBe(true);
+    expect(r.data.find(d => d.franchisee.includes("ביג"))?.preCalculatedCommission).toBe(5808);
+  });
+
+  it("fails when a section has neither a title nor an invoice-line rate", () => {
+    const noRate = Q3_EDITED_NO_10_TITLE.filter(row => row[4] !== "10%");
+    const r = parseMizrachUmaaravFile(xlsx(noRate));
+
+    expect(r.success).toBe(false);
+    expect(r.errors[0].details).toContain("אחוז עמלה");
+  });
+
+  it("fails when the title and the invoice line disagree on the rate", () => {
+    const disagree = Q3_EDITED_NO_10_TITLE.map((row, i) => (i === 0 ? ["קאסטרה 10% רבעון 3 2026"] : row));
+    const r = parseMizrachUmaaravFile(xlsx(disagree));
+
+    expect(r.success).toBe(false);
+    expect(r.errors[0].details).toContain("17%");
+  });
+
+  it("warns when the commission disagrees with the supplier's own invoice line", () => {
+    const tampered = Q3_EDITED_NO_10_TITLE.map(row => (row[5] === "8,243.15" ? [...row.slice(0, 5), "9,000.00"] : row));
+    const r = parseMizrachUmaaravFile(xlsx(tampered));
+
+    expect(r.success).toBe(true);
+    expect(r.warnings.find(w => w.code === "GRAND_TOTAL_MISMATCH")?.details).toContain("9,000");
+  });
+});
