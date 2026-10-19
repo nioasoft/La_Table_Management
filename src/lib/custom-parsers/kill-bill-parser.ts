@@ -84,13 +84,21 @@ function detectNewLayout(rawData: unknown[][]): NewLayoutColumns | null {
     const franchiseeCol = headers.findIndex((h) => h.includes("שם לקוח"));
     if (franchiseeCol === -1) continue;
 
+    // "ללא מע"מ" (Q3-2026: "הכנסה (ללא מע"מ)") mentions VAT but is NET —
+    // matching it as gross divided every amount by 1.18 a second time.
+    const excludesVat = (h: string) => h.includes("ללא");
     // Gross carries a VAT marker — written "מע\"מ" or "מע'מ" between exports
-    const grossCol = headers.findIndex((h) => h.includes("הכנסה") && h.includes("מע"));
-    // Net is the bare "הכנסה" — must not match gross or "הכנסה משוערכת"
+    const grossCol = headers.findIndex(
+      (h) => h.includes("הכנסה") && h.includes("מע") && !excludesVat(h)
+    );
+    // Net is the bare "הכנסה" or "הכנסה (ללא מע"מ)" — never "הכנסה משוערכת"
     let netCol = headers.findIndex((h) => h === "הכנסה");
     if (netCol === -1) {
       netCol = headers.findIndex(
-        (h) => h.includes("הכנסה") && !h.includes("מע") && !h.includes("משוערכת")
+        (h) =>
+          h.includes("הכנסה") &&
+          (excludesVat(h) || !h.includes("מע")) &&
+          !h.includes("משוערכת")
       );
     }
 
@@ -156,6 +164,14 @@ function parseNewLayout(
   legacyWarnings: string[]
 ): FileProcessingResult {
   const data: ParsedRowData[] = [];
+  if (cols.netCol === -1) {
+    // Surface the assumption — a header change once hid an 18% under-count here
+    warnings.push(
+      createFileProcessingError("MISSING_AMOUNT_COLUMN", {
+        details: "No net (ללא מע\"מ) column found — net derived as gross ÷ 1.18",
+      })
+    );
+  }
   // One aggregated row per franchisee — but the same franchisee can appear in
   // multiple monthly rows (col "חודש" / per-invoice rows). Aggregate per name.
   const franchiseeTotals = new Map<string, { netAmount: number; grossAmount: number; rowCount: number; firstRow: number }>();

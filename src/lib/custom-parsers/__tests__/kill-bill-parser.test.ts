@@ -43,6 +43,27 @@ describe("parseKillBillFile — Q2-2026 layout (header at row 0, name at col B)"
   });
 });
 
+describe('parseKillBillFile — Q3-2026 layout ("הכנסה (ללא מע"מ)" header)', () => {
+  // Real production export from upload 08f4bfdc (2026-10-01). Its net header
+  // contains both "הכנסה" and "מע", so it was taken for the gross column, no
+  // net column was found, and every amount was divided by 1.18 a second time:
+  // ₪243,365 stored instead of ₪287,170.
+  const buffer = readFileSync(resolve(fixturesDir, "kill-bill-q3-2026.xlsx"));
+
+  it('reads "ללא מע"מ" as net and "כולל מע"מ" as gross', () => {
+    const r = parseKillBillFile(buffer);
+    expect(r.success).toBe(true);
+
+    const carmiel = r.data.find((d) => d.franchisee === 'קינג כרמיאל בע"מ')!;
+    expect(carmiel.netAmount).toBe(12892); // 2261.01 + 5811.01 + 4819.49
+    expect(carmiel.grossAmount).toBe(15212); // 2668 + 6857 + 5687
+
+    // File's own "סה"כ כולל" row: 287,169.53 net / 338,860 gross
+    expect(Math.abs(r.summary.totalNetAmount - 287170)).toBeLessThanOrEqual(5);
+    expect(Math.abs(r.summary.totalGrossAmount - 338860)).toBeLessThanOrEqual(5);
+  });
+});
+
 describe("parseKillBillFile — previous aggregated layout (header at row 1, name at col F)", () => {
   const rows: unknown[][] = [
     ["נכון לתקופה: 01/01/2026-31/03/2026"],
