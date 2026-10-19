@@ -117,7 +117,7 @@ export function parseYevuleiGourmetFile(
   try {
     // NOTE: do NOT pass cellDates:true — it yields Date objects shifted by the
     // runtime timezone (serial 46053 → Jan 30 instead of Jan 31). We read raw
-    // serials and convert via SSF.parse_date_code into a local Date (toDate).
+    // serials and convert them by hand into a local Date (toDate).
     const workbook = XLSX.read(buffer, { type: "buffer" });
 
     // Prefer a "דוח…" sheet (covers both layouts); fall back to first sheet.
@@ -460,16 +460,20 @@ function numberAt(value: unknown): number | null {
   return null;
 }
 
+/** Excel serial for 1970-01-01 */
+const EXCEL_EPOCH_OFFSET = 25569;
+
+/**
+ * Excel serial → local Date at midnight. Converted by hand: `XLSX.SSF` is
+ * undefined under `import * as XLSX` in the Next/Vercel (ESM) bundle, so the
+ * old SSF.parse_date_code path silently returned null for every row in prod.
+ */
 function toDate(value: unknown): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    // Excel serial → local Date (avoid UTC/toISOString shifting the day).
-    const parsed = XLSX.SSF?.parse_date_code?.(value);
-    if (parsed && parsed.y) {
-      return new Date(parsed.y, parsed.m - 1, parsed.d);
-    }
-  }
-  return null;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  const utc = new Date(Math.round((value - EXCEL_EPOCH_OFFSET) * 86_400_000));
+  // Rebuild in local time so the calendar day can't drift (see CLAUDE.md).
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
 }
 
 function findReportYear(rows: unknown[][]): number | null {

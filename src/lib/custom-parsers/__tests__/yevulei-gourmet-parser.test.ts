@@ -1,8 +1,17 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as XLSX from "xlsx";
 import { parseYevuleiGourmetFile } from "../yevulei-gourmet-parser";
+
+// Production (Next's ESM xlsx build) has no XLSX.SSF under `import * as XLSX`;
+// vitest's CJS build does. Strip it so these tests see what Vercel sees —
+// otherwise every date silently parsed as null in prod while tests passed.
+vi.mock("xlsx", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("xlsx")>()),
+  SSF: undefined,
+  set_cptable: undefined, // CJS has none; file-processor guards on it
+}));
 
 const DOC_REPORT_FIXTURE = join(
   __dirname,
