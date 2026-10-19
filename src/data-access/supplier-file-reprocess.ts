@@ -187,7 +187,9 @@ export async function reprocessFileRow(
       vatRate,
       supplierConfig.code ?? undefined,
       supplierConfig.vatExempt,
-      vatProductNames
+      vatProductNames,
+      // Filename-keyed parsers (PASTA_LA_CASA, קראק) read the branch from it
+      file.originalFileName
     );
 
     if (!processResult.success || processResult.data.length === 0) {

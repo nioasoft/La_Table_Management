@@ -43,6 +43,7 @@ export const CUSTOM_PARSER_CODES = new Set([
   "PERESH_PASTA",
   "DIPLOMAT",
   "ביסקוטי",
+  "קראק",
 ]);
 
 // Hebrew points/diacritics (U+0591–U+05C7) and zero-width chars are invisible

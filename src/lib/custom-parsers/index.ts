@@ -43,6 +43,7 @@ export { parseLeumiCardFile } from "./leumi-card-parser";
 export { parsePereshPastaFile } from "./peresh-pasta-parser";
 export { parseDiplomatFile } from "./diplomat-parser";
 export { parseBiscottiFile } from "./biscotti-parser";
+export { parseCrackPieFile } from "./crack-pie-parser";
 
 // Custom parser function type - accepts buffer, optional vatRate, vatProducts, and fileName
 export type CustomParserFn = (
@@ -208,6 +209,11 @@ export const CUSTOM_PARSERS: Record<string, CustomParserFn> = {
   "ביסקוטי": async (buffer, vatRate) => {
     const { parseBiscottiFile } = await import("./biscotti-parser");
     return parseBiscottiFile(buffer, vatRate);
+  },
+  // הולי קראק פאי — branch name comes from the filename only
+  "קראק": async (buffer, vatRate, _vatProducts, fileName) => {
+    const { parseCrackPieFile } = await import("./crack-pie-parser");
+    return parseCrackPieFile(buffer, vatRate, fileName);
   },
 };
 
