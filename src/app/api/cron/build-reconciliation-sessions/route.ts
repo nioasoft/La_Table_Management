@@ -11,9 +11,13 @@
  * session is waiting the next morning.
  *
  * Only approved / auto-approved files are built — a file still in review may
- * still be rejected and replaced, and rebuilding is manual on purpose.
- * Existing sessions are never touched: a period that already has an active
- * session is skipped, so this is safe to re-run and self-heals missed days.
+ * still be rejected and replaced. A period that already has an active session
+ * is skipped, so this is safe to re-run and self-heals missed days.
+ *
+ * Second pass: stale sessions with no human work are rebuilt (the safety net
+ * for the after-response rebuild the stale markers schedule — a failure, a
+ * script, a marker outside a request). Stale sessions WITH human work are
+ * left for Reut's "בנה מחדש" — see humanWorkReason.
  *
  * Cron path registered in vercel.json (daily 04:30, before the morning
  * request/reminder crons). Add ?dry=true to preview without writing.
@@ -21,13 +25,14 @@
  * IMPORTANT: Vercel Cron sends GET, never POST.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq, inArray } from "drizzle-orm";
-import { database } from "@/db";
-import { user } from "@/db/schema";
 import {
   createReconciliationSession,
   getPeriodsWithoutSession,
 } from "@/data-access/reconciliation-v2";
+import {
+  autoRebuildStaleSessions,
+  getAutomationUserId,
+} from "@/data-access/reconciliation-auto-rebuild";
 import { startCronLog } from "@/lib/cron-logger";
 
 /** Statuses that mean "this file is final enough to reconcile against". */
@@ -54,14 +59,9 @@ export async function GET(request: NextRequest) {
   let failed = 0;
 
   try {
-    // createdBy is an FK to user — attribute the automatic build to an admin.
-    const [admin] = await database
-      .select({ id: user.id })
-      .from(user)
-      .where(and(inArray(user.role, ["admin", "super_user"]), eq(user.status, "active")))
-      .limit(1);
+    const adminId = await getAutomationUserId();
 
-    if (!admin) {
+    if (!adminId) {
       await log.complete({ totalProcessed: 0 }, "no active admin user to attribute sessions to");
       return NextResponse.json(
         { error: "no active admin user found" },
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
           p.supplierFileId,
           p.periodStartDate!,
           p.periodEndDate!,
-          admin.id,
+          adminId,
           p.supplierFileIds
         );
         if (session) {
@@ -111,14 +111,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const rebuild = await autoRebuildStaleSessions("all", adminId, {
+      dryRun,
+      limit: MAX_PER_RUN,
+    });
+    failed += rebuild.failed.length;
+
     await log.complete({
-      totalProcessed: created,
+      totalProcessed: created + (dryRun ? 0 : rebuild.rebuilt.length),
       totalFailed: failed,
-      totalSkipped: deferred,
+      totalSkipped: deferred + rebuild.deferred,
       summary: {
         candidates: buildable.length,
         deferredToNextRun: deferred,
         results,
+        staleRebuild: rebuild,
       },
     });
 
@@ -130,6 +137,7 @@ export async function GET(request: NextRequest) {
       failed,
       deferredToNextRun: deferred,
       results,
+      staleRebuild: rebuild,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";

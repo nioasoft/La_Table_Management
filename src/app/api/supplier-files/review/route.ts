@@ -13,6 +13,7 @@ import {
   type SyncCommissionsResult,
 } from "@/data-access/supplier-file-uploads";
 import { logAuditEvent, createAuditContext } from "@/data-access/auditLog";
+import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
 
 /**
  * GET /api/supplier-files/review - Get all supplier files needing review
@@ -156,6 +157,15 @@ export async function POST(request: NextRequest) {
         commissionsSync = await syncCommissionsFromUpload(fileId, user.id);
       } catch (syncError) {
         console.error("Failed to sync commissions on approve:", syncError);
+      }
+    }
+
+    // A rejected file drops out of its period's reconciliation session.
+    if (action === "reject" && file.periodStartDate && file.periodEndDate) {
+      try {
+        await markSupplierSessionsStale(file.supplierId, file.periodStartDate, file.periodEndDate, user.id);
+      } catch (staleErr) {
+        console.error("Failed to flag reconciliation sessions stale after reject:", staleErr);
       }
     }
 
