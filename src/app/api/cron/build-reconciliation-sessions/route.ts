@@ -46,6 +46,15 @@ const BUILDABLE_FILE_STATUSES = new Set(["approved", "auto_approved"]);
 const MAX_PER_RUN = 25;
 
 export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    console.error("CRON_SECRET must be configured");
+    return NextResponse.json({ error: "Server misconfigured" }, { status: 503 });
+  }
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   const isManual = url.searchParams.get("source") === "manual";
   const dryRun = url.searchParams.get("dry") === "true";
