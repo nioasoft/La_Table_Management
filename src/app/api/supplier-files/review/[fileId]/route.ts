@@ -10,11 +10,26 @@ import {
   markSupplierFileMatchAsBlacklisted,
   sweepRematchUnmatchedRows,
   syncCommissionsFromUpload,
+  updateSupplierFileProcessing,
 } from "@/data-access/supplier-file-uploads";
+import type { SupplierFileUpload } from "@/db/schema";
+import { autoApprovesAfterRowFix } from "@/lib/supplier-file-status";
 import {
   addToBlacklist,
 } from "@/data-access/supplier-file-blacklist";
 import { getFranchiseeById } from "@/data-access/franchisees";
+
+const AUTO_APPROVED_NOTE = " — כל השורות מותאמות, הקובץ אושר אוטומטית";
+
+/**
+ * Upload-screen fixes only (reevaluateStatus): the anomaly dialog saves the
+ * file before its rows are fixed, so once they are, it moves to auto_approved
+ * like a file saved after the fixes would have.
+ */
+async function autoApproveIfResolved(file: SupplierFileUpload): Promise<boolean> {
+  if (!file.processingResult || !autoApprovesAfterRowFix(file)) return false;
+  return !!(await updateSupplierFileProcessing(file.id, file.processingResult, "auto_approved"));
+}
 
 /**
  * GET /api/supplier-files/review/[fileId] - Get detailed file info for review
@@ -141,7 +156,7 @@ export async function PATCH(
 
     const { fileId } = await params;
     const body = await request.json();
-    const { originalName, franchiseeId, addAsAlias, blacklist, notes } = body;
+    const { originalName, franchiseeId, addAsAlias, blacklist, notes, reevaluateStatus } = body;
 
     if (!originalName) {
       return NextResponse.json(
@@ -189,10 +204,13 @@ export async function PATCH(
         );
       }
 
+      const autoApproved = reevaluateStatus === true && (await autoApproveIfResolved(updatedFile));
+
       return NextResponse.json({
         success: true,
-        message: `השם "${originalName}" נוסף לרשימה השחורה`,
+        message: `השם "${originalName}" נוסף לרשימה השחורה${autoApproved ? AUTO_APPROVED_NOTE : ""}`,
         updatedStats: updatedFile.processingResult?.matchStats,
+        autoApproved,
       });
     }
 
@@ -232,6 +250,7 @@ export async function PATCH(
     let sweepNewlyMatched = 0;
     let aliasResult: Awaited<ReturnType<typeof addFranchiseeAlias>> | null = null;
     let finalStats = updatedFile.processingResult?.matchStats;
+    let latestFile = updatedFile;
     if (addAsAlias) {
       aliasResult = await addFranchiseeAlias(franchiseeId, originalName);
 
@@ -244,6 +263,7 @@ export async function PATCH(
       if (sweepResult) {
         sweepNewlyMatched = sweepResult.newlyMatchedCount;
         finalStats = sweepResult.file.processingResult?.matchStats;
+        latestFile = sweepResult.file;
       }
     }
 
@@ -254,6 +274,8 @@ export async function PATCH(
     } catch (syncError) {
       console.error("Failed to sync commissions after manual match:", syncError);
     }
+
+    const autoApproved = reevaluateStatus === true && (await autoApproveIfResolved(latestFile));
 
     let message: string;
     if (addAsAlias && aliasResult === "conflict") {
@@ -269,11 +291,14 @@ export async function PATCH(
       message = `התאמה עודכנה לזכיין ${franchisee.name}`;
     }
 
+    if (autoApproved) message += AUTO_APPROVED_NOTE;
+
     return NextResponse.json({
       success: true,
       message,
       updatedStats: finalStats,
       sweepNewlyMatched,
+      autoApproved,
     });
   } catch (error) {
     console.error("Error updating supplier file match:", error);

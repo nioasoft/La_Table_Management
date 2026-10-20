@@ -38,7 +38,9 @@ export async function persistUploadRowChange(
     const response = await fetcher(`/api/supplier-files/review/${savedFileId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(change),
+      // The upload screen promises "every row fixed → auto-approved", even
+      // when the anomaly dialog already saved the file as needs_review
+      body: JSON.stringify({ ...change, reevaluateStatus: true }),
     });
     if (!response.ok) {
       console.error("Saved-file row change failed:", response.status);

@@ -20,7 +20,12 @@ describe("persistUploadRowChange", () => {
       expect.objectContaining({ method: "PATCH" })
     );
     const body = JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
-    expect(body).toEqual({ originalName: "M_-82 (מינה טומאיי)", franchiseeId: "odon", addAsAlias: true });
+    expect(body).toEqual({
+      originalName: "M_-82 (מינה טומאיי)",
+      franchiseeId: "odon",
+      addAsAlias: true,
+      reevaluateStatus: true,
+    });
     expect(result).toEqual({ ok: true, message: "התאמה עודכנה" });
   });
 

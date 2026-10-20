@@ -392,6 +392,12 @@ export default function SupplierFilesPage() {
   const rowChangeMutation = useMutation({
     mutationFn: ({ fileId, change }: { fileId: string | null; change: UploadRowChange }) =>
       persistUploadRowChange(fileId, change),
+    // A fix on a saved file can move it out of the approvals queue
+    onSuccess: (_result, { fileId }) => {
+      if (!fileId) return;
+      queryClient.invalidateQueries({ queryKey: ["supplier-files", "review", "count"] });
+      queryClient.invalidateQueries({ queryKey: ["supplier-file-uploads"] });
+    },
   });
 
   // Internal save function - handles the actual API call
@@ -1130,6 +1136,7 @@ export default function SupplierFilesPage() {
       toast.error(outcome.message ?? "סימון השורה נכשל");
       return;
     }
+    if (outcome.message) toast.success(outcome.message);
 
     // Update the processing result to mark as blacklisted
     setProcessingResult(prev => {
