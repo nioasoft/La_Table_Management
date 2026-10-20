@@ -24,6 +24,8 @@ import {
 } from "./file-processing-errors";
 import type { Anomaly } from "@/types/file-anomalies";
 import { isExcelWebPageShell } from "@/lib/html-table-file";
+import { pickSheetForPeriod, type PeriodRange } from "@/lib/sheet-period";
+import { blockIfSameAsEarlierPeriod } from "@/data-access/stale-file-guard";
 import {
   getCurrentVatRate as getDbVatRate,
   getVatRateForDate as getDbVatRateForDate,
@@ -261,7 +263,8 @@ function shouldSkipRow(row: unknown[], skipKeywords: string[]): boolean {
 export function parseSupplierFile(
   buffer: Buffer,
   fileMapping: SupplierFileMapping,
-  vatConfig: VatConfig
+  vatConfig: VatConfig,
+  period?: PeriodRange
 ): FileProcessingResult {
   const errors: FileProcessingError[] = [];
   const warnings: FileProcessingError[] = [];
@@ -321,17 +324,25 @@ export function parseSupplierFile(
       return createFailedResult();
     }
 
-    // Get the sheet (use configured sheetName or first sheet)
-    let sheetName = workbook.SheetNames[0];
-    if (fileMapping.sheetName) {
-      if (workbook.SheetNames.includes(fileMapping.sheetName)) {
-        sheetName = fileMapping.sheetName;
-      } else {
-        addWarning(createFileProcessingError('PARSE_ERROR', {
-          details: `Configured sheet "${fileMapping.sheetName}" not found, using "${sheetName}"`,
-        }));
-      }
+    // A multi-tab file is resolved by the period labels on its tabs, never
+    // silently by "first sheet" (רסטרטו Q3-2026 billed Q2's tab as Q3).
+    const pick = pickSheetForPeriod(workbook, fileMapping.sheetName, period);
+    if ("errorHe" in pick) {
+      addError(createCustomError('SHEET_PERIOD_AMBIGUOUS', 'configuration', 'error', pick.errorHe, { details: pick.errorHe }));
+      return {
+        ...createFailedResult(),
+        anomalies: [{
+          code: "SHEET_PERIOD_AMBIGUOUS",
+          severity: "blocking",
+          messageHe: pick.errorHe,
+          suggestedActions: [{ type: "reject_file", labelHe: "ביטול" }],
+        }],
+      };
     }
+    const sheetName = pick.sheetName;
+    const sheetAnomalies: Anomaly[] = pick.noteHe
+      ? [{ code: "SHEET_CHOSEN_BY_PERIOD", severity: "info", messageHe: pick.noteHe }]
+      : [];
     if (!sheetName) {
       addError(createFileProcessingError('NO_WORKSHEETS'));
       return createFailedResult();
@@ -587,6 +598,7 @@ export function parseSupplierFile(
         totalNetAmount: roundAmount(totalNetAmount),
         vatAdjusted: vatIncluded,
       },
+      anomalies: sheetAnomalies,
     };
 
   } catch (error) {
@@ -612,7 +624,9 @@ export async function processSupplierFile(
   supplierCode?: string,
   vatExempt?: boolean,
   vatProducts?: Set<string>,
-  fileName?: string
+  fileName?: string,
+  /** The upload's supplier and period — pick a multi-tab file's sheet, refuse a repeat of an earlier period. */
+  context?: { supplierId?: string; period?: PeriodRange }
 ): Promise<FileProcessingResult> {
   // An Excel "Save as Web Page" shell holds no data at all — its rows live in a
   // sibling .files folder that never travels with it. Caught here, before any
@@ -666,7 +680,7 @@ export async function processSupplierFile(
         result.summary.totalNetAmount = roundAmount(totalNet);
       }
 
-      return result;
+      return blockIfSameAsEarlierPeriod(result, context);
     }
   }
 
@@ -698,9 +712,9 @@ export async function processSupplierFile(
     vatRate,
   };
 
-  const result = parseSupplierFile(fileBuffer, fileMapping, vatConfig);
+  const result = parseSupplierFile(fileBuffer, fileMapping, vatConfig, context?.period);
   attachGenericAnomalies(result);
-  return result;
+  return blockIfSameAsEarlierPeriod(result, context);
 }
 
 /**
@@ -718,7 +732,8 @@ function attachGenericAnomalies(result: FileProcessingResult): void {
   const { totalRows, processedRows } = result.summary;
   const anomalies: Anomaly[] = [];
 
-  if (totalRows === 0) {
+  // A file refused with its own blocking reason isn't also "empty"
+  if (totalRows === 0 && !result.anomalies?.some((a) => a.severity === "blocking")) {
     anomalies.push({
       code: "EMPTY_FILE",
       severity: "blocking",

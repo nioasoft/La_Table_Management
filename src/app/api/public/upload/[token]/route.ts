@@ -645,6 +645,14 @@ export async function POST(
             ? await getVatProductNames(supplier.id)
             : undefined;
 
+          // The period this link REQUESTED (file_request metadata.periodKey,
+          // e.g. "2026-Q2") — picks a multi-tab file's tab and refuses a repeat
+          // of an earlier period's amounts.
+          const fileReq = await getFileRequestByUploadLinkId(link.id);
+          const requestedKey = (fileReq?.metadata as Record<string, unknown> | null)?.periodKey;
+          const requestedPeriod =
+            typeof requestedKey === "string" ? getPeriodByKey(requestedKey) : null;
+
           // Process the supplier file
           const fileMapping = supplier.fileMapping as SupplierFileMapping;
           const processResult = await processSupplierFile(
@@ -655,7 +663,16 @@ export async function POST(
             supplier.code ?? undefined,
             supplier.vatExempt ?? false,
             vatProductNames,
-            file.name
+            file.name,
+            {
+              supplierId: supplier.id,
+              period: requestedPeriod
+                ? {
+                    start: formatDateAsLocal(requestedPeriod.startDate),
+                    end: formatDateAsLocal(requestedPeriod.endDate),
+                  }
+                : undefined,
+            }
           );
 
           // Sync extracted products to supplier_product table
@@ -735,17 +752,11 @@ export async function POST(
               periodEndDate = formatDateAsLocal(latest);
             } else {
               // No dates in file (e.g. Nespresso, Fresco, Erel). Prefer the
-              // period that was actually REQUESTED via this link's
-              // file_request (metadata.periodKey, e.g. "2026-Q2") so the
-              // stamp doesn't drift with the upload date. Without this, a
-              // file uploaded inside the reporting quarter resolves to the
-              // *previous* quarter (includeCurrent=false) and gets rejected
-              // as a duplicate of the prior period's report.
-              const fileReq = await getFileRequestByUploadLinkId(link.id);
-              const requestedKey = (fileReq?.metadata as Record<string, unknown> | null)?.periodKey;
-              const requestedPeriod =
-                typeof requestedKey === "string" ? getPeriodByKey(requestedKey) : null;
-
+              // period that was actually REQUESTED via this link (looked up
+              // above) so the stamp doesn't drift with the upload date.
+              // Without this, a file uploaded inside the reporting quarter
+              // resolves to the *previous* quarter (includeCurrent=false) and
+              // gets rejected as a duplicate of the prior period's report.
               if (requestedPeriod) {
                 periodStartDate = formatDateAsLocal(requestedPeriod.startDate);
                 periodEndDate = formatDateAsLocal(requestedPeriod.endDate);

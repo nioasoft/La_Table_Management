@@ -12,6 +12,10 @@ import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchi
 import { getVatProductNames } from "@/data-access/supplier-products";
 import { formatErrorForDisplay } from "@/lib/file-processing-errors";
 import {
+  getAllBlacklisted,
+  normalizeSupplierFileName,
+} from "@/data-access/supplier-file-blacklist";
+import {
   type Anomaly,
   filterFileLevelAnomalies,
 } from "@/types/file-anomalies";
@@ -68,6 +72,8 @@ type FileRow = {
   originalFileName: string;
   fileUrl: string | null;
   processingResult: unknown;
+  periodStartDate?: string | null;
+  periodEndDate?: string | null;
 };
 
 export type SupplierConfig = {
@@ -98,6 +104,8 @@ export async function reprocessSupplierFileById(
       originalFileName: supplierFileUpload.originalFileName,
       fileUrl: supplierFileUpload.fileUrl,
       processingResult: supplierFileUpload.processingResult,
+      periodStartDate: supplierFileUpload.periodStartDate,
+      periodEndDate: supplierFileUpload.periodEndDate,
     })
     .from(supplierFileUpload)
     .where(eq(supplierFileUpload.id, fileId))
@@ -189,7 +197,14 @@ export async function reprocessFileRow(
       supplierConfig.vatExempt,
       vatProductNames,
       // Filename-keyed parsers (PASTA_LA_CASA, קראק) read the branch from it
-      file.originalFileName
+      file.originalFileName,
+      {
+        supplierId: file.supplierId,
+        period:
+          file.periodStartDate && file.periodEndDate
+            ? { start: file.periodStartDate, end: file.periodEndDate }
+            : undefined,
+      }
     );
 
     if (!processResult.success || processResult.data.length === 0) {
@@ -206,7 +221,17 @@ export async function reprocessFileRow(
     const matchOutcome = await matchFranchiseeNamesFromFileWithAnomalies(
       processResult.data
     );
-    const matchedResults = matchOutcome.rows;
+    // "לא רלוונטי" rows stay blacklisted on reprocess, as on upload — רסטרטו's
+    // "Totals" row otherwise came back as an unmatched franchisee.
+    const blocked = new Set(
+      (await getAllBlacklisted(file.supplierId)).map((b) => b.normalizedName)
+    );
+    const isBlocked = (name: string) => blocked.has(normalizeSupplierFileName(name));
+    const matchedResults = matchOutcome.rows.map((r) =>
+      isBlocked(r.franchisee)
+        ? { ...r, matchResult: { ...r.matchResult, matchedFranchisee: null, confidence: 0, requiresReview: false } }
+        : r
+    );
     const matchAnomalies = matchOutcome.anomalies;
 
     const existingResult =
@@ -236,6 +261,7 @@ export async function reprocessFileRow(
       | "manual"
       | "blacklisted"
       | "none" => {
+      if (isBlocked(r.franchisee)) return "blacklisted";
       const manual = manualOverrides.get(r.franchisee);
       if (manual) return "manual";
       if (!r.matchResult.matchedFranchisee) return "none";
@@ -260,7 +286,9 @@ export async function reprocessFileRow(
     ).length;
     const unmatched = matchedResults.filter(
       (r) =>
-        !manualOverrides.has(r.franchisee) && !r.matchResult.matchedFranchisee
+        !manualOverrides.has(r.franchisee) &&
+        !r.matchResult.matchedFranchisee &&
+        !isBlocked(r.franchisee)
     ).length;
 
     const newResult: SupplierFileProcessingResult = {

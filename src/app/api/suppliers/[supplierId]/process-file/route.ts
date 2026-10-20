@@ -263,7 +263,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
       supplier.code ?? undefined,
       supplier.vatExempt ?? false,
       vatProductNames,
-      file.name
+      file.name,
+      {
+        supplierId: supplier.id,
+        period: chosenPeriodStart && chosenPeriodEnd
+          ? { start: chosenPeriodStart, end: chosenPeriodEnd }
+          : undefined,
+      }
     );
 
     // Sync extracted products to supplier_product table

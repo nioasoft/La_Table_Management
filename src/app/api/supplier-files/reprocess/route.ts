@@ -52,6 +52,8 @@ export async function POST(request: NextRequest) {
         fileUrl: supplierFileUpload.fileUrl,
         processingResult: supplierFileUpload.processingResult,
         processingStatus: supplierFileUpload.processingStatus,
+        periodStartDate: supplierFileUpload.periodStartDate,
+        periodEndDate: supplierFileUpload.periodEndDate,
       })
       .from(supplierFileUpload)
       .where(and(...conditions));
@@ -109,6 +111,8 @@ export async function POST(request: NextRequest) {
           originalFileName: file.originalFileName,
           fileUrl: file.fileUrl,
           processingResult: file.processingResult,
+          periodStartDate: file.periodStartDate,
+          periodEndDate: file.periodEndDate,
         },
         vatRate,
         supplierCache
