@@ -15,6 +15,11 @@
  * Usage:
  *   dotenv -e .env -- npx tsx src/scripts/backfill-kosher-filtered-comparisons.ts          # dry run
  *   dotenv -e .env -- npx tsx src/scripts/backfill-kosher-filtered-comparisons.ts --apply
+ *
+ * --since=YYYY-MM-DD limits it to sessions built on/after that local date. Used
+ * 2026-10-22 after 0300c5d (the opposite, kosher-supplier filter) went live and
+ * dropped non-kosher 0/0 rows from sessions built 2026-10-18; without it the run
+ * also widened an unrelated June session (יבולי גורמה Q1).
  */
 
 import dns from "node:dns";
@@ -28,9 +33,11 @@ import {
   supplier,
   supplierBrand,
 } from "@/db/schema";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 
 const APPLY = process.argv.includes("--apply");
+const SINCE = process.argv.find((a) => a.startsWith("--since="))?.slice("--since=".length);
+if (SINCE && !/^\d{4}-\d{2}-\d{2}$/.test(SINCE)) throw new Error(`--since must be YYYY-MM-DD, got ${SINCE}`);
 
 async function main() {
   const sessions = await database
@@ -43,7 +50,13 @@ async function main() {
     })
     .from(reconciliationSession)
     .innerJoin(supplier, eq(supplier.id, reconciliationSession.supplierId))
-    .where(isNull(reconciliationSession.archivedAt));
+    .where(
+      and(
+        isNull(reconciliationSession.archivedAt),
+        // Local midnight (no "Z"), so the cut-off is an Israeli date.
+        SINCE ? gte(reconciliationSession.createdAt, new Date(`${SINCE}T00:00:00`)) : undefined
+      )
+    );
 
   // Same compatibility rule the fixed Pass 2 uses: active + regular + brand.
   const allFranchisees = await database
@@ -88,18 +101,33 @@ async function main() {
     );
 
     if (APPLY) {
-      await database.insert(reconciliationComparison).values(
-        missing.map((f) => ({
-          sessionId: session.id,
-          franchiseeId: f.id,
-          supplierAmount: "0",
-          franchiseeAmount: "0",
-          difference: "0",
-          absoluteDifference: "0",
-          supplierOriginalName: "",
-          status: "auto_approved" as const,
-        }))
-      );
+      // Every added row is auto_approved, so the header counters move by exactly
+      // `n` on this session only. A global recount used to rewrite matched_count
+      // as auto+manual on every live session — the app counts auto_approved only
+      // (recalculateSessionStats), so that inflated ~40 unrelated headers.
+      const n = missing.length;
+      await database.transaction(async (tx) => {
+        await tx.insert(reconciliationComparison).values(
+          missing.map((f) => ({
+            sessionId: session.id,
+            franchiseeId: f.id,
+            supplierAmount: "0",
+            franchiseeAmount: "0",
+            difference: "0",
+            absoluteDifference: "0",
+            supplierOriginalName: "",
+            status: "auto_approved" as const,
+          }))
+        );
+        await tx
+          .update(reconciliationSession)
+          .set({
+            totalFranchisees: sql`${reconciliationSession.totalFranchisees} + ${n}`,
+            matchedCount: sql`${reconciliationSession.matchedCount} + ${n}`,
+            approvedCount: sql`${reconciliationSession.approvedCount} + ${n}`,
+          })
+          .where(eq(reconciliationSession.id, session.id));
+      });
     }
   }
 
@@ -107,25 +135,6 @@ async function main() {
     `\n${APPLY ? "Inserted" : "Would insert"} ${totalMissing} rows across ${sessions.length} live sessions.`
   );
   if (!APPLY && totalMissing > 0) console.log("Re-run with --apply to write.");
-
-  // Session stat counters must follow the new rows or the header lies.
-  if (APPLY) {
-    await database.execute(
-      sql`UPDATE reconciliation_session s SET
-         total_franchisees = c.total,
-         matched_count = c.matched,
-         needs_review_count = c.needs_review
-       FROM (
-         SELECT session_id,
-                COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE status IN ('auto_approved','manually_approved')) AS matched,
-                COUNT(*) FILTER (WHERE status = 'needs_review') AS needs_review
-         FROM reconciliation_comparison GROUP BY session_id
-       ) c
-       WHERE c.session_id = s.id AND s.archived_at IS NULL`
-    );
-    console.log("Session counters recalculated.");
-  }
 }
 
 main()
