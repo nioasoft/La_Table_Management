@@ -973,6 +973,8 @@ export async function rebuildReconciliationSession(
   if (!source) throw new Error(`Source session ${sourceSessionId} not found`);
   if (source.archivedAt) throw new Error("Cannot rebuild an archived session");
 
+  const startedAt = new Date();
+
   // Resolve the latest supplier file(s) for this exact period — handles
   // multi-file suppliers and picks up any upload newer than the source's.
   const periods = await getSupplierPeriods(source.supplierId);
@@ -1005,24 +1007,40 @@ export async function rebuildReconciliationSession(
     throw new Error("Failed to build rebuilt reconciliation session");
   }
 
-  await database
+  const [archived] = await database
     .update(reconciliationSession)
     .set({ archivedAt: new Date(), updatedAt: new Date() })
-    .where(eq(reconciliationSession.id, source.id));
+    .where(eq(reconciliationSession.id, source.id))
+    .returning({ staleAt: reconciliationSession.staleAt });
+
+  // A file or BKMV change that landed while we were reading re-flagged the
+  // source (the markers bump stale_at on every active session in scope) — the
+  // new run may have missed it, so it inherits the flag instead of looking fresh.
+  if (archived?.staleAt && archived.staleAt > startedAt) {
+    await database
+      .update(reconciliationSession)
+      .set({ staleAt: archived.staleAt })
+      .where(eq(reconciliationSession.id, newSession.id));
+    return { ...newSession, staleAt: archived.staleAt };
+  }
 
   return newSession;
 }
 
 /**
- * Flag active (non-archived, not-yet-stale) reconciliation sessions whose period
- * overlaps [periodStart, periodEnd] for this supplier as stale, so the UI prompts
- * a rebuild. Called when a newer supplier file is saved for the supplier+period.
+ * Flag active (non-archived) reconciliation sessions whose period overlaps
+ * [periodStart, periodEnd] for this supplier as stale, then rebuild the ones
+ * with no human work right after the response (scheduleAutoRebuild). Called
+ * whenever the supplier side of the period changes. Already-stale sessions are
+ * re-stamped too — a rebuild in flight uses that to notice it read too early.
+ * `rebuildAs` attributes the rebuild; omitted = the oldest active admin.
  * Returns how many sessions were flagged.
  */
 export async function markSupplierSessionsStale(
   supplierId: string,
   periodStart: string,
-  periodEnd: string
+  periodEnd: string,
+  rebuildAs?: string
 ): Promise<number> {
   const updated = await database
     .update(reconciliationSession)
@@ -1031,19 +1049,20 @@ export async function markSupplierSessionsStale(
       and(
         eq(reconciliationSession.supplierId, supplierId),
         isNull(reconciliationSession.archivedAt),
-        isNull(reconciliationSession.staleAt),
         lte(reconciliationSession.periodStartDate, periodEnd),
         gte(reconciliationSession.periodEndDate, periodStart)
       )
     )
     .returning({ id: reconciliationSession.id });
+  await scheduleRebuildOf(updated.map((s) => s.id), rebuildAs);
   return updated.length;
 }
 
 /**
  * Flag active reconciliation sessions stale because a franchisee's BKMV data
  * changed — limited to sessions whose period overlaps AND that actually contain
- * a comparison row for this franchisee. Called after a BKMV upsert/approve.
+ * a comparison row for this franchisee — then auto-rebuild the safe ones like
+ * markSupplierSessionsStale. Called after a BKMV upsert/approve.
  * Returns how many sessions were flagged.
  */
 export async function markFranchiseeSessionsStale(
@@ -1061,7 +1080,6 @@ export async function markFranchiseeSessionsStale(
     .where(
       and(
         isNull(reconciliationSession.archivedAt),
-        isNull(reconciliationSession.staleAt),
         eq(reconciliationComparison.franchiseeId, franchiseeId),
         lte(reconciliationSession.periodStartDate, periodEnd),
         gte(reconciliationSession.periodEndDate, periodStart)
@@ -1075,7 +1093,15 @@ export async function markFranchiseeSessionsStale(
     .update(reconciliationSession)
     .set({ staleAt: new Date(), updatedAt: new Date() })
     .where(inArray(reconciliationSession.id, ids));
+  await scheduleRebuildOf(ids, undefined);
   return ids.length;
+}
+
+/** Dynamic import: reconciliation-auto-rebuild imports this module. */
+async function scheduleRebuildOf(sessionIds: string[], userId: string | undefined): Promise<void> {
+  if (sessionIds.length === 0) return;
+  const { scheduleAutoRebuild } = await import("@/data-access/reconciliation-auto-rebuild");
+  scheduleAutoRebuild(sessionIds, userId);
 }
 
 /**
@@ -1451,6 +1477,8 @@ export async function cloneSessionAndMatchAll(
         totalSupplierAmount: source.totalSupplierAmount,
         totalFranchiseeAmount: source.totalFranchiseeAmount,
         totalDifference: source.totalDifference,
+        // The clone copies the source's amounts — stale ones stay flagged.
+        staleAt: source.staleAt,
         runNumber: source.runNumber + 1,
         parentSessionId: source.id,
         archivedAt: null,

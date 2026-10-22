@@ -409,14 +409,17 @@ export default function ReconciliationComparisonPage({ params }: PageProps) {
       )}
 
       {/* Stale banner — a newer supplier file or BKMV upload landed for this
-          period after the session was built, so its amounts are out of date. */}
+          period after the session was built, so its amounts are out of date.
+          Untouched sessions are rebuilt automatically; this one has approvals,
+          notes or a file decision, so the rebuild waits for Reut. */}
       {isStale && (
         <div className="flex items-center justify-between gap-3 p-3 bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-900 rounded-lg text-sm">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-orange-600" />
             <span className="text-orange-900 dark:text-orange-100">
               הסשן אינו מעודכן — התקבל קובץ ספק או דוח זכיין (מבנה אחיד) חדש לתקופה זו.
-              יש לבנות מחדש כדי לראות את הנתונים העדכניים.
+              לחצו &quot;בנה מחדש&quot; כדי לראות את הנתונים העדכניים. אישורים והערות
+              שהוזנו כאן יישארו בריצה הקודמת ולא יועברו לריצה החדשה.
             </span>
           </div>
           <Button

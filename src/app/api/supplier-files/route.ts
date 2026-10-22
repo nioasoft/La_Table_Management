@@ -342,10 +342,10 @@ export async function POST(request: NextRequest) {
     }
 
     // A newer supplier file for this period makes any existing reconciliation
-    // session's stored amounts out of date — flag them so the UI prompts a
-    // rebuild instead of silently showing stale numbers.
+    // session's stored amounts out of date — flag them; untouched ones are
+    // rebuilt right after this response, the rest get the "בנה מחדש" banner.
     try {
-      await markSupplierSessionsStale(supplierId, effectivePeriodStart, effectivePeriodEnd);
+      await markSupplierSessionsStale(supplierId, effectivePeriodStart, effectivePeriodEnd, user.id);
     } catch (staleErr) {
       console.error("Failed to flag reconciliation sessions stale:", staleErr);
     }

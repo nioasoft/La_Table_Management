@@ -18,6 +18,23 @@ import {
   addToBlacklist,
 } from "@/data-access/supplier-file-blacklist";
 import { getFranchiseeById } from "@/data-access/franchisees";
+import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
+
+/**
+ * A match change alters what the period's reconciliation session should hold
+ * (a branch resolved in review was missing from it) — flag it so it's rebuilt.
+ */
+async function flagPeriodSessionsStale(
+  file: { supplierId: string; periodStartDate: string | null; periodEndDate: string | null },
+  userId: string
+): Promise<void> {
+  if (!file.periodStartDate || !file.periodEndDate) return;
+  try {
+    await markSupplierSessionsStale(file.supplierId, file.periodStartDate, file.periodEndDate, userId);
+  } catch (staleErr) {
+    console.error("Failed to flag reconciliation sessions stale after match change:", staleErr);
+  }
+}
 
 const AUTO_APPROVED_NOTE = " — כל השורות מותאמות, הקובץ אושר אוטומטית";
 
@@ -203,6 +220,7 @@ export async function PATCH(
           { status: 404 }
         );
       }
+      await flagPeriodSessionsStale(file, user.id);
 
       const autoApproved = reevaluateStatus === true && (await autoApproveIfResolved(updatedFile));
 
@@ -274,6 +292,7 @@ export async function PATCH(
     } catch (syncError) {
       console.error("Failed to sync commissions after manual match:", syncError);
     }
+    await flagPeriodSessionsStale(file, user.id);
 
     const autoApproved = reevaluateStatus === true && (await autoApproveIfResolved(latestFile));
 
