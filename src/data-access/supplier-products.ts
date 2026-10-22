@@ -135,15 +135,17 @@ export async function getVatProductNames(
  * Bulk update VAT status for products
  */
 export async function updateProductVatStatus(
+  supplierId: string,
   updates: Array<{ id: string; vatApplicable: boolean }>
 ): Promise<number> {
   let updated = 0;
 
   for (const { id, vatApplicable } of updates) {
+    // Scoped to the supplier in the URL — a product id alone could flip another supplier's item
     const result = await database
       .update(supplierProduct)
       .set({ vatApplicable })
-      .where(eq(supplierProduct.id, id));
+      .where(and(eq(supplierProduct.id, id), eq(supplierProduct.supplierId, supplierId)));
 
     if (result.rowCount && result.rowCount > 0) {
       updated++;
