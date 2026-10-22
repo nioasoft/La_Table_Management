@@ -335,7 +335,7 @@ export default function SessionsListPage() {
                               alone means "a newer file landed — rebuild me". The
                               session page has the banner and the rebuild button. */}
                           {session.staleAt && (
-                            <Badge variant="warning" className="gap-1" title="התקבל קובץ חדש לתקופה — יש לבנות מחדש">
+                            <Badge variant="warning" className="gap-1" title={'התקבל קובץ חדש לתקופה — היכנסו לסשן ולחצו "בנה מחדש"'}>
                               <AlertTriangle className="h-3 w-3" />
                               לא מעודכן
                             </Badge>
