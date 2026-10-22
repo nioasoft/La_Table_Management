@@ -124,11 +124,23 @@ export function SupplierProductsTab({ supplierId }: SupplierProductsTabProps) {
       });
 
       if (!res.ok) throw new Error("Failed to save");
+      const { recalculated = 0, failed = 0 } = (await res.json()) as {
+        recalculated?: number;
+        failed?: number;
+      };
 
       setChanges(new Map());
-      setSaveMessage("סטטוס מע״מ עודכן בהצלחה");
-      setTimeout(() => setSaveMessage(null), 3000);
-      await fetchProducts();
+      setSaveMessage(
+        recalculated > 0
+          ? `סטטוס מע״מ עודכן · ${recalculated} קבצי ספק חושבו מחדש וההצלבות שלהם סומנו לבנייה מחדש`
+          : "סטטוס מע״מ עודכן בהצלחה"
+      );
+      setTimeout(() => setSaveMessage(null), recalculated > 0 ? 8000 : 3000);
+      await fetchProducts(); // clears `error` — the reprocess warning goes after it
+      if (failed > 0) {
+        setError("סטטוס מע״מ נשמר, אבל חלק מקבצי הספק לא חושבו מחדש — ההצלבה עדיין לפי הסימון הקודם");
+        console.error(`VAT reprocess: ${failed} supplier files failed`);
+      }
     } catch (err) {
       setError("שגיאה בשמירת השינויים");
       console.error("Failed to save:", err);

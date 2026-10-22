@@ -4,7 +4,8 @@ import { parseAleAleFile } from "../ale-ale-parser";
 
 /** Build a windows-1255 CSV buffer the way עלה עלה exports arrive */
 function csv(rows: string[][]): Buffer {
-  const text = rows.map(r => r.join(",")).join("\r\n");
+  // Item names carry a unit after a comma ("שום קלוף מובחר,קג") — quoted, as exported
+  const text = rows.map(r => r.map(c => (c.includes(",") ? `"${c}"` : c)).join(",")).join("\r\n");
   return iconv.encode(text, "windows-1255");
 }
 
@@ -43,5 +44,31 @@ describe("parseAleAleFile — header-driven column detection", () => {
     expect(r.data[0].netAmount).toBe(140);
     // Product NAME (not quantity/מקט) — per-item VAT matching depends on this
     expect(r.summary.extractedProducts).toEqual(["אוכמניות"]);
+  });
+});
+
+describe("parseAleAleFile — per-item VAT", () => {
+  // Vini Azrieli Q3-2026: one unflagged ₪260 line left a ₪47 gap against מבנה אחיד
+  const buf = csv([
+    ["חברה", "תקופה", "קבוצת לקוח", "שם לקוח", "שם פריט", "כמות", "מחיר", "מחיר תקליט", "סהכ לפריט", "מקט"],
+    ["עלה עלה", "אוג-26", "מינה טומיי", "פאט ויני עזריאלי חיפה", "שום קלוף מובחר,קג", "10", "27", "לא", "270", "1"],
+    ["עלה עלה", "אוג-26", "מינה טומיי", "פאט ויני עזריאלי חיפה", "עגבניות סופריי 2 קג מארז,חבילה", "1", "260", "לא", "260", "2080"],
+    ["עלה עלה", "אוג-26", "מינה טומיי", "פאט ויני עזריאלי חיפה", "חסה לאליק,נספאק", "10", "10", "לא", "100", "3"],
+  ]);
+
+  it("adds VAT only on flagged items; net stays the item total", () => {
+    const r = parseAleAleFile(buf, 0.18, new Set(["שום קלוף מובחר,קג"]));
+    expect(r.data[0].netAmount).toBe(630);
+    expect(r.data[0].grossAmount).toBe(679); // 630 + 18% × 270 = 678.60 → whole shekels
+  });
+
+  it("flagging one more item raises gross by 18% of that item and leaves net alone", () => {
+    const r = parseAleAleFile(
+      buf,
+      0.18,
+      new Set(["שום קלוף מובחר,קג", "עגבניות סופריי 2 קג מארז,חבילה"])
+    );
+    expect(r.data[0].netAmount).toBe(630);
+    expect(r.data[0].grossAmount).toBe(725); // + 18% × 260 = 46.80 → 725.40 → whole shekels
   });
 });

@@ -9,6 +9,9 @@ import {
   syncSupplierProducts,
   getSupplierProductStats,
 } from "@/data-access/supplier-products";
+import { getSupplierById } from "@/data-access/suppliers";
+import { reprocessOpenFilesAfterVatChange } from "@/data-access/supplier-file-reprocess";
+import { productVatUpdateSchema } from "@/schemas/supplier-products";
 
 /**
  * GET /api/suppliers/[supplierId]/products
@@ -35,7 +38,8 @@ export async function GET(
 
 /**
  * PATCH /api/suppliers/[supplierId]/products
- * Bulk update VAT status for products
+ * Bulk update VAT status for products, then re-run the supplier's files in
+ * open periods so the reconciliation sees the new flags.
  * Body: { updates: [{ id: string, vatApplicable: boolean }] }
  */
 export async function PATCH(
@@ -45,23 +49,29 @@ export async function PATCH(
   const authResult = await requireAdminOrSuperUser(request);
   if (isAuthError(authResult)) return authResult;
 
-  await params; // validate params exist
+  const { supplierId } = await params;
 
-  const body = await request.json();
-  const { updates } = body as {
-    updates: Array<{ id: string; vatApplicable: boolean }>;
-  };
-
-  if (!Array.isArray(updates) || updates.length === 0) {
+  const parsed = productVatUpdateSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
     return NextResponse.json(
       { error: "updates array is required" },
       { status: 400 }
     );
   }
 
-  const updated = await updateProductVatStatus(updates);
+  const updated = await updateProductVatStatus(supplierId, parsed.data.updates);
 
-  return NextResponse.json({ updated });
+  // Per-item VAT only exists for vat-exempt suppliers (e.g. ALE_ALE)
+  const sup = updated > 0 ? await getSupplierById(supplierId) : null;
+  const reprocess = sup?.vatExempt
+    ? await reprocessOpenFilesAfterVatChange(supplierId).catch((err: unknown) => {
+        // The flags are saved — report the reprocess failure, don't fail the save
+        console.error(`[vat-reprocess] supplier ${supplierId}:`, err);
+        return { recalculated: 0, failed: 1 };
+      })
+    : { recalculated: 0, failed: 0 };
+
+  return NextResponse.json({ updated, ...reprocess });
 }
 
 /**

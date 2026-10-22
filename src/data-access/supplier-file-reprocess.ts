@@ -1,15 +1,17 @@
 import { database } from "@/db";
-import { supplierFileUpload, supplier } from "@/db/schema";
+import { supplierFileUpload, supplier, reconciliationSession } from "@/db/schema";
 import type {
   SupplierFileProcessingResult,
   SupplierFileMapping,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { getDocument } from "@/lib/storage";
 import { processSupplierFile } from "@/lib/file-processor";
 import { getCurrentVatRate } from "@/data-access/vatRates";
 import { matchFranchiseeNamesFromFileWithAnomalies } from "@/data-access/franchisees";
 import { getVatProductNames } from "@/data-access/supplier-products";
+import { markSupplierSessionsStale } from "@/data-access/reconciliation-v2";
+import { filesInOpenPeriods } from "@/lib/vat-reprocess-targets";
 import { formatErrorForDisplay } from "@/lib/file-processing-errors";
 import {
   getAllBlacklisted,
@@ -368,4 +370,84 @@ export async function reprocessFileRow(
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
+}
+
+export type VatReprocessSummary = {
+  /** Files whose stored gross moved — their sessions were flagged stale. */
+  recalculated: number;
+  failed: number;
+};
+
+/**
+ * A VAT flag in the supplier card only reaches the parser, so a file uploaded
+ * before the flag kept its old gross and the reconciliation gap never moved
+ * (Vini Azrieli Q3-2026: Reut flagged a ₪260 item, ₪47 stayed). Re-run the
+ * supplier's files in open periods and flag the sessions whose gross changed.
+ * Closed periods (session completed / file approved) are left as signed off.
+ * Commissions are computed on net, which a VAT flag never changes.
+ */
+export async function reprocessOpenFilesAfterVatChange(
+  supplierId: string
+): Promise<VatReprocessSummary> {
+  const [files, sessions] = await Promise.all([
+    database
+      .select({
+        id: supplierFileUpload.id,
+        supplierId: supplierFileUpload.supplierId,
+        originalFileName: supplierFileUpload.originalFileName,
+        fileUrl: supplierFileUpload.fileUrl,
+        processingResult: supplierFileUpload.processingResult,
+        periodStartDate: supplierFileUpload.periodStartDate,
+        periodEndDate: supplierFileUpload.periodEndDate,
+      })
+      .from(supplierFileUpload)
+      .where(
+        and(
+          eq(supplierFileUpload.supplierId, supplierId),
+          ne(supplierFileUpload.processingStatus, "rejected")
+        )
+      ),
+    database
+      .select({
+        periodStartDate: reconciliationSession.periodStartDate,
+        periodEndDate: reconciliationSession.periodEndDate,
+        status: reconciliationSession.status,
+      })
+      .from(reconciliationSession)
+      .where(
+        and(
+          eq(reconciliationSession.supplierId, supplierId),
+          isNull(reconciliationSession.archivedAt)
+        )
+      ),
+  ]);
+
+  const placed = files.flatMap((f) =>
+    f.fileUrl && f.periodStartDate && f.periodEndDate
+      ? [{ ...f, periodStartDate: f.periodStartDate, periodEndDate: f.periodEndDate }]
+      : []
+  );
+  // ponytail: re-runs every live file of an open period, not only the one the
+  // session reads — a few downloads per save; narrow it if a supplier piles up re-uploads.
+  const targets = filesInOpenPeriods(placed, sessions);
+
+  const vatRate = await getCurrentVatRate();
+  const cache: SupplierConfigCache = new Map();
+  const summary: VatReprocessSummary = { recalculated: 0, failed: 0 };
+
+  for (const file of targets) {
+    const result = await reprocessFileRow(file, vatRate, cache);
+    if (!result.success) {
+      summary.failed++;
+      console.error(
+        `[vat-reprocess] supplier ${supplierId} file ${file.id} failed: ${result.error}`
+      );
+      continue;
+    }
+    if (result.after.gross === result.before.gross) continue;
+    summary.recalculated++;
+    await markSupplierSessionsStale(supplierId, file.periodStartDate, file.periodEndDate);
+  }
+
+  return summary;
 }
