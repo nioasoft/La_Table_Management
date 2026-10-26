@@ -1,10 +1,11 @@
 /** Hebrew UI copy for the Hashavshevet send feature. All user-facing strings live here. */
 import type { HConnectPlugin } from "@/lib/hconnect";
+import type { RowStatus } from "./classify";
 import type { ExportType, HConnectOutcome, SendStatus } from "./types";
 
 type ApiErrorCode = Extract<HConnectOutcome, { kind: "api_error" }>["code"];
 
-function shekel(n: number): string {
+export function formatShekel(n: number): string {
   return `₪${n.toLocaleString("he-IL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
@@ -33,10 +34,10 @@ export const copy = {
   dataChanged: "הנתונים השתנו מאז התצוגה המקדימה. רעננו ובדקו שוב",
   /** `chunks` = requests sent; each one may land as its own temporary batch (spec §7, §13). */
   sentAwaitingApproval: (count: number, total: number, companyName: string, chunks: number) =>
-    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}. המנה ממתינה לאישור בחשבשבת (זמני)` +
+    `נשלחו ${count} שורות בסך ${formatShekel(total)} לחברה ${companyName}. המנה ממתינה לאישור בחשבשבת (זמני)` +
     (chunks > 1 ? `. השליחה חולקה ל-${chunks} בקשות, וכל אחת עשויה להופיע כמנה זמנית נפרדת` : ""),
   sentApproved: (count: number, total: number, companyName: string, chunks: number) =>
-    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}` + (chunks > 1 ? ` ב-${chunks} בקשות` : ""),
+    `נשלחו ${count} שורות בסך ${formatShekel(total)} לחברה ${companyName}` + (chunks > 1 ? ` ב-${chunks} בקשות` : ""),
   unknownOutcome: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת",
   sendConflict: "השורות האלה כבר נשלחות או נשלחו ממקום אחר. רעננו ובדקו שוב",
   sendBlocked: "יש שגיאות שחוסמות את השליחה. תקנו אותן ונסו שוב",
@@ -68,6 +69,47 @@ export const exportLabels: Record<ExportType, string> = {
   journal_entries: "פקודות יומן",
   client_commission_invoices: "חשבוניות עמלה מלקוחות",
 };
+
+/** The send button and its preview dialog (spec §9). */
+export const previewCopy = {
+  sendButton: "שלח לחשבשבת",
+  sendLabel: (what: string) => `שלח ${what} לחשבשבת`,
+  dialogTitle: (exportType: ExportType) => `שליחה לחשבשבת: ${exportLabels[exportType]}`,
+  dialogDescription: "בדקו את השורות. שום דבר לא נשלח עד הלחיצה על שלח",
+  loading: "טוען תצוגה מקדימה…",
+  loadFailed: "טעינת התצוגה המקדימה נכשלה. נסו שוב",
+  requestFailed: "הבקשה נכשלה. בדקו את החיבור ונסו שוב",
+  empty: "אין מה לשלוח",
+  emptyHint: "לא נמצאו שורות לתקופה או לסינון שנבחרו",
+  retry: "נסו שוב",
+  refresh: "רענן",
+  send: "שלח",
+  sending: "שולח…",
+  close: "סגור",
+  requiresApprovalNote: "המנה תיכנס לזמני ותחכה לאישורך בחשבשבת",
+  noCompanyGroup: "ללא חברה",
+  unknownCompany: "לא מזוהה",
+  statusColumn: "סטטוס",
+  amountColumn: "סכום",
+  groupSummary: (count: number, total: number) => `${count} שורות חדשות, סה"כ ${formatShekel(total)}`,
+  grandTotal: (count: number, total: number) => `סה"כ לשליחה: ${count} שורות, ${formatShekel(total)}`,
+  blockingTitle: "מה חוסם את השליחה",
+  resultTitle: "תוצאת השליחה",
+  nothingToSend: "אין שורות חדשות לשליחה",
+  someCompaniesNotLive: "יש שורות לחברה שעדיין לא מופעלת לשליחה",
+  unknownSender: "משתמש לא ידוע",
+  notSent: "לא נשלחה",
+  sentBy: (when: string, who: string) => `נשלחה ב-${when} על ידי ${who}`,
+  changedAmount: (oldAmount: string, newAmount: string) => `נשלח ${oldAmount}, עכשיו ${newAmount}`,
+  rowStatus: {
+    new: "חדשה",
+    sent: "נשלחה",
+    changed: "השתנתה",
+    before_live: "לפני ההפעלה",
+    no_company: "אין חברה",
+    not_live: "החברה לא מופעלת",
+  } satisfies Record<RowStatus, string>,
+} as const;
 
 /** Spec §10: Hebrew message for a rejected H-Connect call. */
 export function apiErrorMessage(code: ApiErrorCode, plugin: HConnectPlugin, companyName: string): string {

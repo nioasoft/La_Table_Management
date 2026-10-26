@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { FranchiseeCombobox } from "@/components/franchisee-combobox";
+import { HashavshevetSendButton } from "@/components/hashavshevet/send-button";
 import {
   ALLOCATION_NUMBER_THRESHOLD,
   isAllocationNumberMissing,
@@ -407,6 +408,11 @@ export default function CommissionInvoicesPage() {
             <Download className="h-4 w-4 me-2" />
             ייצא לחשבשבת
           </Button>
+          <HashavshevetSendButton
+            exportType="client_commission_invoices"
+            disabled={totals.invoices === 0}
+            params={{ periodMonth, periodYear, franchiseeId: selectedFranchiseeId ?? undefined }}
+          />
           <Button onClick={() => setUploadDialogOpen(true)}>
             <Upload className="h-4 w-4 me-2" />
             העלאת חשבונית

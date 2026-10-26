@@ -80,6 +80,8 @@ import {
 } from "@/queries/client-reconciliation";
 import { useOccasionalClientsNeedingNames } from "@/queries/occasional-clients";
 import { toast } from "sonner";
+import { HashavshevetSendButton } from "@/components/hashavshevet/send-button";
+import { previewCopy } from "@/lib/hashavshevet/copy";
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1054,6 +1056,16 @@ export default function ClientReconciliationPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    {(["franchisee_client_invoices", "journal_entries"] as const).map((exportType) => (
+                      <HashavshevetSendButton
+                        key={exportType}
+                        exportType={exportType}
+                        size="sm"
+                        label={previewCopy.sendLabel(exportType === "journal_entries" ? "תנועות יומן" : "חשבוניות")}
+                        disabled={byFranchiseeData.summary.ok + byFranchiseeData.summary.approved === 0}
+                        params={{ franchiseeId: selectedFranchiseeId, periodMonth, periodYear }}
+                      />
+                    ))}
                   </div>
                 </div>
 
@@ -1457,6 +1469,7 @@ export default function ClientReconciliationPage() {
                       </TableCell>
                       <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         {(s.status === "file_approved" || s.status === "in_progress" || s.status === "completed") && (
+                          <>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -1477,6 +1490,14 @@ export default function ClientReconciliationPage() {
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
+                          <HashavshevetSendButton
+                            exportType="client_commissions"
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs"
+                            params={{ sessionId: s.id, docKind: "invoice" }}
+                          />
+                          </>
                         )}
                       </TableCell>
                     </TableRow>
