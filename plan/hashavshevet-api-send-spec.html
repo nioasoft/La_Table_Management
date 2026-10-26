@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שליחה לחשבשבת — Spec</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#6b6a66;--line:#e2e0da;--card:#fff;--acc:#1f5f8b;--warn:#a5520f;--warnbg:#fff4e8;--okbg:#eef6ee;--code:#f3f1ec}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe7;--mut:#a3a19b;--line:#33322f;--card:#1f1f1d;--acc:#7cb6e0;--warn:#f0a35e;--warnbg:#2c2216;--okbg:#18261a;--code:#262522}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:30px;margin:0 0 4px}
+h2{font-size:22px;margin:44px 0 12px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:18px;margin:26px 0 8px}
+h4{font-size:16px;margin:18px 0 6px}
+.sub{color:var(--mut);margin:0 0 20px}
+a{color:var(--acc)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);padding:12px 14px;border-radius:8px;overflow-x:auto;direction:ltr;text-align:left;line-height:1.5}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:14px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:right;vertical-align:top}
+th{background:var(--code)}
+td:first-child code,td:first-child{white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.warn{background:var(--warnbg);border-color:var(--warn)}
+.warn b:first-child{color:var(--warn)}
+.ok{background:var(--okbg)}
+nav.toc{columns:2;column-gap:32px;font-size:15px}
+nav.toc a{display:block;padding:2px 0;text-decoration:none}
+@media (max-width:640px){nav.toc{columns:1}}
+img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px;margin:6px 0;background:#fff}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:12px 0}
+.flow div{flex:1 1 150px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px}
+.flow div b{display:block;font-size:13px;color:var(--acc)}
+.ref{border:1px solid var(--line);border-radius:10px;padding:4px 18px 14px;margin:18px 0;background:var(--card)}
+.refh{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.src{font-size:13px;font-weight:normal}
+.ltr{direction:ltr;unicode-bidi:embed}
+details summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>שליחה לחשבשבת דרך H-Connect — Spec</h1>
+<p class="sub">מחליף את ייצואי האקסל לחשבשבת בשליחה ישירה דרך ה-API · אושר בבריינסטורמינג 19–26/10/2026 · עודכן 26/10: מנה זמנית ואישור של רעות, בלי DEMO, ותיקונים אחרי מעבר עם רעות · <b>אושר</b> · רקע: <a href="../docs/hashavshevet-api-guide.html">מדריך ה-API</a> · <a href="../docs/hashavshevet-api-experiments.html">יומן הניסויים</a></p>
+
+<nav class="toc card">
+<a href="#goal">1. מטרה והצלחה</a>
+<a href="#decisions">2. החלטות שהתקבלו</a>
+<a href="#scope">3. היקף: ששת הייצואים</a>
+<a href="#companies">4. חברות ומיפוי</a>
+<a href="#data">5. מודל נתונים</a>
+<a href="#builders">6. בוני שורות: אותם חוקים בדיוק</a>
+<a href="#flow">7. זרימת שליחה</a>
+<a href="#api">8. מיפוי ל-API</a>
+<a href="#ui">9. מסכים והרשאות</a>
+<a href="#errors">10. שגיאות ומעקב</a>
+<a href="#tests">11. בדיקות</a>
+<a href="#rollout">12. עלייה לאוויר</a>
+<a href="#open">13. לאימות בשליחה הראשונה</a>
+<a href="#out">14. מחוץ להיקף</a>
+</nav>
+
+<h2 id="goal">1. מטרה והצלחה</h2>
+<p>היום רעות מורידה קובצי אקסל מכמה מסכים, וקולטת אותם ידנית בחשבשבת. אחרי הפרויקט, כפתור "שלח לחשבשבת" שולח את אותן שורות ישירות לחברה הנכונה. מסופון 2, שכבר רץ אוטומטית בשרת של רעות, קולט אותן.</p>
+<div class="card ok"><b>הצלחה:</b> בתחילת חודש ההתחשבנות רעות לא מורידה ולא קולטת אף קובץ. כל שורה מגיעה לחברה הנכונה פעם אחת בלבד, עם אותם נתונים בדיוק שהאקסל היה מוציא.</div>
+
+<h2 id="decisions">2. החלטות שהתקבלו</h2>
+<table>
+<tr><th>#</th><th>החלטה</th></tr>
+<tr><td>1</td><td><b>אותם נתונים ואותם חוקים כמו האקסל.</b> מעבירים לחשבשבת, לא מגדירים מחדש.</td></tr>
+<tr><td>2</td><td><b>אין יותר אקסל.</b> כפתורי האקסל יורדים מהממשק בתחילת החודש. ה-routes של הייצוא נשארים בקוד, כדי שאם צריך אפשר יהיה להפיק אקסל ידנית מהשרת.</td></tr>
+<tr><td>3</td><td><b>תשתית משותפת אחת</b> (גישה א). כל ייצוא מתחבר אליה, ובונים את כל ששת הייצואים.</td></tr>
+<tr><td>4</td><td><b>אין שלב DEMO. בודקים ישר על החברות האמיתיות, דרך הזמני</b> (עדכון 26/10). כל שליחה ממילא נכנסת לזמני ומחכה לאישור של רעות (החלטה 9). אם יש תקלה, רעות דוחה, מתקנים ושולחים שוב. <b>תנאי:</b> השליחה הראשונה לכל חברה קטנה, ורעות מוודאת שהיא נכנסה לזמני, גם בחשבוניות, לפני שממשיכים (§13 #8). לכל חברה יש תאריך "עובדת מול ה-API מתאריך". כל עוד הוא ריק, אי אפשר לשלוח אליה.</td></tr>
+<tr><td>5</td><td><b>נעילה לפי שורה.</b> שורה שנשלחה לחברה לא נשלחת שוב. כך אפשר לשלוח מאוחר יותר רק שורה שחסרה.</td></tr>
+<tr><td>6</td><td><b>חסימה מוחלטת של שליחה חוזרת.</b> כדי לשלוח שורה שוב צריך לפתוח אותה במפורש, עם סיבה. הסיבה לזהירות: בניסוי, חשבונית שנשלחה פעמיים נקלטה פעמיים.</td></tr>
+<tr><td>7</td><td><b>תאריך התחלה לכל חברה.</b> תקופות שלפניו חסומות, כי הן כבר יצאו באקסל.</td></tr>
+<tr><td>8</td><td><b>כלל ביטחון:</b> ייצוא שעד תחילת החודש לא עבר שליחה ראשונה תקינה (נכנס לזמני ורעות אישרה) נשאר החודש באקסל.</td></tr>
+<tr><td>9</td><td><b>כל שליחה נכנסת לזמני, ורעות מאשרת אותה.</b> חשבשבת הגדירו שכל מה שמגיע מה-API נכנס כ<b>מנה זמנית</b> (פקודות יומן) או כ<b>חשבונית זמנית</b>. רעות רואה את המנה בחשבשבת, ו<b>מאשרת את כולה</b> (המנה עוברת לקבוע) או <b>דוחה את כולה</b>, ואז שולחים את המנה שוב. כשהמערכת תוכיח את עצמה, נבקש מחשבשבת לקלוט ישר לקבוע. מאותו רגע שלב האישור אצלנו יכבה (§5, <code>requires_approval</code>).</td></tr>
+</table>
+
+<div class="card warn"><b>מחזור החיים של שליחה (נגזר מהחלטה 9):</b>
+<table>
+<tr><th>סטטוס במערכת</th><th>מה קורה בחשבשבת</th><th>השורות</th></tr>
+<tr><td><b>ממתין לאישור</b></td><td>המנה נמצאת בזמני</td><td>חסומות לשליחה חוזרת. כך לא נכנסים לזמני שני עותקים של אותה שורה</td></tr>
+<tr><td><b>אושר</b></td><td>רעות אישרה, והמנה עברה לקבוע</td><td>נעולות סופית</td></tr>
+<tr><td><b>נדחה</b></td><td>רעות דחתה את המנה</td><td>משתחררות. אפשר לשלוח את המנה שוב</td></tr>
+</table>
+לפני שהיא מאשרת, רעות משווה את סיכום השליחה במערכת (מספר שורות וסה"כ) למנה הזמנית. כך נתפסת גם שורה שמסופון 2 דחה בשקט: סה"כ לא תואם, היא דוחה את המנה, מתקנים ושולחים שוב.</div>
+
+<h2 id="scope">3. היקף: ששת הייצואים</h2>
+<table>
+<tr><th>#</th><th>ייצוא</th><th>מסך</th><th>route היום</th><th>יעד</th><th>ממשק</th></tr>
+<tr><td>1</td><td>עמלות ספקים לפי רשת</td><td>דוחות ← חשבשבת</td><td><code>reports/hashavshevet/export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code></td></tr>
+<tr><td>2</td><td>תמלוגים ושיווק</td><td>זכיינים ← ייצוא חיוב</td><td><code>franchisee-billing/hashavshevet-export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code></td></tr>
+<tr><td>3</td><td>עמלות לקוחות (חשבונית או פקודת יומן)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/client-export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code> / <code>movein</code></td></tr>
+<tr><td>4</td><td>חשבוניות לקוחות של זכיין (ארוחות/גיפט, כולל סיבוס)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/franchisee-client-invoices-export</code></td><td>חברת הזכיין</td><td><code>imovein</code></td></tr>
+<tr><td>5</td><td>פקודות יומן (וולט, משלוחה, 10ביס, חבר, HAAT)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/franchisee-journal-entries-export</code></td><td>חברת הזכיין</td><td><code>movein</code></td></tr>
+<tr><td>6</td><td>חשבוניות עמלה מלקוחות (פקודות יומן)</td><td>לקוחות ← חשבוניות עמלה</td><td><code>clients/commission-invoices/export</code></td><td>חברת הזכיין (המסעדה). אושר עם רעות 26/10</td><td><code>movein</code></td></tr>
+</table>
+<p class="sub">הייצוא ב-<code>commissions/invoice/export</code> הוא דוח סיכום עם גיליון "הכנה לחשבשבת" שמסומן כ-placeholder, ולא קובץ לקליטה. הוא לא בהיקף.</p>
+
+<h2 id="companies">4. חברות ומיפוי</h2>
+<p>הנתונים האלה מוזנים מראש בזמן ההתקנה (seed). רעות רק בודקת אותם במסך ההגדרות.</p>
+<h3>חברות ניהול מותג: היעד של ייצואים 1–3</h3>
+<table>
+<tr><th>מותג (code)</th><th>חברה בחשבשבת</th><th>קובץ</th><th>מזהה</th></tr>
+<tr><td><code>MINNA_TOMEI</code></td><td>ש.מ מינה טומאי (ניהול מותג) בע"מ</td><td><code>smminna</code></td><td>34</td></tr>
+<tr><td><code>VINNI</code></td><td>ויני (ניהול מותג) בע"מ</td><td><code>fv</code></td><td>40</td></tr>
+<tr><td><code>KING_KONG</code></td><td>קינג קונג (ניהול מותג) בע"מ</td><td><code>smminna_2024</code></td><td>46</td></tr>
+</table>
+<h3>חברות זכיינים: היעד של ייצואים 4–6</h3>
+<table>
+<tr><th>זכיין</th><th>קובץ</th><th>מזהה</th></tr>
+<tr><td>קסטרא טומאיי בע"מ</td><td><code>SHEPUDAYAROE</code></td><td>27</td></tr>
+<tr><td>ויני עזריאלי חיפה</td><td><code>fatvini_2021</code></td><td>41</td></tr>
+<tr><td>קינג קונג ביג בע"מ</td><td><code>kingkong_2021</code></td><td>43</td></tr>
+<tr><td>קינג קונג חורב בע"מ</td><td><code>kingkong_2021_2022</code></td><td>45</td></tr>
+<tr><td>ויני רגבה בע"מ</td><td><code>viniregba</code></td><td>47</td></tr>
+<tr><td>קינג קונג חדרה בע"מ</td><td><code>kingkong_hadera_2024</code></td><td>49</td></tr>
+<tr><td>קינג קונג מוצקין בע"מ</td><td><code>kingkong_hadera_2024_2026</code></td><td>57</td></tr>
+</table>
+<p>ל-14 הזכיינים האחרים אין חברה בחשבשבת של רעות. אצלם הכפתור מושבת עם הסבר.</p>
+<h3>חברות נוספות</h3>
+<p>אלה נכנסות לטבלה, אבל לא משויכות לאף מותג או זכיין: <code>sm</code> (28, ש.מ. משאלי ניהול והשקעות), <code>shamim</code> (36, שמיים י.ש השקעות), <code>sm_2026</code> (52, ג'י יזמות וניהול), <code>sharon_mishali25</code> (56, שרון משאלי). <code>DEMO</code> (21) לא נכנסת לטבלה, והסקריפטים בתיקייה <code>scripts/hconnect-*</code> נשארים לניסויים ידניים. שלוש מהן (<code>sm</code>, <code>sm_2026</code>, <code>sharon_mishali25</code>) לא היו ברשימת החברות שהוגדרה להן H-Connect.</p>
+
+<h2 id="data">5. מודל נתונים</h2>
+<h3><code>hashavshevet_company</code></h3>
+<table>
+<tr><th>עמודה</th><th>סוג</th><th>הערה</th></tr>
+<tr><td><code>id</code></td><td>text PK</td><td>uuid</td></tr>
+<tr><td><code>file_name</code></td><td>text unique not null</td><td>הערך שנשלח ב-<code>company</code></td></tr>
+<tr><td><code>comp_id</code></td><td>integer</td><td>המזהה בחשבשבת. לתצוגה ולזיהוי בלוגים של מסופון 2</td></tr>
+<tr><td><code>name_he</code></td><td>text not null</td><td></td></tr>
+<tr><td><code>requires_approval</code></td><td>boolean default true</td><td>true: מה שנשלח נכנס לזמני ומחכה לאישור של רעות. false (אחרי שחשבשבת יעבירו לקליטה ישירה לקבוע): כל שליחה מסומנת "אושר" אוטומטית</td></tr>
+<tr><td><code>live_from</code></td><td>date null</td><td>ריק: החברה לא מופעלת, ואי אפשר לשלוח אליה. מלא: מופעלת, ותקופות שמסתיימות לפני התאריך חסומות</td></tr>
+<tr><td><code>created_at</code>, <code>updated_at</code>, <code>updated_by</code></td><td></td><td></td></tr>
+</table>
+<p>עמודות חדשות: <code>brand.hashavshevet_company_id</code> ו-<code>franchisee.hashavshevet_company_id</code>, שתיהן nullable, FK.</p>
+
+<h3><code>hashavshevet_send</code>: שורה לכל לחיצה</h3>
+<table>
+<tr><th>עמודה</th><th>הערה</th></tr>
+<tr><td><code>id</code></td><td></td></tr>
+<tr><td><code>export_type</code></td><td><code>supplier_commissions</code> | <code>royalties</code> | <code>client_commissions</code> | <code>franchisee_client_invoices</code> | <code>journal_entries</code> | <code>client_commission_invoices</code></td></tr>
+<tr><td><code>company_id</code></td><td>החברה שתוכננה (האמיתית)</td></tr>
+<tr><td><code>target_file_name</code></td><td>קובץ החברה כפי שנשלח (שמור בשליחה גם אם השם ישתנה בעתיד)</td></tr>
+<tr><td><code>plugin</code></td><td><code>imovein</code> / <code>movein</code></td></tr>
+<tr><td><code>params</code></td><td>jsonb: התקופה, הזכיין או המותג, ה-session</td></tr>
+<tr><td><code>row_count</code></td><td></td></tr>
+<tr><td><code>status</code></td><td><code>pending</code> (לפני הקריאה ל-API) → <code>awaiting_approval</code> (ה-API החזיר ok) → <code>approved</code> | <code>rejected</code>. מסלולים חריגים: <code>failed</code> (ה-API החזיר שגיאה; הנעילות משתחררות) ו-<code>unknown</code> (ניתוק; רעות בודקת בזמני וקובעת אם השליחה הגיעה, ואז הסטטוס עובר ל-<code>awaiting_approval</code>, או שלא הגיעה, ואז ל-<code>rejected</code>). שליחה לחברה עם <code>requires_approval=false</code> עוברת ישר ל-<code>approved</code></td></tr>
+<tr><td><code>http_status</code>, <code>response</code> (jsonb), <code>latency_ms</code>, <code>request_id</code></td><td>התשובה המלאה של ה-API, בלי הטוקן</td></tr>
+<tr><td><code>sent_by</code>, <code>sent_at</code>, <code>resolved_by</code>, <code>resolved_at</code>, <code>resolution_note</code></td><td>מי אישר או דחה, מתי, והערה (בדחייה: חובה)</td></tr>
+</table>
+
+<h3><code>hashavshevet_sent_row</code>: הנעילה</h3>
+<table>
+<tr><th>עמודה</th><th>הערה</th></tr>
+<tr><td><code>id</code>, <code>send_id</code> (FK)</td><td></td></tr>
+<tr><td><code>export_type</code>, <code>company_id</code>, <code>row_key</code></td><td>מפתח השורה (בטבלה הבאה)</td></tr>
+<tr><td><code>amount</code></td><td>decimal: הסכום שנשלח. משמש לסימון "השתנה מאז השליחה"</td></tr>
+<tr><td><code>payload</code></td><td>jsonb: השורה המדויקת שנשלחה ל-API</td></tr>
+<tr><td><code>unlocked_at</code>, <code>unlocked_by</code>, <code>unlock_reason</code></td><td>פתיחה ידנית. השורה לא נמחקת</td></tr>
+</table>
+<p><b>אילוץ:</b> <code>UNIQUE (export_type, company_id, row_key) WHERE unlocked_at IS NULL</code>. זה האילוץ שמונע כפילות גם בלחיצה כפולה או בשליחה מקבילה.</p>
+
+<h3>מפתחות שורה</h3>
+<table>
+<tr><th>ייצוא</th><th><code>row_key</code></th></tr>
+<tr><td>עמלות ספקים</td><td><code>supplierId|franchiseeId|periodStart|periodEnd</code>. זה מפתח הצבירה שכבר קיים היום</td></tr>
+<tr><td>תמלוגים ושיווק</td><td><code>franchiseeId|YYYY-MM|itemType</code> (לא מזהה שורת החיוב: שורה שנכתבת מחדש מקבלת id חדש)</td></tr>
+<tr><td>עמלות לקוחות</td><td><code>clientId|franchiseeId|periodStart|periodEnd|docKind</code></td></tr>
+<tr><td>חשבוניות לקוחות של זכיין</td><td><code>clientId|franchiseeId|YYYY-MM|itemKey</code></td></tr>
+<tr><td>פקודות יומן</td><td><code>clientId|franchiseeId|YYYY-MM|lineKind</code> (<code>lineKind</code> מבחין בין שורה רגילה, עמלת חבר ושורת הנגד)</td></tr>
+<tr><td>חשבוניות עמלה מלקוחות</td><td><code>clientDocumentId</code></td></tr>
+</table>
+<p class="sub">כשמממשים כל ייצוא, צריך לוודא שהמפתח שלו יציב: שאותה שורה עסקית מקבלת אותו מפתח גם כשבונים אותה מחדש. אם מתברר שאין מזהה יציב, משתמשים בצירוף הקרוב ביותר וכותבים את זה בקוד.</p>
+
+<h2 id="builders">6. בוני שורות: אותם חוקים בדיוק</h2>
+<ul>
+<li>מכל route של ייצוא מוציאים פונקציה <code>build&lt;Export&gt;Rows(params)</code> לתוך <code>src/lib/hashavshevet/builders/</code>. <b>זו העברה של קוד ולא כתיבה מחדש:</b> אותם שאילתות, צבירות, חלוקות, דריסות של פריטים ושגיאות חוסמות. למשל: חסימת ספק בלי <code>hashavshevetCode</code>, שער התדירות, חלוקה ב-2 ל-LA TABLE, <code>tenbisUsesJournalEntries()</code>, פיצול המע"מ בפקודות היומן.</li>
+<li>כל בונה מחזיר מערך של <code>{ rowKey, amount, display, apiRow }</code> ושגיאות חוסמות. השדה <code>display</code> מכיל את העמודות שהאקסל הציג, בשביל התצוגה המקדימה.</li>
+<li>ה-route הקיים של האקסל עובר להשתמש בבונה, כך שהאקסל וה-API לעולם לא מתפצלים. הוא נשאר זמין מהשרת גם אחרי שהכפתור יורד מהממשק.</li>
+<li><b>בדיקת התאמה</b> (§11) היא תנאי למעבר של כל ייצוא.</li>
+</ul>
+
+<h2 id="flow">7. זרימת שליחה</h2>
+<h3><code>POST /api/hashavshevet/preview</code></h3>
+<p>מקבל <code>{ exportType, params }</code>, ו-Zod מאמת אותו בשרת. התשובה כוללת:</p>
+<ul>
+<li>חברת היעד. אם לחברה אין תאריך התחלה, מוחזרת שגיאה חוסמת: "החברה לא מופעלת לשליחה".</li>
+<li>השורות, ולכל שורה סטטוס: <code>new</code> | <code>sent</code> (מתי ומי) | <code>changed</code> (הסכום הישן והחדש) | <code>before_live</code>.</li>
+<li>שגיאות חוסמות וסה"כ.</li>
+</ul>
+<h3><code>POST /api/hashavshevet/send</code></h3>
+<ol>
+<li>מקבל <code>{ exportType, params, expected: [{rowKey, amount}] }</code>, מה שרעות ראתה בתצוגה המקדימה.</li>
+<li><b>מחשב הכול מחדש בשרת.</b> אם קבוצת השורות החדשות או הסכומים שונים מ-<code>expected</code>, מחזיר 409: "הנתונים השתנו, רעננו".</li>
+<li>אם יש שגיאות חוסמות, מחזיר 422.</li>
+<li><b>בטרנזקציה:</b> יוצר <code>hashavshevet_send</code> בסטטוס <code>pending</code>, ואת שורות <code>hashavshevet_sent_row</code>. אם האילוץ הייחודי נכשל (מישהו שלח במקביל), מחזיר 409 בלי לשלוח כלום.</li>
+<li>מחלק לבקשות של עד 4MB ושולח דרך <code>src/lib/hconnect.ts</code>. כל השורות של מסמך אחד תמיד נשארות באותה בקשה.</li>
+<li>תוצאה:
+  <ul>
+  <li>כל הבקשות החזירו "ok": הסטטוס <code>awaiting_approval</code>. אם לחברה יש <code>requires_approval=false</code>, הסטטוס הוא <code>approved</code>.</li>
+  <li>שגיאה מוגדרת מה-API (validation, הרשאה, לא בשירות): הסטטוס <code>failed</code>, והנעילות של הבקשות שנכשלו משתחררות. בקשות שכבר הצליחו נשארות כשליחה ממתינה.</li>
+  <li>ניתוק, timeout או תשובה לא מפוענחת: הסטטוס <code>unknown</code>, והנעילות נשארות עד שרעות מכריעה.</li>
+  </ul>
+</li>
+<li>הודעה לרעות: "נשלחו X שורות, סה"כ ₪Y, ל-&lt;חברה&gt;. המנה ממתינה לאישורך בחשבשבת (זמני)". מוצג גם מספר הבקשות, כי כל בקשה עשויה להפוך למנה זמנית נפרדת (§13).</li>
+</ol>
+<h3>ניהול</h3>
+<ul>
+<li><code>POST /api/hashavshevet/rows/:id/unlock { reason }</code></li>
+<li><code>POST /api/hashavshevet/sends/:id/resolve { outcome: approved | rejected | arrived, note }</code>. <code>approved</code> נועל סופית. <code>rejected</code> (הערה חובה) משחרר את כל השורות של השליחה. <code>arrived</code> מעביר שליחה מ-<code>unknown</code> ל-<code>awaiting_approval</code>. האישור והדחייה הם על <b>כל השליחה</b>, כמו שרעות מאשרת מנה שלמה בחשבשבת.</li>
+<li><code>PATCH /api/hashavshevet/companies/:id</code>: תאריך התחלה (הפעלה), ו-<code>requires_approval</code>. <code>PATCH</code> על השיוך של מותג או זכיין.</li>
+</ul>
+
+<h2 id="api">8. מיפוי ל-API</h2>
+<table>
+<tr><th>שדה</th><th>חשבוניות (<code>imovein</code>)</th><th>פקודות יומן (<code>movein</code>)</th></tr>
+<tr><td>לקוח / חשבונות</td><td><code>accountKey</code> = מפתח החשבון שבאקסל</td><td><code>AccountKeyDeb1/2</code>, <code>AccountKeyCred1/2</code> = עמודות החובה והזכות</td></tr>
+<tr><td>פריט / סכומים</td><td><code>itemkey</code>, <code>Quantity</code> (עשרוני, למשל <code>"1.000"</code>), <code>price</code> (לפני מע"מ)</td><td><code>SuFDeb1/2</code>, <code>SuFCred1/2</code></td></tr>
+<tr><td>סוג מסמך</td><td><code>DocumentID</code>: <b>מתורגם</b> ממספור האקסל ("חוזים"), שבו 11 = חשבונית. ב-API נבדק ש-1 = חשבונית (§13)</td><td>—</td></tr>
+<tr><td>מספר מסמך</td><td><code>Reference</code>: מספר המסמך שהאקסל נותן היום. חשבשבת מתעלמת ממנו לצורך המספור, אבל כנראה משתמשת בו לאחד שורות לחשבונית אחת (§13)</td><td><code>Reference</code>: מזהה פנימי קבוע (תחילית שולח + hash של <code>row_key</code>), בשביל ההגנה מכפילויות של מסופון 2</td></tr>
+<tr><td>אסמכתא 2</td><td><code>Ref2</code>: כמו באקסל, אם יש</td><td><code>Ref2</code>: עמודה A</td></tr>
+<tr><td>תאריכים</td><td><code>valueDate</code> בפורמט dd/mm/yyyy</td><td><code>ValueDate</code>, <code>DueDate</code>: עמודות B ו-C</td></tr>
+<tr><td>פרטים</td><td><code>details</code></td><td><code>Details</code>: עמודה J</td></tr>
+<tr><td>הקצאה</td><td>לא נשלח. ההקצאה נוצרת בהפקה</td><td><code>TaxAPINumber</code>: עמודה K, תמיד כמחרוזת</td></tr>
+<tr><td>סוג תנועה</td><td>—</td><td><code>TransType</code>: הקוד של רעות (§13)</td></tr>
+</table>
+<p>כל הערכים נשלחים כמחרוזות. בשדות עשרוניים חייבת להיות נקודה עשרונית. לעולם לא משתמשים ב-<code>toISOString()</code>.</p>
+
+<h2 id="ui">9. מסכים והרשאות</h2>
+<ul>
+<li><b>רכיב <code>HashavshevetSendButton</code></b> במקום כל כפתור אקסל בששת המקומות. הוא פותח Dialog (עם <code>dir="rtl"</code>) של תצוגה מקדימה:
+  <ul>
+  <li>שם החברה שאליה זה הולך, ותזכורת: "המנה תיכנס לזמני ותחכה לאישורך בחשבשבת".</li>
+  <li>טבלת שורות עם סטטוס בצבע.</li>
+  <li>שגיאות חוסמות וסה"כ.</li>
+  </ul>
+  כפתור "שלח" מושבת כשאין שורות חדשות, או כשיש שגיאה חוסמת.</li>
+<li><b>מסך הגדרות "חשבשבת":</b> טבלת חברות. כפתור "הפעל שליחה" פותח חלון אישור עם תאריך התחלה, שברירת המחדל שלו היא היום. לכל חברה יש גם מתג "דורש אישור". במסך יש גם שיוך מותגים ושיוך זכיינים.</li>
+<li><b>מסך שליחות לחשבשבת:</b>
+  <ul>
+  <li>בראש המסך: <b>"ממתינות לאישור"</b>. כל שליחה שמחכה מוצגת עם החברה, הסוג, התקופה, מספר השורות והסה"כ, כדי שרעות תשווה למנה הזמנית בחשבשבת. לכל שליחה יש כפתורים <b>"אישרתי בחשבשבת"</b> ו-<b>"דחיתי"</b> (בדחייה צריך לכתוב הערה).</li>
+  <li>מספר השליחות הממתינות מוצג גם כתג בתפריט הצד, כדי ששליחה לא תישכח בלי אישור.</li>
+  <li>מתחת: היסטוריה, עם סינון לפי סוג, חברה, סטטוס ובדיקה/אמיתי. כניסה לשליחה מראה את השורות ואת התשובה של ה-API.</li>
+  <li>"פתח שורה" עם סיבה נשאר רק למקרה חריג: שורה ששליחתה כבר אושרה וצריך לשלוח אותה שוב.</li>
+  </ul>
+</li>
+<li>בכל מסך ארבעה מצבים: טעינה, תוצאה, שגיאה, ריק. הטקסטים בעברית יושבים בקבועים, וההודעות ל-console באנגלית.</li>
+</ul>
+<table>
+<tr><th>פעולה</th><th>הרשאה</th></tr>
+<tr><td>תצוגה מקדימה ושליחה</td><td><code>requireAdminOrSuperUser</code>, כמו בייצואים היום</td></tr>
+<tr><td>הפעלת חברה ותאריך התחלה, "דורש אישור", שיוך, פתיחת שורה</td><td><code>requireSuperUser</code></td></tr>
+</table>
+
+<h2 id="errors">10. שגיאות ומעקב</h2>
+<table>
+<tr><th>מצב</th><th>הודעה לרעות</th><th>נעילות</th></tr>
+<tr><td><code>invalid data</code> (שגיאות לפי שורה)</td><td>השגיאה מוצגת ליד כל שורה, מתורגמת לעברית</td><td>משתחררות</td></tr>
+<tr><td>שגיאה 10: אין הרשאה</td><td>"אין הרשאה לממשק X בחברה Y. בדקו את הגדרות H-Connect"</td><td>משתחררות</td></tr>
+<tr><td>שגיאה 8: לא בשירות</td><td>"השרת של חשבשבת לא זמין. נסו שוב מאוחר יותר"</td><td>משתחררות</td></tr>
+<tr><td>ניתוק או timeout</td><td>"לא ידוע אם הגיע. בדקו בזמני בחשבשבת", והסטטוס "לא ידוע". רעות מסמנת "הגיע" או "לא הגיע"</td><td>נשארות עד ההכרעה</td></tr>
+<tr><td>דחייה במסופון 2</td><td>לא נראית במערכת. רעות מזהה אותה כשהמנה הזמנית לא תואמת לסיכום השליחה, ודוחה את המנה</td><td>משתחררות בדחייה</td></tr>
+</table>
+<ul>
+<li><b>"ok" מה-API לא אומר שהנתונים נקלטו.</b> בזכות המנה הזמנית, האישור של רעות הוא הבדיקה. בעתיד, כשהקליטה תהיה ישר לקבוע, אפשר להוסיף אישור אוטומטי דרך <code>reports</code>, בלי שינוי בסכמה.</li>
+<li>לוג מובנה לכל בקשה: <code>{event:"hconnect.send", exportType, company, target, rows, httpStatus, ok, latencyMs, requestId}</code>. טבלת <code>hashavshevet_send</code> היא מסלול הביקורת.</li>
+<li>שגיאת שרת מחזירה הודעה כללית יחד עם request ID, בלי stack trace.</li>
+<li>Rate limit על <code>send</code>.</li>
+</ul>
+
+<h2 id="tests">11. בדיקות</h2>
+<ol>
+<li><b>התאמה (תנאי לכל ייצוא):</b> על fixtures קיימים, ובמידת האפשר על snapshot של נתונים אמיתיים, העמודות של <code>display</code> מהבונה זהות לשורות האקסל שה-route הנוכחי מוציא. הבדיקות הקיימות של ה-routes ממשיכות לעבור.</li>
+<li><b>יחידה:</b>
+  <ul>
+  <li>יציבות של <code>row_key</code>.</li>
+  <li>סיווג הסטטוסים: <code>new</code>, <code>sent</code>, <code>changed</code>, <code>before_live</code>.</li>
+  <li>חברה בלי תאריך התחלה חוסמת שליחה.</li>
+  <li>פורמט <code>apiRow</code>: מחרוזות, עשרוניים, אסמכתא 2, תרגום <code>DocumentID</code>.</li>
+  <li>חלוקה ל-4MB בלי לפצל מסמך.</li>
+  </ul>
+</li>
+<li><b>Route מול API מדומה:</b>
+  <ul>
+  <li>לחיצה כפולה או שליחה מקבילה מניבה שליחה אחת.</li>
+  <li><code>failed</code> משחרר נעילות, ו-<code>unknown</code> משאיר אותן.</li>
+  <li>מחזור האישור: <code>awaiting_approval</code> חוסם שליחה חוזרת. <code>rejected</code> משחרר את כל השורות ומאפשר לשלוח שוב. <code>approved</code> נועל. כשאין דרישת אישור, הסטטוס עובר ישר ל-<code>approved</code>. אי אפשר לדחות בלי הערה.</li>
+  <li>409 כשהנתונים השתנו בין התצוגה המקדימה לשליחה.</li>
+  <li>אי אפשר לפתוח שורה בלי סיבה.</li>
+  <li>הרשאות.</li>
+  </ul>
+</li>
+<li><b>שליחה ראשונה מבוקרת לכל ייצוא ולכל חברה:</b> תצוגה מקדימה ← שליחה קטנה ← רעות בודקת בזמני (סה"כ, שורות, ושזה זמני גם בחשבוניות) ← מאשרת או דוחה. כולל הנקודות שב-§13.</li>
+</ol>
+
+<h2 id="rollout">12. עלייה לאוויר</h2>
+<ol>
+<li>מיגרציה ו-seed של החברות והשיוכים. אף חברה לא מופעלת (תאריך ההתחלה ריק).</li>
+<li>תשתית: <code>hconnect.ts</code>, preview/send, נעילה, מסכי הגדרות והיסטוריה.</li>
+<li>הוצאת הבונים, ובדיקת התאמה לכל אחד מששת הייצואים.</li>
+<li>כפתור השליחה לצד כפתור האקסל. מפעילים חברה, ועושים שליחה ראשונה מבוקרת לזמני, ייצוא אחרי ייצוא. רעות בוחרת את הסדר.</li>
+<li><b>תחילת החודש:</b> כל החברות מופעלות, וכפתורי האקסל יורדים מהממשק. לפי כלל הביטחון, ייצוא שלא עבר שליחה ראשונה תקינה נשאר החודש באקסל.</li>
+</ol>
+
+<h2 id="open">13. לאימות בשליחה הראשונה (ועם רעות)</h2>
+<table>
+<tr><th>#</th><th>שאלה</th><th>איך מאמתים</th><th>מה תלוי בזה</th></tr>
+<tr><td>1</td><td>מה המקבילה ב-API לסוג מסמך 11 של האקסל (חשבונית)? והאם 1 של עמלות לקוחות (פקודת יומן) צריך לעבור ל-<code>movein</code>?</td><td>שליחה ראשונה לזמני ובדיקה בחשבשבת</td><td>טבלת התרגום של <code>DocumentID</code></td></tr>
+<tr><td>2</td><td>האם שורות עם אותו <code>Reference</code> מתאחדות לחשבונית אחת?</td><td>חשבונית עם שתי שורות (צריך להקים קודם את הפריט <code>שיווק</code>)</td><td>שיטת הקיבוץ</td></tr>
+<tr><td>3</td><td>קוד סוג התנועה (<code>TransType</code>) של רעות לפקודות מכירה</td><td>לשאול את רעות. לפקודות הוצאה הקוד אצלה הוא <code>הוצ</code></td><td>פקודות יומן</td></tr>
+<tr><td>4</td><td>האם ההגנה מכפילויות של מסופון 2 לפקודות יומן בודקת לפי <code>Reference</code>?</td><td>הפקודה הכפולה ששלחנו ב-22/10 עדיין לא אומתה עד הסוף (לא נמצא לוג)</td><td>אם כן, ה-<code>Reference</code> הפנימי נותן רשת ביטחון שנייה</td></tr>
+<tr><td>5</td><td><s>לאיזו חברה הולכות חשבוניות העמלה מלקוחות (ייצוא 6)?</s></td><td><b>נסגר 26/10:</b> חברת הזכיין</td><td>ייצוא 6 הולך לחברת הזכיין, כמו 4–5</td></tr>
+<tr><td>6</td><td><code>itemin</code> מדווח "הצלחה" ולא מקים פריטים</td><td>תשובה מהתמיכה</td><td>הקמת פריטים דרך ה-API בעתיד (לא נדרש: בחברות האמיתיות הפריטים קיימים)</td></tr>
+<tr><td>7</td><td>שליחה שמתחלקת לכמה בקשות (מעל 4MB): האם היא נכנסת כמנה זמנית אחת או כמה מנות?</td><td>לבדוק בחשבשבת אחרי שליחה גדולה</td><td>האם רעות מאשרת פעם אחת לכל שליחה, או פעם לכל בקשה. אם יש כמה מנות, המסך יציג אותן בנפרד</td></tr>
+<tr><td>8</td><td><b>(תנאי להחלטה 4)</b> האם הזמני מתנהג אותו דבר בכל החברות, וגם בחשבוניות (חשבונית זמנית) ולא רק בפקודות יומן? והאם מחיקה של חשבונית זמנית שורפת מספר בספרור?</td><td>לשאול את רעות, ולוודא בשליחה הראשונה לכל חברה</td><td>אם יש חברה או סוג מסמך שנכנס ישר לקבוע, השליחה הראשונה אליהם חייבת להיות מבוקרת במיוחד, ואולי לחזור לשליחת בדיקה מקדימה</td></tr>
+</table>
+
+<h2 id="out">14. מחוץ להיקף</h2>
+<ul>
+<li>אישור קליטה ומשיכת מספרי חשבוניות דרך <code>reports</code> (העיצוב מאפשר להוסיף בעתיד).</li>
+<li>PDF של חשבוניות (<code>getPDF</code>, בתשלום).</li>
+<li>הקמת פריטים דרך ה-API, כל עוד <code>itemin</code> לא עובד.</li>
+<li>הטבלה <code>management_company</code> (Panikon, Pedvili, Ventami), שריקה ולא בשימוש.</li>
+<li>שליחה לחברות האחזקה (<code>sm</code>, <code>shamim</code>, <code>sm_2026</code>, <code>sharon_mishali25</code>).</li>
+<li>מחיקת קוד הייצוא לאקסל. ה-routes נשארים לשימוש ידני.</li>
+</ul>
+
+</div></body></html>
