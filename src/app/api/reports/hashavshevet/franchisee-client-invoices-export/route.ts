@@ -31,14 +31,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { database } from "@/db";
-import { franchisee } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import {
-  getApprovedForExport,
-  tenbisUsesJournalEntries,
-} from "@/data-access/client-reconciliation-approval";
-import { getOccasionalClientsForExport } from "@/data-access/occasional-clients";
+import { tenbisUsesJournalEntries } from "@/data-access/client-reconciliation-approval";
+import { loadFranchiseeClientInvoicesData } from "@/lib/hashavshevet/builders/franchisee-client-invoices";
 import * as XLSX from "xlsx";
 
 const ITEM_KEY = "ארוחות";
@@ -68,14 +62,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [fr] = await database
-      .select({
-        name: franchisee.name,
-        hashavshevetRevenueAccount: franchisee.hashavshevetRevenueAccount,
-      })
-      .from(franchisee)
-      .where(eq(franchisee.id, franchiseeId))
-      .limit(1);
+    const data = await loadFranchiseeClientInvoicesData({
+      franchiseeId,
+      periodMonth,
+      periodYear,
+    });
+    const fr = data.franchisee;
 
     if (!fr) {
       return NextResponse.json({ error: "זכיין לא נמצא" }, { status: 404 });
@@ -86,13 +78,7 @@ export async function GET(request: NextRequest) {
     // → "הכנסותנ"). LATABLEMARK still wins on its own row — see below.
     const itemKeyOverride = fr.hashavshevetRevenueAccount?.trim() || "";
 
-    const approved = await getApprovedForExport({
-      franchiseeId,
-      periodMonth,
-      periodYear,
-    });
-
-    const invoiceRows = approved.filter(
+    const invoiceRows = data.approved.filter(
       (a) =>
         a.invoiceGeneration === true ||
         // TENBIS cutover: its flag flipped to journal entries, but pre-July-2026
@@ -101,13 +87,7 @@ export async function GET(request: NextRequest) {
           !tenbisUsesJournalEntries(periodMonth, periodYear))
     );
 
-    // Fetch occasional-client rows for this franchisee+period. Already filters
-    // out ignored rows and zero amounts in the data-access layer.
-    const occasionalRows = await getOccasionalClientsForExport({
-      franchiseeId,
-      periodMonth,
-      periodYear,
-    });
+    const occasionalRows = data.occasional;
 
     if (invoiceRows.length === 0 && occasionalRows.length === 0) {
       return NextResponse.json(
