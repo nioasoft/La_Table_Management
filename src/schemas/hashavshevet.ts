@@ -22,7 +22,7 @@ const realIsoDate = isoDate.refine(
 export const exportTypeSchema = z.enum(EXPORT_TYPES);
 
 /** Params mirror each export route's current query params (arrays instead of comma lists, JSON body). */
-const supplierCommissionsParams = z.object({
+export const supplierCommissionsParams = z.object({
   startDate: isoDate,
   endDate: isoDate,
   brandIds: z.array(id).optional(),

@@ -1,5 +1,6 @@
 import type { HConnectPlugin } from "@/lib/hconnect";
 import { royaltiesExport } from "./builders/royalties";
+import { supplierCommissionsExport } from "./builders/supplier-commissions";
 import { exportLabels } from "./copy";
 import type { BuiltRow, ExportType } from "./types";
 
@@ -20,7 +21,7 @@ function def(type: ExportType, plugin: HConnectPlugin): ExportDefinition {
 }
 
 export const EXPORTS: Record<ExportType, ExportDefinition> = {
-  supplier_commissions: def("supplier_commissions", "imovein"),
+  supplier_commissions: supplierCommissionsExport,
   royalties: royaltiesExport,
   client_commissions: def("client_commissions", "imovein"),
   franchisee_client_invoices: def("franchisee_client_invoices", "imovein"),

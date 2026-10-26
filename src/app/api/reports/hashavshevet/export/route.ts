@@ -3,64 +3,22 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import { type SupplierFileProcessingResult } from "@/db/schema";
-import { loadSupplierCommissionsData } from "@/lib/hashavshevet/builders/supplier-commissions";
-import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
-import { fileBelongsInExportRange } from "@/lib/settlement-periods";
+import {
+  buildSupplierCommissionsSheets,
+  loadSupplierCommissionsData,
+  MISSING_CODE_MESSAGE,
+  SUPPLIER_COMMISSIONS_HEADERS,
+  type SupplierCommissionBrand,
+  type SupplierCommissionsParams,
+  type SupplierCommissionsSheet,
+} from "@/lib/hashavshevet/builders/supplier-commissions";
+import type { BuiltRow } from "@/lib/hashavshevet/types";
 import * as XLSX from "xlsx";
 import AdmZip from "adm-zip";
-import { formatDateAsLocal } from "@/lib/date-utils";
-
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface HashavshevetRow {
-  accountKey: string; // מפתח חשבון
-  accountName: string; // שם (ריק)
-  itemKey: string; // מפתח פריט
-  itemName: string; // שם פריט (ריק)
-  quantity: number; // כמות
-  price: number; // מחיר
-  documentType: number; // סוג המסמך
-  documentNumber: string; // מספר מסמך (ריק)
-}
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
-
-/**
- * Calculate commission for a franchisee match
- */
-function calculateMatchCommission(
-  match: SupplierFileProcessingResult["franchiseeMatches"][0],
-  supplierCommissionRate: string | null,
-  supplierCommissionType: string | null,
-  supplierCode?: string
-): number {
-  const isFileCommission = supplierCode ? hasCommissionFromFile(supplierCode) : false;
-  // File-commission suppliers: always use file value (even 0 = no commission)
-  // Other suppliers: only use positive pre-calculated values
-  if (match.preCalculatedCommission != null && (isFileCommission || match.preCalculatedCommission > 0)) {
-    return Math.round(match.preCalculatedCommission);
-  }
-
-  // Calculate based on supplier rate
-  if (!supplierCommissionRate) return 0;
-
-  const rate = parseFloat(supplierCommissionRate);
-  if (isNaN(rate)) return 0;
-
-  let commission = 0;
-  if (supplierCommissionType === "percentage") {
-    commission = match.netAmount * (rate / 100);
-  } else if (supplierCommissionType === "per_item") {
-    commission = rate;
-  }
-
-  return Math.round(commission);
-}
 
 /**
  * Excel filename for a single brand's Hashavshevet export.
@@ -72,6 +30,9 @@ function brandExcelFileName(brandNameHe: string): string {
     : `עמלות רשת ${brandNameHe}.xlsx`;
 }
 
+/** Column widths: מפתח חשבון, שם, מפתח פריט, שם פריט, כמות, מחיר, סוג המסמך, מספר מסמך. */
+const COLUMN_WIDTHS = [15, 10, 35, 10, 8, 12, 12, 12];
+
 /**
  * Build a Hashavshevet import workbook from already-numbered rows and return it
  * as an xlsx buffer. Includes the named range "חוזים" that Hashavshevet requires
@@ -79,32 +40,13 @@ function brandExcelFileName(brandNameHe: string): string {
  * is why "all networks" splits into separate files rather than one multi-sheet
  * workbook.
  */
-function buildHashavshevetWorkbookBuffer(rows: HashavshevetRow[]): Buffer {
+function buildHashavshevetWorkbookBuffer(rows: BuiltRow[]): Buffer {
   const wb = XLSX.utils.book_new();
 
-  const headers = [
-    "מפתח חשבון",
-    "שם",
-    "מפתח פריט",
-    "שם פריט",
-    "כמות",
-    "מחיר",
-    "סוג המסמך",
-    "מספר מסמך",
-  ];
-
+  const headers = SUPPLIER_COMMISSIONS_HEADERS;
   const data = [
-    headers,
-    ...rows.map((row) => [
-      row.accountKey,
-      row.accountName,
-      row.itemKey,
-      row.itemName,
-      row.quantity,
-      row.price,
-      row.documentType,
-      row.documentNumber,
-    ]),
+    [...headers],
+    ...rows.map((row) => headers.map((header) => row.display[header])),
   ];
 
   const ws = XLSX.utils.aoa_to_sheet(data);
@@ -129,16 +71,7 @@ function buildHashavshevetWorkbookBuffer(rows: HashavshevetRow[]): Buffer {
     }
   }
 
-  ws["!cols"] = [
-    { wch: 15 }, // מפתח חשבון
-    { wch: 10 }, // שם
-    { wch: 35 }, // מפתח פריט
-    { wch: 10 }, // שם פריט
-    { wch: 8 }, // כמות
-    { wch: 12 }, // מחיר
-    { wch: 12 }, // סוג המסמך
-    { wch: 12 }, // מספר מסמך
-  ];
+  ws["!cols"] = COLUMN_WIDTHS.map((wch) => ({ wch }));
 
   XLSX.utils.book_append_sheet(wb, ws, "ייבוא חשבשבת");
 
@@ -159,6 +92,71 @@ function buildHashavshevetWorkbookBuffer(rows: HashavshevetRow[]): Buffer {
 // API HANDLER
 // ============================================================================
 
+function fileResponse(buffer: Buffer, filename: string, contentType: string): NextResponse {
+  // Encode filename for Content-Disposition header (RFC 5987 for non-ASCII)
+  const encodedFilename = encodeURIComponent(filename);
+  return new NextResponse(new Uint8Array(buffer), {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
+    },
+  });
+}
+
+/** Query params → loader params; null when the period is missing. */
+function parseQuery(request: NextRequest): SupplierCommissionsParams | null {
+  const { searchParams } = new URL(request.url);
+  const startDate = searchParams.get("startDate");
+  const endDate = searchParams.get("endDate");
+  const brandIdsParam = searchParams.get("brandIds");
+  const supplierIdsParam = searchParams.get("supplierIds");
+  const startDocNumber = parseInt(searchParams.get("startDocNumber") || "5001", 10);
+  // Mirror /api/reports/hashavshevet: default ON. Filters out rows whose
+  // latest non-archived reconciliation comparison wasn't approved.
+  const onlyApproved = searchParams.get("onlyApproved") !== "false";
+  if (!startDate || !endDate) return null;
+
+  const brandIds = brandIdsParam ? brandIdsParam.split(",").filter(Boolean) : [];
+  const supplierIds = supplierIdsParam ? supplierIdsParam.split(",").filter(Boolean) : [];
+  return { startDate, endDate, brandIds, supplierIds, startDocNumber, onlyApproved };
+}
+
+/**
+ * "All networks" (no brand filter) → ZIP with a separate Excel per network, so
+ * each file imports into Hashavshevet on its own. A specific brand (or several)
+ * keeps the single-file behavior.
+ */
+function exportFiles(
+  sheets: SupplierCommissionsSheet[],
+  brandIds: string[],
+  brands: SupplierCommissionBrand[]
+): NextResponse {
+  if (brandIds.length === 0) {
+    const zip = new AdmZip();
+    for (const sheet of sheets) {
+      zip.addFile(
+        brandExcelFileName(sheet.brandNameHe || "שונות"),
+        buildHashavshevetWorkbookBuffer(sheet.rows)
+      );
+    }
+    return fileResponse(zip.toBuffer(), "עמלות לפי רשת.zip", "application/zip");
+  }
+
+  let filename = `עמלות כל הרשתות.xlsx`;
+  if (brandIds.length === 1) {
+    const selectedBrand = brands.find((b) => b.id === brandIds[0]);
+    filename = selectedBrand
+      ? brandExcelFileName(selectedBrand.nameHe)
+      : `hashavshevet_export.xlsx`;
+  }
+  return fileResponse(
+    buildHashavshevetWorkbookBuffer(sheets[0].rows),
+    filename,
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  );
+}
+
 /**
  * GET /api/reports/hashavshevet/export
  * Export Hashavshevet data to Excel
@@ -168,249 +166,31 @@ export async function GET(request: NextRequest) {
     const authResult = await requireAdminOrSuperUser(request);
     if (isAuthError(authResult)) return authResult;
 
-    // Parse query parameters
-    const { searchParams } = new URL(request.url);
-    const startDate = searchParams.get("startDate");
-    const endDate = searchParams.get("endDate");
-    const brandIdsParam = searchParams.get("brandIds");
-    const supplierIdsParam = searchParams.get("supplierIds");
-    const startDocNumber = parseInt(searchParams.get("startDocNumber") || "5001", 10);
-    // Mirror /api/reports/hashavshevet: default ON. Filters out rows whose
-    // latest non-archived reconciliation comparison wasn't approved.
-    const onlyApproved = searchParams.get("onlyApproved") !== "false";
-
-    // Validate required parameters
-    if (!startDate || !endDate) {
+    const params = parseQuery(request);
+    if (!params) {
       return NextResponse.json(
         { error: "חובה לבחור תקופה (תאריך התחלה וסיום)" },
         { status: 400 }
       );
     }
 
-    // Parse arrays
-    const brandIds = brandIdsParam ? brandIdsParam.split(",").filter(Boolean) : [];
-    const supplierIds = supplierIdsParam ? supplierIdsParam.split(",").filter(Boolean) : [];
-
-    const {
-      files,
-      franchisees: allFranchisees,
-      brands: allBrands,
-      approvedKeys: approvedSet,
-    } = await loadSupplierCommissionsData({
-      startDate,
-      endDate,
-      brandIds,
-      supplierIds,
-      startDocNumber,
-      onlyApproved,
-    });
-
-    const franchiseeMap = new Map(allFranchisees.map((f) => [f.id, f]));
-    const brandMap = new Map(allBrands.map((b) => [b.id, b]));
-
-    // Build rows for Hashavshevet format.
-    //
-    // Aggregation: per-invoice parsers (e.g. שרי שוקו) produce one franchisee
-    // match per invoice. The Hashavshevet sheet should hold one line per
-    // (supplier × franchisee × period) — same logic as /api/reports/hashavshevet
-    // for the on-screen report. Reconciliation-v2 keeps the underlying detail.
-    const aggregated = new Map<
-      string,
-      Omit<HashavshevetRow, "documentNumber"> & {
-        price: number;
-        brandId: string;
-        brandNameHe: string;
-      }
-    >();
-    // Suppliers that have commissions in this period but no hashavshevetCode.
-    // We block the XLSX download until Reut configures them, instead of
-    // silently dropping the supplier from the export.
-    const missingHashavshevetMap = new Map<
-      string,
-      { id: string; name: string; code: string | null }
-    >();
-
-    for (const file of files) {
-      if (!file.processingResult) continue;
-
-      // Frequency gate: monthly suppliers appear in monthly runs; multi-month
-      // runs take only their last-month file (earlier months already billed).
-      if (
-        !fileBelongsInExportRange(
-          file.settlementFrequency,
-          file.periodStartDate,
-          startDate,
-          endDate
-        )
-      ) {
-        continue;
-      }
-
-      const processingResult = file.processingResult as SupplierFileProcessingResult;
-      if (!processingResult.franchiseeMatches) continue;
-
-      for (const match of processingResult.franchiseeMatches) {
-        if (!match.matchedFranchiseeId || match.matchType === "blacklisted" || match.matchType === "none") {
-          continue;
-        }
-
-        const franchiseeInfo = franchiseeMap.get(match.matchedFranchiseeId);
-        if (!franchiseeInfo) continue;
-
-        if (brandIds.length > 0 && !brandIds.includes(franchiseeInfo.brandId)) {
-          continue;
-        }
-
-        const brandInfo = brandMap.get(franchiseeInfo.brandId);
-        if (!brandInfo) continue;
-
-        const commissionAmount = calculateMatchCommission(
-          match,
-          file.commissionRate,
-          file.commissionType,
-          file.supplierCode
-        );
-
-        if (commissionAmount === 0) continue;
-
-        // Reconciliation gate (same key shape as /api/reports/hashavshevet)
-        if (onlyApproved) {
-          const key = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
-          if (!approvedSet.has(key)) continue;
-        }
-
-        // Supplier has commissions in this period but no hashavshevetCode —
-        // record and skip; we block the export below until Reut fixes it.
-        if (!file.hashavshevetCode) {
-          if (!missingHashavshevetMap.has(file.supplierId)) {
-            missingHashavshevetMap.set(file.supplierId, {
-              id: file.supplierId,
-              name: file.supplierName,
-              code: file.supplierCode,
-            });
-          }
-          continue;
-        }
-
-        const aggKey = `${file.supplierId}|${match.matchedFranchiseeId}|${file.periodStartDate}|${file.periodEndDate}`;
-        const existing = aggregated.get(aggKey);
-        if (existing) {
-          existing.price += commissionAmount;
-        } else {
-          aggregated.set(aggKey, {
-            accountKey: file.hashavshevetCode,
-            accountName: "",
-            itemKey: franchiseeInfo.hashavshevetItemKey || `עמלות ${franchiseeInfo.name}`,
-            itemName: "",
-            quantity: 1,
-            price: commissionAmount,
-            documentType: 11,
-            brandId: franchiseeInfo.brandId,
-            brandNameHe: brandInfo.nameHe,
-          });
-        }
-      }
-    }
+    const data = await loadSupplierCommissionsData(params);
+    const { sheets, missingSuppliers } = buildSupplierCommissionsSheets(data);
 
     // Block the XLSX download if any supplier in the result is missing its
     // hashavshevetCode. Reut must configure them via /admin/suppliers/[id]
     // before the export can produce a complete file. UI parses this 400
     // response and renders the list to the user.
-    if (missingHashavshevetMap.size > 0) {
+    if (missingSuppliers.length > 0) {
       return NextResponse.json(
-        {
-          error: "לא ניתן לייצא — יש ספקים ללא כרטיס חשבשבת",
-          missingSuppliers: Array.from(missingHashavshevetMap.values()).sort(
-            (a, b) => a.name.localeCompare(b.name, "he")
-          ),
-        },
+        { error: MISSING_CODE_MESSAGE, missingSuppliers },
         { status: 400 }
       );
     }
-
-    const aggregatedRows = Array.from(aggregated.values());
-
-    if (aggregatedRows.length === 0) {
-      return NextResponse.json(
-        { error: "אין נתונים לייצוא" },
-        { status: 400 }
-      );
+    if (sheets.length === 0) {
+      return NextResponse.json({ error: "אין נתונים לייצוא" }, { status: 400 });
     }
-
-    // Number a group of aggregated rows from startDocNumber. Each network file
-    // restarts its own numbering (matches Reut's manual per-network exports).
-    const numberRows = (
-      group: typeof aggregatedRows
-    ): HashavshevetRow[] => {
-      let doc = startDocNumber;
-      return group.map((r) => ({
-        accountKey: r.accountKey,
-        accountName: r.accountName,
-        itemKey: r.itemKey,
-        itemName: r.itemName,
-        quantity: r.quantity,
-        price: r.price,
-        documentType: r.documentType,
-        documentNumber: String(doc++),
-      }));
-    };
-
-    // "All networks" (no brand filter) → ZIP with a separate Excel per network,
-    // so each file imports into Hashavshevet on its own. A specific brand keeps
-    // the single-file behavior.
-    if (brandIds.length === 0) {
-      const byBrand = new Map<string, typeof aggregatedRows>();
-      const brandNames = new Map<string, string>();
-      for (const r of aggregatedRows) {
-        brandNames.set(r.brandId, r.brandNameHe);
-        const group = byBrand.get(r.brandId);
-        if (group) group.push(r);
-        else byBrand.set(r.brandId, [r]);
-      }
-
-      const zip = new AdmZip();
-      for (const [brandId, group] of byBrand) {
-        const buffer = buildHashavshevetWorkbookBuffer(numberRows(group));
-        zip.addFile(
-          brandExcelFileName(brandNames.get(brandId) || "שונות"),
-          buffer
-        );
-      }
-
-      const zipBuffer = zip.toBuffer();
-      const encodedFilename = encodeURIComponent("עמלות לפי רשת.zip");
-      return new NextResponse(new Uint8Array(zipBuffer), {
-        status: 200,
-        headers: {
-          "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
-        },
-      });
-    }
-
-    // Single (or explicit) brand → one Excel file (legacy behavior).
-    const buffer = buildHashavshevetWorkbookBuffer(numberRows(aggregatedRows));
-
-    let filename: string;
-    if (brandIds.length === 1) {
-      const selectedBrand = brandMap.get(brandIds[0]);
-      filename = selectedBrand
-        ? brandExcelFileName(selectedBrand.nameHe)
-        : `hashavshevet_export.xlsx`;
-    } else {
-      filename = `עמלות כל הרשתות.xlsx`;
-    }
-
-    // Encode filename for Content-Disposition header (RFC 5987 for non-ASCII)
-    const encodedFilename = encodeURIComponent(filename);
-    return new NextResponse(new Uint8Array(buffer), {
-      status: 200,
-      headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename*=UTF-8''${encodedFilename}`,
-      },
-    });
+    return exportFiles(sheets, params.brandIds, data.brands);
   } catch (error) {
     console.error("Error exporting hashavshevet report:", error);
     return NextResponse.json(
