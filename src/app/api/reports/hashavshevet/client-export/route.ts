@@ -9,13 +9,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { database } from "@/db";
-import { client } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import {
-  getApprovedComparisonsForExport,
-  getSessionWithComparisons,
-} from "@/data-access/client-reconciliation";
+import { loadClientCommissionsData } from "@/lib/hashavshevet/builders/client-commissions";
 import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
 import * as XLSX from "xlsx";
 
@@ -38,43 +32,22 @@ export async function GET(request: NextRequest) {
   const documentTypeNumber = exportType === "journal" ? 1 : 11;
 
   try {
-    // Get session info for filename
-    const sessionData = await getSessionWithComparisons(sessionId);
-    if (!sessionData) {
+    const { session, client: clientRow, comparisons } = await loadClientCommissionsData({
+      sessionId,
+      docKind: exportType === "journal" ? "journal" : "invoice",
+    });
+    if (!session) {
       return NextResponse.json(
         { error: "התאמה לא נמצאה" },
         { status: 404 }
       );
     }
-
-    const { session } = sessionData;
-
-    // Get client's Hashavshevet account data (global + per-brand overrides)
-    // and code (needed for the LA TABLE half-price invoice rule).
-    // This export spans multiple franchisees, so the account key is resolved
-    // per row below using each franchisee's brand.
-    const [clientRow] = await database
-      .select({
-        code: client.code,
-        hashavshevetCode: client.hashavshevetCode,
-        hashavshevetName: client.hashavshevetName,
-        hashavshevetByBrand: client.hashavshevetByBrand,
-        name: client.name,
-      })
-      .from(client)
-      .where(eq(client.id, session.clientId))
-      .limit(1);
-
     if (!clientRow) {
       return NextResponse.json(
         { error: "לקוח לא נמצא" },
         { status: 404 }
       );
     }
-
-    // Get approved comparisons
-    const comparisons = await getApprovedComparisonsForExport(sessionId);
-
     if (comparisons.length === 0) {
       return NextResponse.json(
         { error: "אין שורות מאושרות לייצוא" },
