@@ -3,16 +3,8 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import { database } from "@/db";
-import {
-  supplierFileUpload,
-  supplier,
-  franchisee,
-  brand,
-  reconciliationComparison,
-  type SupplierFileProcessingResult,
-} from "@/db/schema";
-import { eq, and, gte, lte, inArray, or, sql } from "drizzle-orm";
+import { type SupplierFileProcessingResult } from "@/db/schema";
+import { loadSupplierCommissionsData } from "@/lib/hashavshevet/builders/supplier-commissions";
 import { hasCommissionFromFile } from "@/lib/custom-parsers/suppliers-with-file-commission";
 import { fileBelongsInExportRange } from "@/lib/settlement-periods";
 import * as XLSX from "xlsx";
@@ -199,122 +191,22 @@ export async function GET(request: NextRequest) {
     const brandIds = brandIdsParam ? brandIdsParam.split(",").filter(Boolean) : [];
     const supplierIds = supplierIdsParam ? supplierIdsParam.split(",").filter(Boolean) : [];
 
-    // Build conditions array
-     
-    const conditions: any[] = [
-      or(
-        eq(supplierFileUpload.processingStatus, "approved"),
-        eq(supplierFileUpload.processingStatus, "auto_approved")
-      ),
-      // Period overlap (mirrors /api/reports/hashavshevet)
-      lte(supplierFileUpload.periodStartDate, endDate),
-      gte(supplierFileUpload.periodEndDate, startDate),
-    ];
-
-    // Add supplier filter if specified
-    if (supplierIds.length > 0) {
-      conditions.push(inArray(supplier.id, supplierIds));
-    }
-
-    // Get files with supplier data
-    const files = await database
-      .select({
-        fileId: supplierFileUpload.id,
-        supplierId: supplier.id,
-        supplierName: supplier.name,
-        supplierCode: supplier.code,
-        hashavshevetCode: supplier.hashavshevetCode,
-        commissionRate: supplier.defaultCommissionRate,
-        commissionType: supplier.commissionType,
-        settlementFrequency: supplier.settlementFrequency,
-        processingResult: supplierFileUpload.processingResult,
-        periodStartDate: supplierFileUpload.periodStartDate,
-        periodEndDate: supplierFileUpload.periodEndDate,
-      })
-      .from(supplierFileUpload)
-      .innerJoin(supplier, eq(supplierFileUpload.supplierId, supplier.id))
-      .where(and(...conditions));
-
-    // Get franchisees and brands
-    const [allFranchisees, allBrands] = await Promise.all([
-      database
-        .select({
-          id: franchisee.id,
-          name: franchisee.name,
-          brandId: franchisee.brandId,
-          hashavshevetItemKey: franchisee.hashavshevetItemKey,
-        })
-        .from(franchisee),
-      database
-        .select({
-          id: brand.id,
-          nameHe: brand.nameHe,
-        })
-        .from(brand),
-    ]);
+    const {
+      files,
+      franchisees: allFranchisees,
+      brands: allBrands,
+      approvedKeys: approvedSet,
+    } = await loadSupplierCommissionsData({
+      startDate,
+      endDate,
+      brandIds,
+      supplierIds,
+      startDocNumber,
+      onlyApproved,
+    });
 
     const franchiseeMap = new Map(allFranchisees.map((f) => [f.id, f]));
     const brandMap = new Map(allBrands.map((b) => [b.id, b]));
-
-    // Same approval gate as /api/reports/hashavshevet — keeps preview and
-    // Excel in sync. Empty when the flag is off.
-    const approvedSet = new Set<string>();
-    if (onlyApproved) {
-      const freshSessions = await database.execute<{
-        id: string;
-        supplier_id: string;
-        period_start_date: string;
-        period_end_date: string;
-      }>(sql`
-        SELECT DISTINCT ON (supplier_id, period_start_date, period_end_date)
-          id, supplier_id, period_start_date, period_end_date
-        FROM reconciliation_session
-        WHERE archived_at IS NULL
-          AND period_start_date <= ${endDate}
-          AND period_end_date >= ${startDate}
-        ORDER BY supplier_id, period_start_date, period_end_date, created_at DESC
-      `);
-
-      const sessionContext = new Map<
-        string,
-        { supplierId: string; periodStart: string; periodEnd: string }
-      >();
-      for (const row of freshSessions.rows) {
-        sessionContext.set(row.id, {
-          supplierId: row.supplier_id,
-          periodStart: row.period_start_date,
-          periodEnd: row.period_end_date,
-        });
-      }
-
-      if (sessionContext.size > 0) {
-        const approvedRows = await database
-          .select({
-            sessionId: reconciliationComparison.sessionId,
-            franchiseeId: reconciliationComparison.franchiseeId,
-          })
-          .from(reconciliationComparison)
-          .where(
-            and(
-              inArray(reconciliationComparison.sessionId, [
-                ...sessionContext.keys(),
-              ]),
-              inArray(reconciliationComparison.status, [
-                "auto_approved",
-                "manually_approved",
-              ])
-            )
-          );
-
-        for (const r of approvedRows) {
-          const ctx = sessionContext.get(r.sessionId);
-          if (!ctx) continue;
-          approvedSet.add(
-            `${ctx.supplierId}|${r.franchiseeId}|${ctx.periodStart}|${ctx.periodEnd}`
-          );
-        }
-      }
-    }
 
     // Build rows for Hashavshevet format.
     //
