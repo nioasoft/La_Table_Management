@@ -47,6 +47,12 @@ export function apiDocumentId(excelType: number): string | null {
 
 export const JOURNAL_TRANS_TYPE = "00"; // ponytail: Reut's sales code replaces this before go-live (task 14)
 
+/** Expense movein entries (commission charged to the restaurant): Reut's own expense file uses "הוצ". */
+export const EXPENSE_JOURNAL_TRANS_TYPE = "הוצ"; // ponytail: confirm on the first temporary send
+
+/** Fixed sender prefix of the movein Reference (controller ruling: never a per-send value). */
+export const REFERENCE_PREFIX = "LT";
+
 /**
  * Stable numeric reference (≤9 digits) for a row: FNV-1a 32-bit over the UTF-8 bytes of
  * sendPrefix + rowKey, mod 10^9. ponytail: not collision-free (32-bit hash); the row lock, not this value, guards duplicates.

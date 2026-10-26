@@ -44,6 +44,9 @@ export const copy = {
   sendTimeBudgetExceeded: "נגמר הזמן לבקשה הזו, ולכן חלק מהשורות לא נשלחו. הן לא נעולות, ואפשר לשלוח אותן שוב",
   /** H-Connect's per-row reason is technical English (field: reason); shown as-is behind a Hebrew lead. */
   rowRejected: (detail: string) => `חשבשבת דחתה את השורה: ${detail}`,
+  noCommissionInvoices: "אין חשבוניות עמלה לתקופה הנבחרת",
+  zeroCommissionInvoice: (invoiceNumber: string | null, clientName: string, franchiseeName: string) =>
+    `חשבונית עמלה ${invoiceNumber || "ללא מספר"} של ${clientName} (${franchiseeName}) בסכום 0.00, ולכן אי אפשר לשלוח אותה. בדקו את הסכום`,
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
   invalidRequest: "הבקשה אינה תקינה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,

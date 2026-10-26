@@ -8,7 +8,15 @@ import {
 } from "@/data-access/client-reconciliation-approval";
 import { franchiseePeriodParams } from "@/schemas/hashavshevet";
 import { exportLabels } from "../copy";
-import { apiDate, apiMoney, internalReference, JOURNAL_TRANS_TYPE, lastDayOfMonth, roundCents } from "../format";
+import {
+  apiDate,
+  apiMoney,
+  internalReference,
+  JOURNAL_TRANS_TYPE,
+  lastDayOfMonth,
+  REFERENCE_PREFIX,
+  roundCents,
+} from "../format";
 import type { ExportDefinition } from "../registry";
 import type { ApiRow, BuiltRow } from "../types";
 
@@ -117,9 +125,6 @@ const HEVER_ASMACHTA_PLACEHOLDER = "9999";
 // Anything outside this set (CIBUS, …) leaves אסמכתא 2 empty per Reut.
 // TENBIS added 2026-07 — self-billed from the July-2026 period.
 const INVOICE_BEARING_CLIENT_CODES = new Set(["MISHLOCHA", "HAAT", "WOLT", "TENBIS"]);
-
-/** Fixed sender prefix of the movein Reference (controller ruling: never a per-send value). */
-const REFERENCE_PREFIX = "LT";
 
 export const FRANCHISEE_NOT_FOUND_MESSAGE = "זכיין לא נמצא";
 export const NO_JOURNAL_CLIENTS_MESSAGE = "אין לקוחות עם הפקת פקודת יומן מסומנת בתקופה זו";

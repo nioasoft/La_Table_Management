@@ -42,7 +42,7 @@ export const clientCommissionsParams = z.object({
 
 export const franchiseePeriodParams = z.object({ franchiseeId: id, periodMonth, periodYear });
 
-const clientCommissionInvoicesParams = z.object({
+export const clientCommissionInvoicesParams = z.object({
   periodMonth,
   periodYear,
   franchiseeId: id.optional(),

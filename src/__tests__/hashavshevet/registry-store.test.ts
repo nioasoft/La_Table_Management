@@ -51,6 +51,7 @@ describe("EXPORTS registry", () => {
   });
   // Each builder task (8-13) adds its type here as it replaces the placeholder build.
   const MIGRATED: readonly string[] = [
+    "client_commission_invoices",
     "client_commissions",
     "franchisee_client_invoices",
     "journal_entries",
