@@ -9,7 +9,7 @@ import {
 } from "@/schemas/franchisee-billing-screen";
 import { royaltiesParams } from "@/schemas/hashavshevet";
 import { exportLabels } from "../copy";
-import { apiDocumentId, apiMoney, apiQuantity } from "../format";
+import { apiDocumentId, apiMoney, apiQuantity, lastDayOfMonth } from "../format";
 import type { ExportDefinition } from "../registry";
 import type { ApiRow, BuiltRow } from "../types";
 
@@ -299,12 +299,6 @@ export async function loadRoyaltiesData(params: unknown): Promise<RoyaltiesData>
   ]);
   const context = contexts.find((item) => item.brandId === brandId) ?? null;
   return { context, companyId, itemType, year, month };
-}
-
-/** YYYY-MM-DD of the month's last day, from local date parts (never toISOString). */
-function lastDayOfMonth(year: number, month: number): string {
-  const day = new Date(year, month, 0).getDate();
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function apiRowOf(row: HashavshevetRow): ApiRow {

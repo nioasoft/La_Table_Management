@@ -3,9 +3,11 @@ import {
   apiMoney,
   apiQuantity,
   apiDate,
+  apiDiscountPct,
   apiDocumentId,
   internalReference,
   JOURNAL_TRANS_TYPE,
+  lastDayOfMonth,
 } from "@/lib/hashavshevet/format";
 
 describe("hashavshevet format", () => {
@@ -26,6 +28,20 @@ describe("hashavshevet format", () => {
     expect(apiMoney(-0.1 - 0.2)).toBe("-0.30");
     expect(apiMoney(0)).toBe("0.00");
     expect(apiMoney(-0.001)).toBe("0.00");
+  });
+
+  it("apiDiscountPct keeps all four decimals (never rounded to two)", () => {
+    expect(apiDiscountPct(15.2543)).toBe("15.2543");
+    expect(apiDiscountPct(19.2543)).toBe("19.2543");
+    expect(apiDiscountPct(15)).toBe("15.0000");
+  });
+
+  it("lastDayOfMonth returns the real last day, leap years included", () => {
+    expect(lastDayOfMonth(2026, 9)).toBe("2026-09-30");
+    expect(lastDayOfMonth(2026, 2)).toBe("2026-02-28");
+    expect(lastDayOfMonth(2028, 2)).toBe("2028-02-29");
+    expect(lastDayOfMonth(2026, 12)).toBe("2026-12-31");
+    expect(lastDayOfMonth(2026, 1)).toBe("2026-01-31");
   });
 
   it("apiDate accepts only YYYY-MM-DD", () => {

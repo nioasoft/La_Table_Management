@@ -11,7 +11,7 @@ import {
 } from "@/lib/hashavshevet-account";
 import { clientCommissionsParams } from "@/schemas/hashavshevet";
 import { copy, exportLabels } from "../copy";
-import { apiDocumentId, apiMoney, apiQuantity } from "../format";
+import { apiDocumentId, apiMoney, apiQuantity, lastDayOfMonth } from "../format";
 import type { ExportDefinition } from "../registry";
 import type { ApiRow, BuiltRow } from "../types";
 
@@ -140,9 +140,7 @@ function netOf(comp: ClientCommissionsComparison): number {
 
 /** YYYY-MM-DD bounds of the session month, from local date parts (never toISOString). */
 function monthBounds(year: number, month: number): { start: string; end: string } {
-  const mm = String(month).padStart(2, "0");
-  const lastDay = String(new Date(year, month, 0).getDate()).padStart(2, "0");
-  return { start: `${year}-${mm}-01`, end: `${year}-${mm}-${lastDay}` };
+  return { start: `${year}-${String(month).padStart(2, "0")}-01`, end: lastDayOfMonth(year, month) };
 }
 
 /**

@@ -40,7 +40,7 @@ export const clientCommissionsParams = z.object({
   docKind: z.enum(["invoice", "journal"]).default("invoice"),
 });
 
-const franchiseePeriodParams = z.object({ franchiseeId: id, periodMonth, periodYear });
+export const franchiseePeriodParams = z.object({ franchiseeId: id, periodMonth, periodYear });
 
 const clientCommissionInvoicesParams = z.object({
   periodMonth,

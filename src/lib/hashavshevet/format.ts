@@ -16,6 +16,20 @@ export function apiQuantity(n: number): string {
   return n.toFixed(3);
 }
 
+/**
+ * "אחוז הנחה לפריט" as the exact 4-decimal string ("15.2543"). Never round to 2 decimals:
+ * the value is the VAT-share trick, and rounding it would shift the net amount (ruling R21).
+ */
+export function apiDiscountPct(n: number): string {
+  return n.toFixed(4);
+}
+
+/** YYYY-MM-DD of the month's last day (month is 1-12), from local date parts: never toISOString. */
+export function lastDayOfMonth(year: number, month: number): string {
+  const day = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /** "2026-10-31" → "31/10/2026". String-only: never goes through Date (no UTC shift). */
 export function apiDate(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
