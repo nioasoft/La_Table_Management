@@ -1,7 +1,7 @@
 /** Hebrew UI copy for the Hashavshevet send feature. All user-facing strings live here. */
 import type { HConnectPlugin } from "@/lib/hconnect";
 import type { RowStatus } from "./classify";
-import type { ExportType, HConnectOutcome, SendStatus } from "./types";
+import { STALE_PENDING_MINUTES, type ExportType, type HConnectOutcome, type SendStatus } from "./types";
 
 type ApiErrorCode = Extract<HConnectOutcome, { kind: "api_error" }>["code"];
 
@@ -24,7 +24,7 @@ export const sendStatusLabels: Record<SendStatus, string> = {
 const resolveOutcomeLabels: Record<ResolveOutcomeKey, string> = {
   approved: "אישור",
   rejected: "דחייה",
-  arrived: "סימון כהגיעה",
+  arrived: "סימון שהגיעה לחשבשבת",
 };
 
 export const copy = {
@@ -57,7 +57,9 @@ export const copy = {
   rowNotLocked: "השורה לא נמצאה או שכבר נפתחה",
   /** The send is in `currentStatus`, which does not allow `outcome` (spec lifecycle box). */
   invalidTransition: (outcome: ResolveOutcomeKey, currentStatus: SendStatus) =>
-    `אי אפשר לבצע ${resolveOutcomeLabels[outcome]} כשהשליחה ${sendStatusLabels[currentStatus]}. רעננו ובדקו שוב`,
+    currentStatus === "pending"
+      ? `אי אפשר לבצע ${resolveOutcomeLabels[outcome]} כל עוד השליחה מתבצעת. המתינו לסיום השליחה או עד שיעברו ${STALE_PENDING_MINUTES} דקות, ורעננו`
+      : `אי אפשר לבצע ${resolveOutcomeLabels[outcome]} כשהשליחה ${sendStatusLabels[currentStatus]}. רעננו ובדקו שוב`,
 } as const;
 
 /** Short Hebrew name of each export, for buttons, dialogs and the sends screen. */
@@ -124,3 +126,124 @@ export function apiErrorMessage(code: ApiErrorCode, plugin: HConnectPlugin, comp
       return "חשבשבת דחתה את הבקשה. נסו שוב או פנו לתמיכה";
   }
 }
+
+/** The settings screen (spec §9, §7 ניהול): companies, activation and mappings. */
+export const settingsCopy = {
+  title: "חשבשבת",
+  subtitle: "חברות בחשבשבת, תאריך הפעלת השליחה ושיוך מותגים וזכיינים לחברה",
+  readOnlyNote: "רק משתמש-על יכול לערוך את ההגדרות. אתם במצב צפייה",
+  loading: "טוען הגדרות…",
+  loadFailed: "טעינת ההגדרות נכשלה. נסו שוב",
+  retry: "נסו שוב",
+  saved: "השינוי נשמר",
+  saveFailed: "השמירה נכשלה. נסו שוב",
+  companiesTitle: "חברות",
+  companiesEmpty: "אין חברות מוגדרות בחשבשבת",
+  fileColumn: "קובץ",
+  compIdColumn: "מספר חברה",
+  nameColumn: "שם",
+  statusColumn: "סטטוס",
+  approvalColumn: "דורשת אישור",
+  actionsColumn: "פעולות",
+  approvalHint: "כשמופעל, כל שליחה ממתינה לאישור שלך בחשבשבת",
+  statusLive: (date: string) => `פעילה מ-${date}`,
+  statusOff: "לא מופעלת",
+  activate: "הפעל שליחה",
+  deactivate: "כבה",
+  activateTitle: (companyName: string) => `הפעלת שליחה: ${companyName}`,
+  activateDescription: "תקופות שקודמות לתאריך הזה כבר יוצאו באקסל ולא יישלחו. מהתאריך הזה ואילך הייצוא יישלח לחשבשבת",
+  activateDateLabel: "פעילה מתאריך",
+  activateConfirm: "הפעל",
+  deactivateTitle: (companyName: string) => `כיבוי שליחה: ${companyName}`,
+  deactivateDescription: "אחרי הכיבוי אי אפשר יהיה לשלוח לחברה הזו, והייצוא ימשיך להיות באקסל. שליחות שכבר נשלחו לא מושפעות",
+  deactivateConfirm: "כבה שליחה",
+  cancel: "ביטול",
+  mappingsTitle: "שיוך לחברה בחשבשבת",
+  mappingsHint: "עמלות ספקים ותמלוגים נשלחים לפי החברה של המותג, וכל שאר הייצואים לפי החברה של הזכיין. בלי חברה אי אפשר לשלוח",
+  brandsTitle: "מותגים",
+  brandsEmpty: "אין מותגים לשיוך",
+  franchiseesTitle: "זכיינים פעילים",
+  franchiseesEmpty: "אין זכיינים פעילים",
+  brandColumn: "מותג",
+  franchiseeColumn: "זכיין",
+  companyColumn: "חברה בחשבשבת",
+  noCompany: "ללא חברה בחשבשבת",
+  pickCompany: "בחרו חברה",
+} as const;
+
+/** The sends screen (spec §9): Reut's approval queue, history and the send detail. */
+export const sendsCopy = {
+  title: "שליחות לחשבשבת",
+  subtitle: "אישור ודחייה של מנות זמניות, והיסטוריית כל השליחות",
+  loading: "טוען שליחות…",
+  loadFailed: "טעינת השליחות נכשלה. נסו שוב",
+  retry: "נסו שוב",
+  emptyTitle: "אין שליחות",
+  emptyHint: 'שליחות שייצאו מכפתורי "שלח לחשבשבת" יופיעו כאן',
+  queueTitle: "ממתינות לאישור",
+  queueHint: "השוו את מספר השורות והסכום למנה הזמנית בחשבשבת לפני האישור",
+  queueEmpty: "אין שליחות שממתינות לאישור",
+  historyTitle: "היסטוריה",
+  historyEmpty: "אין שליחות בהיסטוריה",
+  historyFilteredEmpty: "אין שליחות שמתאימות לסינון",
+  allOption: "הכול",
+  statusFilter: "סטטוס",
+  companyFilter: "חברה",
+  exportFilter: "סוג ייצוא",
+  companyColumn: "חברה",
+  exportColumn: "ייצוא",
+  periodColumn: "תקופה",
+  rowsColumn: "שורות",
+  totalColumn: 'סה"כ',
+  sentColumn: "נשלחה",
+  statusColumn: "סטטוס",
+  noPeriod: "—",
+  rowsCount: (count: number) => `${count} שורות`,
+  sentBy: (when: string, who: string | null) => (who ? `נשלחה ב-${when} על ידי ${who}` : `נשלחה ב-${when}`),
+  approve: "אישרתי בחשבשבת",
+  reject: "דחיתי",
+  arrived: "הגיע",
+  notArrived: "לא הגיע",
+  unknownNote: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת ובחרו",
+  staleWarning:
+    'השליחה נתקעה לפני שחזרה תשובה, וייתכן שרק חלק מהשורות הגיעו. אם אינכם בטוחים, בחרו "לא הגיע" ושלחו שוב (שורות של שליחה שנדחתה משתחררות)',
+  resolved: "השליחה עודכנה",
+  resolveFailed: "העדכון נכשל. נסו שוב",
+  rejectTitle: "דחיית שליחה",
+  rejectDescription: "שורות השליחה ישוחררו ויהיה אפשר לשלוח אותן שוב",
+  noteLabel: "הערה (חובה)",
+  notePlaceholder: "מה לא תקין בשליחה?",
+  rejectConfirm: "דחה ושחרר שורות",
+  cancel: "ביטול",
+  detailTitle: "פרטי שליחה",
+  detailDescription: "השורות שננעלו, התשובה של חשבשבת ופתיחה של שורות נעולות",
+  details: "פרטים",
+  sentOn: "נשלחה",
+  resolutionNote: "הערת טיפול",
+  detailLoading: "טוען פרטי שליחה…",
+  detailLoadFailed: "טעינת פרטי השליחה נכשלה. נסו שוב",
+  close: "סגור",
+  fileLabel: "קובץ בחשבשבת",
+  rowsTitle: "שורות",
+  noRows: "אין שורות לשליחה הזו",
+  rowKeyColumn: "מפתח שורה",
+  amountColumn: "סכום",
+  lockColumn: "מצב",
+  rowActionColumn: "פעולה",
+  rowLocked: "נעולה",
+  rowReleased: "נפתחה",
+  releasedBy: (reason: string, who: string | null) => (who ? `${reason} (${who})` : reason),
+  payloadToggle: "השורה כפי שנשלחה",
+  responseTitle: "תשובת חשבשבת (גולמית)",
+  noResponse: "לא נשמרה תשובה לשליחה הזו",
+  unlockRow: "פתח שורה",
+  unlockTitle: "פתיחת שורה",
+  unlockDescription: "השורה תשוחרר ויהיה אפשר לשלוח אותה שוב. הפעולה נרשמת עם שמך והסיבה",
+  unlockReasonLabel: "סיבה (חובה)",
+  unlockReasonPlaceholder: "למה לפתוח את השורה?",
+  unlockConfirm: "פתח שורה",
+  unlocked: "השורה נפתחה",
+  unlockFailed: "פתיחת השורה נכשלה. נסו שוב",
+  releasedAutomatically: "לא הגיעה לחשבשבת, שוחררה אוטומטית",
+  rejectedWithNote: (note: string) => `נדחתה: ${note}`,
+} as const;
