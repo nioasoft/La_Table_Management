@@ -81,13 +81,13 @@ function data(over: Partial<FranchiseeClientInvoicesData> = {}): FranchiseeClien
 }
 
 describe("buildFranchiseeClientInvoicesRows", () => {
-  it("keys a row by client|franchisee|YYYY-MM|itemKey, with the franchisee's company", () => {
+  it("keys a row by kind:clientId|franchisee|YYYY-MM, with the franchisee's company", () => {
     const { rows, blockingErrors } = buildFranchiseeClientInvoicesRows(data());
 
     expect(blockingErrors).toEqual([]);
     expect(rows).toHaveLength(1);
     const [row] = rows;
-    expect(row.rowKey).toBe("c-CIBUS|fr-1|2026-09|ארוחות");
+    expect(row.rowKey).toBe("client:c-CIBUS|fr-1|2026-09");
     expect(row.documentKey).toBe(row.rowKey);
     expect(row.companyId).toBe("company-vini");
     expect(row.amount).toBe(1235);
@@ -105,12 +105,12 @@ describe("buildFranchiseeClientInvoicesRows", () => {
 
   it("pads a single-digit month in the key, and takes the month's real last day for periodEnd", () => {
     const march = buildFranchiseeClientInvoicesRows(data({ periodMonth: 3, periodYear: 2027 })).rows[0];
-    expect(march.rowKey).toBe("c-CIBUS|fr-1|2027-03|ארוחות");
+    expect(march.rowKey).toBe("client:c-CIBUS|fr-1|2027-03");
     expect(march.periodEnd).toBe("2027-03-31");
     const leap = buildFranchiseeClientInvoicesRows(data({ periodMonth: 2, periodYear: 2028 })).rows[0];
     expect(leap.periodEnd).toBe("2028-02-29");
     const feb = buildFranchiseeClientInvoicesRows(data({ periodMonth: 2, periodYear: 2026 })).rows[0];
-    expect(feb.rowKey).toBe("c-CIBUS|fr-1|2026-02|ארוחות");
+    expect(feb.rowKey).toBe("client:c-CIBUS|fr-1|2026-02");
     expect(feb.periodEnd).toBe("2026-02-28");
     const dec = buildFranchiseeClientInvoicesRows(data({ periodMonth: 12 })).rows[0];
     expect(dec.periodEnd).toBe("2026-12-31");
@@ -151,13 +151,13 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       [3, "3"],
     ]);
     expect(rows.map((r) => r.rowKey)).toEqual([
-      "c-A|fr-1|2026-09|ארוחות",
-      "c-C|fr-1|2026-09|ארוחות",
-      "o-ז|fr-1|2026-09|ארוחות",
+      "client:c-A|fr-1|2026-09",
+      "client:c-C|fr-1|2026-09",
+      "occasional:o-ז|fr-1|2026-09",
     ]);
   });
 
-  it("carries the resolved item key into the rowKey and the apiRow (GIFTCARD, client key, franchisee account)", () => {
+  it("carries the resolved item key into the apiRow, but not into the rowKey (GIFTCARD, client key, franchisee account)", () => {
     const franchisee = { ...FRANCHISEE, hashavshevetRevenueAccount: " הכנסותנ " };
     const { rows } = buildFranchiseeClientInvoicesRows(
       data({
@@ -171,11 +171,50 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       } as Partial<FranchiseeClientInvoicesData>),
     );
     expect(rows.map((r) => [r.rowKey, r.apiRow.itemkey, r.apiRow.Discountprc])).toEqual([
-      ["c-GIFTCARD|fr-1|2026-09|גיפט", "גיפט", "19.2543"],
-      ["c-LATABLEMARK|fr-1|2026-09|ארוחותש", "ארוחותש", "15.2543"],
-      ["c-TENBIS|fr-1|2026-09|הכנסותנ", "הכנסותנ", "15.2543"],
-      ["o-א|fr-1|2026-09|הכנסותנ", "הכנסותנ", "15.2543"],
+      ["client:c-GIFTCARD|fr-1|2026-09", "גיפט", "19.2543"],
+      ["client:c-LATABLEMARK|fr-1|2026-09", "ארוחותש", "15.2543"],
+      ["client:c-TENBIS|fr-1|2026-09", "הכנסותנ", "15.2543"],
+      ["occasional:o-א|fr-1|2026-09", "הכנסותנ", "15.2543"],
     ]);
+  });
+
+  it("has unique rowKeys for a mixed fixture, even when ids repeat across the client and occasional tables", () => {
+    const { rows } = buildFranchiseeClientInvoicesRows(
+      data({
+        approved: [
+          approved("CIBUS", 100),
+          approved("TENBIS", 200),
+          approved("GIFTCARD", 300),
+          approved("WOLT", 400, { netAmount: 390 }),
+          approved("SAME", 500, { clientId: "same-id" }),
+        ],
+        occasional: [occasional("א", 10), occasional("ב", 20), { ...occasional("ג", 30), occasionalClientId: "same-id" }],
+      }),
+    );
+    const keys = rows.map((r) => r.rowKey);
+    expect(keys).toHaveLength(8);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(new Set(rows.map((r) => r.documentKey)).size).toBe(keys.length);
+    expect(keys).toContain("client:same-id|fr-1|2026-09");
+    expect(keys).toContain("occasional:same-id|fr-1|2026-09");
+  });
+
+  it("does not change a rowKey when an item override changes (the same invoice stays locked)", () => {
+    const build = (revenueAccount: string | null, clientItemKey: string | null) =>
+      buildFranchiseeClientInvoicesRows(
+        data({
+          franchisee: { ...FRANCHISEE, hashavshevetRevenueAccount: revenueAccount },
+          approved: [approved("CIBUS", 100, { clientItemKey }), approved("GIFTCARD", 50, { clientItemKey })],
+          occasional: [occasional("א", 10)],
+        } as Partial<FranchiseeClientInvoicesData>),
+      ).rows;
+
+    const before = build(null, null);
+    const after = build("הכנסותנ", "ארוחותש");
+
+    expect(after.map((r) => r.apiRow.itemkey)).toEqual(["ארוחותש", "גיפט", "הכנסותנ"]);
+    expect(before.map((r) => r.apiRow.itemkey)).toEqual(["ארוחות", "גיפט", "ארוחות"]);
+    expect(after.map((r) => r.rowKey)).toEqual(before.map((r) => r.rowKey));
   });
 
   it("prices like the Excel: WOLT exact, La Table halved, others rounded, zero dropped", () => {
@@ -245,8 +284,8 @@ describe("franchiseeClientInvoicesExport", () => {
     expect(mocks.occasional).toHaveBeenCalledWith({ franchiseeId: "fr-1", periodMonth: 9, periodYear: 2026 });
     expect(result.blockingErrors).toEqual([]);
     expect(result.rows.map((r) => [r.rowKey, r.companyId])).toEqual([
-      ["c-CIBUS|fr-1|2026-09|ארוחות", "company-vini"],
-      ["o-א|fr-1|2026-09|ארוחות", "company-vini"],
+      ["client:c-CIBUS|fr-1|2026-09", "company-vini"],
+      ["occasional:o-א|fr-1|2026-09", "company-vini"],
     ]);
   });
 

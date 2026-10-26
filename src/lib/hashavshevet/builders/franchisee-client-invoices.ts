@@ -127,8 +127,12 @@ export interface FranchiseeClientInvoicesSheet {
   rows: BuiltRow[];
 }
 
-/** One invoice line before numbering. `clientId` is the occasional client's id for occasional rows. */
+/**
+ * One invoice line before numbering. `clientId` is the occasional client's id for occasional rows;
+ * `clientKind` keeps the two id spaces apart in the rowKey.
+ */
 interface Entry {
+  clientKind: "client" | "occasional";
   clientId: string;
   accountKey: string;
   itemKey: string;
@@ -162,6 +166,7 @@ function regularEntries(data: FranchiseeClientInvoicesData, itemKeyOverride: str
     .map((a) => {
       const isGiftcard = a.clientCode === "GIFTCARD";
       return {
+        clientKind: "client" as const,
         clientId: a.clientId,
         accountKey: a.accountKey,
         // Item key (מפתח פריט) priority: GIFTCARD always uses its own item
@@ -184,6 +189,7 @@ function regularEntries(data: FranchiseeClientInvoicesData, itemKeyOverride: str
  */
 function occasionalEntries(data: FranchiseeClientInvoicesData, itemKeyOverride: string): Entry[] {
   return data.occasional.map((o) => ({
+    clientKind: "occasional" as const,
     clientId: o.occasionalClientId,
     accountKey: o.hashavshevetName,
     itemKey: itemKeyOverride || ITEM_KEY,
@@ -213,12 +219,10 @@ function apiRowOf(entry: Entry, documentNumber: number): ApiRow {
 
 function toBuiltRow(entry: Entry, documentNumber: number, data: FranchiseeClientInvoicesData): BuiltRow {
   const { franchiseeId, periodMonth, periodYear } = data;
-  const rowKey = [
-    entry.clientId,
-    franchiseeId,
-    `${periodYear}-${String(periodMonth).padStart(2, "0")}`,
-    entry.itemKey,
-  ].join("|");
+  // One row per client x franchisee x month (approved rows are one per client id; occasional documents
+  // are unique per occasional client, franchisee and period), so the item key stays out of the key:
+  // changing an item override must not make an already sent invoice look new (ruling R22).
+  const rowKey = `${entry.clientKind}:${entry.clientId}|${franchiseeId}|${periodYear}-${String(periodMonth).padStart(2, "0")}`;
   const display: Record<(typeof FRANCHISEE_CLIENT_INVOICES_HEADERS)[number], string | number> = {
     "מפתח חשבון": entry.accountKey,
     "שם": "",
