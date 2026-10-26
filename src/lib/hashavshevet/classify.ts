@@ -10,6 +10,8 @@ export interface ActiveLock {
   amount: number;
   sentAt: Date;
   sentBy: string | null;
+  /** Sender's display name for the preview; null when the user was deleted. */
+  sentByName: string | null;
   sendStatus: string;
 }
 

@@ -19,6 +19,7 @@ export const copy = {
     `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}`,
   unknownOutcome: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת",
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
+  invalidRequest: "הבקשה אינה תקינה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,
 } as const;
 

@@ -83,3 +83,11 @@ describe("listSends summary", () => {
     expect(captured.sql).not.toContain('"hashavshevet_send"."row_count"');
   });
 });
+
+describe("getActiveLocks sender name", () => {
+  it("left-joins the user table so a deleted sender still yields the lock", async () => {
+    await drizzleHashavshevetStore.getActiveLocks("royalties", ["k1"]);
+    expect(captured.sql).toMatch(/left join "user" on "hashavshevet_send"\."sent_by" = "user"\."id"/i);
+    expect(captured.sql).toContain('"user"."name"');
+  });
+});

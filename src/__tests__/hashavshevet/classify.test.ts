@@ -28,6 +28,7 @@ function lock(over: Partial<ActiveLock> = {}): ActiveLock {
     amount: 100,
     sentAt: new Date("2026-11-02T10:00:00"),
     sentBy: "u1",
+    sentByName: "מנהלת",
     sendStatus: "sent",
     ...over,
   };

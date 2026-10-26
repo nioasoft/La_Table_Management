@@ -124,10 +124,12 @@ async function getActiveLocks(exportType: ExportType, rowKeys: string[]): Promis
       amount: hashavshevetSentRow.amount,
       sentAt: hashavshevetSend.sentAt,
       sentBy: hashavshevetSend.sentBy,
+      sentByName: user.name,
       sendStatus: hashavshevetSend.status,
     })
     .from(hashavshevetSentRow)
     .innerJoin(hashavshevetSend, eq(hashavshevetSentRow.sendId, hashavshevetSend.id))
+    .leftJoin(user, eq(hashavshevetSend.sentBy, user.id))
     .where(
       and(
         eq(hashavshevetSentRow.exportType, exportType),
