@@ -40,7 +40,7 @@ function row(over: Partial<BuiltRow> = {}): BuiltRow {
     documentKey: "d1",
     amount: 100,
     display: {},
-    apiRow: {},
+    apiRow: { "מפתח חשבון": "secret-payload" },
     periodEnd: "2026-06-30",
     ...over,
   };
@@ -122,6 +122,26 @@ describe("handlePreview", () => {
     expect(g2).toMatchObject({ companyId: "c2", requiresApproval: false, totalNew: 20 });
     expect(d.store.getActiveLocks).toHaveBeenCalledWith("journal_entries", ["a", "b", "c"]);
     expect(d.buildFn).toHaveBeenCalledWith(VALID_BODY.params);
+  });
+
+  it("never exposes the H-Connect payload (apiRow) to the client", async () => {
+    const d = deps({
+      companies: [company("c1")],
+      rows: [row({ rowKey: "a" }), row({ rowKey: "b" }), row({ rowKey: "c", companyId: null })],
+      locks: [lockFor({ rowKey: "b" })],
+    });
+    const res = await handlePreview(req(VALID_BODY), d);
+    const text = await res.text();
+    const rows = JSON.parse(text).data.groups.flatMap((g: { rows: object[] }) => g.rows);
+
+    expect(rows).toHaveLength(3);
+    for (const r of rows) {
+      expect(r).not.toHaveProperty("apiRow");
+      expect(r).toHaveProperty("rowKey");
+      expect(r).toHaveProperty("display");
+      expect(r).toHaveProperty("status");
+    }
+    expect(text).not.toContain("secret-payload");
   });
 
   it("returns builder blocking errors", async () => {

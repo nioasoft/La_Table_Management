@@ -18,11 +18,14 @@ import { previewRequestSchema } from "@/schemas/hashavshevet";
 
 /** Spec §7: build the rows of an export, classify each one, group by target company. */
 
+/** A classified row as the client sees it: no `apiRow`; the send route rebuilds the H-Connect payload server-side. */
+export type PreviewRow = Omit<ClassifiedRow, "apiRow">;
+
 export interface PreviewGroup {
   companyId: string | null;
   companyName: string | null;
   requiresApproval: boolean;
-  rows: ClassifiedRow[];
+  rows: PreviewRow[];
   /** Sum of the rows that would be sent now (status "new"), rounded to cents. */
   totalNew: number;
 }
@@ -42,6 +45,10 @@ export interface PreviewDeps {
 
 type CompanyDirectory = Map<string, CompanyInfo & { nameHe: string }>;
 
+function toPreviewRow({ apiRow: _apiRow, ...rest }: ClassifiedRow): PreviewRow {
+  return rest;
+}
+
 /** One group per distinct companyId, in order of first appearance; null (no company) is its own group. */
 function groupByCompany(rows: ClassifiedRow[], companies: CompanyDirectory): PreviewGroup[] {
   const byCompany = new Map<string | null, ClassifiedRow[]>();
@@ -57,7 +64,7 @@ function groupByCompany(rows: ClassifiedRow[], companies: CompanyDirectory): Pre
       companyId,
       companyName: info?.nameHe ?? null,
       requiresApproval: info?.requiresApproval ?? false,
-      rows: groupRows,
+      rows: groupRows.map(toPreviewRow),
       totalNew: roundCents(totalNew),
     };
   });
