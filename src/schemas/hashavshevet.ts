@@ -34,7 +34,7 @@ export const supplierCommissionsParams = z.object({
 /** The billing route's `mode=file` query: one brand, one item type, one month. */
 export const royaltiesParams = exportFileQuerySchema.omit({ mode: true });
 
-const clientCommissionsParams = z.object({
+export const clientCommissionsParams = z.object({
   sessionId: id,
   /** The route calls this `exportType`; renamed to avoid clashing with the discriminator. */
   docKind: z.enum(["invoice", "journal"]).default("invoice"),

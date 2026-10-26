@@ -9,8 +9,11 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { loadClientCommissionsData } from "@/lib/hashavshevet/builders/client-commissions";
-import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
+import {
+  buildClientCommissionsSheet,
+  CLIENT_COMMISSIONS_HEADERS,
+  loadClientCommissionsData,
+} from "@/lib/hashavshevet/builders/client-commissions";
 import * as XLSX from "xlsx";
 
 export async function GET(request: NextRequest) {
@@ -28,88 +31,28 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Document type: 11 = invoice (חשבונית), 1 = journal entry (פקודת יומן)
-  const documentTypeNumber = exportType === "journal" ? 1 : 11;
-
   try {
-    const { session, client: clientRow, comparisons } = await loadClientCommissionsData({
+    const data = await loadClientCommissionsData({
       sessionId,
       docKind: exportType === "journal" ? "journal" : "invoice",
     });
-    if (!session) {
+    const sheet = buildClientCommissionsSheet(data);
+    if (!sheet.ok) {
       return NextResponse.json(
-        { error: "התאמה לא נמצאה" },
-        { status: 404 }
+        { error: sheet.message },
+        { status: sheet.status }
       );
     }
-    if (!clientRow) {
-      return NextResponse.json(
-        { error: "לקוח לא נמצא" },
-        { status: 404 }
-      );
-    }
-    if (comparisons.length === 0) {
-      return NextResponse.json(
-        { error: "אין שורות מאושרות לייצוא" },
-        { status: 400 }
-      );
-    }
-
-    // Build Hashavshevet rows - exact same format as supplier export.
-    // LA TABLE special rule: on invoice exports only, the amount is halved
-    // (the bookkeeping value is what Tabit shows, but the invoice we issue
-    // is for 50% of it). Journal-entry exports keep the full amount.
-    const isInvoiceExport = exportType !== "journal";
-    const isLaTableInvoice =
-      (clientRow.code === "LATABLE" ||
-        clientRow.code === "LATABLEMARK") &&
-      isInvoiceExport;
-    const rows = comparisons
-      .filter((comp) => {
-        const net = comp.netAmount ? parseFloat(comp.netAmount) : 0;
-        return net !== 0;
-      })
-      .map((comp) => {
-        const rawAmount = comp.netAmount ? parseFloat(comp.netAmount) : 0;
-        const price = isLaTableInvoice
-          ? Math.round(rawAmount / 2)
-          : Math.round(rawAmount);
-        return [
-          resolveClientHashavshevetAccount(clientRow, comp.franchiseeBrandId), // מפתח חשבון
-          "", // שם
-          `עמלות ${comp.franchiseeName}`, // מפתח פריט
-          "", // שם פריט
-          1, // כמות
-          price, // מחיר
-          documentTypeNumber, // סוג המסמך (11=חשבונית, 1=פקודת יומן)
-          "", // מספר מסמך
-        ];
-      });
-
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { error: "אין סכומים לייצוא (כל הסכומים אפס)" },
-        { status: 400 }
-      );
-    }
+    const { session, rows } = sheet;
 
     // Create workbook in identical format
     const wb = XLSX.utils.book_new();
 
-    const headers = [
-      "מפתח חשבון",
-      "שם",
-      "מפתח פריט",
-      "שם פריט",
-      "כמות",
-      "מחיר",
-      "סוג המסמך",
-      "מספר מסמך",
-    ];
-
-    const data = [headers, ...rows];
-
-    const ws = XLSX.utils.aoa_to_sheet(data);
+    const headers = CLIENT_COMMISSIONS_HEADERS;
+    const ws = XLSX.utils.aoa_to_sheet([
+      [...headers],
+      ...rows.map((row) => headers.map((header) => row.display[header])),
+    ]);
 
     // Set numeric columns (same as supplier export)
     const numericColumns: [number, string][] = [

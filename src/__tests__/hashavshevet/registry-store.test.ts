@@ -50,7 +50,7 @@ describe("EXPORTS registry", () => {
     expect(movein.sort()).toEqual(["client_commission_invoices", "journal_entries"]);
   });
   // Each builder task (8-13) adds its type here as it replaces the placeholder build.
-  const MIGRATED: readonly string[] = ["royalties", "supplier_commissions"];
+  const MIGRATED: readonly string[] = ["client_commissions", "royalties", "supplier_commissions"];
   it("has a Hebrew label, and an unmigrated build until its builder lands", async () => {
     for (const type of EXPORT_TYPES) {
       expect(EXPORTS[type].labelHe).toMatch(/[֐-׿]/);
