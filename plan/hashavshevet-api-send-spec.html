@@ -96,7 +96,7 @@ details summary{cursor:pointer;font-weight:600}
 <tr><th>#</th><th>ייצוא</th><th>מסך</th><th>route היום</th><th>יעד</th><th>ממשק</th></tr>
 <tr><td>1</td><td>עמלות ספקים לפי רשת</td><td>דוחות ← חשבשבת</td><td><code>reports/hashavshevet/export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code></td></tr>
 <tr><td>2</td><td>תמלוגים ושיווק</td><td>זכיינים ← ייצוא חיוב</td><td><code>franchisee-billing/hashavshevet-export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code></td></tr>
-<tr><td>3</td><td>עמלות לקוחות (חשבונית או פקודת יומן)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/client-export</code></td><td>חברת ניהול המותג</td><td><code>imovein</code> / <code>movein</code></td></tr>
+<tr><td>3</td><td>עמלות לקוחות (חשבונית או פקודת יומן)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/client-export</code></td><td>חברת הזכיין (אושר עם רעות 26/10)</td><td><code>imovein</code> / <code>movein</code></td></tr>
 <tr><td>4</td><td>חשבוניות לקוחות של זכיין (ארוחות/גיפט, כולל סיבוס)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/franchisee-client-invoices-export</code></td><td>חברת הזכיין</td><td><code>imovein</code></td></tr>
 <tr><td>5</td><td>פקודות יומן (וולט, משלוחה, 10ביס, חבר, HAAT)</td><td>לקוחות ← התאמות</td><td><code>reports/hashavshevet/franchisee-journal-entries-export</code></td><td>חברת הזכיין</td><td><code>movein</code></td></tr>
 <tr><td>6</td><td>חשבוניות עמלה מלקוחות (פקודות יומן)</td><td>לקוחות ← חשבוניות עמלה</td><td><code>clients/commission-invoices/export</code></td><td>חברת הזכיין (המסעדה). אושר עם רעות 26/10</td><td><code>movein</code></td></tr>
@@ -105,14 +105,14 @@ details summary{cursor:pointer;font-weight:600}
 
 <h2 id="companies">4. חברות ומיפוי</h2>
 <p>הנתונים האלה מוזנים מראש בזמן ההתקנה (seed). רעות רק בודקת אותם במסך ההגדרות.</p>
-<h3>חברות ניהול מותג: היעד של ייצואים 1–3</h3>
+<h3>חברות ניהול מותג: היעד של ייצואים 1–2</h3>
 <table>
 <tr><th>מותג (code)</th><th>חברה בחשבשבת</th><th>קובץ</th><th>מזהה</th></tr>
 <tr><td><code>MINNA_TOMEI</code></td><td>ש.מ מינה טומאי (ניהול מותג) בע"מ</td><td><code>smminna</code></td><td>34</td></tr>
 <tr><td><code>VINNI</code></td><td>ויני (ניהול מותג) בע"מ</td><td><code>fv</code></td><td>40</td></tr>
 <tr><td><code>KING_KONG</code></td><td>קינג קונג (ניהול מותג) בע"מ</td><td><code>smminna_2024</code></td><td>46</td></tr>
 </table>
-<h3>חברות זכיינים: היעד של ייצואים 4–6</h3>
+<h3>חברות זכיינים: היעד של ייצואים 3–6</h3>
 <table>
 <tr><th>זכיין</th><th>קובץ</th><th>מזהה</th></tr>
 <tr><td>קסטרא טומאיי בע"מ</td><td><code>SHEPUDAYAROE</code></td><td>27</td></tr>
