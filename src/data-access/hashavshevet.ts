@@ -25,8 +25,9 @@ export interface SendSummary {
   companyName: string;
   targetFileName: string;
   status: HashavshevetSendStatus;
+  /** Rows that reached Hashavshevet: excludes rows released as `send_failed`; rejected / unlocked rows still count. */
   rowCount: number;
-  /** Sum of the amounts of the rows locked by this send. */
+  /** Sum of the amounts of the same rows as `rowCount`. Reut compares both to the temporary batch. */
   total: number;
   sentAt: Date;
   /** Sender's name; null when the user was deleted. */
@@ -239,6 +240,9 @@ async function unlockRow(rowId: string, reason: string, userId: string): Promise
   if (updated.length === 0) throw new RowNotLockedError(rowId);
 }
 
+/** Rows of a chunk that failed are released as `send_failed`; they never reached the temporary batch. */
+const DELIVERED = sql`${hashavshevetSentRow.unlockReason} IS DISTINCT FROM 'send_failed'`;
+
 const MAX_SENDS_LISTED = 500; // ponytail: hard cap instead of pagination; add paging if history outgrows it.
 
 async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]): Promise<SendSummary[]> {
@@ -250,8 +254,8 @@ async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]):
       companyName: hashavshevetCompany.nameHe,
       targetFileName: hashavshevetSend.targetFileName,
       status: hashavshevetSend.status,
-      rowCount: hashavshevetSend.rowCount,
-      total: sql<string>`coalesce(sum(${hashavshevetSentRow.amount}), 0)`,
+      rowCount: sql<string>`count(${hashavshevetSentRow.id}) FILTER (WHERE ${DELIVERED})`,
+      total: sql<string>`coalesce(sum(${hashavshevetSentRow.amount}) FILTER (WHERE ${DELIVERED}), 0)`,
       sentAt: hashavshevetSend.sentAt,
       sentBy: user.name,
       resolvedAt: hashavshevetSend.resolvedAt,
@@ -271,7 +275,12 @@ async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]):
     .groupBy(hashavshevetSend.id, hashavshevetCompany.nameHe, user.name)
     .orderBy(desc(hashavshevetSend.sentAt))
     .limit(MAX_SENDS_LISTED);
-  return rows.map((r) => ({ ...r, exportType: r.exportType as ExportType, total: Number(r.total) }));
+  return rows.map((r) => ({
+    ...r,
+    exportType: r.exportType as ExportType,
+    rowCount: Number(r.rowCount),
+    total: Number(r.total),
+  }));
 }
 
 async function countAwaitingApproval(): Promise<number> {
