@@ -107,3 +107,23 @@ describe("finishSend", () => {
     expect(captured.params).toContain("pending");
   });
 });
+
+describe("resolveSend escape hatch for a send stuck in pending", () => {
+  const STALE = /"hashavshevet_send"\."status" = \$\d+ and "hashavshevet_send"\."sent_at" < now\(\) - interval '15 minutes'/;
+
+  it.each(["arrived", "rejected"] as const)("%s may also leave pending, only once the send is 15 minutes old", async (outcome) => {
+    captured.all = [];
+    // The mock driver matches nothing, so the transition is refused after the one atomic UPDATE.
+    await expect(drizzleHashavshevetStore.resolveSend("s1", outcome, "לא הגיע", "u1")).rejects.toBeInstanceOf(InvalidTransitionError);
+    const [update] = captured.all;
+    expect(update).toMatch(/^update "hashavshevet_send" set .* returning/);
+    expect(update).toMatch(STALE);
+  });
+
+  it("approved never leaves pending", async () => {
+    captured.all = [];
+    await expect(drizzleHashavshevetStore.resolveSend("s1", "approved", null, "u1")).rejects.toBeInstanceOf(InvalidTransitionError);
+    expect(captured.all[0]).toMatch(/^update "hashavshevet_send"/);
+    expect(captured.all[0]).not.toContain("interval");
+  });
+});

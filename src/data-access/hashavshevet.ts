@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { database } from "@/db";
 import {
   hashavshevetCompany,
@@ -92,11 +92,25 @@ export class RowNotLockedError extends Error {
   }
 }
 
-const TRANSITIONS: Record<ResolveOutcome, { from: HashavshevetSendStatus[]; to: HashavshevetSendStatus }> = {
-  approved: { from: ["awaiting_approval"], to: "approved" },
-  rejected: { from: ["awaiting_approval", "unknown"], to: "rejected" },
-  arrived: { from: ["unknown"], to: "awaiting_approval" },
+/** `fromStalePending`: also allowed from a `pending` send old enough that its request is surely dead. */
+const TRANSITIONS: Record<
+  ResolveOutcome,
+  { from: HashavshevetSendStatus[]; to: HashavshevetSendStatus; fromStalePending: boolean }
+> = {
+  approved: { from: ["awaiting_approval"], to: "approved", fromStalePending: false },
+  rejected: { from: ["awaiting_approval", "unknown"], to: "rejected", fromStalePending: true },
+  arrived: { from: ["unknown"], to: "awaiting_approval", fromStalePending: true },
 };
+
+/**
+ * Escape hatch (ruling R16): a send still `pending` 15 minutes after sent_at outlived its request
+ * (route maxDuration is 300 s) — killed mid-send, or both finishSend calls failed. 15 minutes is far
+ * past maxDuration, so a live request can never be resolved underneath.
+ */
+const STALE_PENDING = and(
+  eq(hashavshevetSend.status, "pending"),
+  lt(hashavshevetSend.sentAt, sql`now() - interval '15 minutes'`),
+);
 
 /** Postgres unique_violation, bare or wrapped by Drizzle (`cause`). */
 export function isUniqueViolation(err: unknown): boolean {
@@ -214,14 +228,15 @@ async function resolveSend(
   userId: string,
 ): Promise<void> {
   if (outcome === "rejected" && !note?.trim()) throw new Error("a rejection note is required");
-  const { from, to } = TRANSITIONS[outcome];
+  const { from, to, fromStalePending } = TRANSITIONS[outcome];
+  const allowedFrom = inArray(hashavshevetSend.status, from);
   const now = new Date();
   await database.transaction(async (tx) => {
     // Status check and update in one statement: a concurrent resolve cannot slip between them.
     const updated = await tx
       .update(hashavshevetSend)
       .set({ status: to, resolvedBy: userId, resolvedAt: now, resolutionNote: note })
-      .where(and(eq(hashavshevetSend.id, sendId), inArray(hashavshevetSend.status, from)))
+      .where(and(eq(hashavshevetSend.id, sendId), fromStalePending ? or(allowedFrom, STALE_PENDING) : allowedFrom))
       .returning({ id: hashavshevetSend.id });
     if (updated.length === 0) {
       const [current] = await tx

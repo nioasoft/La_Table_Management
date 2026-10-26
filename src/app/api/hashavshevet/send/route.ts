@@ -21,19 +21,30 @@ import { sendRequestSchema } from "@/schemas/hashavshevet";
 
 /** Spec §7: rebuild, compare to what the user saw, lock per company, send in chunks, record outcomes. */
 
+export const maxDuration = 300;
+/** No H-Connect request starts unless its full timeout still fits this budget (ruling R16). */
+const SEND_BUDGET_MS = (maxDuration - 30) * 1000;
+
 export interface SendDeps {
   store: Pick<HashavshevetStore, "getCompanies" | "getActiveLocks" | "createSendWithLocks" | "finishSend">;
   exports: Record<ExportType, ExportDefinition>;
   send: SendFn;
+  /** Epoch ms; injectable so tests can drive the time budget. */
+  now: () => number;
 }
 
 export interface SendData {
   sends: CompanySendResult[];
 }
 
-type SendRequest = z.infer<typeof sendRequestSchema> & { sentBy: string; requestId: string };
+type SendRequest = z.infer<typeof sendRequestSchema> & { sentBy: string; requestId: string; deadline: number };
 
-const DEFAULT_DEPS: SendDeps = { store: drizzleHashavshevetStore, exports: EXPORTS, send: sendToHashavshevet };
+const DEFAULT_DEPS: SendDeps = {
+  store: drizzleHashavshevetStore,
+  exports: EXPORTS,
+  send: sendToHashavshevet,
+  now: () => Date.now(),
+};
 
 async function sendExport(deps: SendDeps, req: SendRequest): Promise<NextResponse> {
   const definition = deps.exports[req.exportType];
@@ -47,7 +58,7 @@ async function sendExport(deps: SendDeps, req: SendRequest): Promise<NextRespons
   }
 
   const plans = planCompanySends(newRows, companies, definition.plugin);
-  const ctx = { ...req, store: deps.store, send: deps.send, plugin: definition.plugin };
+  const ctx = { ...req, store: deps.store, send: deps.send, now: deps.now, plugin: definition.plugin };
   const sends: CompanySendResult[] = [];
   for (const plan of plans) {
     try {
@@ -62,11 +73,13 @@ async function sendExport(deps: SendDeps, req: SendRequest): Promise<NextRespons
 }
 
 export async function handleSend(request: NextRequest, deps: SendDeps = DEFAULT_DEPS): Promise<NextResponse> {
+  const startedAt = deps.now();
   const requestId = requestIdOf(request);
   const authResult = await requireAdminOrSuperUser(request);
   if (isAuthError(authResult)) return authResult;
 
-  const limit = checkRateLimit(`hashavshevet-send:${authResult.user.id}`, RateLimitConfigs.sensitive);
+  // Ruling R15: month start means 20+ sends; row locks, not this limit, prevent duplicates.
+  const limit = checkRateLimit(`hashavshevet-send:${authResult.user.id}`, RateLimitConfigs.api);
   if (!limit.success) {
     return NextResponse.json(
       { success: false, error: copy.rateLimited },
@@ -79,7 +92,8 @@ export async function handleSend(request: NextRequest, deps: SendDeps = DEFAULT_
   if (!parsed.success) return fail(copy.invalidRequest, 400);
 
   try {
-    return await sendExport(deps, { ...parsed.data, sentBy: authResult.user.id, requestId });
+    const deadline = startedAt + SEND_BUDGET_MS;
+    return await sendExport(deps, { ...parsed.data, sentBy: authResult.user.id, requestId, deadline });
   } catch (err) {
     console.error(
       JSON.stringify({

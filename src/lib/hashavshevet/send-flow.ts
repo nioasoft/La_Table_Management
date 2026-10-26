@@ -1,5 +1,5 @@
 import type { CompanyRecord, FinishSendResult, HashavshevetStore } from "@/data-access/hashavshevet";
-import { chunkByDocument, type HConnectPlugin, type sendToHashavshevet } from "@/lib/hconnect";
+import { chunkByDocument, HCONNECT_TIMEOUT_MS, type HConnectPlugin, type sendToHashavshevet } from "@/lib/hconnect";
 import { groupByCompanyId, type ClassifiedRow } from "./classify";
 import { apiErrorMessage, copy } from "./copy";
 import { roundCents } from "./format";
@@ -17,10 +17,11 @@ export interface RowError {
 }
 
 export interface CompanySendResult {
-  sendId: string;
+  /** null when the company was not reached in time: nothing was locked or sent ("not_sent"). */
+  sendId: string | null;
   companyId: string;
   companyName: string;
-  status: SendStatus;
+  status: SendStatus | "not_sent";
   /** Delivered rows only (released rows excluded): what Reut compares to the temporary batch. */
   rowCount: number;
   total: number;
@@ -45,6 +46,9 @@ export interface SendContext {
   params: unknown;
   sentBy: string;
   requestId: string;
+  now: () => number;
+  /** Epoch ms by which every started H-Connect request must be able to time out (ruling R16). */
+  deadline: number;
 }
 
 interface Settled {
@@ -53,12 +57,16 @@ interface Settled {
   delivered: BuiltRow[];
   /** The rejected request and its rows, when the send stopped on an api_error. */
   rejected?: { outcome: ApiError; rows: BuiltRow[] };
+  /** The time budget stopped the send before its remaining chunks (never started, released). */
+  outOfTime?: boolean;
 }
 
 type Expected = { rowKey: string; amount: number };
 
 const keysOf = (chunks: BuiltRow[][]): string[] => chunks.flat().map((r) => r.rowKey);
 const totalOf = (rows: BuiltRow[]): number => roundCents(rows.reduce((sum, r) => sum + r.amount, 0));
+/** NaN-safe: a missing timeout constant means "no time", so nothing starts. */
+const hasTimeFor = (ctx: SendContext): boolean => ctx.now() + HCONNECT_TIMEOUT_MS <= ctx.deadline;
 const signature = (rows: Expected[]): string[] => rows.map((r) => `${r.rowKey}\u0000${roundCents(r.amount)}`).sort();
 
 /** Spec §7: the rows the server would send now must be exactly what the user saw (keys, and amounts to the cent). */
@@ -86,21 +94,31 @@ export function planCompanySends(
 
 /** What the outcomes of the attempted chunks mean for the send and its locks (spec §7, ruling R11). */
 export function settle(outcomes: HConnectOutcome[], chunks: BuiltRow[][], requiresApproval: boolean): Settled {
-  const last = outcomes.length - 1;
-  const stop = outcomes[last];
-  // Sending stops at the first non-ok chunk, so an ok last outcome means every chunk went through.
-  if (!stop || stop.kind === "ok") {
-    return { status: requiresApproval ? "awaiting_approval" : "approved", failedRowKeys: [], delivered: chunks.flat() };
-  }
-  if (stop.kind === "unknown") {
+  const attempted = outcomes.length;
+  const stop = outcomes[attempted - 1];
+  if (stop?.kind === "unknown") {
     // The .dat may have arrived: that chunk stays locked until Reut decides; only unattempted rows go.
-    return { status: "unknown", failedRowKeys: keysOf(chunks.slice(last + 1)), delivered: chunks.slice(0, last + 1).flat() };
+    return { status: "unknown", failedRowKeys: keysOf(chunks.slice(attempted)), delivered: chunks.slice(0, attempted).flat() };
+  }
+  if (stop?.kind === "api_error") {
+    const last = attempted - 1;
+    return {
+      status: last > 0 ? "awaiting_approval" : "failed",
+      failedRowKeys: keysOf(chunks.slice(last)),
+      delivered: chunks.slice(0, last).flat(),
+      rejected: { outcome: stop, rows: chunks[last] },
+    };
+  }
+  // Every attempted chunk was ok; fewer than all means the time budget stopped the rest before they started.
+  const delivered = chunks.slice(0, attempted).flat();
+  if (attempted === chunks.length) {
+    return { status: requiresApproval ? "awaiting_approval" : "approved", failedRowKeys: [], delivered };
   }
   return {
-    status: last > 0 ? "awaiting_approval" : "failed",
-    failedRowKeys: keysOf(chunks.slice(last)),
-    delivered: chunks.slice(0, last).flat(),
-    rejected: { outcome: stop, rows: chunks[last] },
+    status: attempted > 0 ? "awaiting_approval" : "failed",
+    failedRowKeys: keysOf(chunks.slice(attempted)),
+    delivered,
+    outOfTime: true,
   };
 }
 
@@ -112,9 +130,13 @@ function messageFor(s: Settled, okChunks: number, plugin: HConnectPlugin, compan
     s.status === "approved"
       ? copy.sentApproved(count, total, companyName, okChunks)
       : copy.sentAwaitingApproval(count, total, companyName, okChunks);
-  if (!s.rejected) return sent;
-  const rejected = apiErrorMessage(s.rejected.outcome.code, plugin, companyName);
-  return count > 0 ? `${sent}. ${rejected}` : rejected;
+  const reason = s.rejected
+    ? apiErrorMessage(s.rejected.outcome.code, plugin, companyName)
+    : s.outOfTime
+      ? copy.sendTimeBudgetExceeded
+      : null;
+  if (!reason) return sent;
+  return count > 0 ? `${sent}. ${reason}` : reason;
 }
 
 /** rowErrors indexes are relative to the rejected request. */
@@ -130,6 +152,27 @@ function auditOf(outcome: HConnectOutcome | undefined): Pick<FinishSendResult, "
   if (!outcome) return {};
   if (outcome.kind === "unknown") return { response: { message: outcome.message } };
   return { httpStatus: outcome.httpStatus, response: outcome.body, latencyMs: outcome.kind === "ok" ? outcome.latencyMs : undefined };
+}
+
+function logCompanySend(ctx: SendContext, companyId: string, sendId: string | null, status: string, rows: number, chunks: number): void {
+  console.log(
+    JSON.stringify({ event: "hashavshevet.company_send", requestId: ctx.requestId, exportType: ctx.exportType, companyId, sendId, status, rows, chunks }),
+  );
+}
+
+/** A company the time budget did not reach: never locked, nothing sent. */
+function notSent(ctx: SendContext, { company, rows }: CompanyPlan): CompanySendResult {
+  logCompanySend(ctx, company.id, null, "not_sent", rows.length, 0);
+  return {
+    sendId: null,
+    companyId: company.id,
+    companyName: company.nameHe,
+    status: "not_sent",
+    rowCount: 0,
+    total: 0,
+    chunks: 0,
+    message: copy.sendTimeBudgetExceeded,
+  };
 }
 
 function toResult(sendId: string, plan: CompanyPlan, s: Settled, outcomes: HConnectOutcome[], plugin: HConnectPlugin): CompanySendResult {
@@ -149,10 +192,12 @@ function toResult(sendId: string, plan: CompanyPlan, s: Settled, outcomes: HConn
 }
 
 /**
- * Locks the company's rows, sends its chunks sequentially (stopping at the first non-ok one) and
- * records the outcome. Throws LockConflictError (nothing sent) when another send holds a row.
+ * Locks the company's rows, sends its chunks sequentially (stopping at the first non-ok one, or
+ * before a chunk the time budget can't cover) and records the outcome. Throws LockConflictError
+ * (nothing sent) when another send holds a row.
  */
 export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<CompanySendResult> {
+  if (!hasTimeFor(ctx)) return notSent(ctx, plan);
   const { company, rows, chunks } = plan;
   const { sendId } = await ctx.store.createSendWithLocks({
     exportType: ctx.exportType,
@@ -167,6 +212,7 @@ export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<
   let started = 0;
   try {
     for (const chunk of chunks) {
+      if (!hasTimeFor(ctx)) break; // not started = unattempted: released below
       started++;
       const outcome = await ctx.send(ctx.plugin, company.fileName, chunk.map((r) => r.apiRow));
       outcomes.push(outcome);
@@ -175,9 +221,7 @@ export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<
     const settled = settle(outcomes, chunks, company.requiresApproval);
     const { status, failedRowKeys } = settled;
     await ctx.store.finishSend(sendId, { status, failedRowKeys, ...auditOf(outcomes[outcomes.length - 1]), requestId: ctx.requestId });
-    console.log(
-      JSON.stringify({ event: "hashavshevet.company_send", requestId: ctx.requestId, exportType: ctx.exportType, companyId: company.id, sendId, status, rows: rows.length, chunks: outcomes.length }),
-    );
+    logCompanySend(ctx, company.id, sendId, status, rows.length, outcomes.length);
     return toResult(sendId, plan, settled, outcomes, ctx.plugin);
   } catch (err) {
     // Never leave a send pending. A chunk whose request started may have arrived, so it stays locked.

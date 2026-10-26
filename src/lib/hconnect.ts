@@ -10,7 +10,8 @@ import type { ApiRow, BuiltRow, HConnectOutcome } from "@/lib/hashavshevet/types
  */
 const HCONNECT_URL = "https://ws.wizground.com/api";
 const MAX_BODY_BYTES = 4 * 1024 * 1024; // documented per-request cap
-const DEFAULT_TIMEOUT_MS = 30_000;
+/** Per-request timeout; the send route reserves this much time before starting a request. */
+export const HCONNECT_TIMEOUT_MS = 30_000;
 
 export type HConnectPlugin = "movein" | "imovein" | "bankin" | "itemin" | "heshin" | "kupain";
 
@@ -161,7 +162,7 @@ export async function sendToHashavshevet(
     throw new Error(`H-Connect body exceeds 4MB (${rows.length} rows) — use chunkByDocument`);
   }
   const started = Date.now();
-  const reply = await postBody(body, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.fetchImpl ?? fetch);
+  const reply = await postBody(body, opts.timeoutMs ?? HCONNECT_TIMEOUT_MS, opts.fetchImpl ?? fetch);
   const latencyMs = Date.now() - started;
   const outcome: HConnectOutcome =
     "error" in reply ? { kind: "unknown", message: reply.error } : classifyReply(reply.status, reply.text, latencyMs);

@@ -36,6 +36,7 @@ vi.mock("@/data-access/hashavshevet", () => ({
 }));
 // ponytail: fake chunker = one request per document, so tests pick chunk boundaries via documentKey.
 vi.mock("@/lib/hconnect", () => ({
+  HCONNECT_TIMEOUT_MS: 30_000,
   sendToHashavshevet: vi.fn(),
   chunkByDocument: (rows: BuiltRow[]) => {
     const docs = new Map<string, BuiltRow[]>();
@@ -100,23 +101,35 @@ interface Setup {
   locks?: ActiveLock[];
   companies?: CompanyRecord[];
   outcomes?: HConnectOutcome[];
+  /** Fake clock: ms each H-Connect request / each createSendWithLocks takes. */
+  sendMs?: number;
+  lockMs?: number;
 }
 
-function deps({ rows = [], blockingErrors = [], locks = [], companies = [company("c1")], outcomes = [] }: Setup = {}) {
+function deps(setup: Setup = {}) {
+  const { rows = [], blockingErrors = [], locks = [], companies = [company("c1")], outcomes = [] } = setup;
+  const clock = { t: 0 };
   let n = 0;
   const store = {
     getCompanies: vi.fn(async () => new Map(companies.map((c) => [c.id, c]))),
     getActiveLocks: vi.fn(async () => locks),
-    createSendWithLocks: vi.fn(async () => ({ sendId: `s${++n}` })),
+    createSendWithLocks: vi.fn(async () => {
+      clock.t += setup.lockMs ?? 0;
+      return { sendId: `s${++n}` };
+    }),
     finishSend: vi.fn(async () => {}),
   } satisfies Partial<HashavshevetStore>;
   const queue = [...outcomes];
-  const send = vi.fn(async () => queue.shift() ?? OK);
+  const send = vi.fn(async () => {
+    clock.t += setup.sendMs ?? 0;
+    return queue.shift() ?? OK;
+  });
+  const now = () => clock.t;
   const build = vi.fn(async () => ({ rows, blockingErrors }));
   const exports = Object.fromEntries(
     EXPORT_TYPES.map((type) => [type, { type, plugin: "movein", labelHe: type, build }]),
   ) as unknown as Record<ExportType, ExportDefinition>;
-  return { store, exports, send, build };
+  return { store, exports, send, build, now };
 }
 
 const expectedOf = (rows: BuiltRow[]) => rows.map(({ rowKey, amount }) => ({ rowKey, amount }));
@@ -324,15 +337,16 @@ describe("handleSend", () => {
   });
 
   it("rate limited returns 429", async () => {
-    h.checkRateLimit.mockReturnValue({ success: false, remaining: 0, reset: Date.now() + 60_000, limit: 3 });
+    h.checkRateLimit.mockReturnValue({ success: false, remaining: 0, reset: Date.now() + 60_000, limit: 30 });
     const d = deps({ rows: [row("a")] });
 
     const res = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), d);
 
     expect(res.status).toBe(429);
-    expect(res.headers.get("X-RateLimit-Limit")).toBe("3");
+    expect(res.headers.get("X-RateLimit-Limit")).toBe("30");
     expect((await res.json()).error).toMatch(/[֐-׿]/);
-    expect(h.checkRateLimit).toHaveBeenCalledWith(expect.stringContaining("admin-1"), RateLimitConfigs.sensitive);
+    // Ruling R15: Reut sends 20+ exports at month start; row locks, not the limiter, stop duplicates.
+    expect(h.checkRateLimit).toHaveBeenCalledWith(expect.stringContaining("admin-1"), RateLimitConfigs.api);
     expect(d.build).not.toHaveBeenCalled();
   });
 
@@ -420,6 +434,67 @@ describe("handleSend", () => {
     expect(res.status).toBe(401);
     expect(d.build).not.toHaveBeenCalled();
     expect(h.checkRateLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe("time budget (ruling R16)", () => {
+  // Budget = (maxDuration 300 - 30) s = 270 s; a request may only start if 30 s (H-Connect timeout) still fit.
+  it("exports maxDuration 300", async () => {
+    expect((await import("@/app/api/hashavshevet/send/route")).maxDuration).toBe(300);
+  });
+
+  it("stops before a chunk that may not finish in time: it and later chunks are released", async () => {
+    const rows = [row("a", { documentKey: "d1", amount: 10 }), row("b", { documentKey: "d2" }), row("c", { documentKey: "d3" })];
+    const d = deps({ rows, sendMs: 250_000 }); // after chunk 1: 250 s + 30 s > 270 s
+
+    const res = await handleSend(sendReq(expectedOf(rows)), d);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(d.send).toHaveBeenCalledTimes(1);
+    expect(d.store.finishSend).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({ status: "awaiting_approval", failedRowKeys: ["b", "c"] }),
+    );
+    const [sent] = json.data.sends;
+    expect(sent).toMatchObject({ status: "awaiting_approval", rowCount: 1, total: 10, chunks: 1 });
+    expect(sent.message).toContain(copy.sendTimeBudgetExceeded);
+  });
+
+  it("no chunk started after locking: the send fails and every row is released", async () => {
+    const rows = [row("a"), row("b", { documentKey: "d2" })];
+    const d = deps({ rows, lockMs: 241_000 });
+
+    const json = await (await handleSend(sendReq(expectedOf(rows)), d)).json();
+
+    expect(d.send).not.toHaveBeenCalled();
+    expect(d.store.finishSend).toHaveBeenCalledWith("s1", expect.objectContaining({ status: "failed", failedRowKeys: ["a", "b"] }));
+    expect(json.data.sends[0]).toMatchObject({ status: "failed", rowCount: 0, chunks: 0, message: copy.sendTimeBudgetExceeded });
+  });
+
+  it("a company not reached in time is never locked and is reported as not sent", async () => {
+    const rows = [row("a"), row("b", { companyId: "c2", amount: 40 })];
+    const d = deps({ rows, companies: [company("c1"), company("c2")], sendMs: 250_000 });
+
+    const res = await handleSend(sendReq(expectedOf(rows)), d);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(d.store.createSendWithLocks).toHaveBeenCalledTimes(1);
+    expect(d.send).toHaveBeenCalledTimes(1);
+    expect(json.data.sends).toEqual([
+      expect.objectContaining({ sendId: "s1", companyId: "c1", status: "awaiting_approval" }),
+      {
+        sendId: null,
+        companyId: "c2",
+        companyName: "חברה c2",
+        status: "not_sent",
+        rowCount: 0,
+        total: 0,
+        chunks: 0,
+        message: copy.sendTimeBudgetExceeded,
+      },
+    ]);
   });
 });
 

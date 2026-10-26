@@ -22,7 +22,8 @@ export const copy = {
   unknownOutcome: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת",
   sendConflict: "השורות האלה כבר נשלחות או נשלחו ממקום אחר. רעננו ובדקו שוב",
   sendBlocked: "יש שגיאות שחוסמות את השליחה. תקנו אותן ונסו שוב",
-  rateLimited: "יותר מדי שליחות בזמן קצר. נסו שוב בעוד כמה דקות",
+  rateLimited: "יותר מדי שליחות בזמן קצר. נסו שוב בעוד דקה",
+  sendTimeBudgetExceeded: "נגמר הזמן לבקשה הזו, ולכן חלק מהשורות לא נשלחו. הן לא נעולות, ואפשר לשלוח אותן שוב",
   /** H-Connect's per-row reason is technical English (field: reason); shown as-is behind a Hebrew lead. */
   rowRejected: (detail: string) => `חשבשבת דחתה את השורה: ${detail}`,
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
