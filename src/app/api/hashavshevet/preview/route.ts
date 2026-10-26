@@ -4,7 +4,7 @@ import { drizzleHashavshevetStore, type HashavshevetStore } from "@/data-access/
 import { isAuthError, requireAdminOrSuperUser } from "@/lib/api-middleware";
 import {
   blockingStatuses,
-  classifyRows,
+  groupByCompanyId,
   type ClassifiedRow,
   type CompanyInfo,
   type RowStatus,
@@ -12,6 +12,7 @@ import {
 import { copy } from "@/lib/hashavshevet/copy";
 import { roundCents } from "@/lib/hashavshevet/format";
 import { EXPORTS, type ExportDefinition } from "@/lib/hashavshevet/registry";
+import { buildAndClassify, fail, requestIdOf } from "@/lib/hashavshevet/route-helpers";
 import type { ExportType } from "@/lib/hashavshevet/types";
 import type { HConnectPlugin } from "@/lib/hconnect";
 import { previewRequestSchema } from "@/schemas/hashavshevet";
@@ -51,13 +52,7 @@ function toPreviewRow({ apiRow: _apiRow, ...rest }: ClassifiedRow): PreviewRow {
 
 /** One group per distinct companyId, in order of first appearance; null (no company) is its own group. */
 function groupByCompany(rows: ClassifiedRow[], companies: CompanyDirectory): PreviewGroup[] {
-  const byCompany = new Map<string | null, ClassifiedRow[]>();
-  for (const row of rows) {
-    const bucket = byCompany.get(row.companyId);
-    if (bucket) bucket.push(row);
-    else byCompany.set(row.companyId, [row]);
-  }
-  return [...byCompany].map(([companyId, groupRows]) => {
+  return [...groupByCompanyId(rows)].map(([companyId, groupRows]) => {
     const info = companyId === null ? undefined : companies.get(companyId);
     const totalNew = groupRows.reduce((sum, r) => (r.status === "new" ? sum + r.amount : sum), 0);
     return {
@@ -70,15 +65,11 @@ function groupByCompany(rows: ClassifiedRow[], companies: CompanyDirectory): Pre
   });
 }
 
-function fail(error: string, status: number, requestId?: string): NextResponse {
-  return NextResponse.json({ success: false, error, ...(requestId && { requestId }) }, { status });
-}
-
 export async function handlePreview(
   request: NextRequest,
   deps: PreviewDeps = { store: drizzleHashavshevetStore, exports: EXPORTS },
 ): Promise<NextResponse> {
-  const requestId = request.headers.get("x-vercel-id") ?? crypto.randomUUID();
+  const requestId = requestIdOf(request);
   const authResult = await requireAdminOrSuperUser(request);
   if (isAuthError(authResult)) return authResult;
 
@@ -89,17 +80,12 @@ export async function handlePreview(
 
   try {
     const definition = deps.exports[exportType];
-    const built = await definition.build(params);
-    const [companies, locks] = await Promise.all([
-      deps.store.getCompanies(),
-      deps.store.getActiveLocks(exportType, built.rows.map((r) => r.rowKey)),
-    ]);
-    const classified = classifyRows(built.rows, locks, companies);
+    const { blockingErrors, companies, classified } = await buildAndClassify(deps.store, definition, params);
     const data: PreviewData = {
       exportType,
       plugin: definition.plugin,
       groups: groupByCompany(classified, companies),
-      blockingErrors: built.blockingErrors,
+      blockingErrors,
       blockingStatuses: blockingStatuses(classified),
     };
     return NextResponse.json({ success: true, data });
@@ -112,7 +98,7 @@ export async function handlePreview(
         error: err instanceof Error ? err.message : String(err),
       }),
     );
-    return fail(copy.serverError(requestId), 500, requestId);
+    return fail(copy.serverError(requestId), 500, { requestId });
   }
 }
 

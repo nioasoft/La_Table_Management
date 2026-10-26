@@ -57,3 +57,14 @@ export function blockingStatuses(rows: ClassifiedRow[]): RowStatus[] {
   for (const r of rows) if (r.status === "no_company" || r.status === "not_live") blocking.add(r.status);
   return [...blocking];
 }
+
+/** Rows bucketed by companyId, in order of first appearance; null (no company) is its own bucket. */
+export function groupByCompanyId<T extends { companyId: string | null }>(rows: T[]): Map<string | null, T[]> {
+  const groups = new Map<string | null, T[]>();
+  for (const row of rows) {
+    const bucket = groups.get(row.companyId);
+    if (bucket) bucket.push(row);
+    else groups.set(row.companyId, [row]);
+  }
+  return groups;
+}

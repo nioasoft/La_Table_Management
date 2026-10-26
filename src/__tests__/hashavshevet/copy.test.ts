@@ -12,9 +12,16 @@ describe("hashavshevet copy", () => {
   });
 
   it("formats money in sent messages with he-IL grouping and a shekel sign", () => {
-    expect(copy.sentAwaitingApproval(3, 12345.5, "פט ויני")).toContain("₪12,345.50");
-    expect(copy.sentApproved(1, 10, "פט ויני")).toContain("₪10.00");
+    expect(copy.sentAwaitingApproval(3, 12345.5, "פט ויני", 1)).toContain("₪12,345.50");
+    expect(copy.sentApproved(1, 10, "פט ויני", 1)).toContain("₪10.00");
     expect(copy.serverError("req-1")).toContain("req-1");
     expect(copy.noCompany).toBe("לזכיין אין חברה בחשבשבת");
+  });
+
+  it("shows the number of requests only when a send was split (each may be its own temporary batch)", () => {
+    expect(copy.sentAwaitingApproval(3, 10, "x", 1)).not.toContain("בקשות");
+    expect(copy.sentAwaitingApproval(3, 10, "x", 2)).toContain("2 בקשות");
+    expect(copy.sentApproved(3, 10, "x", 1)).not.toContain("בקשות");
+    expect(copy.sentApproved(3, 10, "x", 3)).toContain("3 בקשות");
   });
 });

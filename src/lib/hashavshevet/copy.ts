@@ -13,11 +13,18 @@ export const copy = {
   notLive: (companyName: string) => `החברה ${companyName} עדיין לא מופעלת לשליחה`,
   beforeLive: "התקופה קודמת לתאריך ההתחלה של החברה, והיא כבר יוצאה באקסל",
   dataChanged: "הנתונים השתנו מאז התצוגה המקדימה. רעננו ובדקו שוב",
-  sentAwaitingApproval: (count: number, total: number, companyName: string) =>
-    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}. המנה ממתינה לאישור בחשבשבת (זמני)`,
-  sentApproved: (count: number, total: number, companyName: string) =>
-    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}`,
+  /** `chunks` = requests sent; each one may land as its own temporary batch (spec §7, §13). */
+  sentAwaitingApproval: (count: number, total: number, companyName: string, chunks: number) =>
+    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}. המנה ממתינה לאישור בחשבשבת (זמני)` +
+    (chunks > 1 ? `. השליחה חולקה ל-${chunks} בקשות, וכל אחת עשויה להופיע כמנה זמנית נפרדת` : ""),
+  sentApproved: (count: number, total: number, companyName: string, chunks: number) =>
+    `נשלחו ${count} שורות בסך ${shekel(total)} לחברה ${companyName}` + (chunks > 1 ? ` ב-${chunks} בקשות` : ""),
   unknownOutcome: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת",
+  sendConflict: "השורות האלה כבר נשלחות או נשלחו ממקום אחר. רעננו ובדקו שוב",
+  sendBlocked: "יש שגיאות שחוסמות את השליחה. תקנו אותן ונסו שוב",
+  rateLimited: "יותר מדי שליחות בזמן קצר. נסו שוב בעוד כמה דקות",
+  /** H-Connect's per-row reason is technical English (field: reason); shown as-is behind a Hebrew lead. */
+  rowRejected: (detail: string) => `חשבשבת דחתה את השורה: ${detail}`,
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
   invalidRequest: "הבקשה אינה תקינה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,

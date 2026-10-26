@@ -176,9 +176,13 @@ async function createSendWithLocks(input: Parameters<HashavshevetStore["createSe
   }
 }
 
+/**
+ * Settles a pending send. Only a `pending` send changes: a late or duplicate call (e.g. the
+ * route's safety-net finishSend after a failed first one) is a no-op and releases nothing.
+ */
 async function finishSend(sendId: string, result: FinishSendResult): Promise<void> {
   await database.transaction(async (tx) => {
-    await tx
+    const updated = await tx
       .update(hashavshevetSend)
       .set({
         status: result.status,
@@ -187,8 +191,9 @@ async function finishSend(sendId: string, result: FinishSendResult): Promise<voi
         latencyMs: result.latencyMs,
         requestId: result.requestId,
       })
-      .where(eq(hashavshevetSend.id, sendId));
-    if (result.failedRowKeys.length === 0) return;
+      .where(and(eq(hashavshevetSend.id, sendId), eq(hashavshevetSend.status, "pending")))
+      .returning({ id: hashavshevetSend.id });
+    if (updated.length === 0 || result.failedRowKeys.length === 0) return;
     await tx
       .update(hashavshevetSentRow)
       .set({ unlockedAt: new Date(), unlockReason: "send_failed" })

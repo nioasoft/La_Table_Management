@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 
 // No test here touches the DB. `database.select` is a real Drizzle builder over a mock driver;
 // awaiting it records the generated SQL and resolves to no rows.
-const captured = vi.hoisted(() => ({ sql: "" }));
+const captured = vi.hoisted(() => ({ sql: "", params: [] as unknown[], all: [] as string[] }));
 vi.mock("@/db", async () => {
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@/db/schema");
@@ -12,7 +12,8 @@ vi.mock("@/db", async () => {
       get(target, prop) {
         if (prop === "then") {
           return (resolve: (v: unknown[]) => void) => {
-            captured.sql = target.toSQL().sql;
+            ({ sql: captured.sql, params: captured.params } = target.toSQL());
+            captured.all.push(captured.sql);
             resolve([]);
           };
         }
@@ -24,7 +25,11 @@ vi.mock("@/db", async () => {
         };
       },
     });
-  return { database: { select: (...args: unknown[]) => wrap((real.select as any)(...args)) } };
+  const db = {
+    select: (...args: unknown[]) => wrap((real.select as any)(...args)),
+    update: (...args: unknown[]) => wrap((real.update as any)(...args)),
+  };
+  return { database: { ...db, transaction: (fn: (tx: typeof db) => unknown) => fn(db) } };
 });
 
 import { EXPORTS } from "@/lib/hashavshevet/registry";
@@ -89,5 +94,16 @@ describe("getActiveLocks sender name", () => {
     await drizzleHashavshevetStore.getActiveLocks("royalties", ["k1"]);
     expect(captured.sql).toMatch(/left join "user" on "hashavshevet_send"\."sent_by" = "user"\."id"/i);
     expect(captured.sql).toContain('"user"."name"');
+  });
+});
+
+describe("finishSend", () => {
+  it("only finishes a pending send, and a late call releases nothing", async () => {
+    captured.all = [];
+    await drizzleHashavshevetStore.finishSend("s1", { status: "failed", failedRowKeys: ["k1"], requestId: "r1" });
+    // The mock driver matches no rows, so this is a late/duplicate call: one guarded status update, no release.
+    expect(captured.all).toHaveLength(1);
+    expect(captured.sql).toMatch(/^update "hashavshevet_send" set .* where \("hashavshevet_send"\."id" = \$\d+ and "hashavshevet_send"\."status" = \$\d+\)/);
+    expect(captured.params).toContain("pending");
   });
 });
