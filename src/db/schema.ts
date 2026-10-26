@@ -519,6 +519,32 @@ export const managementCompany = pgTable(
   ]
 );
 
+// Hashavshevet (H-Connect) companies. `fileName` is the value sent as `company`
+// in the API call; `liveFrom` NULL means the company is not enabled for sending.
+export const hashavshevetCompany = pgTable(
+  "hashavshevet_company",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    fileName: text("file_name").notNull().unique(),
+    /** Company id inside Hashavshevet, for display and terminal-2 log matching. */
+    compId: integer("comp_id"),
+    nameHe: text("name_he").notNull(),
+    /** YYYY-MM-DD. NULL = not live, sending is blocked. Periods ending before it are blocked. */
+    liveFrom: date("live_from"),
+    /** true: sends land in Hashavshevet's temp batch and wait for approval. */
+    requiresApproval: boolean("requires_approval").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    updatedBy: text("updated_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+  },
+);
+
+export type HashavshevetCompany = typeof hashavshevetCompany.$inferSelect;
+
 // Brands table - Franchise brands managed in the system
 // Supports Pat Vini, Mina Tomai, and King Kong brands
 export const brand = pgTable(
@@ -547,6 +573,11 @@ export const brand = pgTable(
     updatedAt: timestamp("updated_at")
       .$defaultFn(() => new Date())
       .notNull(),
+    // Hashavshevet management company this brand's exports are sent to
+    hashavshevetCompanyId: text("hashavshevet_company_id").references(
+      () => hashavshevetCompany.id,
+      { onDelete: "set null" }
+    ),
     createdBy: text("created_by").references(() => user.id, {
       onDelete: "set null",
     }),
@@ -787,6 +818,11 @@ export const franchisee = pgTable(
       .default(false)
       .notNull(),
     hashavshevetAccountKey: text("hashavshevet_account_key"),
+    // Hashavshevet company of the franchisee's own restaurant (NULL = none, send disabled)
+    hashavshevetCompanyId: text("hashavshevet_company_id").references(
+      () => hashavshevetCompany.id,
+      { onDelete: "set null" }
+    ),
     // Status and notes
     status: franchiseeStatusEnum("status")
       .$default(() => "pending")
@@ -4281,3 +4317,101 @@ export type OccasionalClientDocument =
   typeof occasionalClientDocument.$inferSelect;
 export type CreateOccasionalClientDocumentData =
   typeof occasionalClientDocument.$inferInsert;
+
+// ============================================================================
+// HASHAVSHEVET API SEND (H-Connect)
+// ============================================================================
+
+export type HashavshevetSendStatus =
+  | "pending"
+  | "awaiting_approval"
+  | "approved"
+  | "rejected"
+  | "failed"
+  | "unknown";
+
+// One row per "send to Hashavshevet" click. Audit trail: never deleted.
+export const hashavshevetSend = pgTable(
+  "hashavshevet_send",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    exportType: text("export_type").notNull(),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => hashavshevetCompany.id, { onDelete: "restrict" }),
+    /** Company file name as sent, kept even if the company is renamed later. */
+    targetFileName: text("target_file_name").notNull(),
+    /** imovein (invoices) | movein (journal entries) */
+    plugin: text("plugin").notNull(),
+    params: jsonb("params").notNull(),
+    rowCount: integer("row_count").notNull(),
+    status: text("status")
+      .$type<HashavshevetSendStatus>()
+      .default("pending")
+      .notNull(),
+    httpStatus: integer("http_status"),
+    /** Full API response, token excluded. */
+    response: jsonb("response"),
+    latencyMs: integer("latency_ms"),
+    requestId: text("request_id"),
+    sentBy: text("sent_by").references(() => user.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at").defaultNow().notNull(),
+    resolvedBy: text("resolved_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    resolvedAt: timestamp("resolved_at"),
+    resolutionNote: text("resolution_note"),
+  },
+  (table) => [
+    index("idx_hashavshevet_send_status").on(table.status),
+    index("idx_hashavshevet_send_company_type").on(
+      table.companyId,
+      table.exportType,
+    ),
+    index("idx_hashavshevet_send_sent_at").on(table.sentAt),
+    check(
+      "hashavshevet_send_status_check",
+      sql`${table.status} IN ('pending', 'awaiting_approval', 'approved', 'rejected', 'failed', 'unknown')`,
+    ),
+  ],
+);
+
+export type HashavshevetSend = typeof hashavshevetSend.$inferSelect;
+
+// The lock: a row sent to a company is not sent again until unlocked_at is set.
+export const hashavshevetSentRow = pgTable(
+  "hashavshevet_sent_row",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    sendId: text("send_id")
+      .notNull()
+      .references(() => hashavshevetSend.id, { onDelete: "restrict" }),
+    exportType: text("export_type").notNull(),
+    companyId: text("company_id")
+      .notNull()
+      .references(() => hashavshevetCompany.id, { onDelete: "restrict" }),
+    rowKey: text("row_key").notNull(),
+    /** Amount as sent; used to flag "changed since send". */
+    amount: decimal("amount", { precision: 14, scale: 2 }).notNull(),
+    /** The exact row sent to the API. */
+    payload: jsonb("payload").notNull(),
+    unlockedAt: timestamp("unlocked_at"),
+    unlockedBy: text("unlocked_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    unlockReason: text("unlock_reason"),
+  },
+  (table) => [
+    // Prevents double sends (double click / parallel tabs) at the DB level.
+    uniqueIndex("uq_hashavshevet_sent_row_active")
+      .on(table.exportType, table.companyId, table.rowKey)
+      .where(sql`${table.unlockedAt} IS NULL`),
+    index("idx_hashavshevet_sent_row_send").on(table.sendId),
+  ],
+);
+
+export type HashavshevetSentRow = typeof hashavshevetSentRow.$inferSelect;

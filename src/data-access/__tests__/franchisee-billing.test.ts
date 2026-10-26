@@ -68,6 +68,7 @@ function franchisee(
     royaltyIncludeTips: false,
     tipsAbsenceAcknowledged: false,
     hashavshevetAccountKey: null,
+    hashavshevetCompanyId: null,
     status: "active",
     notes: null,
     hashavshevetItemKey: null,
