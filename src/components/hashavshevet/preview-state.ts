@@ -20,20 +20,35 @@ export interface SendFailure {
   status: number;
   message: string;
   sends?: CompanySendResult[];
+  /** False when no JSON answer came back (network drop, or an edge 502/504 page). */
+  answered?: boolean;
+}
+
+/**
+ * M9: a send that got no JSON answer (network drop, 5xx from the edge) may still have locked and
+ * sent rows on the server, so "check the connection and retry" would invite a duplicate.
+ */
+function failureMessage(error: SendFailure): string {
+  const noAnswer = error.answered === false && (error.status === 0 || error.status >= 500);
+  return noAnswer ? previewCopy.sendOutcomeUnknown : error.message;
 }
 
 export interface ExpectedRow {
   rowKey: string;
   amount: number;
+  companyId: string;
 }
 
 const rowsOf = (data: ClientPreview): ClientRow[] => data.groups.flatMap((g) => g.rows);
 
-/** What the user is about to send, exactly: the server compares it to its own rebuild (409 on drift). */
+/**
+ * What the user is about to send, exactly: the server compares it to its own rebuild (409 on drift).
+ * A new row always has a company (classify); one without could only fail the server's comparison.
+ */
 export function buildExpected(data: ClientPreview): ExpectedRow[] {
-  return rowsOf(data)
-    .filter((r) => r.status === "new")
-    .map((r) => ({ rowKey: r.rowKey, amount: r.amount }));
+  return rowsOf(data).flatMap((r) =>
+    r.status === "new" && r.companyId ? [{ rowKey: r.rowKey, amount: r.amount, companyId: r.companyId }] : [],
+  );
 }
 
 export function groupTotals(data: ClientPreview): { newCount: number; newTotal: number } {
@@ -153,7 +168,7 @@ export function sendOutcome(
 ): { sends: CompanySendResult[]; errorMessage: string | null; canRefresh: boolean } {
   return {
     sends: data?.sends ?? error?.sends ?? [],
-    errorMessage: error?.message ?? null,
+    errorMessage: error ? failureMessage(error) : null,
     canRefresh: error?.status === 409 || error?.status === 422,
   };
 }

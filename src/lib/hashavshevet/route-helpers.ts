@@ -40,9 +40,7 @@ export function errorLogFields(err: unknown): { error: string; code?: string; co
 
 /** Generic 500 (no stack, no internals) plus one structured English log line carrying the request id. */
 export function serverFail(event: string, requestId: string, err: unknown): NextResponse {
-  console.error(
-    JSON.stringify({ event, requestId, error: err instanceof Error ? err.message : String(err) }),
-  );
+  console.error(JSON.stringify({ event, requestId, ...errorLogFields(err) }));
   return fail(copy.serverError(requestId), 500, { requestId });
 }
 

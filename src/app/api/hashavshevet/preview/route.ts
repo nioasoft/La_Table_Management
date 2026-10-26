@@ -12,7 +12,7 @@ import {
 import { copy } from "@/lib/hashavshevet/copy";
 import { roundCents } from "@/lib/hashavshevet/format";
 import { EXPORTS, type ExportDefinition } from "@/lib/hashavshevet/registry";
-import { buildAndClassify, fail, requestIdOf } from "@/lib/hashavshevet/route-helpers";
+import { buildAndClassify, errorLogFields, fail, requestIdOf } from "@/lib/hashavshevet/route-helpers";
 import type { ExportType } from "@/lib/hashavshevet/types";
 import type { HConnectPlugin } from "@/lib/hconnect";
 import { previewRequestSchema } from "@/schemas/hashavshevet";
@@ -95,7 +95,7 @@ export async function handlePreview(
         event: "hashavshevet_preview_failed",
         requestId,
         exportType,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorLogFields(err),
       }),
     );
     return fail(copy.serverError(requestId), 500, { requestId });

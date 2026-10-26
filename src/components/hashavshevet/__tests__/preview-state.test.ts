@@ -40,14 +40,17 @@ function preview(groups: ClientGroup[], over: Partial<ClientPreview> = {}): Clie
 }
 
 describe("buildExpected", () => {
-  it("lists only new rows, across groups, with their amounts", () => {
+  it("lists only new rows, across groups, with their amounts and companies", () => {
     const data = preview([
       group([row({ rowKey: "a", status: "new", amount: 10.5 }), row({ rowKey: "b", status: "sent" })]),
-      group([row({ rowKey: "c", status: "new", amount: 3 }), row({ rowKey: "d", status: "changed" })], { companyId: "c2" }),
+      group(
+        [row({ rowKey: "c", status: "new", amount: 3, companyId: "c2" }), row({ rowKey: "d", status: "changed", companyId: "c2" })],
+        { companyId: "c2" },
+      ),
     ]);
     expect(buildExpected(data)).toEqual([
-      { rowKey: "a", amount: 10.5 },
-      { rowKey: "c", amount: 3 },
+      { rowKey: "a", amount: 10.5, companyId: "c1" },
+      { rowKey: "c", amount: 3, companyId: "c2" },
     ]);
   });
 });
@@ -206,6 +209,26 @@ describe("sendOutcome", () => {
       errorMessage: copy.dataChanged,
       canRefresh: true,
     });
+  });
+
+  // M9: with no JSON answer the request may still have locked and sent rows on the server.
+  it.each([
+    ["a network failure", 0],
+    ["a 502 from the edge", 502],
+    ["a 504 timeout", 504],
+  ])("%s says the outcome is unknown and points to the sends screen", (_name, status) => {
+    const out = sendOutcome(undefined, { status, message: previewCopy.requestFailed, answered: false });
+    expect(out.errorMessage).toBe(previewCopy.sendOutcomeUnknown);
+    expect(out.errorMessage).toContain(copy.unknownOutcome);
+    expect(out.errorMessage).toContain("שליחות לחשבשבת");
+    expect(out.canRefresh).toBe(false);
+  });
+
+  it("keeps the server's own message when it answered, and a non-JSON 4xx stays a plain failure", () => {
+    expect(sendOutcome(undefined, { status: 500, message: copy.serverError("r1"), answered: true }).errorMessage).toBe(copy.serverError("r1"));
+    expect(sendOutcome(undefined, { status: 413, message: previewCopy.requestFailed, answered: false }).errorMessage).toBe(
+      previewCopy.requestFailed,
+    );
   });
 
   it("422 offers a refresh, 429 and 500 do not", () => {

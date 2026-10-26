@@ -6,7 +6,7 @@ import { isAuthError, requireAdminOrSuperUser } from "@/lib/api-middleware";
 import { blockingStatuses, rowsToSend } from "@/lib/hashavshevet/classify";
 import { copy } from "@/lib/hashavshevet/copy";
 import { EXPORTS, type ExportDefinition } from "@/lib/hashavshevet/registry";
-import { buildAndClassify, fail, requestIdOf } from "@/lib/hashavshevet/route-helpers";
+import { buildAndClassify, errorLogFields, fail, requestIdOf } from "@/lib/hashavshevet/route-helpers";
 import {
   matchesExpected,
   planCompanySends,
@@ -100,7 +100,7 @@ export async function handleSend(request: NextRequest, deps: SendDeps = DEFAULT_
         event: "hashavshevet_send_failed",
         requestId,
         exportType: parsed.data.exportType,
-        error: err instanceof Error ? err.message : String(err),
+        ...errorLogFields(err),
       }),
     );
     return fail(copy.serverError(requestId), 500, { requestId });

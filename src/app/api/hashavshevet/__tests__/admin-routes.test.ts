@@ -146,6 +146,23 @@ describe("GET companies", () => {
     expect(json).toEqual({ success: false, error: copy.serverError("req-1"), requestId: "req-1" });
     expect(JSON.stringify(json)).not.toContain("db.internal");
   });
+
+  it("logs a store failure by error name, pg code and constraint, never the message (M3)", async () => {
+    const dbError = Object.assign(new Error("Failed query: insert ... params: secret-payload"), {
+      name: "DrizzleQueryError",
+      cause: { code: "23505", constraint: "uq_hashavshevet_sent_row_active" },
+    });
+    store.listCompanies.mockRejectedValue(dbError);
+    await handleListCompanies(req("GET", "companies"), { store });
+    const line = JSON.parse(String(vi.mocked(console.error).mock.calls[0][0]));
+    expect(line).toEqual({
+      event: expect.any(String),
+      requestId: "req-1",
+      error: "DrizzleQueryError",
+      code: "23505",
+      constraint: "uq_hashavshevet_sent_row_active",
+    });
+  });
 });
 
 describe("PATCH companies/[id]", () => {

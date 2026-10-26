@@ -89,6 +89,8 @@ export const previewCopy = {
   loading: "טוען תצוגה מקדימה…",
   loadFailed: "טעינת התצוגה המקדימה נכשלה. נסו שוב",
   requestFailed: "הבקשה נכשלה. בדקו את החיבור ונסו שוב",
+  /** M9: the send got no answer, so it may have gone out. Never "retry": check first. */
+  sendOutcomeUnknown: `${copy.unknownOutcome} ובמסך "שליחות לחשבשבת" לפני ששולחים שוב`,
   empty: "אין מה לשלוח",
   emptyHint: "לא נמצאו שורות לתקופה או לסינון שנבחרו",
   retry: "נסו שוב",

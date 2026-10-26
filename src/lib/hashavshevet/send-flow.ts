@@ -65,15 +65,19 @@ interface Settled {
   outOfTime?: boolean;
 }
 
-type Expected = { rowKey: string; amount: number };
+type Expected = { rowKey: string; amount: number; companyId: string | null };
 
 const keysOf = (chunks: BuiltRow[][]): string[] => chunks.flat().map((r) => r.rowKey);
 const totalOf = (rows: BuiltRow[]): number => roundCents(rows.reduce((sum, r) => sum + r.amount, 0));
 /** NaN-safe: a missing timeout constant means "no time", so nothing starts. */
 const hasTimeFor = (ctx: SendContext): boolean => ctx.now() + HCONNECT_TIMEOUT_MS <= ctx.deadline;
-const signature = (rows: Expected[]): string[] => rows.map((r) => `${r.rowKey}\u0000${roundCents(r.amount)}`).sort();
+const signature = (rows: Expected[]): string[] =>
+  rows.map((r) => `${r.companyId}\u0000${r.rowKey}\u0000${roundCents(r.amount)}`).sort();
 
-/** Spec §7: the rows the server would send now must be exactly what the user saw (keys, and amounts to the cent). */
+/**
+ * Spec §7: the rows the server would send now must be exactly what the user saw: keys, amounts to
+ * the cent, and target company (a mapping change between preview and send is drift, M8).
+ */
 export function matchesExpected(newRows: ClassifiedRow[], expected: Expected[]): boolean {
   const have = signature(newRows);
   const want = signature(expected);
@@ -256,7 +260,7 @@ export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<
     await ctx.store
       .finishSend(sendId, { status: "unknown", failedRowKeys, requestId: ctx.requestId })
       .catch((e: unknown) =>
-        console.error(JSON.stringify({ event: "hashavshevet.finish_send_failed", requestId: ctx.requestId, sendId, error: e instanceof Error ? e.message : String(e) })),
+        console.error(JSON.stringify({ event: "hashavshevet.finish_send_failed", requestId: ctx.requestId, sendId, ...errorLogFields(e) })),
       );
     throw err;
   }

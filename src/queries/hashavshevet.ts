@@ -45,12 +45,16 @@ export const hashavshevetKeys = {
   sendDetail: (id: string) => [...hashavshevetKeys.all, "send", id] as const,
 };
 
-/** A non-2xx answer (or a network failure, status 0). 409/422 may carry sends that already went out. */
+/**
+ * A non-2xx answer (or a network failure, status 0). 409/422 may carry sends that already went out.
+ * `answered` is false when no JSON envelope came back (network drop, an edge 502/504 page).
+ */
 export class HashavshevetApiError extends Error implements SendFailure {
   constructor(
     message: string,
     readonly status: number,
     readonly sends?: CompanySendResult[],
+    readonly answered: boolean = true,
   ) {
     super(message);
     this.name = "HashavshevetApiError";
@@ -63,14 +67,15 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     res = await fetch(url, init);
   } catch (err) {
     console.error("Hashavshevet request failed to reach the server", { url, err });
-    throw new HashavshevetApiError(previewCopy.requestFailed, 0);
+    throw new HashavshevetApiError(previewCopy.requestFailed, 0, undefined, false);
   }
   const body: { success?: boolean; data?: T & Partial<SendData>; error?: string } | null = await res
     .json()
     .catch(() => null);
   if (!res.ok || !body?.success) {
     console.error("Hashavshevet request rejected", { url, status: res.status, error: body?.error });
-    throw new HashavshevetApiError(body?.error ?? previewCopy.requestFailed, res.status, body?.data?.sends);
+    const enveloped = typeof body?.success === "boolean"; // an edge 502/504 page is not our envelope
+    throw new HashavshevetApiError(body?.error ?? previewCopy.requestFailed, res.status, body?.data?.sends, enveloped);
   }
   return body.data as T;
 }

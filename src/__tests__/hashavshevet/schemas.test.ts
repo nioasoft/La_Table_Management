@@ -12,7 +12,7 @@ import {
 } from "@/schemas/hashavshevet";
 
 const royaltiesParams = { year: 2026, month: 9, brandId: "b1", itemType: "royalty" };
-const expected = [{ rowKey: "k1", amount: 100.5 }];
+const expected = [{ rowKey: "k1", amount: 100.5, companyId: "c1" }];
 
 describe("resolveSendSchema", () => {
   it("rejects a rejection without a note", () => {
@@ -44,9 +44,19 @@ describe("sendRequestSchema", () => {
     const r = sendRequestSchema.safeParse({
       exportType: "royalties",
       params: royaltiesParams,
-      expected: [{ rowKey: "", amount: 1 }],
+      expected: [{ rowKey: "", amount: 1, companyId: "c1" }],
     });
     expect(r.success).toBe(false);
+  });
+  it("requires each expected row's company, so a mapping change since the preview is caught (M8)", () => {
+    for (const companyId of [undefined, null, ""]) {
+      const r = sendRequestSchema.safeParse({
+        exportType: "royalties",
+        params: royaltiesParams,
+        expected: [{ rowKey: "k1", amount: 1, companyId }],
+      });
+      expect(r.success).toBe(false);
+    }
   });
 });
 

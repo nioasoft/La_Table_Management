@@ -133,7 +133,7 @@ function deps(setup: Setup = {}) {
   return { store, exports, send, build, onApproved, now };
 }
 
-const expectedOf = (rows: BuiltRow[]) => rows.map(({ rowKey, amount }) => ({ rowKey, amount }));
+const expectedOf = (rows: BuiltRow[]) => rows.map(({ rowKey, amount, companyId }) => ({ rowKey, amount, companyId }));
 
 function req(body: unknown, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest("http://localhost/api/hashavshevet/send", {
@@ -143,7 +143,7 @@ function req(body: unknown, headers: Record<string, string> = {}): NextRequest {
   });
 }
 
-const sendReq = (expected: { rowKey: string; amount: number }[]) =>
+const sendReq = (expected: { rowKey: string; amount: number; companyId: string | null }[]) =>
   req({ exportType: "journal_entries", params: PARAMS, expected });
 
 beforeEach(() => {
@@ -249,9 +249,9 @@ describe("handleSend", () => {
   it("drifted rows abort without locking", async () => {
     const rows = [row("a", { amount: 100 }), row("b")];
     for (const expected of [
-      [{ rowKey: "a", amount: 101 }, { rowKey: "b", amount: 100 }], // amount changed
-      [{ rowKey: "a", amount: 100 }], // new row appeared
-      [...expectedOf(rows), { rowKey: "c", amount: 1 }], // row disappeared
+      [{ rowKey: "a", amount: 101, companyId: "c1" }, { rowKey: "b", amount: 100, companyId: "c1" }], // amount changed
+      [{ rowKey: "a", amount: 100, companyId: "c1" }], // new row appeared
+      [...expectedOf(rows), { rowKey: "c", amount: 1, companyId: "c1" }], // row disappeared
     ]) {
       const d = deps({ rows });
       const res = await handleSend(sendReq(expected), d);
@@ -262,15 +262,25 @@ describe("handleSend", () => {
     }
   });
 
+  it("a row whose company changed since the preview aborts with 409 before locking (M8)", async () => {
+    const rows = [row("a", { companyId: "c2" })];
+    const d = deps({ rows, companies: [company("c1"), company("c2")] });
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), d);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ success: false, error: copy.dataChanged });
+    expect(d.store.createSendWithLocks).not.toHaveBeenCalled();
+    expect(d.send).not.toHaveBeenCalled();
+  });
+
   it("accepts amounts equal after rounding to cents", async () => {
     const d = deps({ rows: [row("a", { amount: 100.004 })] });
-    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), d);
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), d);
     expect(res.status).toBe(200);
   });
 
   it("blocking statuses or errors return 422", async () => {
     const withNoCompany = deps({ rows: [row("a"), row("b", { companyId: null })] });
-    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), withNoCompany);
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), withNoCompany);
     const json = await res.json();
     expect(res.status).toBe(422);
     expect(json.success).toBe(false);
@@ -279,7 +289,7 @@ describe("handleSend", () => {
     expect(withNoCompany.store.createSendWithLocks).not.toHaveBeenCalled();
 
     const withErrors = deps({ rows: [row("a")], blockingErrors: ["ספק X ללא כרטיס"] });
-    const res2 = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), withErrors);
+    const res2 = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), withErrors);
     expect(res2.status).toBe(422);
     expect((await res2.json()).data.blockingErrors).toEqual(["ספק X ללא כרטיס"]);
     expect(withErrors.send).not.toHaveBeenCalled();
@@ -382,7 +392,7 @@ describe("handleSend", () => {
     h.checkRateLimit.mockReturnValue({ success: false, remaining: 0, reset: Date.now() + 60_000, limit: 30 });
     const d = deps({ rows: [row("a")] });
 
-    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), d);
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), d);
 
     expect(res.status).toBe(429);
     expect(res.headers.get("X-RateLimit-Limit")).toBe("30");
@@ -401,7 +411,7 @@ describe("handleSend", () => {
     ];
     const d = deps({ rows, locks: [lockFor("sent", 500), lockFor("changed", 599)] });
 
-    const res = await handleSend(sendReq([{ rowKey: "new", amount: 100 }]), d);
+    const res = await handleSend(sendReq([{ rowKey: "new", amount: 100, companyId: "c1" }]), d);
 
     expect(res.status).toBe(200);
     expect(d.send).toHaveBeenCalledWith("movein", "file-c1", [{ Reference: "new" }]);
@@ -458,7 +468,28 @@ describe("handleSend", () => {
     expect(res.status).toBe(500);
     expect(JSON.parse(text)).toEqual({ success: false, error: copy.serverError("req-1"), requestId: "req-1" });
     expect(text).not.toContain("boom");
-    expect(errorLog).toHaveBeenCalled();
+    // M3: never the message (a Drizzle error's message carries the query params, i.e. row payloads).
+    const line = JSON.parse(String(errorLog.mock.calls[errorLog.mock.calls.length - 1][0]));
+    expect(line).toEqual({ event: "hashavshevet_send_failed", requestId: "req-1", exportType: "journal_entries", error: "Error" });
+  });
+
+  it("logs a failed safety-net finishSend by error name and pg code only (M3)", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rows = [row("a")];
+    const d = deps({ rows });
+    d.send.mockRejectedValueOnce(new Error("boom"));
+    const dbError = Object.assign(new Error("Failed query: update ... params: secret-row"), {
+      name: "DrizzleQueryError",
+      cause: { code: "57P01", constraint: undefined },
+    });
+    d.store.finishSend.mockRejectedValueOnce(dbError);
+
+    await handleSend(sendReq(expectedOf(rows)), d);
+
+    const logged = errorLog.mock.calls.map(([l]) => String(l));
+    const finishLine = JSON.parse(logged.find((l) => l.includes("hashavshevet.finish_send_failed"))!);
+    expect(finishLine).toMatchObject({ sendId: "s1", error: "DrizzleQueryError", code: "57P01" });
+    expect(logged.join("\n")).not.toContain("secret-row");
   });
 
   it("400 on invalid body", async () => {
@@ -472,7 +503,7 @@ describe("handleSend", () => {
   it("401 when unauthenticated", async () => {
     h.requireAdminOrSuperUser.mockResolvedValue(NextResponse.json({ success: false }, { status: 401 }));
     const d = deps({ rows: [row("a")] });
-    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100 }]), d);
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), d);
     expect(res.status).toBe(401);
     expect(d.build).not.toHaveBeenCalled();
     expect(h.checkRateLimit).not.toHaveBeenCalled();

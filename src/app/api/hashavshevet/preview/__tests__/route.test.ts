@@ -261,8 +261,10 @@ describe("handlePreview", () => {
     expect(text).not.toContain("boom");
     expect(text).not.toMatch(/\bat \S+ \(/);
 
+    // M3: the error's name, never its message (a Drizzle error's message carries row payloads).
     const line = JSON.parse(String(errorLog.mock.calls[0][0]));
-    expect(line).toMatchObject({ requestId: "req-42", error: "boom: secret detail" });
+    expect(line).toMatchObject({ requestId: "req-42", error: "Error" });
+    expect(JSON.stringify(line)).not.toContain("secret");
     expect(line.stack).toBeUndefined();
   });
 

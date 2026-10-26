@@ -66,10 +66,15 @@ export type ExportParamsInput = z.infer<typeof exportParamsSchema>;
 
 export const previewRequestSchema = exportParamsSchema;
 
-/** What the user saw in the preview; the server rebuilds and compares (409 on drift). */
+/**
+ * What the user saw in the preview; the server rebuilds and compares (409 on drift). Only new rows
+ * are sent, and a new row always has a company: a mapping change since the preview is drift too.
+ */
 export const sendRequestSchema = previewRequestSchema.and(
   z.object({
-    expected: z.array(z.object({ rowKey: z.string().min(1), amount: z.number() })).min(1),
+    expected: z
+      .array(z.object({ rowKey: z.string().min(1), amount: z.number(), companyId: z.string().min(1) }))
+      .min(1),
   }),
 );
 
