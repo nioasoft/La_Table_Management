@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
+import { HASHAVSHEVET_SEND_STATUSES } from "@/lib/hashavshevet/types";
 
 // ============================================================================
 // ENUMS
@@ -4322,13 +4323,8 @@ export type CreateOccasionalClientDocumentData =
 // HASHAVSHEVET API SEND (H-Connect)
 // ============================================================================
 
-export type HashavshevetSendStatus =
-  | "pending"
-  | "awaiting_approval"
-  | "approved"
-  | "rejected"
-  | "failed"
-  | "unknown";
+export { HASHAVSHEVET_SEND_STATUSES };
+export type HashavshevetSendStatus = (typeof HASHAVSHEVET_SEND_STATUSES)[number];
 
 // One row per "send to Hashavshevet" click. Audit trail: never deleted.
 export const hashavshevetSend = pgTable(
@@ -4373,7 +4369,9 @@ export const hashavshevetSend = pgTable(
     index("idx_hashavshevet_send_sent_at").on(table.sentAt),
     check(
       "hashavshevet_send_status_check",
-      sql`${table.status} IN ('pending', 'awaiting_approval', 'approved', 'rejected', 'failed', 'unknown')`,
+      sql`${table.status} IN (${sql.raw(
+        HASHAVSHEVET_SEND_STATUSES.map((s) => `'${s}'`).join(", "),
+      )})`,
     ),
   ],
 );

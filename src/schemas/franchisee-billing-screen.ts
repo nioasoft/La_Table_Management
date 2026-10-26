@@ -28,7 +28,7 @@ const exportStatusQuerySchema = z.strictObject({
   month: billingMonthSchema,
 });
 
-const exportFileQuerySchema = z.strictObject({
+export const exportFileQuerySchema = z.strictObject({
   mode: z.literal("file"),
   year: billingYearSchema,
   month: billingMonthSchema,

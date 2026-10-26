@@ -1,6 +1,6 @@
 /** Hebrew UI copy for the Hashavshevet send feature. All user-facing strings live here. */
 import type { HConnectPlugin } from "@/lib/hconnect";
-import type { HConnectOutcome } from "./types";
+import type { ExportType, HConnectOutcome } from "./types";
 
 type ApiErrorCode = Extract<HConnectOutcome, { kind: "api_error" }>["code"];
 
@@ -21,6 +21,16 @@ export const copy = {
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,
 } as const;
+
+/** Short Hebrew name of each export, for buttons, dialogs and the sends screen. */
+export const exportLabels: Record<ExportType, string> = {
+  supplier_commissions: "עמלות ספקים",
+  royalties: "תמלוגים ושיווק",
+  client_commissions: "עמלות לקוחות",
+  franchisee_client_invoices: "חשבוניות לקוחות של זכיין",
+  journal_entries: "פקודות יומן",
+  client_commission_invoices: "חשבוניות עמלה מלקוחות",
+};
 
 /** Spec §10: Hebrew message for a rejected H-Connect call. */
 export function apiErrorMessage(code: ApiErrorCode, plugin: HConnectPlugin, companyName: string): string {
