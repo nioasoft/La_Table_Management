@@ -8,14 +8,15 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { canUnlock, formatSentAt, rowLockView, unlockReasonLabel } from "@/app/(protected)/admin/hashavshevet/page-state";
 import { formatShekel, sendsCopy } from "@/lib/hashavshevet/copy";
+import type { SendStatus } from "@/lib/hashavshevet/types";
 import { useUnlockRow, type SendDetailDto } from "@/queries/hashavshevet";
 import { NoteDialog } from "./note-dialog";
 import { EmptyBlock } from "./query-boundary";
 
 type DetailRow = SendDetailDto["rows"][number];
 
-function LockCell({ row, isSuperUser }: { row: DetailRow; isSuperUser: boolean }) {
-  const { locked } = rowLockView(row, isSuperUser);
+function LockCell({ row }: { row: DetailRow }) {
+  const locked = row.unlockedAt === null;
   if (locked) return <Badge variant="info">{sendsCopy.rowLocked}</Badge>;
   const reason = unlockReasonLabel(row.unlockReason);
   return (
@@ -29,7 +30,15 @@ function LockCell({ row, isSuperUser }: { row: DetailRow; isSuperUser: boolean }
   );
 }
 
-function RowLine({ row, isSuperUser, busy, onUnlock }: { row: DetailRow; isSuperUser: boolean; busy: boolean; onUnlock: (rowId: string) => void }) {
+interface RowLineProps {
+  row: DetailRow;
+  isSuperUser: boolean;
+  sendStatus: SendStatus;
+  busy: boolean;
+  onUnlock: (rowId: string) => void;
+}
+
+function RowLine({ row, isSuperUser, sendStatus, busy, onUnlock }: RowLineProps) {
   return (
     <TableRow>
       <TableCell>
@@ -45,11 +54,11 @@ function RowLine({ row, isSuperUser, busy, onUnlock }: { row: DetailRow; isSuper
       </TableCell>
       <TableCell>{formatShekel(row.amount)}</TableCell>
       <TableCell>
-        <LockCell row={row} isSuperUser={isSuperUser} />
+        <LockCell row={row} />
       </TableCell>
       {isSuperUser && (
         <TableCell>
-          {rowLockView(row, isSuperUser).canUnlock && (
+          {rowLockView(row, isSuperUser, sendStatus).canUnlock && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => onUnlock(row.id)}>
               {sendsCopy.unlockRow}
             </Button>
@@ -63,10 +72,11 @@ function RowLine({ row, isSuperUser, busy, onUnlock }: { row: DetailRow; isSuper
 interface SendRowsTableProps {
   rows: DetailRow[];
   isSuperUser: boolean;
+  sendStatus: SendStatus;
 }
 
-/** Every row the send locked. A super user can open (release) a row that is still locked, with a written reason. */
-export function SendRowsTable({ rows, isSuperUser }: SendRowsTableProps) {
+/** Every row the send locked. A super user can open (release) a still-locked row of an approved send, with a written reason. */
+export function SendRowsTable({ rows, isSuperUser, sendStatus }: SendRowsTableProps) {
   const [unlockingId, setUnlockingId] = useState<string | null>(null);
   const unlock = useUnlockRow();
 
@@ -94,7 +104,14 @@ export function SendRowsTable({ rows, isSuperUser }: SendRowsTableProps) {
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <RowLine key={row.id} row={row} isSuperUser={isSuperUser} busy={unlock.isPending} onUnlock={setUnlockingId} />
+            <RowLine
+              key={row.id}
+              row={row}
+              isSuperUser={isSuperUser}
+              sendStatus={sendStatus}
+              busy={unlock.isPending}
+              onUnlock={setUnlockingId}
+            />
           ))}
         </TableBody>
       </Table>

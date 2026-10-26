@@ -6,10 +6,13 @@ import { invalidBody, requestIdOf, serverFail } from "@/lib/hashavshevet/route-h
 import { STALE_PENDING_MINUTES } from "@/lib/hashavshevet/types";
 import { sendsListQuerySchema } from "@/schemas/hashavshevet";
 
-/** Spec §9: the sends screen. `?count=awaiting` returns just the number, for the sidebar badge. */
+/**
+ * Spec §9: the sends screen. `?count=awaiting` returns just the number of sends that need Reut
+ * (awaiting approval, unknown, stale pending), for the sidebar badge.
+ */
 
 export interface ListSendsDeps {
-  store: Pick<HashavshevetStore, "listSends" | "countAwaitingApproval">;
+  store: Pick<HashavshevetStore, "listSends" | "countNeedingResolution">;
   /** Epoch ms; injectable so tests can pin the clock. */
   now: () => number;
 }
@@ -32,7 +35,7 @@ export async function handleListSends(request: NextRequest, deps: ListSendsDeps 
   const query = Object.fromEntries(request.nextUrl.searchParams);
   if (query.count === "awaiting") {
     try {
-      return NextResponse.json({ success: true, data: { count: await deps.store.countAwaitingApproval() } });
+      return NextResponse.json({ success: true, data: { count: await deps.store.countNeedingResolution() } });
     } catch (err) {
       return serverFail("hashavshevet_awaiting_count_failed", requestId, err);
     }

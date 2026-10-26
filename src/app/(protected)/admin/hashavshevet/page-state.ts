@@ -103,9 +103,14 @@ export const NO_COMPANY = "none";
 export const selectValueOf = (companyId: string | null): string => companyId ?? NO_COMPANY;
 export const companyIdFromSelect = (value: string): string | null => (value === NO_COMPANY ? null : value);
 
-export function rowLockView(row: { unlockedAt: string | null }, isSuperUser: boolean): { locked: boolean; canUnlock: boolean } {
+/** Spec §9: a super user may open a still-locked row only once its send is approved (the server enforces it too). */
+export function rowLockView(
+  row: { unlockedAt: string | null },
+  isSuperUser: boolean,
+  sendStatus: SendStatus,
+): { locked: boolean; canUnlock: boolean } {
   const locked = row.unlockedAt === null;
-  return { locked, canUnlock: isSuperUser && locked };
+  return { locked, canUnlock: isSuperUser && locked && sendStatus === "approved" };
 }
 
 /** Why a row was released: system and rejection reasons are stored in English-keyed form, manual ones are free text. */

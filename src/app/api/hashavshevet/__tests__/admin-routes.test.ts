@@ -100,7 +100,7 @@ function fakeStore() {
     setMapping: vi.fn<HashavshevetStore["setMapping"]>(async () => true),
     listSends: vi.fn(async () => [send()]),
     getSendDetail: vi.fn<HashavshevetStore["getSendDetail"]>(async () => sendDetail()),
-    countAwaitingApproval: vi.fn(async () => 3),
+    countNeedingResolution: vi.fn(async () => 3),
     resolveSend: vi.fn<HashavshevetStore["resolveSend"]>(async () => {}),
     unlockRow: vi.fn<HashavshevetStore["unlockRow"]>(async () => {}),
   };

@@ -120,7 +120,8 @@ export interface HashavshevetStore {
   listSends(filter: { status?: HashavshevetSendStatus; companyId?: string; exportType?: ExportType }): Promise<SendSummary[]>;
   /** Null when the send does not exist. */
   getSendDetail(sendId: string): Promise<SendDetail | null>;
-  countAwaitingApproval(): Promise<number>;
+  /** Sends that need Reut: awaiting approval, unknown, or pending past STALE_PENDING_MINUTES (sidebar badge). */
+  countNeedingResolution(): Promise<number>;
 }
 
 /** Another active lock already holds one of the rows (parallel send / double click). Map to 409. */
@@ -142,10 +143,10 @@ export class InvalidTransitionError extends Error {
   }
 }
 
-/** The row is missing or already unlocked. */
+/** The row is missing, already unlocked, or its send is not approved (spec §9). */
 export class RowNotLockedError extends Error {
   constructor(rowId: string) {
-    super(`hashavshevet sent row ${rowId} not found or already unlocked`);
+    super(`hashavshevet sent row ${rowId} not found, already unlocked, or its send is not approved`);
     this.name = "RowNotLockedError";
   }
 }
@@ -386,11 +387,17 @@ async function resolveSend(
   });
 }
 
+/**
+ * Spec §9: only a row of an approved send may be opened. Any other send still has a decision
+ * ahead (approve / reject / "did it arrive?") that settles its rows. Non-correlated on purpose.
+ */
+const OF_APPROVED_SEND = sql`${hashavshevetSentRow.sendId} in (select ${hashavshevetSend.id} from ${hashavshevetSend} where ${hashavshevetSend.status} = ${"approved"})`;
+
 async function unlockRow(rowId: string, reason: string, userId: string): Promise<void> {
   const updated = await database
     .update(hashavshevetSentRow)
     .set({ unlockedAt: new Date(), unlockedBy: userId, unlockReason: reason })
-    .where(and(eq(hashavshevetSentRow.id, rowId), isNull(hashavshevetSentRow.unlockedAt)))
+    .where(and(eq(hashavshevetSentRow.id, rowId), isNull(hashavshevetSentRow.unlockedAt), OF_APPROVED_SEND))
     .returning({ id: hashavshevetSentRow.id });
   if (updated.length === 0) throw new RowNotLockedError(rowId);
 }
@@ -465,11 +472,11 @@ async function getSendDetail(sendId: string): Promise<SendDetail | null> {
   return { ...summary, response: sendRow?.response ?? null, rows: rows.map((r) => ({ ...r, amount: Number(r.amount) })) };
 }
 
-async function countAwaitingApproval(): Promise<number> {
+async function countNeedingResolution(): Promise<number> {
   const [row] = await database
     .select({ n: count() })
     .from(hashavshevetSend)
-    .where(eq(hashavshevetSend.status, "awaiting_approval"));
+    .where(or(inArray(hashavshevetSend.status, ["awaiting_approval", "unknown"]), STALE_PENDING));
   return row?.n ?? 0;
 }
 
@@ -486,5 +493,5 @@ export const drizzleHashavshevetStore: HashavshevetStore = {
   unlockRow,
   listSends,
   getSendDetail,
-  countAwaitingApproval,
+  countNeedingResolution,
 };

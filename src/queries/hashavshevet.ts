@@ -101,7 +101,7 @@ export function useSendMutation() {
   });
 }
 
-/** Sends waiting for Reut's approval in Hashavshevet; feeds the sidebar badge. */
+/** Sends that need Reut (awaiting approval, unknown, stale pending); feeds the sidebar badge. */
 export function useAwaitingCount(enabled = true) {
   return useQuery({
     queryKey: hashavshevetKeys.awaitingCount(),

@@ -138,11 +138,18 @@ describe("rowLockView / unlockReasonLabel", () => {
   const locked = { unlockedAt: null, unlockReason: null };
   const released = { unlockedAt: "2026-07-02T10:00:00.000Z", unlockReason: "send_failed" };
 
-  it("only a super user can open a row that is still locked", () => {
-    expect(rowLockView(locked, true)).toEqual({ locked: true, canUnlock: true });
-    expect(rowLockView(locked, false)).toEqual({ locked: true, canUnlock: false });
-    expect(rowLockView(released, true)).toEqual({ locked: false, canUnlock: false });
+  it("only a super user can open a row that is still locked, and only once its send is approved", () => {
+    expect(rowLockView(locked, true, "approved")).toEqual({ locked: true, canUnlock: true });
+    expect(rowLockView(locked, false, "approved")).toEqual({ locked: true, canUnlock: false });
+    expect(rowLockView(released, true, "approved")).toEqual({ locked: false, canUnlock: false });
   });
+
+  it.each(["pending", "awaiting_approval", "unknown", "rejected", "failed"] as const)(
+    "no row of a %s send can be opened (spec §9)",
+    (status) => {
+      expect(rowLockView(locked, true, status)).toEqual({ locked: true, canUnlock: false });
+    },
+  );
 
   it("explains system and rejection releases in Hebrew and passes a manual reason through", () => {
     expect(unlockReasonLabel("send_failed")).toBe("לא הגיעה לחשבשבת, שוחררה אוטומטית");

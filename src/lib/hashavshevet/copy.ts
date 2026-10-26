@@ -56,7 +56,8 @@ export const copy = {
   companyNotFound: "החברה לא נמצאה",
   mappingTargetNotFound: "המותג, הזכיין או החברה לא נמצאו",
   sendNotFound: "השליחה לא נמצאה",
-  rowNotLocked: "השורה לא נמצאה או שכבר נפתחה",
+  /** The row is missing, already open, or its send is not approved yet (spec §9). */
+  rowNotLocked: "אפשר לפתוח רק שורה נעולה של שליחה שאושרה. רעננו ובדקו שוב",
   /** The send is in `currentStatus`, which does not allow `outcome` (spec lifecycle box). */
   invalidTransition: (outcome: ResolveOutcomeKey, currentStatus: SendStatus) =>
     currentStatus === "pending"

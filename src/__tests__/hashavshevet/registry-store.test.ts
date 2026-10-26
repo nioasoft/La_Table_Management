@@ -43,6 +43,7 @@ import { EXPORT_TYPES } from "@/lib/hashavshevet/types";
 import {
   InvalidTransitionError,
   LockConflictError,
+  RowNotLockedError,
   drizzleHashavshevetStore,
   isUniqueViolation,
 } from "@/data-access/hashavshevet";
@@ -250,6 +251,29 @@ describe("resolveSend onApproved bookkeeping (ruling R27)", () => {
     });
     await expect(drizzleHashavshevetStore.resolveSend("s1", "approved", null, "u1", hook)).rejects.toThrow("billing write failed");
     captured.stubs = [];
+  });
+});
+
+describe("unlockRow (spec §9: only rows of an approved send)", () => {
+  it("scopes the release to a locked row whose send is approved, in the one UPDATE", async () => {
+    captured.all = [];
+    // The mock driver matches nothing: missing, already open, or the send is not approved.
+    await expect(drizzleHashavshevetStore.unlockRow("r1", "נשלח בטעות", "u1")).rejects.toBeInstanceOf(RowNotLockedError);
+    expect(captured.all).toHaveLength(1);
+    expect(captured.sql).toMatch(/^update "hashavshevet_sent_row" set .* where \(.*"hashavshevet_sent_row"\."unlocked_at" is null/);
+    expect(captured.sql).toMatch(
+      /"hashavshevet_sent_row"\."send_id" in \(select "hashavshevet_send"\."id" from "hashavshevet_send" where "hashavshevet_send"\."status" = \$\d+\)/,
+    );
+    expect(captured.params).toEqual(expect.arrayContaining(["r1", "approved"]));
+  });
+});
+
+describe("countNeedingResolution (sidebar badge)", () => {
+  it("counts awaiting approval, unknown, and pending sends older than 15 minutes", async () => {
+    await drizzleHashavshevetStore.countNeedingResolution();
+    expect(captured.sql).toMatch(/^select count\(\*\) from "hashavshevet_send" where/);
+    expect(captured.sql).toMatch(/"hashavshevet_send"\."status" in \(\$\d+, \$\d+\) or \("hashavshevet_send"\."status" = \$\d+ and "hashavshevet_send"\."sent_at" < now\(\) - interval '15 minutes'\)/);
+    expect(captured.params).toEqual(["awaiting_approval", "unknown", "pending"]);
   });
 });
 

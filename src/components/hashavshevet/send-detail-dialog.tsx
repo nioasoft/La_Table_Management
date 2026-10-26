@@ -27,7 +27,7 @@ function DetailBody({ send, isSuperUser }: { send: SendDetailDto; isSuperUser: b
       )}
       <section className="space-y-2">
         <h3 className="font-medium">{sendsCopy.rowsTitle}</h3>
-        <SendRowsTable rows={send.rows} isSuperUser={isSuperUser} />
+        <SendRowsTable rows={send.rows} isSuperUser={isSuperUser} sendStatus={send.status} />
       </section>
       <section className="space-y-2">
         <h3 className="font-medium">{sendsCopy.responseTitle}</h3>
