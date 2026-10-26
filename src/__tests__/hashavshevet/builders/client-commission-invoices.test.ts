@@ -59,13 +59,13 @@ const rowsOf = (over: Partial<ClientCommissionInvoicesData> = {}) => buildClient
 const cents = (money: string) => Math.round(Number(money) * 100);
 
 describe("buildClientCommissionInvoicesRows", () => {
-  it("keys a row by its client document id, on the franchisee's company", () => {
-    const { rows, blockingErrors } = buildClientCommissionInvoicesRows(data());
+  it("keys a row by client|franchisee|invoice number, on the franchisee's company (ruling R28)", () => {
+    const { rows, blockingErrors } = buildClientCommissionInvoicesRows(data({ rows: [invoice({ invoiceNumber: "INV-778899" })] }));
     expect(blockingErrors).toEqual([]);
     expect(rows).toHaveLength(1);
     const [row] = rows;
-    expect(row.rowKey).toBe("doc-1");
-    expect(row.documentKey).toBe("doc-1");
+    expect(row.rowKey).toBe("c-1|fr-1|inv:INV-778899");
+    expect(row.documentKey).toBe(row.rowKey);
     expect(row.companyId).toBe("company-vini");
     expect(row.amount).toBe(1180);
     expect(row.periodEnd).toBe("2026-09-30");
@@ -76,10 +76,32 @@ describe("buildClientCommissionInvoicesRows", () => {
     expect(row.companyId).toBeNull();
   });
 
-  it("gives each document its own key and reference, even for the same client and franchisee", () => {
-    const rows = rowsOf({ rows: [invoice({ invoiceDocumentId: "doc-1" }), invoice({ invoiceDocumentId: "doc-2" })] });
-    expect(rows.map((r) => r.rowKey)).toEqual(["doc-1", "doc-2"]);
-    expect(new Set(rows.map((r) => r.apiRow.Reference)).size).toBe(2);
+  it("keeps the key across a delete and re-upload of the same invoice: a new document id, the same number", () => {
+    const [before] = rowsOf({ rows: [invoice({ invoiceDocumentId: "doc-1", invoiceNumber: "1001" })] });
+    const [after] = rowsOf({ rows: [invoice({ invoiceDocumentId: "doc-9", invoiceNumber: " 1001 " })] });
+    expect(after.rowKey).toBe(before.rowKey);
+    expect(after.apiRow.Reference).toBe(before.apiRow.Reference);
+  });
+
+  it("gives each invoice its own key and reference: by number, by client and by franchisee", () => {
+    const rows = rowsOf({
+      rows: [
+        invoice({ invoiceDocumentId: "doc-1", invoiceNumber: "1001" }),
+        invoice({ invoiceDocumentId: "doc-2", invoiceNumber: "1002" }),
+        invoice({ invoiceDocumentId: "doc-3", invoiceNumber: "1001", clientId: "c-2" }),
+        invoice({ invoiceDocumentId: "doc-4", invoiceNumber: "1001", franchiseeId: "fr-2" }),
+      ],
+    });
+    expect(rows.map((r) => r.rowKey)).toEqual(["c-1|fr-1|inv:1001", "c-1|fr-1|inv:1002", "c-2|fr-1|inv:1001", "c-1|fr-2|inv:1001"]);
+    expect(new Set(rows.map((r) => r.apiRow.Reference)).size).toBe(4);
+  });
+
+  it.each([null, "", "   "])("falls back to the document id when the invoice number is %j", (invoiceNumber) => {
+    const rows = rowsOf({
+      rows: [invoice({ invoiceDocumentId: "doc-1", invoiceNumber }), invoice({ invoiceDocumentId: "doc-2", invoiceNumber })],
+    });
+    expect(rows.map((r) => r.rowKey)).toEqual(["c-1|fr-1|doc:doc-1", "c-1|fr-1|doc:doc-2"]);
+    expect(rows.map((r) => r.documentKey)).toEqual(["c-1|fr-1|doc:doc-1", "c-1|fr-1|doc:doc-2"]);
   });
 
   it("dates the row at the period's real last day", () => {
@@ -104,7 +126,7 @@ describe("buildClientCommissionInvoicesRows", () => {
     });
     expect(row.apiRow).toEqual({
       TransType: "הוצ",
-      Reference: internalReference("LT", "doc-1"),
+      Reference: internalReference("LT", "c-1|fr-1|inv:INV-778899"),
       Ref2: "8899",
       ValueDate: "30/09/2026",
       DueDate: "30/09/2026",
@@ -123,7 +145,7 @@ describe("buildClientCommissionInvoicesRows", () => {
     const [row] = rowsOf({ rows: [invoice({ invoiceNumber: null, allocationNumber: null, totalAmountWithVat: 59.99 })] });
     expect(row.apiRow).toEqual({
       TransType: "הוצ",
-      Reference: internalReference("LT", "doc-1"),
+      Reference: internalReference("LT", "c-1|fr-1|doc:doc-1"),
       ValueDate: "30/09/2026",
       DueDate: "30/09/2026",
       AccountKeyDeb1: "עמלות מלקוחות",
@@ -193,7 +215,7 @@ describe("buildClientCommissionInvoicesRows", () => {
           ],
         }),
       );
-      expect(rows.map((r) => r.rowKey)).toEqual(["d-ok", "d-zero"]);
+      expect(rows.map((r) => r.rowKey)).toEqual(["c-1|fr-1|doc:d-ok", "c-1|fr-1|inv:INV-0042"]);
       expect(rows[1].amount).toBe(0);
       expect(blockingErrors).toEqual([copy.zeroCommissionInvoice("INV-0042", "שם לקוח", "ויני חדרה")]);
       expect(blockingErrors[0]).toContain("INV-0042");
@@ -242,7 +264,7 @@ describe("clientCommissionInvoicesExport", () => {
     expect(mocks.invoices).toHaveBeenCalledWith(9, 2026, "fr-1");
     expect(mocks.vatRate).toHaveBeenCalledWith(new Date(2026, 9, 0));
     expect(result.blockingErrors).toEqual([]);
-    expect(result.rows.map((r) => [r.rowKey, r.companyId])).toEqual([["doc-7", "company-vini"]]);
+    expect(result.rows.map((r) => [r.rowKey, r.companyId])).toEqual([["c-1|fr-1|doc:doc-7", "company-vini"]]);
   });
 
   it("loads every franchisee when none is given", async () => {

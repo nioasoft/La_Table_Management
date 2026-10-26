@@ -148,15 +148,25 @@ function apiRowOf(line: Line, period: PeriodFacts): ApiRow {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== ""));
 }
 
+/**
+ * Ruling R28: keyed by the invoice number, not the client_document id. Reut deletes and
+ * re-uploads documents; a new id for the same invoice would read as a new row and allow a second
+ * send. A number repeated for the same client × franchisee errs the safe way: it shows as
+ * sent/changed, never as a silent duplicate. Without a number the document id is all there is.
+ */
+function rowKeyOf(invoice: CommissionInvoiceExportRow): string {
+  const owner = `${invoice.clientId}|${invoice.franchiseeId}`;
+  const number = invoice.invoiceNumber?.trim();
+  return number ? `${owner}|inv:${number}` : `${owner}|doc:${invoice.invoiceDocumentId}`;
+}
+
 function toBuiltRow(invoice: CommissionInvoiceExportRow, period: PeriodFacts): BuiltRow {
   const total = roundCents(invoice.totalAmountWithVat);
   const net = roundCents(total / period.vatMultiplier);
   // H = I − G after rounding, so G + H === I to the agora: the entry always balances.
   const vat = roundCents(total - net);
   const line: Line = {
-    // One row per commission_invoice document (getCommissionInvoicesForExport joins client_document
-    // 1:1 to its franchisee and client), and the document id never changes: a stable key.
-    rowKey: invoice.invoiceDocumentId,
+    rowKey: rowKeyOf(invoice),
     ref: invoiceRef(invoice.invoiceNumber),
     account: resolveClientHashavshevetAccount(invoice.clientHashavshevet, invoice.brandId),
     net,
