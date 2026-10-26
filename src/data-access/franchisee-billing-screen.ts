@@ -3,6 +3,9 @@ import type {
   FranchiseeOwner,
 } from "@/db/schema";
 import {
+  isBillingExported,
+} from "@/data-access/franchisee-billing-exported";
+import {
   franchiseeBillingSourceReviewSchema,
   type FranchiseeBillingPeriod,
   type FranchiseeBillingSourceReview,
@@ -591,11 +594,7 @@ export async function resolveApprovedBillingDifference(
     (entry) => entry.franchiseeId === input.franchiseeId,
   );
   if (!difference) return failure("not_found", "פער החיוב כבר טופל");
-  const exported =
-    context.billing.royaltyExportedAt !== null ||
-    context.billing.royaltyExportBatchId !== null ||
-    context.billing.marketingExportedAt !== null ||
-    context.billing.marketingExportBatchId !== null;
+  const exported = isBillingExported(context.billing);
   if (input.resolution === "reopen" && exported) {
     return failure(
       "exported",

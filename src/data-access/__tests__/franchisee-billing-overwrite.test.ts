@@ -110,7 +110,9 @@ function storedBilling(
     tierBasisSnapshot: "gross",
     marketingRateSnapshot: "1.00",
     vatRateSnapshot: "0.18",
+    royaltyExportedAt: null,
     royaltyExportBatchId: null,
+    marketingExportedAt: null,
     marketingExportBatchId: null,
     ...overrides,
   };
@@ -157,6 +159,19 @@ describe("buildRoyaltyBillingPlan overwrite", () => {
 
     expect(plan.drafts).toEqual([]);
   });
+
+  it("leaves a row approved through the Hashavshevet API approved too", () => {
+    // An API send stamps *ExportedAt but writes no Excel batch row.
+    const plan = buildRoyaltyBillingPlan({
+      ...planInput,
+      existingBillings: [
+        storedBilling({ royaltyExportedAt: new Date(2026, 9, 1) }),
+      ],
+      overwriteApproved: true,
+    });
+
+    expect(plan.drafts).toEqual([]);
+  });
 });
 
 describe("describeOverwriteConflict", () => {
@@ -190,6 +205,16 @@ describe("describeOverwriteConflict", () => {
     const conflict = describeOverwriteConflict(
       ["franchisee-1"],
       [storedBilling({ marketingExportBatchId: "batch-9" })],
+      [franchisee()],
+    );
+
+    expect(conflict?.exportedNames).toEqual(["קינג קונג כרמיאל"]);
+  });
+
+  it("counts a row approved through the Hashavshevet API as exported", () => {
+    const conflict = describeOverwriteConflict(
+      ["franchisee-1"],
+      [storedBilling({ marketingExportedAt: new Date(2026, 9, 1) })],
       [franchisee()],
     );
 
@@ -243,6 +268,8 @@ describe("createDraftBillingUpsertQuery", () => {
 
     expect(text).toContain(`"royalty_export_batch_id" is null`);
     expect(text).toContain(`"marketing_export_batch_id" is null`);
+    expect(text).toContain(`"royalty_exported_at" is null`);
+    expect(text).toContain(`"marketing_exported_at" is null`);
     expect(text).toContain(`"approved_at" = null`);
   });
 

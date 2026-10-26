@@ -3,6 +3,10 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { createDeleteBillingLedgerQuery } from "@/data-access/franchisee-billing-screen-queries";
 import * as schema from "@/db/schema";
+import {
+  billingExportMarkerColumns,
+  isBillingExported,
+} from "@/data-access/franchisee-billing-exported";
 
 export type ReopenBillingRowResult =
   | "reopened"
@@ -27,24 +31,14 @@ export async function reopenApprovedBillingRow(
     const [row] = await tx
       .select({
         status: billing.status,
-        royaltyExportedAt: billing.royaltyExportedAt,
-        royaltyExportBatchId: billing.royaltyExportBatchId,
-        marketingExportedAt: billing.marketingExportedAt,
-        marketingExportBatchId: billing.marketingExportBatchId,
+        ...billingExportMarkerColumns,
       })
       .from(billing)
       .where(eq(billing.id, billingId))
       .for("update");
     if (!row) return "not_found";
     if (row.status !== "approved") return "not_approved";
-    if (
-      row.royaltyExportedAt ||
-      row.royaltyExportBatchId ||
-      row.marketingExportedAt ||
-      row.marketingExportBatchId
-    ) {
-      return "exported";
-    }
+    if (isBillingExported(row)) return "exported";
     await tx
       .update(billing)
       .set({

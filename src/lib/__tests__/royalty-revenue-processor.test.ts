@@ -1,3 +1,4 @@
+import { isBillingExported } from "@/data-access/franchisee-billing-exported";
 import { describe, expect, it } from "vitest";
 import type {
   BillingFranchisee,
@@ -109,7 +110,9 @@ function storedBilling(
     marketingRateSnapshot: "1.00",
     vatRateSnapshot: "0.1800",
     status: "draft",
+    royaltyExportedAt: null,
     royaltyExportBatchId: null,
+    marketingExportedAt: null,
     marketingExportBatchId: null,
     ...overrides,
   };
@@ -184,9 +187,7 @@ class MemoryBillingOperations implements FranchiseeBillingOperations {
     const writable = (billing: StoredFranchiseeBilling | undefined) =>
       billing === undefined ||
       billing.status === "draft" ||
-      (overwriteApproved &&
-        billing.royaltyExportBatchId === null &&
-        billing.marketingExportBatchId === null);
+      (overwriteApproved && !isBillingExported(billing));
     const skippedFranchiseeIds = drafts.flatMap((draft) =>
       writable(this.billings.get(draft.franchiseeId))
         ? []
@@ -235,7 +236,9 @@ function draftToStored(
     marketingRateSnapshot: null,
     vatRateSnapshot: null,
     status: "draft",
+    royaltyExportedAt: null,
     royaltyExportBatchId: null,
+    marketingExportedAt: null,
     marketingExportBatchId: null,
   };
 }
