@@ -25,6 +25,14 @@ export const HASHAVSHEVET_SEND_STATUSES = [
   "unknown",
 ] as const;
 
+export type SendStatus = (typeof HASHAVSHEVET_SEND_STATUSES)[number];
+
+/**
+ * A send still `pending` this long after sent_at outlived its request (route maxDuration is 300 s),
+ * so Reut may resolve it. The store enforces it in SQL; the sends list exposes it as `stalePending`.
+ */
+export const STALE_PENDING_MINUTES = 15;
+
 /** One H-Connect row. All values are strings (decimals need a point, allocation numbers keep leading zeros). */
 export type ApiRow = Record<string, string>;
 

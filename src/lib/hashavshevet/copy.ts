@@ -1,12 +1,30 @@
 /** Hebrew UI copy for the Hashavshevet send feature. All user-facing strings live here. */
 import type { HConnectPlugin } from "@/lib/hconnect";
-import type { ExportType, HConnectOutcome } from "./types";
+import type { ExportType, HConnectOutcome, SendStatus } from "./types";
 
 type ApiErrorCode = Extract<HConnectOutcome, { kind: "api_error" }>["code"];
 
 function shekel(n: number): string {
   return `₪${n.toLocaleString("he-IL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+type ResolveOutcomeKey = "approved" | "rejected" | "arrived";
+
+/** Status as a predicate on "the send" ("...כשהשליחה ממתינה לאישור"); also the status chip text. */
+export const sendStatusLabels: Record<SendStatus, string> = {
+  pending: "בשליחה",
+  awaiting_approval: "ממתינה לאישור",
+  approved: "אושרה",
+  rejected: "נדחתה",
+  failed: "נכשלה",
+  unknown: "במצב לא ידוע",
+};
+
+const resolveOutcomeLabels: Record<ResolveOutcomeKey, string> = {
+  approved: "אישור",
+  rejected: "דחייה",
+  arrived: "סימון כהגיעה",
+};
 
 export const copy = {
   noCompany: "לזכיין אין חברה בחשבשבת",
@@ -29,6 +47,13 @@ export const copy = {
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
   invalidRequest: "הבקשה אינה תקינה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,
+  companyNotFound: "החברה לא נמצאה",
+  mappingTargetNotFound: "המותג, הזכיין או החברה לא נמצאו",
+  sendNotFound: "השליחה לא נמצאה",
+  rowNotLocked: "השורה לא נמצאה או שכבר נפתחה",
+  /** The send is in `currentStatus`, which does not allow `outcome` (spec lifecycle box). */
+  invalidTransition: (outcome: ResolveOutcomeKey, currentStatus: SendStatus) =>
+    `אי אפשר לבצע ${resolveOutcomeLabels[outcome]} כשהשליחה ${sendStatusLabels[currentStatus]}. רעננו ובדקו שוב`,
 } as const;
 
 /** Short Hebrew name of each export, for buttons, dialogs and the sends screen. */

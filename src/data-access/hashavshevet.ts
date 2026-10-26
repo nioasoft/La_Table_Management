@@ -1,20 +1,32 @@
-import { and, count, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { database } from "@/db";
 import {
+  brand,
+  franchisee,
   hashavshevetCompany,
   hashavshevetSend,
   hashavshevetSentRow,
   user,
+  type HashavshevetCompany,
   type HashavshevetSendStatus,
 } from "@/db/schema";
 import { apiMoney } from "@/lib/hashavshevet/format";
 import type { ActiveLock, ClassifiedRow, CompanyInfo } from "@/lib/hashavshevet/classify";
-import type { ExportType } from "@/lib/hashavshevet/types";
+import { STALE_PENDING_MINUTES, type ExportType } from "@/lib/hashavshevet/types";
 import type { HConnectPlugin } from "@/lib/hconnect";
 
 /** Persistence for Hashavshevet sends and row locks (spec §5). Injected into route handlers. */
 
 export type CompanyRecord = CompanyInfo & { fileName: string; nameHe: string };
+
+/** A company as the settings screen shows it. */
+export type CompanyRow = CompanyRecord & { compId: number | null };
+
+export interface MappingsOverview {
+  brands: Array<{ id: string; code: string; nameHe: string; companyId: string | null }>;
+  /** Active franchisees only. */
+  franchisees: Array<{ id: string; name: string; brandCode: string; status: string; companyId: string | null }>;
+}
 
 export type ResolveOutcome = "approved" | "rejected" | "arrived";
 
@@ -47,6 +59,16 @@ export interface FinishSendResult {
 
 export interface HashavshevetStore {
   getCompanies(): Promise<Map<string, CompanyRecord>>;
+  listCompanies(): Promise<CompanyRow[]>;
+  /** `liveFrom` YYYY-MM-DD, or null to deactivate; an omitted key is left unchanged. Null when the company does not exist. */
+  updateCompany(
+    id: string,
+    patch: { liveFrom?: string | null; requiresApproval?: boolean },
+    userId: string,
+  ): Promise<CompanyRow | null>;
+  listMappings(): Promise<MappingsOverview>;
+  /** False when the brand / franchisee, or a non-null company, does not exist. */
+  setMapping(kind: "brand" | "franchisee", id: string, companyId: string | null): Promise<boolean>;
   getActiveLocks(exportType: ExportType, rowKeys: string[]): Promise<ActiveLock[]>;
   createSendWithLocks(input: {
     exportType: ExportType;
@@ -109,7 +131,7 @@ const TRANSITIONS: Record<
  */
 const STALE_PENDING = and(
   eq(hashavshevetSend.status, "pending"),
-  lt(hashavshevetSend.sentAt, sql`now() - interval '15 minutes'`),
+  lt(hashavshevetSend.sentAt, sql`now() - interval '${sql.raw(String(STALE_PENDING_MINUTES))} minutes'`),
 );
 
 /** Postgres unique_violation, bare or wrapped by Drizzle (`cause`). */
@@ -118,14 +140,78 @@ export function isUniqueViolation(err: unknown): boolean {
   return e?.code === "23505" || e?.cause?.code === "23505";
 }
 
+function toCompanyRow(c: HashavshevetCompany): CompanyRow {
+  return {
+    id: c.id,
+    fileName: c.fileName,
+    compId: c.compId,
+    nameHe: c.nameHe,
+    liveFrom: c.liveFrom,
+    requiresApproval: c.requiresApproval,
+  };
+}
+
 async function getCompanies(): Promise<Map<string, CompanyRecord>> {
   const rows = await database.select().from(hashavshevetCompany);
-  return new Map(
-    rows.map((c) => [
-      c.id,
-      { id: c.id, fileName: c.fileName, nameHe: c.nameHe, liveFrom: c.liveFrom, requiresApproval: c.requiresApproval },
-    ]),
-  );
+  return new Map(rows.map((c) => [c.id, toCompanyRow(c)]));
+}
+
+async function listCompanies(): Promise<CompanyRow[]> {
+  const rows = await database.select().from(hashavshevetCompany).orderBy(asc(hashavshevetCompany.compId));
+  return rows.map(toCompanyRow);
+}
+
+async function updateCompany(
+  id: string,
+  patch: Parameters<HashavshevetStore["updateCompany"]>[1],
+  userId: string,
+): Promise<CompanyRow | null> {
+  // Drizzle leaves `undefined` keys out of the SET, so only the fields the caller sent change.
+  const [row] = await database
+    .update(hashavshevetCompany)
+    .set({ liveFrom: patch.liveFrom, requiresApproval: patch.requiresApproval, updatedAt: new Date(), updatedBy: userId })
+    .where(eq(hashavshevetCompany.id, id))
+    .returning();
+  return row ? toCompanyRow(row) : null;
+}
+
+async function listMappings(): Promise<MappingsOverview> {
+  const [brands, franchisees] = await Promise.all([
+    database
+      .select({ id: brand.id, code: brand.code, nameHe: brand.nameHe, companyId: brand.hashavshevetCompanyId })
+      .from(brand)
+      .where(eq(brand.isSystemBrand, false))
+      .orderBy(asc(brand.code)),
+    database
+      .select({
+        id: franchisee.id,
+        name: franchisee.name,
+        brandCode: brand.code,
+        status: franchisee.status,
+        companyId: franchisee.hashavshevetCompanyId,
+      })
+      .from(franchisee)
+      .innerJoin(brand, eq(franchisee.brandId, brand.id))
+      .where(eq(franchisee.status, "active"))
+      .orderBy(asc(brand.code), asc(franchisee.name)),
+  ]);
+  return { brands, franchisees };
+}
+
+async function setMapping(kind: "brand" | "franchisee", id: string, companyId: string | null): Promise<boolean> {
+  if (companyId !== null) {
+    const [company] = await database
+      .select({ id: hashavshevetCompany.id })
+      .from(hashavshevetCompany)
+      .where(eq(hashavshevetCompany.id, companyId));
+    if (!company) return false;
+  }
+  const set = { hashavshevetCompanyId: companyId, updatedAt: new Date() };
+  const updated =
+    kind === "brand"
+      ? await database.update(brand).set(set).where(eq(brand.id, id)).returning({ id: brand.id })
+      : await database.update(franchisee).set(set).where(eq(franchisee.id, id)).returning({ id: franchisee.id });
+  return updated.length > 0;
 }
 
 // ponytail: one IN list; a single export is a few hundred keys, far under pg's 65535-param cap.
@@ -315,6 +401,10 @@ async function countAwaitingApproval(): Promise<number> {
 
 export const drizzleHashavshevetStore: HashavshevetStore = {
   getCompanies,
+  listCompanies,
+  updateCompany,
+  listMappings,
+  setMapping,
   getActiveLocks,
   createSendWithLocks,
   finishSend,

@@ -127,3 +127,55 @@ describe("resolveSend escape hatch for a send stuck in pending", () => {
     expect(captured.all[0]).not.toContain("interval");
   });
 });
+
+describe("admin store: companies", () => {
+  it("listCompanies selects the display columns, ordered by Hashavshevet comp id", async () => {
+    await drizzleHashavshevetStore.listCompanies();
+    // Single-table selects come out unqualified (Drizzle drops the table prefix), except in ORDER BY.
+    expect(captured.sql).toMatch(/^select .*"comp_id".*"live_from".*"requires_approval".* from "hashavshevet_company"/);
+    expect(captured.sql).toMatch(/order by "hashavshevet_company"\."comp_id"/i);
+  });
+
+  it("updateCompany stamps updated_at and updated_by, scopes by id and is null when nothing matched", async () => {
+    const result = await drizzleHashavshevetStore.updateCompany("c1", { liveFrom: null, requiresApproval: false }, "u1");
+    expect(result).toBeNull();
+    expect(captured.sql).toMatch(/^update "hashavshevet_company" set .*"live_from" = \$\d+.*"updated_at" = \$\d+.*"updated_by" = \$\d+ where "hashavshevet_company"\."id" = \$\d+ returning/);
+    expect(captured.params).toEqual(expect.arrayContaining([null, false, "u1", "c1"]));
+  });
+
+  it("updateCompany leaves untouched fields out of the SET", async () => {
+    await drizzleHashavshevetStore.updateCompany("c1", { requiresApproval: true }, "u1");
+    expect(captured.sql).not.toContain('"live_from" =');
+  });
+});
+
+describe("admin store: mappings", () => {
+  it("listMappings returns real brands only, and active franchisees joined to their brand code", async () => {
+    captured.all = [];
+    await drizzleHashavshevetStore.listMappings();
+    const [brands, franchisees] = captured.all;
+    expect(brands).toMatch(/^select "id", "code", "name_he", "hashavshevet_company_id" from "brand"/);
+    expect(brands).toContain('"brand"."is_system_brand" = $');
+    expect(franchisees).toMatch(/inner join "brand" on "franchisee"\."brand_id" = "brand"\."id"/i);
+    expect(franchisees).toContain('"franchisee"."status" = $');
+    expect(franchisees).toContain('"brand"."code"');
+  });
+
+  it("setMapping is false for an unknown company without touching the mapped row", async () => {
+    captured.all = [];
+    await expect(drizzleHashavshevetStore.setMapping("brand", "b1", "missing")).resolves.toBe(false);
+    expect(captured.all).toHaveLength(1);
+    expect(captured.all[0]).toMatch(/^select .* from "hashavshevet_company" where "hashavshevet_company"\."id" = \$\d+/);
+  });
+
+  it.each([
+    ["brand", "brand"],
+    ["franchisee", "franchisee"],
+  ] as const)("setMapping(%s, null) clears the company, scoped to that row, and is false when no row matched", async (kind, table) => {
+    captured.all = [];
+    await expect(drizzleHashavshevetStore.setMapping(kind, "x1", null)).resolves.toBe(false);
+    expect(captured.all).toHaveLength(1);
+    expect(captured.sql).toMatch(new RegExp(`^update "${table}" set .*"hashavshevet_company_id" = \\$\\d+.* where "${table}"\\."id" = \\$\\d+ returning`));
+    expect(captured.params).toEqual(expect.arrayContaining([null, "x1"]));
+  });
+});

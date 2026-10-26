@@ -9,6 +9,16 @@ const id = z.string().trim().min(1);
 const periodMonth = z.number().int().min(1).max(12);
 const periodYear = z.number().int().min(2020).max(2100);
 
+/** Shape-valid is not enough for a stored date: "2026-02-30" passes the regex and Postgres would answer 500. */
+const realIsoDate = isoDate.refine(
+  (s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
+  },
+  "התאריך אינו תקין",
+);
+
 export const exportTypeSchema = z.enum(EXPORT_TYPES);
 
 /** Params mirror each export route's current query params (arrays instead of comma lists, JSON body). */
@@ -73,10 +83,10 @@ export const resolveSendSchema = z
     path: ["note"],
   });
 
-export const unlockRowSchema = z.object({ reason: z.string().trim().min(3) });
+export const unlockRowSchema = z.object({ reason: z.string().trim().min(3, "חובה לכתוב סיבה לפתיחת השורה") });
 
 export const companyPatchSchema = z.object({
-  liveFrom: isoDate.nullable().optional(),
+  liveFrom: realIsoDate.nullable().optional(),
   requiresApproval: z.boolean().optional(),
 });
 

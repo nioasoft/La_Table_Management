@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type { z } from "zod";
 
 import type { CompanyRecord, HashavshevetStore } from "@/data-access/hashavshevet";
 import { classifyRows, type ClassifiedRow } from "./classify";
+import { copy } from "./copy";
 import type { ExportDefinition } from "./registry";
 
 /** Shared by the preview and send routes. */
@@ -12,6 +14,20 @@ export function requestIdOf(request: NextRequest): string {
 
 export function fail(error: string, status: number, extra: Record<string, unknown> = {}): NextResponse {
   return NextResponse.json({ success: false, error, ...extra }, { status });
+}
+
+/** 400 for a body that failed its schema: the first Hebrew message the schema defined, else the generic one. */
+export function invalidBody(error: z.ZodError): NextResponse {
+  const hebrew = error.issues.find((i) => /[֐-׿]/.test(i.message));
+  return fail(hebrew?.message ?? copy.invalidRequest, 400);
+}
+
+/** Generic 500 (no stack, no internals) plus one structured English log line carrying the request id. */
+export function serverFail(event: string, requestId: string, err: unknown): NextResponse {
+  console.error(
+    JSON.stringify({ event, requestId, error: err instanceof Error ? err.message : String(err) }),
+  );
+  return fail(copy.serverError(requestId), 500, { requestId });
 }
 
 export interface BuiltAndClassified {
