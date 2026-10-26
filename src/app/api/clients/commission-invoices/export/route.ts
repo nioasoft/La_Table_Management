@@ -3,8 +3,7 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import { getCommissionInvoicesForExport } from "@/data-access/commission-invoices";
-import { getVatRateForDate } from "@/data-access/vatRates";
+import { loadClientCommissionInvoicesData } from "@/lib/hashavshevet/builders/client-commission-invoices";
 import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
 import * as XLSX from "xlsx";
 
@@ -101,11 +100,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const exportRows = await getCommissionInvoicesForExport(
-      periodMonth,
-      periodYear,
-      franchiseeId
-    );
+    const { rows: exportRows, vatRate } =
+      await loadClientCommissionInvoicesData({
+        periodMonth,
+        periodYear,
+        franchiseeId,
+      });
 
     if (exportRows.length === 0) {
       return NextResponse.json(
@@ -118,7 +118,6 @@ export async function GET(request: NextRequest) {
     // in the same month, so compute once.
     const invoiceDate = lastDayOfMonth(periodYear, periodMonth);
     const invoiceDateSerial = toExcelSerial(invoiceDate);
-    const vatRate = await getVatRateForDate(invoiceDate);
     const vatMultiplier = 1 + vatRate;
     const monthName = HEBREW_MONTHS[periodMonth - 1];
     const description = `עמלה ${monthName}`;
