@@ -43,6 +43,7 @@ export function buildBody(plugin: HConnectPlugin, company: string, rows: ApiRow[
 }
 
 type ApiErrorOutcome = Extract<HConnectOutcome, { kind: "api_error" }>;
+type ErrorCode = ApiErrorOutcome["code"];
 
 /** Turns `{"data":{"0":{"quantity":"..."}}}` into `{0: "quantity: ..."}`. */
 function parseRowErrors(errors: unknown): Record<number, string> {
@@ -66,25 +67,82 @@ function parseRowErrors(errors: unknown): Record<number, string> {
   return out;
 }
 
-function classifyError(
-  err: unknown,
-  rawText: string,
-  httpStatus: number,
-  body: unknown
-): ApiErrorOutcome {
-  const errObj = err && typeof err === "object" ? (err as { message?: unknown; errors?: unknown }) : null;
-  const text = typeof err === "string" ? err : err == null ? rawText : JSON.stringify(err);
+/** Error code from API error text; null when the text says nothing recognisable. */
+function codeFromText(text: string): ErrorCode | null {
   const lower = text.toLowerCase();
-  const code: ApiErrorOutcome["code"] = lower.includes("not in service")
-    ? "not_in_service"
-    : lower.includes("invalid data")
-      ? "validation"
-      : lower.includes("not allowed")
-        ? "permission"
-        : "other";
+  if (lower.includes("not in service")) return "not_in_service";
+  if (lower.includes("invalid data")) return "validation";
+  if (lower.includes("not allowed")) return "permission";
+  return null;
+}
+
+/** `apiRes.err` is present: the API itself rejected the request. */
+function apiErrorFromErr(err: unknown, httpStatus: number, body: unknown): ApiErrorOutcome {
+  const obj = typeof err === "object" ? (err as { message?: unknown; errors?: unknown } | null) : null;
+  const text = typeof err === "string" ? err : JSON.stringify(err);
   const message =
-    typeof err === "string" ? err : typeof errObj?.message === "string" ? errObj.message : `HTTP ${httpStatus}`;
-  return { kind: "api_error", code, message, rowErrors: parseRowErrors(errObj?.errors), httpStatus, body };
+    typeof err === "string" ? err : typeof obj?.message === "string" ? obj.message : `HTTP ${httpStatus}`;
+  return {
+    kind: "api_error",
+    code: codeFromText(text) ?? "other",
+    message,
+    rowErrors: parseRowErrors(obj?.errors),
+    httpStatus,
+    body,
+  };
+}
+
+/**
+ * Pure reply -> outcome. `api_error` means "definitely rejected" and lets the
+ * caller release row locks and resend, so it is returned only when the API
+ * said so (apiRes.err, or a known error phrase on a non-2xx reply) or on a
+ * 4xx. Everything ambiguous (proxy 502/503/504, non-JSON, unexpected shape)
+ * is `unknown`: the .dat may already have been delivered.
+ */
+export function classifyReply(httpStatus: number, text: string, latencyMs: number): HConnectOutcome {
+  let body: unknown = text;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // non-JSON body: handled by the raw-text fallback below
+  }
+  const apiRes = (body as { apiRes?: { status?: string; err?: unknown } } | null)?.apiRes;
+  const is2xx = httpStatus >= 200 && httpStatus < 300;
+
+  if (apiRes?.err != null) return apiErrorFromErr(apiRes.err, httpStatus, body);
+  if (is2xx && apiRes?.status === "ok") return { kind: "ok", latencyMs, httpStatus, body };
+  if (!is2xx) {
+    const code = codeFromText(text);
+    const known = code === "not_in_service" || code === "permission";
+    if (known || (httpStatus >= 400 && httpStatus < 500)) {
+      return {
+        kind: "api_error",
+        code: known ? code : "other",
+        message: `HTTP ${httpStatus}: ${text.trim().slice(0, 200)}`,
+        rowErrors: {},
+        httpStatus,
+        body,
+      };
+    }
+  }
+  return { kind: "unknown", message: `Unrecognised HTTP ${httpStatus} reply from H-Connect` };
+}
+
+type RawReply = { status: number; text: string } | { error: string };
+
+/** POST with timeout. Timeout or network failure -> `{ error }` (delivery unknown). */
+async function postBody(body: string, timeoutMs: number, doFetch: typeof fetch): Promise<RawReply> {
+  try {
+    const res = await doFetch(HCONNECT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return { status: res.status, text: await res.text() };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /**
@@ -102,49 +160,22 @@ export async function sendToHashavshevet(
   if (Buffer.byteLength(body) > MAX_BODY_BYTES) {
     throw new Error(`H-Connect body exceeds 4MB (${rows.length} rows) — use chunkByDocument`);
   }
-  const doFetch = opts.fetchImpl ?? fetch;
   const started = Date.now();
-  const log = (fields: Record<string, unknown>) =>
-    console.log(JSON.stringify({ event: "hconnect.send", plugin, company, rows: rows.length, ...fields }));
-
-  let res: Response;
-  let text: string;
-  try {
-    res = await doFetch(HCONNECT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-    });
-    text = await res.text();
-  } catch (e) {
-    // Timeout or network failure: the request may or may not have arrived.
-    const message = e instanceof Error ? e.message : String(e);
-    log({ kind: "unknown", latencyMs: Date.now() - started, error: message });
-    return { kind: "unknown", message };
-  }
-
+  const reply = await postBody(body, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.fetchImpl ?? fetch);
   const latencyMs = Date.now() - started;
-  let parsed: unknown;
-  let isJson = true;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = text;
-    isJson = false;
-  }
-  const apiRes = isJson ? (parsed as { apiRes?: { status?: string; err?: unknown } } | null)?.apiRes : undefined;
-
-  let outcome: HConnectOutcome;
-  if (res.ok && apiRes?.status === "ok" && apiRes.err == null) {
-    outcome = { kind: "ok", latencyMs, httpStatus: res.status, body: parsed };
-  } else if (res.ok && apiRes?.err == null) {
-    // 2xx but not a recognisable reply: delivery is unknown, never assume failure.
-    outcome = { kind: "unknown", message: `Unexpected HTTP ${res.status} reply from H-Connect` };
-  } else {
-    outcome = classifyError(apiRes?.err, text, res.status, parsed);
-  }
-  log({ kind: outcome.kind, httpStatus: res.status, latencyMs });
+  const outcome: HConnectOutcome =
+    "error" in reply ? { kind: "unknown", message: reply.error } : classifyReply(reply.status, reply.text, latencyMs);
+  console.log(
+    JSON.stringify({
+      event: "hconnect.send",
+      plugin,
+      company,
+      rows: rows.length,
+      kind: outcome.kind,
+      httpStatus: "status" in reply ? reply.status : undefined,
+      latencyMs,
+    })
+  );
   return outcome;
 }
 

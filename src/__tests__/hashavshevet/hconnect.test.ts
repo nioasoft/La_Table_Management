@@ -73,6 +73,33 @@ describe("sendToHashavshevet", () => {
     expect(out).toMatchObject({ kind: "api_error", code: "other" });
   });
 
+  it("ambiguous replies are unknown, never a definite api_error", async () => {
+    const send = (status: number, body: string) =>
+      sendToHashavshevet("movein", "fv", rows, { fetchImpl: reply(status, body) });
+    expect(await send(502, "<html><body>502 Bad Gateway</body></html>")).toMatchObject({ kind: "unknown" });
+    expect(await send(503, "")).toMatchObject({ kind: "unknown" });
+    expect(await send(500, "Internal Server Error")).toMatchObject({ kind: "unknown" });
+    expect(await send(500, '{"apiRes":{"status":"ok"}}')).toMatchObject({ kind: "unknown" });
+    expect(await send(500, '{"message":"oops"}')).toMatchObject({ kind: "unknown" });
+  });
+
+  it("a 200 whose apiRes has err is api_error, classified by err", async () => {
+    const body = '{"apiRes":{"err":"movein module error: you are not allowed to use movein module"}}';
+    const out = await sendToHashavshevet("movein", "fv", rows, { fetchImpl: reply(200, body) });
+    expect(out).toMatchObject({ kind: "api_error", code: "permission", httpStatus: 200 });
+  });
+
+  it("known error phrases in a non-JSON non-2xx body are api_error", async () => {
+    const send = (body: string) => sendToHashavshevet("movein", "fv", rows, { fetchImpl: reply(500, body) });
+    expect(await send("Not in service")).toMatchObject({ kind: "api_error", code: "not_in_service" });
+    expect(await send("you are NOT ALLOWED here")).toMatchObject({ kind: "api_error", code: "permission" });
+  });
+
+  it("a 4xx without an envelope is api_error other", async () => {
+    const out = await sendToHashavshevet("movein", "fv", rows, { fetchImpl: reply(400, "Bad Request") });
+    expect(out).toMatchObject({ kind: "api_error", code: "other", httpStatus: 400 });
+  });
+
   it("network failure and timeout are unknown", async () => {
     const down = vi.fn(async () => {
       throw new TypeError("fetch failed");
