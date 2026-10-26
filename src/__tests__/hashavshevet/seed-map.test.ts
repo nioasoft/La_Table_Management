@@ -17,7 +17,9 @@ describe("hashavshevet seed map", () => {
     expect(SEED_FRANCHISEE_MAP['קינג קונג מוצקין בע"מ']).toBe(
       "kingkong_hadera_2024_2026",
     );
-    expect(Object.keys(SEED_FRANCHISEE_MAP)).toHaveLength(7);
+    expect(Object.keys(SEED_FRANCHISEE_MAP)).toHaveLength(8);
+    // Natanzon shares Vini Azrieli's legal entity, so it books into the same company.
+    expect(SEED_FRANCHISEE_MAP["נתנזון עזריאלי חיפה"]).toBe(SEED_FRANCHISEE_MAP["ויני עזריאלי חיפה"]);
     expect(SEED_COMPANIES.every((c) => c.fileName !== "DEMO")).toBe(true);
   });
 

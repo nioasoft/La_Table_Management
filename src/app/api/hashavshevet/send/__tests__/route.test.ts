@@ -278,15 +278,27 @@ describe("handleSend", () => {
     expect(res.status).toBe(200);
   });
 
-  it("blocking statuses or errors return 422", async () => {
+  it("rows without a company are skipped, not blocking (e.g. דון פדרו)", async () => {
     const withNoCompany = deps({ rows: [row("a"), row("b", { companyId: null })] });
     const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), withNoCompany);
+    expect(res.status).toBe(200);
+    const calls = withNoCompany.store.createSendWithLocks.mock.calls as unknown as [{ rows: BuiltRow[] }][];
+    const locked = calls.flatMap(([input]) => input.rows.map((r) => r.rowKey));
+    expect(locked).toEqual(["a"]);
+  });
+
+  it("a not-live company or builder errors return 422", async () => {
+    const notLive = deps({
+      companies: [company("c1"), company("c2", { liveFrom: null })],
+      rows: [row("a"), row("b", { companyId: "c2" })],
+    });
+    const res = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), notLive);
     const json = await res.json();
     expect(res.status).toBe(422);
     expect(json.success).toBe(false);
     expect(json.error).toMatch(/[֐-׿]/);
-    expect(json.data).toEqual({ blockingErrors: [], blockingStatuses: ["no_company"] });
-    expect(withNoCompany.store.createSendWithLocks).not.toHaveBeenCalled();
+    expect(json.data).toEqual({ blockingErrors: [], blockingStatuses: ["not_live"] });
+    expect(notLive.store.createSendWithLocks).not.toHaveBeenCalled();
 
     const withErrors = deps({ rows: [row("a")], blockingErrors: ["ספק X ללא כרטיס"] });
     const res2 = await handleSend(sendReq([{ rowKey: "a", amount: 100, companyId: "c1" }]), withErrors);

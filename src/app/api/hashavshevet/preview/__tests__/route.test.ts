@@ -177,7 +177,7 @@ describe("handlePreview", () => {
     expect(json.data.blockingErrors).toEqual(["שגיאת בונה", copy.unsendableRow("k1")]);
   });
 
-  it("rows without a company form their own group and block as no_company", async () => {
+  it("rows without a company form their own group; only not_live blocks", async () => {
     const d = deps({
       companies: [company("c1"), company("c3", { liveFrom: null })],
       rows: [
@@ -191,7 +191,7 @@ describe("handlePreview", () => {
     expect(noCompany).toMatchObject({ companyName: null, requiresApproval: false, totalNew: 0 });
     expect(noCompany.rows[0].status).toBe("no_company");
     expect(json.data.groups).toHaveLength(3);
-    expect([...json.data.blockingStatuses].sort()).toEqual(["no_company", "not_live"]);
+    expect(json.data.blockingStatuses).toEqual(["not_live"]);
   });
 
   it("totalNew counts only new rows, rounded to cents", async () => {

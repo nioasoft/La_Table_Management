@@ -133,10 +133,14 @@ describe("rowsToSend / blockingStatuses", () => {
     expect(rowsToSend(classified).map((r) => r.rowKey)).toEqual(["n"]);
   });
 
-  it("unmapped and not-live companies block", () => {
-    const blocking = blockingStatuses(classified);
-    expect(blocking).toEqual(expect.arrayContaining(["no_company", "not_live"]));
-    expect(blocking).toHaveLength(2);
+  it("a not-live company blocks; an unmapped row is skipped, not blocking", () => {
+    expect(blockingStatuses(classified)).toEqual(["not_live"]);
+  });
+
+  it("an unmapped row alone does not block and is never sent", () => {
+    const onlyUnmapped = classifyRows([row({ rowKey: "n" }), row({ rowKey: "nc", companyId: null })], [], companies);
+    expect(blockingStatuses(onlyUnmapped)).toEqual([]);
+    expect(rowsToSend(onlyUnmapped).map((r) => r.rowKey)).toEqual(["n"]);
   });
 
   it("sent, changed and before_live do not block", () => {

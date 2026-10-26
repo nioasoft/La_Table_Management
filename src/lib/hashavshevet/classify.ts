@@ -51,10 +51,15 @@ export function rowsToSend(rows: ClassifiedRow[]): ClassifiedRow[] {
   return rows.filter((r) => r.status === "new");
 }
 
-/** Distinct statuses that block a send: no_company, not_live. */
+/**
+ * Distinct statuses that block a send: only not_live. A row with no company
+ * (e.g. דון פדרו — not booked in this Hashavshevet) is skipped and shown as
+ * "won't be sent"; it never blocks the rows that do have a company (user
+ * decision 2026-10-26).
+ */
 export function blockingStatuses(rows: ClassifiedRow[]): RowStatus[] {
   const blocking = new Set<RowStatus>();
-  for (const r of rows) if (r.status === "no_company" || r.status === "not_live") blocking.add(r.status);
+  for (const r of rows) if (r.status === "not_live") blocking.add(r.status);
   return [...blocking];
 }
 

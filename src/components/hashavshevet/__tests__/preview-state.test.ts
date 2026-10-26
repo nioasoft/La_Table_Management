@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { copy, formatShekel, previewCopy, sendStatusLabels } from "@/lib/hashavshevet/copy";
 import {
+  skippedNotice,
   blockingMessages,
   buildExpected,
   canSend,
@@ -80,8 +81,23 @@ describe("canSend", () => {
 
 describe("blockingMessages", () => {
   it("lists blocking errors, then one line per blocking status", () => {
-    const data = preview([], { blockingErrors: ["שגיאה א"], blockingStatuses: ["no_company", "not_live"] });
-    expect(blockingMessages(data)).toEqual(["שגיאה א", copy.noCompany, previewCopy.someCompaniesNotLive]);
+    const data = preview([], { blockingErrors: ["שגיאה א"], blockingStatuses: ["not_live"] });
+    expect(blockingMessages(data)).toEqual(["שגיאה א", previewCopy.someCompaniesNotLive]);
+  });
+});
+
+describe("skippedNotice", () => {
+  it("is null when every row has a company", () => {
+    expect(skippedNotice(preview([group([row({ rowKey: "a", status: "new" })])]))).toBeNull();
+  });
+
+  it("says how many rows won't be sent because they have no company", () => {
+    const data = preview([
+      group([row({ rowKey: "a", status: "new" })]),
+      group([row({ rowKey: "x", status: "no_company", companyId: null }), row({ rowKey: "y", status: "no_company", companyId: null })], { companyId: null }),
+    ]);
+    expect(skippedNotice(data)).toBe(previewCopy.noCompanySkipped(2));
+    expect(canSend(data).ok).toBe(true);
   });
 });
 

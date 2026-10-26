@@ -109,6 +109,10 @@ export const previewCopy = {
   resultTitle: "תוצאת השליחה",
   nothingToSend: "אין שורות חדשות לשליחה",
   someCompaniesNotLive: "יש שורות לחברה שעדיין לא מופעלת לשליחה",
+  noCompanySkipped: (count: number) =>
+    count === 1
+      ? "שורה אחת לא תישלח: לזכיין אין חברה בחשבשבת"
+      : `${count} שורות לא יישלחו: לזכיינים אין חברה בחשבשבת`,
   unknownSender: "משתמש לא ידוע",
   notSent: "לא נשלחה",
   sentBy: (when: string, who: string) => `נשלחה ב-${when} על ידי ${who}`,
@@ -118,7 +122,7 @@ export const previewCopy = {
     sent: "נשלחה",
     changed: "השתנתה",
     before_live: "לפני ההפעלה",
-    no_company: "אין חברה",
+    no_company: "לא יישלח",
     not_live: "החברה לא מופעלת",
   } satisfies Record<RowStatus, string>,
 } as const;

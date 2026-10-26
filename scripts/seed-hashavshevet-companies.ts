@@ -50,6 +50,8 @@ export const SEED_BRAND_MAP: Record<string, string> = {
 export const SEED_FRANCHISEE_MAP: Record<string, string> = {
   'קסטרא טומאיי בע"מ': "SHEPUDAYAROE",
   "ויני עזריאלי חיפה": "fatvini_2021",
+  // Same legal entity as Vini Azrieli (shared ח.פ) — booked in its company (user, 2026-10-26).
+  "נתנזון עזריאלי חיפה": "fatvini_2021",
   'קינג קונג ביג בע"מ': "kingkong_2021",
   'קינג קונג חורב בע"מ': "kingkong_2021_2022",
   'ויני רגבה בע"מ': "viniregba",

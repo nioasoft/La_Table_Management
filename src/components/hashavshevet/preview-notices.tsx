@@ -53,3 +53,13 @@ export function BlockingNotice({ messages }: { messages: string[] }) {
     </div>
   );
 }
+
+/** Non-blocking: rows that won't be sent because the franchisee has no company. */
+export function SkippedNotice({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <p role="status" className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-800 dark:text-amber-300">
+      {message}
+    </p>
+  );
+}

@@ -60,11 +60,19 @@ export function groupTotals(data: ClientPreview): { newCount: number; newTotal: 
 
 export function blockingMessages(data: ClientPreview): string[] {
   const byStatus: Partial<Record<RowStatus, string>> = {
-    no_company: copy.noCompany,
     not_live: previewCopy.someCompaniesNotLive,
   };
   const statusLines = data.blockingStatuses.flatMap((s) => byStatus[s] ?? []);
   return [...data.blockingErrors, ...statusLines];
+}
+
+/** Rows with no Hashavshevet company are skipped (not blocking); say how many. */
+export function skippedNotice(data: ClientPreview): string | null {
+  const skipped = data.groups.reduce(
+    (sum, g) => sum + g.rows.filter((r) => r.status === "no_company").length,
+    0,
+  );
+  return skipped > 0 ? previewCopy.noCompanySkipped(skipped) : null;
 }
 
 export function canSend(data: ClientPreview): { ok: boolean; reason: string | null } {

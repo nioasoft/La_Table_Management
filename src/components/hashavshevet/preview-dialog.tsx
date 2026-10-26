@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { previewCopy } from "@/lib/hashavshevet/copy";
 import type { ExportType } from "@/lib/hashavshevet/types";
-import { BlockingNotice, EmptyState, ErrorNotice, LoadingState } from "./preview-notices";
+import { BlockingNotice, EmptyState, ErrorNotice, LoadingState, SkippedNotice } from "./preview-notices";
 import { GroupSection } from "./preview-groups";
 import {
   blockingMessages,
@@ -14,6 +14,7 @@ import {
   groupTotals,
   resolveView,
   sendOutcome,
+  skippedNotice,
   type ClientPreview,
   type DialogView,
 } from "./preview-state";
@@ -25,6 +26,7 @@ function ReadyBody({ data }: { data: ClientPreview }) {
   return (
     <div className="space-y-3">
       <BlockingNotice messages={blockingMessages(data)} />
+      <SkippedNotice message={skippedNotice(data)} />
       {data.groups.map((g) => (
         <GroupSection key={g.companyId ?? "none"} group={g} />
       ))}
