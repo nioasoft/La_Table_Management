@@ -53,6 +53,7 @@ describe("EXPORTS registry", () => {
   const MIGRATED: readonly string[] = [
     "client_commissions",
     "franchisee_client_invoices",
+    "journal_entries",
     "royalties",
     "supplier_commissions",
   ];

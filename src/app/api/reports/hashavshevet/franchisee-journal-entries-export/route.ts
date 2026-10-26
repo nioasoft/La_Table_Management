@@ -41,61 +41,18 @@
  * HEVER exception: emits TWO rows instead of one (replaces the standard row):
  *   Row 1 — VAT-split row with debit=HEVER, amount = −18% of gross (commission).
  *   Row 2 — contra entry: debit=HEVER, credit 1="אמריקן", gross in סכום זכות 1;
- *           no VAT split (F and I empty), אסמתכא 2 empty.
+ *           no VAT split (F and I empty), אסמתכא 2 = "9999" like row 1.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { tenbisUsesJournalEntries } from "@/data-access/client-reconciliation-approval";
-import { loadJournalEntriesData } from "@/lib/hashavshevet/builders/journal-entries";
+import {
+  buildJournalEntriesSheet,
+  JOURNAL_ENTRIES_HEADERS,
+  loadJournalEntriesData,
+  VAT_RATE,
+} from "@/lib/hashavshevet/builders/journal-entries";
 import * as XLSX from "xlsx";
-
-// Israeli מע"מ (VAT) rate — 18% since January 2025.
-const VAT_RATE = 0.18;
-const REVENUE_ACCOUNT = "הכנסות";
-const VAT_ACCOUNT = "מעמעס";
-
-// פרטים (row-description) labels shown in column J.
-const DETAILS_MEALS = "ארוחות";
-const DETAILS_HEVER_COMMISSION = "עמלה";
-const DETAILS_HEVER_CONTRA = "מיון";
-
-// HEVER — special two-row journal-entry format.
-// Row 1: VAT-split row for HEVER, amount = −18% of original (commission).
-// Row 2: contra entry booking gross from "אמריקן" (debit) to HEVER (credit 1), no VAT split.
-const HEVER_CLIENT_CODE = "HEVER";
-const HEVER_COMMISSION_RATE = 0.18;
-const HEVER_CONTRA_ACCOUNT = "אמריקן";
-// HEVER-specific credit account for the commission row — routed to a
-// dedicated commission account instead of the generic revenue one.
-const HEVER_COMMISSION_CREDIT_ACCOUNT = "הכנ עמלות חבר";
-// HEVER's bank-transfer file has no per-franchisee invoice number — Reut
-// asked to fill a fixed placeholder in אסמכתא 2 for both HEVER rows.
-const HEVER_ASMACHTA_PLACEHOLDER = "9999";
-
-// Clients whose uploads actually carry an invoice number we can extract.
-// Anything outside this set (CIBUS, …) leaves אסמכתא 2 empty per Reut.
-// TENBIS added 2026-07 — self-billed from the July-2026 period.
-const INVOICE_BEARING_CLIENT_CODES = new Set([
-  "MISHLOCHA",
-  "HAAT",
-  "WOLT",
-  "TENBIS",
-]);
-
-// Franchisee-specific revenue-account overrides now live on
-// `franchisee.hashavshevet_revenue_account` (added migration 0063).
-// When the column is null we fall back to REVENUE_ACCOUNT.
-//
-// Migrated from a hardcoded substring-match array on 2026-05-10 so Reut
-// can change overrides via the admin UI instead of a code deploy.
-
-type RowCell = string | number | Date;
-
-interface JournalRow {
-  cells: RowCell[];
-  vatSplit: boolean;
-}
 
 export async function GET(request: NextRequest) {
   const authResult = await requireAdminOrSuperUser(request);
@@ -114,164 +71,33 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { franchisee: fr, approved } = await loadJournalEntriesData({
+    const data = await loadJournalEntriesData({
       franchiseeId,
       periodMonth,
       periodYear,
     });
-
-    if (!fr) {
-      return NextResponse.json({ error: "זכיין לא נמצא" }, { status: 404 });
-    }
-
-    const journalRows = approved.filter(
-      (a) =>
-        a.journalEntryGeneration === true &&
-        // TENBIS cutover: pre-July-2026 periods stay in the client-invoices export.
-        !(
-          a.clientCode === "TENBIS" &&
-          !tenbisUsesJournalEntries(periodMonth, periodYear)
-        )
-    );
-
-    if (journalRows.length === 0) {
+    const sheet = buildJournalEntriesSheet(data);
+    if (!sheet.ok) {
       return NextResponse.json(
-        { error: "אין לקוחות עם הפקת פקודת יומן מסומנת בתקופה זו" },
-        { status: 400 }
+        { error: sheet.message },
+        { status: sheet.status }
       );
     }
+    const { lines } = sheet;
 
     // Last day of the period month. JS trick: day 0 of next month == last day of this month.
     const lastDay = new Date(periodYear, periodMonth, 0);
 
-    // Resolve the per-franchisee revenue account once — same for every row.
-    // Per-franchisee column wins; falls back to the global default.
-    const revenueAccount =
-      fr.hashavshevetRevenueAccount?.trim() || REVENUE_ACCOUNT;
-
-    const rows: JournalRow[] = journalRows
-      .map((a) => {
-        // Wolt prefers its net amount (what we actually pay on Wolt's invoice);
-        // everyone else uses the client-reported amount. No rounding — Reut
-        // needs exact values including אגורות for the accountant's VAT reconcile.
-        const amount =
-          a.clientCode === "WOLT" && a.netAmount !== null
-            ? a.netAmount
-            : a.clientAmount;
-        return { row: a, amount };
-      })
-      .filter((x) => x.amount !== 0)
-      .flatMap(({ row, amount }): JournalRow[] => {
-        // אסמכתא 2 per-client rule (Reut): real invoice# (last 4 digits) only
-        // for MISHLOCHA/HAAT/WOLT/TENBIS; HEVER gets the "9999" placeholder on
-        // both of its rows; CIBUS and anything else stay empty.
-        const asmachta2 =
-          row.clientCode === HEVER_CLIENT_CODE
-            ? HEVER_ASMACHTA_PLACEHOLDER
-            : row.clientCode &&
-                INVOICE_BEARING_CLIENT_CODES.has(row.clientCode) &&
-                row.invoiceNumber
-              ? row.invoiceNumber.replace(/\D/g, "").slice(-4)
-              : "";
-        // Journal-entries export uses a name-first fallback (unique to this
-        // sheet — the other exports use code-first). Still honours the
-        // per-brand override when present.
-        const perBrandOverride =
-          row.franchiseeBrandId && row.hashavshevetByBrand
-            ? row.hashavshevetByBrand[row.franchiseeBrandId]?.trim()
-            : "";
-        const debitAccount =
-          perBrandOverride ||
-          row.hashavshevetName ||
-          row.hashavshevetCode ||
-          row.clientName;
-
-        // Israeli tax allocation number (מספר הקצאה) — empty when the invoice
-        // didn't carry one (under threshold, or pre-feature documents).
-        const allocationNumber = row.allocationNumber ?? "";
-
-        // HEVER special: emit two rows that REPLACE the standard single row.
-        if (row.clientCode === HEVER_CLIENT_CODE) {
-          const commissionAmount = -(amount * HEVER_COMMISSION_RATE);
-          return [
-            {
-              cells: [
-                asmachta2,                       // A  אסמתכא 2 = "9999"
-                lastDay,                         // B  תאריך אסמכתא
-                lastDay,                         // C  תאריך ערך
-                debitAccount,                    // D  חן חובה  (HEVER resolved)
-                HEVER_COMMISSION_CREDIT_ACCOUNT, // E  חן זכות 1 = "הכנ עמלות חבר"
-                VAT_ACCOUNT,                     // F  חן זכות 2
-                commissionAmount,                // G  סכום חובה  (−18% of gross)
-                0,                               // H  סכום זכות 1  (replaced with formula below)
-                0,                               // I  סכום זכות 2  (replaced with formula below)
-                DETAILS_HEVER_COMMISSION,        // J  פרטים = "עמלה"
-                allocationNumber,                // K  מספר הקצאה
-              ],
-              vatSplit: true,
-            },
-            {
-              cells: [
-                asmachta2,              // A  אסמתכא 2 = "9999"
-                lastDay,                // B  תאריך אסמכתא
-                lastDay,                // C  תאריך ערך
-                debitAccount,           // D  חן חובה = HEVER (resolved account)
-                HEVER_CONTRA_ACCOUNT,   // E  חן זכות 1 = "אמריקן"
-                "",                     // F  חן זכות 2 (no VAT)
-                amount,                 // G  סכום חובה (gross original)
-                amount,                 // H  סכום זכות 1 (static gross, no split)
-                "",                     // I  סכום זכות 2 (no VAT)
-                DETAILS_HEVER_CONTRA,   // J  פרטים = "מיון"
-                "",                     // K  מספר הקצאה (contra row — not an invoice line)
-              ],
-              vatSplit: false,
-            },
-          ];
-        }
-
-        return [
-          {
-            cells: [
-              asmachta2,        // A  אסמתכא 2
-              lastDay,          // B  תאריך אסמכתא
-              lastDay,          // C  תאריך ערך
-              debitAccount,     // D  חן חובה
-              revenueAccount,   // E  חן זכות 1 (honours Natanzon override)
-              VAT_ACCOUNT,      // F  חן זכות 2
-              amount,           // G  סכום חובה
-              0,                // H  סכום זכות 1 (replaced with formula below)
-              0,                // I  סכום זכות 2 (replaced with formula below)
-              DETAILS_MEALS,    // J  פרטים = "ארוחות"
-              allocationNumber, // K  מספר הקצאה
-            ],
-            vatSplit: true,
-          },
-        ];
-      });
-
-    if (rows.length === 0) {
-      return NextResponse.json(
-        { error: "אין סכומים לייצוא (כל הסכומים אפס)" },
-        { status: 400 }
-      );
-    }
-
     const wb = XLSX.utils.book_new();
-    const headers = [
-      "אסמתכא 2", // Reut's sample typo preserved
-      "תאריך אסמכתא",
-      "תאריך ערך",
-      "חן חובה",
-      "חן זכות 1",
-      "חן זכות 2",
-      "סכום חובה",
-      "סכום זכות 1",
-      "סכום זכות 2",
-      "פרטים",
-      "מספר הקצאה",
-    ];
+    const headers = JOURNAL_ENTRIES_HEADERS;
+    // B and C are real date cells; every other column is the row's display value.
     const ws = XLSX.utils.aoa_to_sheet(
-      [headers, ...rows.map((r) => r.cells)],
+      [
+        [...headers],
+        ...lines.map(({ row }) =>
+          headers.map((header, c) => (c === 1 || c === 2 ? lastDay : row.display[header]))
+        ),
+      ],
       { cellDates: true }
     );
 
@@ -299,13 +125,12 @@ export async function GET(request: NextRequest) {
       }
 
       const excelRow = r + 1; // Excel rows are 1-indexed
-      const meta = rows[r - 1];
+      const meta = lines[r - 1];
 
       if (meta.vatSplit) {
         // Cached values so the sheet renders correctly before Excel recalcs.
-        const gross = meta.cells[6] as number;
-        const vat = (gross * VAT_RATE) / (1 + VAT_RATE);
-        const preVat = gross - vat;
+        const preVat = meta.row.display["סכום זכות 1"];
+        const vat = meta.row.display["סכום זכות 2"];
 
         // H: סכום זכות 1 = pre-VAT (formula =G-I)
         ws[XLSX.utils.encode_cell({ r, c: 7 })] = {
@@ -351,7 +176,7 @@ export async function GET(request: NextRequest) {
 
     if (!wb.Workbook) wb.Workbook = {};
     if (!wb.Workbook.Names) wb.Workbook.Names = [];
-    const lastRow = rows.length + 1;
+    const lastRow = lines.length + 1;
     wb.Workbook.Names.push({
       Name: "תנועות",
       Ref: `'ייבוא חשבשבת'!$A$1:$K$${lastRow}`,

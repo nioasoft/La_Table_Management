@@ -44,6 +44,14 @@ describe("compareSheetToRows", () => {
     expect(compareSheetToRows([HEADER, ["אושיבה", 1, 48228.83, ""], ["x", 1, 1, ""]], [ROW])).toHaveLength(1);
   });
 
+  it("compares a dd/mm/yyyy display date with the sheet's date serial, whatever its time-zone fraction", () => {
+    const dated = built({ תאריך: "30/09/2026", סכום: 1 });
+    expect(compareSheetToRows([["תאריך", "סכום"], [46295, 1]], [dated])).toEqual([]);
+    expect(compareSheetToRows([["תאריך", "סכום"], [46295.00046296296, 1]], [dated])).toEqual([]);
+    expect(compareSheetToRows([["תאריך", "סכום"], [46294, 1]], [dated])).toHaveLength(1);
+    expect(compareSheetToRows([["תאריך", "סכום"], ["30/09/2026", 1]], [dated])).toEqual([]);
+  });
+
   it("accepts a header-only or empty sheet for zero rows", () => {
     expect(compareSheetToRows([], [])).toEqual([]);
     expect(compareSheetToRows([HEADER], [])).toEqual([]);
