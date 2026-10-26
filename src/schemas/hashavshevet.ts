@@ -32,7 +32,7 @@ const supplierCommissionsParams = z.object({
 });
 
 /** The billing route's `mode=file` query: one brand, one item type, one month. */
-const royaltiesParams = exportFileQuerySchema.omit({ mode: true });
+export const royaltiesParams = exportFileQuerySchema.omit({ mode: true });
 
 const clientCommissionsParams = z.object({
   sessionId: id,

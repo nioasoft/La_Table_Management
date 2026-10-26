@@ -49,9 +49,12 @@ describe("EXPORTS registry", () => {
     const movein = EXPORT_TYPES.filter((t) => EXPORTS[t].plugin === "movein");
     expect(movein.sort()).toEqual(["client_commission_invoices", "journal_entries"]);
   });
-  it("has a Hebrew label and an unmigrated build", async () => {
+  // Each builder task (8-13) adds its type here as it replaces the placeholder build.
+  const MIGRATED: readonly string[] = ["royalties"];
+  it("has a Hebrew label, and an unmigrated build until its builder lands", async () => {
     for (const type of EXPORT_TYPES) {
       expect(EXPORTS[type].labelHe).toMatch(/[֐-׿]/);
+      if (MIGRATED.includes(type)) continue;
       await expect(EXPORTS[type].build({})).rejects.toThrow("not migrated");
     }
   });

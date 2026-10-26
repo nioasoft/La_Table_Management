@@ -299,6 +299,20 @@ function exportStore(database: ExportDatabase): HashavshevetExportStore {
   };
 }
 
+/**
+ * The Hashavshevet company a brand's exports are sent to (null = unmapped or no such brand).
+ * Read only by the API send path, so the Excel export's queries never depend on the column.
+ */
+export async function readBrandCompanyId(brandId: string): Promise<string | null> {
+  const { database } = await import("@/db");
+  const [row] = await database
+    .select({ companyId: schema.brand.hashavshevetCompanyId })
+    .from(schema.brand)
+    .where(eq(schema.brand.id, brandId))
+    .limit(1);
+  return row?.companyId ?? null;
+}
+
 export async function createHashavshevetExportOperations(): Promise<
   HashavshevetExportOperations
 > {
