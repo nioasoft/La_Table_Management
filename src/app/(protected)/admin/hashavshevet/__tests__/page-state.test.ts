@@ -71,6 +71,13 @@ describe("resolveActionsFor", () => {
     ]);
   });
 
+  it("rejecting and 'did not arrive' each ask for their own note", () => {
+    const placeholders = (status: "awaiting_approval" | "unknown") =>
+      resolveActionsFor({ status, stalePending: false }).map((a) => a.notePlaceholder);
+    expect(placeholders("awaiting_approval")).toEqual([undefined, "מה לא תקין בשליחה?"]);
+    expect(placeholders("unknown")[1]).toContain(".dat");
+  });
+
   it("unknown: arrived / did not arrive", () => {
     expect(labels("unknown")).toEqual([
       ["arrived", "הגיע", false],

@@ -6,7 +6,13 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { canReject, resolveActionsFor, statusBadgeVariant, type ResolveOutcome } from "@/app/(protected)/admin/hashavshevet/page-state";
+import {
+  canReject,
+  resolveActionsFor,
+  statusBadgeVariant,
+  type ResolveAction,
+  type ResolveOutcome,
+} from "@/app/(protected)/admin/hashavshevet/page-state";
 import { sendsCopy, sendStatusLabels } from "@/lib/hashavshevet/copy";
 import { useResolveSend, type SendDto } from "@/queries/hashavshevet";
 import { NoteDialog } from "./note-dialog";
@@ -22,7 +28,8 @@ function Notice({ text }: { text: string }) {
 }
 
 function QueueActions({ send, onOpen }: { send: SendDto; onOpen: (id: string) => void }) {
-  const [rejecting, setRejecting] = useState(false);
+  /** The note-taking action whose dialog is open ("דחיתי" or "לא הגיע"). */
+  const [noting, setNoting] = useState<ResolveAction | null>(null);
   const resolve = useResolveSend();
 
   const run = (outcome: ResolveOutcome, note?: string) =>
@@ -43,7 +50,7 @@ function QueueActions({ send, onOpen }: { send: SendDto; onOpen: (id: string) =>
             size="sm"
             variant={action.needsNote ? "outline" : "default"}
             disabled={resolve.isPending}
-            onClick={() => (action.needsNote ? setRejecting(true) : run(action.outcome))}
+            onClick={() => (action.needsNote ? setNoting(action) : run(action.outcome))}
           >
             {action.label}
           </Button>
@@ -52,17 +59,17 @@ function QueueActions({ send, onOpen }: { send: SendDto; onOpen: (id: string) =>
           {sendsCopy.details}
         </Button>
       </div>
-      {rejecting && (
+      {noting && (
         <NoteDialog
           title={sendsCopy.rejectTitle}
           description={sendsCopy.rejectDescription}
           label={sendsCopy.noteLabel}
-          placeholder={sendsCopy.notePlaceholder}
+          placeholder={noting.notePlaceholder ?? sendsCopy.notePlaceholder}
           confirmLabel={sendsCopy.rejectConfirm}
           cancelLabel={sendsCopy.cancel}
           isValid={canReject}
-          onConfirm={(note) => run("rejected", note)}
-          onClose={() => setRejecting(false)}
+          onConfirm={(note) => run(noting.outcome, note)}
+          onClose={() => setNoting(null)}
         />
       )}
     </>

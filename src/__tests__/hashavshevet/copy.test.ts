@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { copy, apiErrorMessage } from "@/lib/hashavshevet/copy";
+import { copy, apiErrorMessage, previewCopy, sendsCopy } from "@/lib/hashavshevet/copy";
 
 describe("hashavshevet copy", () => {
   it("translates api errors per spec §10", () => {
@@ -35,5 +35,36 @@ describe("hashavshevet copy", () => {
     const text = copy.invalidTransition("arrived", "rejected");
     expect(text).toContain("סימון שהגיעה לחשבשבת");
     expect(text).toContain("נדחתה");
+  });
+
+  // I4: rejecting or "לא הגיע" releases the rows for a resend; anything of the send left in Hashavshevet
+  // (the temporary area, or a .dat that Masofon2 retries) would then arrive twice.
+  it.each([
+    ["rejectDescription", sendsCopy.rejectDescription],
+    ["staleWarning", sendsCopy.staleWarning],
+    ["unknownNote", sendsCopy.unknownNote],
+  ])("%s says to clean the temporary area and the leftover .dat before releasing", (_name, text) => {
+    expect(text).toContain("האזור הזמני");
+    expect(text).toContain(".dat");
+    expect(text).toContain("C:\\hash7\\Hconnect");
+    expect(text).not.toContain("אם אינכם בטוחים");
+  });
+
+  it.each([
+    ["staleWarning", sendsCopy.staleWarning],
+    ["unknownNote", sendsCopy.unknownNote],
+  ])("%s warns that earlier requests of a split send may have arrived", (_name, text) => {
+    expect(text).toContain("כמה בקשות");
+    expect(text).toContain('"הגיע"');
+    expect(text).toContain('"לא הגיע"');
+  });
+
+  it("asks what was checked when the send did not arrive, not what was wrong with it", () => {
+    expect(sendsCopy.notArrivedPlaceholder).not.toBe(sendsCopy.notePlaceholder);
+    expect(sendsCopy.notArrivedPlaceholder).toContain(".dat");
+  });
+
+  it("names the reconciliation page's two by-franchisee sends (T14)", () => {
+    expect(previewCopy.byFranchiseeSendWhat).toEqual({ franchisee_client_invoices: "חשבוניות", journal_entries: "תנועות יומן" });
   });
 });

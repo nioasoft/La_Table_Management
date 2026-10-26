@@ -1061,7 +1061,7 @@ export default function ClientReconciliationPage() {
                         key={exportType}
                         exportType={exportType}
                         size="sm"
-                        label={previewCopy.sendLabel(exportType === "journal_entries" ? "תנועות יומן" : "חשבוניות")}
+                        label={previewCopy.sendLabel(previewCopy.byFranchiseeSendWhat[exportType])}
                         disabled={byFranchiseeData.summary.ok + byFranchiseeData.summary.approved === 0}
                         params={{ franchiseeId: selectedFranchiseeId, periodMonth, periodYear }}
                       />

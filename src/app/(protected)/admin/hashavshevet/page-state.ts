@@ -33,12 +33,24 @@ export interface ResolveAction {
   label: string;
   /** Rejecting needs a written note. */
   needsNote: boolean;
+  /** The note field's hint, for actions that need one. */
+  notePlaceholder?: string;
 }
 
 const APPROVE: ResolveAction = { outcome: "approved", label: sendsCopy.approve, needsNote: false };
-const REJECT: ResolveAction = { outcome: "rejected", label: sendsCopy.reject, needsNote: true };
+const REJECT: ResolveAction = {
+  outcome: "rejected",
+  label: sendsCopy.reject,
+  needsNote: true,
+  notePlaceholder: sendsCopy.notePlaceholder,
+};
 const ARRIVED: ResolveAction = { outcome: "arrived", label: sendsCopy.arrived, needsNote: false };
-const NOT_ARRIVED: ResolveAction = { outcome: "rejected", label: sendsCopy.notArrived, needsNote: true };
+const NOT_ARRIVED: ResolveAction = {
+  outcome: "rejected",
+  label: sendsCopy.notArrived,
+  needsNote: true,
+  notePlaceholder: sendsCopy.notArrivedPlaceholder,
+};
 
 /** Which buttons a send gets (spec lifecycle box): awaiting approval, or "did it arrive?" for unknown / cut-off sends. */
 export function resolveActionsFor(send: Resolvable): ResolveAction[] {

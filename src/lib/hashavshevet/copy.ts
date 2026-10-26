@@ -82,6 +82,8 @@ export const exportLabels: Record<ExportType, string> = {
 export const previewCopy = {
   sendButton: "שלח לחשבשבת",
   sendLabel: (what: string) => `שלח ${what} לחשבשבת`,
+  /** What the reconciliation page's by-franchisee send buttons send (the `what` of sendLabel). */
+  byFranchiseeSendWhat: { franchisee_client_invoices: "חשבוניות", journal_entries: "תנועות יומן" },
   dialogTitle: (exportType: ExportType) => `שליחה לחשבשבת: ${exportLabels[exportType]}`,
   dialogDescription: "בדקו את השורות. שום דבר לא נשלח עד הלחיצה על שלח",
   loading: "טוען תצוגה מקדימה…",
@@ -177,6 +179,18 @@ export const settingsCopy = {
   pickCompany: "בחרו חברה",
 } as const;
 
+/**
+ * Releasing a send's rows (reject / "לא הגיע") lets them be sent again, so nothing of this send may
+ * stay in Hashavshevet: not in the temporary area, and not as a .dat that Masofon2 picks up again.
+ */
+const CLEAN_UP_SEND =
+  "מחקו מהאזור הזמני בחשבשבת כל מה שהגיע מהשליחה הזו, וודאו שלא נשאר קובץ .dat שלה בתיקייה C:\\hash7\\Hconnect (מסופון 2 קולט שוב קבצים שנשארו שם)";
+
+/** An unknown or stuck send: what may have arrived, and what to do before each answer. */
+const DID_IT_ARRIVE =
+  'בשליחה של כמה בקשות ייתכן שהבקשות הראשונות הגיעו גם אם האחרונה לא. בדקו באזור הזמני בחשבשבת. אם השליחה הגיעה, בחרו "הגיע" והיא תעבור לאישור. ' +
+  `לפני שבוחרים "לא הגיע", ${CLEAN_UP_SEND}`;
+
 /** The sends screen (spec §9): Reut's approval queue, history and the send detail. */
 export const sendsCopy = {
   title: "שליחות לחשבשבת",
@@ -210,15 +224,15 @@ export const sendsCopy = {
   reject: "דחיתי",
   arrived: "הגיע",
   notArrived: "לא הגיע",
-  unknownNote: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת ובחרו",
-  staleWarning:
-    'השליחה נתקעה לפני שחזרה תשובה, וייתכן שרק חלק מהשורות הגיעו. אם אינכם בטוחים, בחרו "לא הגיע" ושלחו שוב (שורות של שליחה שנדחתה משתחררות)',
+  unknownNote: `לא ידוע אם השליחה הגיעה. ${DID_IT_ARRIVE}`,
+  staleWarning: `השליחה נתקעה לפני שחזרה תשובה. ${DID_IT_ARRIVE}`,
   resolved: "השליחה עודכנה",
   resolveFailed: "העדכון נכשל. נסו שוב",
   rejectTitle: "דחיית שליחה",
-  rejectDescription: "שורות השליחה ישוחררו ויהיה אפשר לשלוח אותן שוב",
+  rejectDescription: `לפני הדחייה ${CLEAN_UP_SEND}. אחר כך שורות השליחה ישוחררו ויהיה אפשר לשלוח אותן שוב`,
   noteLabel: "הערה (חובה)",
   notePlaceholder: "מה לא תקין בשליחה?",
+  notArrivedPlaceholder: "מה בדקתם? למשל: האזור הזמני ריק ואין קובץ .dat בתיקייה",
   rejectConfirm: "דחה ושחרר שורות",
   cancel: "ביטול",
   detailTitle: "פרטי שליחה",
