@@ -285,6 +285,18 @@ describe("handleSend", () => {
     expect(withErrors.send).not.toHaveBeenCalled();
   });
 
+  it("a zero-amount or empty-apiRow row blocks the send with 422 before anything is locked (I3)", async () => {
+    for (const bad of [row("z", { amount: 0.001 }), row("e", { apiRow: {} })]) {
+      const rows = [row("a"), bad];
+      const d = deps({ rows });
+      const res = await handleSend(sendReq(expectedOf(rows)), d);
+      expect(res.status).toBe(422);
+      expect((await res.json()).data.blockingErrors).toEqual([copy.unsendableRow(bad.rowKey)]);
+      expect(d.store.createSendWithLocks).not.toHaveBeenCalled();
+      expect(d.send).not.toHaveBeenCalled();
+    }
+  });
+
   it("concurrent send loses on unique lock", async () => {
     const rows = [row("a")];
     const d = deps({ rows });

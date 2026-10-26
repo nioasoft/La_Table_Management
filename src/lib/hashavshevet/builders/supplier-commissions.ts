@@ -397,10 +397,21 @@ function groupIntoSheets(
   return [...byBrand.values()];
 }
 
-function apiDocumentType(): string {
-  const id = apiDocumentId(DOCUMENT_TYPE);
-  if (id === null) throw new Error(`No API DocumentID for Excel document type ${DOCUMENT_TYPE}`);
-  return id;
+/**
+ * The Excel path never depends on the API mapping: without a DocumentID the row gets no apiRow,
+ * and the send path's generic guard blocks it (like the other builders).
+ */
+function apiRowOf(row: AggregatedRow, documentNumber: string): ApiRow {
+  const documentId = apiDocumentId(DOCUMENT_TYPE);
+  if (documentId === null) return {};
+  return {
+    accountKey: row.accountKey,
+    itemkey: row.itemKey,
+    Quantity: apiQuantity(1),
+    price: apiMoney(row.price),
+    DocumentID: documentId,
+    Reference: documentNumber,
+  };
 }
 
 function toBuiltRow(row: AggregatedRow, documentNumber: string): BuiltRow {
@@ -414,21 +425,13 @@ function toBuiltRow(row: AggregatedRow, documentNumber: string): BuiltRow {
     "סוג המסמך": DOCUMENT_TYPE,
     "מספר מסמך": documentNumber,
   };
-  const apiRow: ApiRow = {
-    accountKey: row.accountKey,
-    itemkey: row.itemKey,
-    Quantity: apiQuantity(1),
-    price: apiMoney(row.price),
-    DocumentID: apiDocumentType(),
-    Reference: documentNumber,
-  };
   return {
     rowKey: row.rowKey,
     companyId: row.companyId,
     documentKey: row.rowKey,
     amount: row.price,
     display,
-    apiRow,
+    apiRow: apiRowOf(row, documentNumber),
     periodEnd: row.periodEnd,
   };
 }

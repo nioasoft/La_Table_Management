@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handlePreview } from "@/app/api/hashavshevet/preview/route";
+import { copy } from "@/lib/hashavshevet/copy";
 import type { ActiveLock } from "@/lib/hashavshevet/classify";
 import type { ExportDefinition } from "@/lib/hashavshevet/registry";
 import type { BuiltRow, ExportType } from "@/lib/hashavshevet/types";
@@ -149,6 +150,31 @@ describe("handlePreview", () => {
     const json = await (await handlePreview(req(VALID_BODY), d)).json();
     expect(json.data.blockingErrors).toEqual(["ספק X ללא כרטיס חשבשבת"]);
     expect(json.data.groups).toEqual([]);
+  });
+
+  it("blocks a row whose amount rounds to 0.00 or whose apiRow is empty, naming it (I3)", async () => {
+    const d = deps({
+      companies: [company("c1")],
+      rows: [
+        row({ rowKey: "ok" }),
+        row({ rowKey: "zero", amount: 0.004, display: { "מפתח חשבון": "אושיבה", "מחיר": 0.004 } }),
+        row({ rowKey: "neg-zero", amount: -0.001 }),
+        row({ rowKey: "empty", apiRow: {}, display: { "מפתח חשבון": "קינג ח" } }),
+      ],
+    });
+    const json = await (await handlePreview(req(VALID_BODY), d)).json();
+    expect(json.data.blockingErrors).toEqual([
+      copy.unsendableRow("אושיבה · 0.004"),
+      copy.unsendableRow("neg-zero"),
+      copy.unsendableRow("קינג ח"),
+    ]);
+    expect(json.data.blockingErrors[0]).toMatch(/[֐-׿]/);
+  });
+
+  it("keeps the builder's blocking errors ahead of the unsendable-row ones", async () => {
+    const d = deps({ companies: [company("c1")], rows: [row({ amount: 0 })], blockingErrors: ["שגיאת בונה"] });
+    const json = await (await handlePreview(req(VALID_BODY), d)).json();
+    expect(json.data.blockingErrors).toEqual(["שגיאת בונה", copy.unsendableRow("k1")]);
   });
 
   it("rows without a company form their own group and block as no_company", async () => {

@@ -4,7 +4,9 @@ import type { z } from "zod";
 import type { CompanyRecord, HashavshevetStore } from "@/data-access/hashavshevet";
 import { classifyRows, type ClassifiedRow } from "./classify";
 import { copy } from "./copy";
+import { roundCents } from "./format";
 import type { ExportDefinition } from "./registry";
+import type { BuiltRow } from "./types";
 
 /** Shared by the preview and send routes. */
 
@@ -50,6 +52,22 @@ export interface BuiltAndClassified {
   classified: ClassifiedRow[];
 }
 
+/** A row as Reut finds it in the preview table: its first non-empty display values, else its key. */
+function rowLabel(row: BuiltRow): string {
+  const shown = Object.values(row.display).filter((v) => String(v).trim() !== "");
+  return shown.slice(0, 3).join(" · ") || row.rowKey;
+}
+
+/**
+ * One guard for every export (the Excel paths never come here): Masofon2 rejects a zero-amount
+ * line, and an empty apiRow means the builder had no API mapping. Either one blocks the send.
+ */
+function unsendableRows(rows: BuiltRow[]): string[] {
+  return rows
+    .filter((r) => roundCents(r.amount) === 0 || Object.keys(r.apiRow).length === 0)
+    .map((r) => copy.unsendableRow(rowLabel(r)));
+}
+
 /** Spec §7: build the export's rows server-side and classify each against active locks and companies. */
 export async function buildAndClassify(
   store: Pick<HashavshevetStore, "getCompanies" | "getActiveLocks">,
@@ -61,5 +79,9 @@ export async function buildAndClassify(
     store.getCompanies(),
     store.getActiveLocks(definition.type, built.rows.map((r) => r.rowKey)),
   ]);
-  return { blockingErrors: built.blockingErrors, companies, classified: classifyRows(built.rows, locks, companies) };
+  return {
+    blockingErrors: [...built.blockingErrors, ...unsendableRows(built.rows)],
+    companies,
+    classified: classifyRows(built.rows, locks, companies),
+  };
 }

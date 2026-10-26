@@ -7,6 +7,7 @@ import {
   type SupplierCommissionFile,
   type SupplierCommissionsData,
 } from "@/lib/hashavshevet/builders/supplier-commissions";
+import { EXCEL_TO_API_DOCUMENT_ID } from "@/lib/hashavshevet/format";
 import { EXPORTS } from "@/lib/hashavshevet/registry";
 
 // Every query resolves to no rows; nothing reaches a real database.
@@ -113,6 +114,20 @@ describe("buildSupplierCommissionsRows", () => {
       DocumentID: "1",
       Reference: "7002",
     });
+  });
+
+  it("never makes the Excel path depend on the API mapping: no DocumentID means no apiRow, not a throw (M7)", () => {
+    const mapping = EXCEL_TO_API_DOCUMENT_ID as Record<number, string>;
+    const saved = mapping[11];
+    delete mapping[11];
+    try {
+      const { rows, blockingErrors } = buildSupplierCommissionsRows(data([file({ matches: [match("f-hadera", 2000)] })]));
+      expect(blockingErrors).toEqual([]);
+      expect(rows[0].apiRow).toEqual({});
+      expect(Object.values(rows[0].display)).toEqual(["60001", "", "עמלות ויני חדרה", "", 1, 200, 11, "5001"]);
+    } finally {
+      mapping[11] = saved;
+    }
   });
 
   it("aggregates the same supplier x franchisee x period, and keeps another period apart", () => {

@@ -50,6 +50,9 @@ export const copy = {
   noCommissionInvoices: "אין חשבוניות עמלה לתקופה הנבחרת",
   zeroCommissionInvoice: (invoiceNumber: string | null, clientName: string, franchiseeName: string) =>
     `חשבונית עמלה ${invoiceNumber || "ללא מספר"} של ${clientName} (${franchiseeName}) בסכום 0.00, ולכן אי אפשר לשלוח אותה. בדקו את הסכום`,
+  /** A built row the API cannot take: amount rounds to 0.00, or no API mapping (empty apiRow). */
+  unsendableRow: (label: string) =>
+    `אי אפשר לשלוח את השורה ${label}: הסכום שלה 0.00 או שחסרים בה נתונים לחשבשבת. בדקו את הנתונים`,
   unsupportedJournalDocType: "סוג מסמך 1 (פקודת יומן) בעמלות לקוחות עדיין לא נתמך לשליחה",
   invalidRequest: "הבקשה אינה תקינה",
   serverError: (requestId: string) => `אירעה שגיאה בשרת. מספר בקשה: ${requestId}`,
