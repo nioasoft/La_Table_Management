@@ -46,13 +46,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminOrSuperUser, isAuthError } from "@/lib/api-middleware";
-import { database } from "@/db";
-import { franchisee } from "@/db/schema";
-import { eq } from "drizzle-orm";
-import {
-  getApprovedForExport,
-  tenbisUsesJournalEntries,
-} from "@/data-access/client-reconciliation-approval";
+import { tenbisUsesJournalEntries } from "@/data-access/client-reconciliation-approval";
+import { loadJournalEntriesData } from "@/lib/hashavshevet/builders/journal-entries";
 import * as XLSX from "xlsx";
 
 // Israeli מע"מ (VAT) rate — 18% since January 2025.
@@ -119,24 +114,15 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [fr] = await database
-      .select({
-        name: franchisee.name,
-        hashavshevetRevenueAccount: franchisee.hashavshevetRevenueAccount,
-      })
-      .from(franchisee)
-      .where(eq(franchisee.id, franchiseeId))
-      .limit(1);
-
-    if (!fr) {
-      return NextResponse.json({ error: "זכיין לא נמצא" }, { status: 404 });
-    }
-
-    const approved = await getApprovedForExport({
+    const { franchisee: fr, approved } = await loadJournalEntriesData({
       franchiseeId,
       periodMonth,
       periodYear,
     });
+
+    if (!fr) {
+      return NextResponse.json({ error: "זכיין לא נמצא" }, { status: 404 });
+    }
 
     const journalRows = approved.filter(
       (a) =>
