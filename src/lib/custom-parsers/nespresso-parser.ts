@@ -4,8 +4,8 @@
  * Problem: Unique commission calculation based on capsule quantity, not amount
  * Structure:
  *   - Rows 5-6 (0-indexed: 4-5): Bilingual headers (English/Hebrew)
- *   - Rows 7-28 (0-indexed: 6-27): Franchisee data
- *   - Row 30+: Summary rows (skip)
+ *   - Row 7+ (0-indexed: 6+): Franchisee data — row count grows as branches open
+ *   - Totals block after the data: empty column A (skipped)
  *
  * Key columns (0-indexed):
  *   - Column A (0): שם העסק - Franchisee name
@@ -36,7 +36,6 @@ const NET_AMOUNT_COL = 4; // Column E - מחזור נטו
 
 // Row configuration
 const DATA_START_ROW = 6; // Row 7 (0-indexed)
-const DATA_END_ROW = 27; // Row 28 (0-indexed)
 
 // Commission rate: 0.21 NIS per capsule
 const COMMISSION_PER_CAPSULE = 0.21;
@@ -147,10 +146,9 @@ export function parseNespressoFile(buffer: Buffer): FileProcessingResult {
     let totalNetAmount = 0;
     let totalCommission = 0;
 
-    // Process data rows (rows 7-28, 0-indexed 6-27)
-    const maxRow = Math.min(DATA_END_ROW, rawData.length - 1);
-
-    for (let rowIdx = DATA_START_ROW; rowIdx <= maxRow; rowIdx++) {
+    // Read to the end of the sheet — a fixed last row silently dropped the
+    // branches added in Q3-2026 (rows 29-30). Totals rows have no name in col A.
+    for (let rowIdx = DATA_START_ROW; rowIdx < rawData.length; rowIdx++) {
       const row = rawData[rowIdx];
       if (!row || row.length === 0) {
         skippedRows++;
