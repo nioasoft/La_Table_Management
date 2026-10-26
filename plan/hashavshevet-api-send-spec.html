@@ -173,9 +173,9 @@ details summary{cursor:pointer;font-weight:600}
 <tr><td>עמלות ספקים</td><td><code>supplierId|franchiseeId|periodStart|periodEnd</code>. זה מפתח הצבירה שכבר קיים היום</td></tr>
 <tr><td>תמלוגים ושיווק</td><td><code>franchiseeId|YYYY-MM|itemType</code> (לא מזהה שורת החיוב: שורה שנכתבת מחדש מקבלת id חדש)</td></tr>
 <tr><td>עמלות לקוחות</td><td><code>clientId|franchiseeId|periodStart|periodEnd|docKind</code></td></tr>
-<tr><td>חשבוניות לקוחות של זכיין</td><td><code>clientId|franchiseeId|YYYY-MM|itemKey</code></td></tr>
+<tr><td>חשבוניות לקוחות של זכיין</td><td><code>clientKind:clientId|franchiseeId|YYYY-MM</code> (<code>clientKind</code> הוא <code>client</code> או <code>occasional</code>, כדי ששני מרחבי המזהים יישארו נפרדים). מפתח הפריט לא נכלל בכוונה: שינוי שלו בין שליחות היה נותן לאותה חשבונית מפתח חדש ומאפשר שליחה כפולה. יש שורה אחת לכל לקוח × זכיין × חודש (החלטה R22)</td></tr>
 <tr><td>פקודות יומן</td><td><code>clientId|franchiseeId|YYYY-MM|lineKind</code> (<code>lineKind</code> מבחין בין שורה רגילה, עמלת חבר ושורת הנגד)</td></tr>
-<tr><td>חשבוניות עמלה מלקוחות</td><td><code>clientDocumentId</code></td></tr>
+<tr><td>חשבוניות עמלה מלקוחות</td><td><code>clientId|franchiseeId|inv:invoiceNumber</code> כשיש מספר חשבונית (אחרי trim, לא ריק), אחרת <code>clientId|franchiseeId|doc:clientDocumentId</code>. מספר החשבונית שורד מחיקה והעלאה מחדש של המסמך (שמקבל id חדש). מספר שחוזר אצל אותו לקוח וזכיין יוצג כ"נשלחה" או "השתנתה", אף פעם לא ככפילות שקטה (החלטה R28)</td></tr>
 </table>
 <p class="sub">כשמממשים כל ייצוא, צריך לוודא שהמפתח שלו יציב: שאותה שורה עסקית מקבלת אותו מפתח גם כשבונים אותה מחדש. אם מתברר שאין מזהה יציב, משתמשים בצירוף הקרוב ביותר וכותבים את זה בקוד.</p>
 
@@ -197,7 +197,7 @@ details summary{cursor:pointer;font-weight:600}
 </ul>
 <h3><code>POST /api/hashavshevet/send</code></h3>
 <ol>
-<li>מקבל <code>{ exportType, params, expected: [{rowKey, amount}] }</code>, מה שרעות ראתה בתצוגה המקדימה.</li>
+<li>מקבל <code>{ exportType, params, expected: [{rowKey, amount, companyId}] }</code>, מה שרעות ראתה בתצוגה המקדימה.</li>
 <li><b>מחשב הכול מחדש בשרת.</b> אם קבוצת השורות החדשות או הסכומים שונים מ-<code>expected</code>, מחזיר 409: "הנתונים השתנו, רעננו".</li>
 <li>אם יש שגיאות חוסמות, מחזיר 422.</li>
 <li><b>בטרנזקציה:</b> יוצר <code>hashavshevet_send</code> בסטטוס <code>pending</code>, ואת שורות <code>hashavshevet_sent_row</code>. אם האילוץ הייחודי נכשל (מישהו שלח במקביל), מחזיר 409 בלי לשלוח כלום.</li>

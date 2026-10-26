@@ -45,7 +45,11 @@ export function apiDocumentId(excelType: number): string | null {
   return EXCEL_TO_API_DOCUMENT_ID[excelType] ?? null;
 }
 
-export const JOURNAL_TRANS_TYPE = "00"; // ponytail: Reut's sales code replaces this before go-live (task 14)
+/**
+ * Placeholder, pending Reut's sales TransType code (spec §13 #3). Replace it before activating
+ * journal-entry sends: nothing has replaced it yet.
+ */
+export const JOURNAL_TRANS_TYPE = "00";
 
 /** Expense movein entries (commission charged to the restaurant): Reut's own expense file uses "הוצ". */
 export const EXPENSE_JOURNAL_TRANS_TYPE = "הוצ"; // ponytail: confirm on the first temporary send

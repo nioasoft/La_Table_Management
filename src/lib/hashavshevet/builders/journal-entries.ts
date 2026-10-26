@@ -110,7 +110,7 @@ const DETAILS_HEVER_CONTRA = "מיון";
 
 // HEVER — special two-row journal-entry format.
 // Row 1: VAT-split row for HEVER, amount = −18% of original (commission).
-// Row 2: contra entry booking gross from "אמריקן" (debit) to HEVER (credit 1), no VAT split.
+// Row 2: contra entry for the gross: debits HEVER (D, חן חובה) and credits "אמריקן" (E, חן זכות 1), no VAT split.
 const HEVER_CLIENT_CODE = "HEVER";
 const HEVER_COMMISSION_RATE = 0.18;
 const HEVER_CONTRA_ACCOUNT = "אמריקן";
