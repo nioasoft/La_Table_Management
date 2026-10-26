@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { database } from "@/db";
 import {
   brand,
@@ -46,6 +46,27 @@ export interface SendSummary {
   sentBy: string | null;
   resolvedAt: Date | null;
   resolutionNote: string | null;
+  /** The export params as sent (jsonb); the sends screen derives the period from them. */
+  params: unknown;
+}
+
+/** One locked row of a send, with who released it and why (spec §9 detail view). */
+export interface SendDetailRow {
+  id: string;
+  rowKey: string;
+  amount: number;
+  /** The exact row sent to the API. */
+  payload: unknown;
+  unlockedAt: Date | null;
+  /** Name of the user who released the row; null when released by the system or the user was deleted. */
+  unlockedBy: string | null;
+  unlockReason: string | null;
+}
+
+export interface SendDetail extends SendSummary {
+  /** Raw H-Connect response (token excluded); null while pending or when the call never answered. */
+  response: unknown;
+  rows: SendDetailRow[];
 }
 
 export interface FinishSendResult {
@@ -84,6 +105,8 @@ export interface HashavshevetStore {
   resolveSend(sendId: string, outcome: ResolveOutcome, note: string | null, userId: string): Promise<void>;
   unlockRow(rowId: string, reason: string, userId: string): Promise<void>;
   listSends(filter: { status?: HashavshevetSendStatus; companyId?: string; exportType?: ExportType }): Promise<SendSummary[]>;
+  /** Null when the send does not exist. */
+  getSendDetail(sendId: string): Promise<SendDetail | null>;
   countAwaitingApproval(): Promise<number>;
 }
 
@@ -353,7 +376,7 @@ const DELIVERED = sql`${hashavshevetSentRow.unlockReason} IS DISTINCT FROM 'send
 
 const MAX_SENDS_LISTED = 500; // ponytail: hard cap instead of pagination; add paging if history outgrows it.
 
-async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]): Promise<SendSummary[]> {
+async function selectSummaries(where: SQL | undefined, limit: number): Promise<SendSummary[]> {
   const rows = await database
     .select({
       id: hashavshevetSend.id,
@@ -368,27 +391,57 @@ async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]):
       sentBy: user.name,
       resolvedAt: hashavshevetSend.resolvedAt,
       resolutionNote: hashavshevetSend.resolutionNote,
+      params: hashavshevetSend.params,
     })
     .from(hashavshevetSend)
     .innerJoin(hashavshevetCompany, eq(hashavshevetSend.companyId, hashavshevetCompany.id))
     .leftJoin(hashavshevetSentRow, eq(hashavshevetSentRow.sendId, hashavshevetSend.id))
     .leftJoin(user, eq(hashavshevetSend.sentBy, user.id))
-    .where(
-      and(
-        filter.status ? eq(hashavshevetSend.status, filter.status) : undefined,
-        filter.companyId ? eq(hashavshevetSend.companyId, filter.companyId) : undefined,
-        filter.exportType ? eq(hashavshevetSend.exportType, filter.exportType) : undefined,
-      ),
-    )
+    .where(where)
+    // Like every other send column selected here, params is not grouped: Postgres allows it (functional dependency on the primary key).
     .groupBy(hashavshevetSend.id, hashavshevetCompany.nameHe, user.name)
     .orderBy(desc(hashavshevetSend.sentAt))
-    .limit(MAX_SENDS_LISTED);
+    .limit(limit);
   return rows.map((r) => ({
     ...r,
     exportType: r.exportType as ExportType,
     rowCount: Number(r.rowCount),
     total: Number(r.total),
   }));
+}
+
+async function listSends(filter: Parameters<HashavshevetStore["listSends"]>[0]): Promise<SendSummary[]> {
+  return selectSummaries(
+    and(
+      filter.status ? eq(hashavshevetSend.status, filter.status) : undefined,
+      filter.companyId ? eq(hashavshevetSend.companyId, filter.companyId) : undefined,
+      filter.exportType ? eq(hashavshevetSend.exportType, filter.exportType) : undefined,
+    ),
+    MAX_SENDS_LISTED,
+  );
+}
+
+async function getSendDetail(sendId: string): Promise<SendDetail | null> {
+  const [summary] = await selectSummaries(eq(hashavshevetSend.id, sendId), 1);
+  if (!summary) return null;
+  const [[sendRow], rows] = await Promise.all([
+    database.select({ response: hashavshevetSend.response }).from(hashavshevetSend).where(eq(hashavshevetSend.id, sendId)),
+    database
+      .select({
+        id: hashavshevetSentRow.id,
+        rowKey: hashavshevetSentRow.rowKey,
+        amount: hashavshevetSentRow.amount,
+        payload: hashavshevetSentRow.payload,
+        unlockedAt: hashavshevetSentRow.unlockedAt,
+        unlockedBy: user.name,
+        unlockReason: hashavshevetSentRow.unlockReason,
+      })
+      .from(hashavshevetSentRow)
+      .leftJoin(user, eq(hashavshevetSentRow.unlockedBy, user.id))
+      .where(eq(hashavshevetSentRow.sendId, sendId))
+      .orderBy(asc(hashavshevetSentRow.rowKey)),
+  ]);
+  return { ...summary, response: sendRow?.response ?? null, rows: rows.map((r) => ({ ...r, amount: Number(r.amount) })) };
 }
 
 async function countAwaitingApproval(): Promise<number> {
@@ -411,5 +464,6 @@ export const drizzleHashavshevetStore: HashavshevetStore = {
   resolveSend,
   unlockRow,
   listSends,
+  getSendDetail,
   countAwaitingApproval,
 };

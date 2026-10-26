@@ -6,8 +6,9 @@ import { handlePatchCompany, PATCH as patchCompanyRoute } from "@/app/api/hashav
 import { handleGetMappings, handlePatchMapping } from "@/app/api/hashavshevet/mappings/route";
 import { handleUnlockRow, POST as unlockRoute } from "@/app/api/hashavshevet/rows/[id]/unlock/route";
 import { handleListSends } from "@/app/api/hashavshevet/sends/route";
+import { GET as getSendRoute, handleGetSend } from "@/app/api/hashavshevet/sends/[id]/route";
 import { handleResolveSend, POST as resolveRoute } from "@/app/api/hashavshevet/sends/[id]/resolve/route";
-import type { CompanyRow, HashavshevetStore, SendSummary } from "@/data-access/hashavshevet";
+import type { CompanyRow, HashavshevetStore, SendDetail, SendSummary } from "@/data-access/hashavshevet";
 import { copy } from "@/lib/hashavshevet/copy";
 
 type Role = "none" | "admin" | "super_user";
@@ -70,6 +71,24 @@ const send = (over: Partial<SendSummary> = {}): SendSummary => ({
   sentBy: "רעות",
   resolvedAt: null,
   resolutionNote: null,
+  params: { periodMonth: 6, periodYear: 2026 },
+  ...over,
+});
+
+const sendDetail = (over: Partial<SendDetail> = {}): SendDetail => ({
+  ...send(),
+  response: { Result: "ok" },
+  rows: [
+    {
+      id: "r1",
+      rowKey: "k1",
+      amount: 100.1,
+      payload: { Account: "123" },
+      unlockedAt: null,
+      unlockedBy: null,
+      unlockReason: null,
+    },
+  ],
   ...over,
 });
 
@@ -80,6 +99,7 @@ function fakeStore() {
     listMappings: vi.fn(async () => ({ brands: [], franchisees: [] })),
     setMapping: vi.fn<HashavshevetStore["setMapping"]>(async () => true),
     listSends: vi.fn(async () => [send()]),
+    getSendDetail: vi.fn<HashavshevetStore["getSendDetail"]>(async () => sendDetail()),
     countAwaitingApproval: vi.fn(async () => 3),
     resolveSend: vi.fn<HashavshevetStore["resolveSend"]>(async () => {}),
     unlockRow: vi.fn<HashavshevetStore["unlockRow"]>(async () => {}),
@@ -252,6 +272,45 @@ describe("GET sends", () => {
     const res = await list("?count=awaiting");
     expect(await res.json()).toEqual({ success: true, data: { count: 3 } });
     expect(store.listSends).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET sends/[id]", () => {
+  const get = () => handleGetSend(req("GET", "sends/s1"), "s1", { store });
+
+  it("is open to an admin and returns the send with its response and rows", async () => {
+    h.role = "admin";
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(store.getSendDetail).toHaveBeenCalledWith("s1");
+    expect(await res.json()).toEqual({ success: true, data: { send: JSON.parse(JSON.stringify(sendDetail())) } });
+  });
+
+  it("answers 401 to an unauthenticated read", async () => {
+    h.role = "none";
+    expect((await get()).status).toBe(401);
+    expect(store.getSendDetail).not.toHaveBeenCalled();
+  });
+
+  it("answers 404 in Hebrew when the send does not exist", async () => {
+    store.getSendDetail.mockResolvedValue(null);
+    const res = await get();
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe(copy.sendNotFound);
+  });
+
+  it("answers a generic 500 with the request id and no stack when the store fails", async () => {
+    store.getSendDetail.mockRejectedValue(new Error("relation hashavshevet_send_secret missing"));
+    const res = await get();
+    const json = await res.json();
+    expect(res.status).toBe(500);
+    expect(json).toEqual({ success: false, error: copy.serverError("req-1"), requestId: "req-1" });
+    expect(JSON.stringify(json)).not.toContain("secret");
+  });
+
+  it("the exported GET forwards the URL id from the route context", async () => {
+    await getSendRoute(req("GET", "sends/s9"), { params: Promise.resolve({ id: "s9" }) });
+    expect(h.defaultStore.getSendDetail).toHaveBeenCalledWith("s9");
   });
 });
 

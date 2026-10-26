@@ -2,7 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 
 // No test here touches the DB. `database.select` is a real Drizzle builder over a mock driver;
 // awaiting it records the generated SQL and resolves to no rows.
-const captured = vi.hoisted(() => ({ sql: "", params: [] as unknown[], all: [] as string[] }));
+const captured = vi.hoisted(() => ({
+  sql: "",
+  params: [] as unknown[],
+  all: [] as string[],
+  /** Rows to answer with when the generated SQL matches; anything else resolves to no rows. */
+  stubs: [] as Array<[RegExp, unknown[]]>,
+}));
 vi.mock("@/db", async () => {
   const { drizzle } = await import("drizzle-orm/node-postgres");
   const schema = await import("@/db/schema");
@@ -14,7 +20,7 @@ vi.mock("@/db", async () => {
           return (resolve: (v: unknown[]) => void) => {
             ({ sql: captured.sql, params: captured.params } = target.toSQL());
             captured.all.push(captured.sql);
-            resolve([]);
+            resolve(captured.stubs.find(([pattern]) => pattern.test(captured.sql))?.[1] ?? []);
           };
         }
         const value = target[prop];
@@ -96,6 +102,67 @@ describe("listSends summary", () => {
     expect(captured.sql).toContain(`count("hashavshevet_sent_row"."id") ${filter}`);
     expect(captured.sql).toContain(`sum("hashavshevet_sent_row"."amount") ${filter}`);
     expect(captured.sql).not.toContain('"hashavshevet_send"."row_count"');
+  });
+});
+
+describe("getSendDetail", () => {
+  const SUMMARY_ROW = {
+    id: "s1",
+    exportType: "royalties",
+    companyId: "c1",
+    companyName: "ויני",
+    targetFileName: "fv",
+    status: "awaiting_approval",
+    rowCount: "2",
+    total: "150.10",
+    sentAt: new Date("2026-07-02T10:00:00"),
+    sentBy: "רעות",
+    resolvedAt: null,
+    resolutionNote: null,
+    params: { year: 2026, month: 6 },
+  };
+
+  it("is null when the send does not exist, and stops after the summary query", async () => {
+    captured.all = [];
+    captured.stubs = [];
+    expect(await drizzleHashavshevetStore.getSendDetail("nope")).toBeNull();
+    expect(captured.all).toHaveLength(1);
+    expect(captured.sql).toMatch(/where "hashavshevet_send"\."id" = \$1/);
+    expect(captured.params).toContain("nope");
+  });
+
+  it("returns the summary (with params), the raw response and the rows with who unlocked them", async () => {
+    captured.all = [];
+    captured.stubs = [
+      [/from "hashavshevet_send" inner join/, [SUMMARY_ROW]],
+      [/^select "response" from "hashavshevet_send"/, [{ response: { Result: "ok" } }]],
+      [
+        /from "hashavshevet_sent_row"/,
+        [
+          { id: "r1", rowKey: "k1", amount: "100.10", payload: { A: "1" }, unlockedAt: null, unlockedBy: null, unlockReason: null },
+        ],
+      ],
+    ];
+    const detail = await drizzleHashavshevetStore.getSendDetail("s1");
+    captured.stubs = [];
+    expect(detail).toMatchObject({
+      id: "s1",
+      rowCount: 2,
+      total: 150.1,
+      params: { year: 2026, month: 6 },
+      response: { Result: "ok" },
+      rows: [{ id: "r1", rowKey: "k1", amount: 100.1, payload: { A: "1" }, unlockedAt: null }],
+    });
+    const rowsSql = captured.all.find((q) => /^select .* from "hashavshevet_sent_row"/.test(q))!;
+    expect(rowsSql).toMatch(/left join "user" on "hashavshevet_sent_row"\."unlocked_by" = "user"\."id"/i);
+    expect(rowsSql).toMatch(/where "hashavshevet_sent_row"\."send_id" = \$1/);
+    expect(rowsSql).toMatch(/order by "hashavshevet_sent_row"\."row_key"/i);
+    expect(captured.all.find((q) => q.startsWith('select "response"'))).toMatch(/where "hashavshevet_send"\."id" = \$1/);
+  });
+
+  it("listSends carries each send's params for the period column", async () => {
+    await drizzleHashavshevetStore.listSends({});
+    expect(captured.sql).toContain('"hashavshevet_send"."params"');
   });
 });
 
