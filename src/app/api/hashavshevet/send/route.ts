@@ -58,7 +58,7 @@ async function sendExport(deps: SendDeps, req: SendRequest): Promise<NextRespons
   }
 
   const plans = planCompanySends(newRows, companies, definition.plugin);
-  const ctx = { ...req, store: deps.store, send: deps.send, now: deps.now, plugin: definition.plugin };
+  const ctx = { ...req, store: deps.store, send: deps.send, now: deps.now, plugin: definition.plugin, onApproved: definition.onApproved };
   const sends: CompanySendResult[] = [];
   for (const plan of plans) {
     try {

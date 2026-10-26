@@ -1,6 +1,8 @@
 import {
   createHashavshevetExportOperations,
+  markBillingRowsExported,
   readBrandCompanyId,
+  type ApiExportedInput,
 } from "@/data-access/franchisee-billing-export";
 import type { FranchiseeBillingStatus } from "@/db/schema";
 import {
@@ -349,9 +351,36 @@ export function buildRoyaltiesRows(
   }
 }
 
+/** The inverse of toBuiltRow's key: `franchiseeId|YYYY-MM|itemType`. */
+const ROW_KEY = /^(.+)\|(\d{4})-(\d{2})\|(royalty|marketing)$/;
+
+/**
+ * Ruling R27: an approved send keeps the Excel export's bookkeeping, so the reopen guard and the
+ * collection report see the rows as exported. One write per period and item type. A key this
+ * export never builds throws before anything is written.
+ */
+export async function markRoyaltiesApproved(
+  deliveredRowKeys: readonly string[],
+  mark: (input: ApiExportedInput) => Promise<void> = markBillingRowsExported,
+  exportedAt: Date = new Date(),
+): Promise<void> {
+  const groups = new Map<string, { itemType: FranchiseeBillingItemType; year: number; month: number; franchiseeIds: string[] }>();
+  for (const rowKey of deliveredRowKeys) {
+    const m = ROW_KEY.exec(rowKey);
+    if (!m) throw new Error(`not a royalties row key: ${rowKey}`);
+    const [, franchiseeId, year, month, itemType] = m;
+    const groupKey = `${year}-${month}|${itemType}`;
+    const group = groups.get(groupKey);
+    if (group) group.franchiseeIds.push(franchiseeId);
+    else groups.set(groupKey, { itemType: itemType as FranchiseeBillingItemType, year: Number(year), month: Number(month), franchiseeIds: [franchiseeId] });
+  }
+  for (const group of groups.values()) await mark({ ...group, exportedAt });
+}
+
 export const royaltiesExport: ExportDefinition = {
   type: "royalties",
   plugin: "imovein",
   labelHe: exportLabels.royalties,
   build: async (params) => buildRoyaltiesRows(await loadRoyaltiesData(params)),
+  onApproved: (_sendId, deliveredRowKeys) => markRoyaltiesApproved(deliveredRowKeys),
 };

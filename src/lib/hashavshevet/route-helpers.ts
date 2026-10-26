@@ -22,6 +22,20 @@ export function invalidBody(error: z.ZodError): NextResponse {
   return fail(hebrew?.message ?? copy.invalidRequest, 400);
 }
 
+/**
+ * Loggable facts of an error, never its message: a Drizzle query error's message carries the
+ * query params, i.e. row payloads. The pg code / constraint (bare or as Drizzle's `cause`) say enough.
+ */
+export function errorLogFields(err: unknown): { error: string; code?: string; constraint?: string } {
+  const e = err as { name?: unknown; code?: unknown; constraint?: unknown; cause?: { code?: unknown; constraint?: unknown } } | null;
+  const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+  return {
+    error: err instanceof Error ? err.name : typeof err,
+    code: str(e?.code) ?? str(e?.cause?.code),
+    constraint: str(e?.constraint) ?? str(e?.cause?.constraint),
+  };
+}
+
 /** Generic 500 (no stack, no internals) plus one structured English log line carrying the request id. */
 export function serverFail(event: string, requestId: string, err: unknown): NextResponse {
   console.error(

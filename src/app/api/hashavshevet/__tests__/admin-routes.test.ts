@@ -7,7 +7,7 @@ import { handleGetMappings, handlePatchMapping } from "@/app/api/hashavshevet/ma
 import { handleUnlockRow, POST as unlockRoute } from "@/app/api/hashavshevet/rows/[id]/unlock/route";
 import { handleListSends } from "@/app/api/hashavshevet/sends/route";
 import { GET as getSendRoute, handleGetSend } from "@/app/api/hashavshevet/sends/[id]/route";
-import { handleResolveSend, POST as resolveRoute } from "@/app/api/hashavshevet/sends/[id]/resolve/route";
+import { handleResolveSend, POST as resolveRoute, type ResolveSendDeps } from "@/app/api/hashavshevet/sends/[id]/resolve/route";
 import type { CompanyRow, HashavshevetStore, SendDetail, SendSummary } from "@/data-access/hashavshevet";
 import { copy } from "@/lib/hashavshevet/copy";
 
@@ -315,18 +315,37 @@ describe("GET sends/[id]", () => {
 });
 
 describe("POST sends/[id]/resolve", () => {
-  const resolve = (body: unknown) => handleResolveSend(req("POST", "sends/s1/resolve", body), "s1", { store });
+  const onApproved = vi.fn(async () => {});
+  const exports = { royalties: { onApproved }, journal_entries: {} } as unknown as ResolveSendDeps["exports"];
+  const resolve = (body: unknown) => handleResolveSend(req("POST", "sends/s1/resolve", body), "s1", { store, exports });
+  beforeEach(() => onApproved.mockReset().mockResolvedValue(undefined));
 
   it("is open to an admin: approving is Reut's daily action", async () => {
     h.role = "admin";
     const res = await resolve({ outcome: "approved" });
     expect(res.status).toBe(200);
-    expect(store.resolveSend).toHaveBeenCalledWith("s1", "approved", null, "admin-1");
+    expect(store.resolveSend).toHaveBeenCalledWith("s1", "approved", null, "admin-1", expect.any(Function));
+  });
+
+  it("the store's approve callback runs the send's export hook with the send id and delivered keys (ruling R27)", async () => {
+    store.resolveSend.mockImplementation(async (_id, _outcome, _note, _user, hook) => {
+      await hook?.("royalties", ["f-1|2026-06|royalty"]);
+    });
+    expect((await resolve({ outcome: "approved" })).status).toBe(200);
+    expect(onApproved).toHaveBeenCalledWith("s1", ["f-1|2026-06|royalty"]);
+  });
+
+  it("an export without a hook approves without bookkeeping", async () => {
+    store.resolveSend.mockImplementation(async (_id, _outcome, _note, _user, hook) => {
+      await hook?.("journal_entries", ["k1"]);
+    });
+    expect((await resolve({ outcome: "approved" })).status).toBe(200);
+    expect(onApproved).not.toHaveBeenCalled();
   });
 
   it("passes the trimmed rejection note through", async () => {
     await resolve({ outcome: "rejected", note: "  סכום שגוי  " });
-    expect(store.resolveSend).toHaveBeenCalledWith("s1", "rejected", "סכום שגוי", "super_user-1");
+    expect(store.resolveSend).toHaveBeenCalledWith("s1", "rejected", "סכום שגוי", "super_user-1", expect.any(Function));
   });
 
   it("rejected without a note is 400 with the Hebrew reason, and nothing is resolved", async () => {
@@ -368,7 +387,7 @@ describe("POST sends/[id]/resolve", () => {
 
   it("the exported POST forwards the URL id from the route context", async () => {
     await resolveRoute(req("POST", "sends/s7/resolve", { outcome: "arrived" }), { params: Promise.resolve({ id: "s7" }) });
-    expect(h.defaultStore.resolveSend).toHaveBeenCalledWith("s7", "arrived", null, "super_user-1");
+    expect(h.defaultStore.resolveSend).toHaveBeenCalledWith("s7", "arrived", null, "super_user-1", expect.any(Function));
   });
 });
 

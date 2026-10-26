@@ -126,10 +126,11 @@ function deps(setup: Setup = {}) {
   });
   const now = () => clock.t;
   const build = vi.fn(async () => ({ rows, blockingErrors }));
+  const onApproved = vi.fn(async (_sendId: string, _rowKeys: string[]) => {});
   const exports = Object.fromEntries(
-    EXPORT_TYPES.map((type) => [type, { type, plugin: "movein", labelHe: type, build }]),
+    EXPORT_TYPES.map((type) => [type, { type, plugin: "movein", labelHe: type, build, onApproved }]),
   ) as unknown as Record<ExportType, ExportDefinition>;
-  return { store, exports, send, build, now };
+  return { store, exports, send, build, onApproved, now };
 }
 
 const expectedOf = (rows: BuiltRow[]) => rows.map(({ rowKey, amount }) => ({ rowKey, amount }));
@@ -214,6 +215,35 @@ describe("handleSend", () => {
     expect(d.store.finishSend).toHaveBeenCalledWith("s1", expect.objectContaining({ status: "approved", failedRowKeys: [] }));
     expect(json.data.sends[0]).toMatchObject({ status: "approved", chunks: 2, rowCount: 2, total: 200 });
     expect(json.data.sends[0].message).toBe(copy.sentApproved(2, 200, "חברה c1", 2));
+    // Ruling R27: settled approved here, so the export's bookkeeping runs now, on the delivered rows.
+    expect(d.onApproved).toHaveBeenCalledWith("s1", ["a", "b"]);
+  });
+
+  it("never runs the approve hook for a send that waits for Reut or failed", async () => {
+    const rows = [row("a"), row("b", { documentKey: "d2" })];
+    for (const outcomes of [[OK, OK], [OK, apiError()], [apiError()], [UNKNOWN]]) {
+      const d = deps({ rows, outcomes });
+      await handleSend(sendReq(expectedOf(rows)), d);
+      expect(d.onApproved).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a failing approve hook keeps the send's result and says the bookkeeping failed", async () => {
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    const rows = [row("a")];
+    const d = deps({ rows, companies: [company("c1", { requiresApproval: false })] });
+    d.onApproved.mockRejectedValueOnce(Object.assign(new Error("Failed query: update ... params: secret-row"), { cause: { code: "40P01" } }));
+
+    const res = await handleSend(sendReq(expectedOf(rows)), d);
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.data.sends[0]).toMatchObject({ sendId: "s1", status: "approved", rowCount: 1 });
+    expect(json.data.sends[0].message).toBe(`${copy.sentApproved(1, 100, "חברה c1", 1)}. ${copy.approvedBookkeepingFailed}`);
+    const logged = errorLog.mock.calls.map(([line]) => String(line)).join("\n");
+    expect(logged).toContain("hashavshevet.on_approved_failed");
+    expect(logged).toContain("40P01");
+    expect(logged).not.toContain("secret-row");
   });
 
   it("drifted rows abort without locking", async () => {

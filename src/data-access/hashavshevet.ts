@@ -78,6 +78,9 @@ export interface FinishSendResult {
   requestId: string;
 }
 
+/** The approved send's export type and its delivered row keys (not released as send_failed). */
+export type OnApproved = (exportType: ExportType, deliveredRowKeys: string[]) => Promise<void>;
+
 export interface HashavshevetStore {
   getCompanies(): Promise<Map<string, CompanyRecord>>;
   listCompanies(): Promise<CompanyRow[]>;
@@ -102,7 +105,17 @@ export interface HashavshevetStore {
     sentBy: string;
   }): Promise<{ sendId: string }>;
   finishSend(sendId: string, result: FinishSendResult): Promise<void>;
-  resolveSend(sendId: string, outcome: ResolveOutcome, note: string | null, userId: string): Promise<void>;
+  /**
+   * `onApproved` runs inside the transaction when the send becomes `approved` (ruling R27); if it
+   * throws, the approval rolls back and can be retried.
+   */
+  resolveSend(
+    sendId: string,
+    outcome: ResolveOutcome,
+    note: string | null,
+    userId: string,
+    onApproved?: OnApproved,
+  ): Promise<void>;
   unlockRow(rowId: string, reason: string, userId: string): Promise<void>;
   listSends(filter: { status?: HashavshevetSendStatus; companyId?: string; exportType?: ExportType }): Promise<SendSummary[]>;
   /** Null when the send does not exist. */
@@ -330,11 +343,15 @@ async function finishSend(sendId: string, result: FinishSendResult): Promise<voi
   });
 }
 
+/** Rows of a chunk that failed are released as `send_failed`; they never reached the temporary batch. */
+const DELIVERED = sql`${hashavshevetSentRow.unlockReason} IS DISTINCT FROM 'send_failed'`;
+
 async function resolveSend(
   sendId: string,
   outcome: ResolveOutcome,
   note: string | null,
   userId: string,
+  onApproved?: OnApproved,
 ): Promise<void> {
   if (outcome === "rejected" && !note?.trim()) throw new Error("a rejection note is required");
   const { from, to, fromStalePending } = TRANSITIONS[outcome];
@@ -346,13 +363,20 @@ async function resolveSend(
       .update(hashavshevetSend)
       .set({ status: to, resolvedBy: userId, resolvedAt: now, resolutionNote: note })
       .where(and(eq(hashavshevetSend.id, sendId), fromStalePending ? or(allowedFrom, STALE_PENDING) : allowedFrom))
-      .returning({ id: hashavshevetSend.id });
+      .returning({ id: hashavshevetSend.id, exportType: hashavshevetSend.exportType });
     if (updated.length === 0) {
       const [current] = await tx
         .select({ status: hashavshevetSend.status })
         .from(hashavshevetSend)
         .where(eq(hashavshevetSend.id, sendId));
       throw new InvalidTransitionError(outcome, current?.status ?? null);
+    }
+    if (to === "approved" && onApproved) {
+      const delivered = await tx
+        .select({ rowKey: hashavshevetSentRow.rowKey })
+        .from(hashavshevetSentRow)
+        .where(and(eq(hashavshevetSentRow.sendId, sendId), DELIVERED));
+      await onApproved(updated[0].exportType as ExportType, delivered.map((r) => r.rowKey));
     }
     if (outcome !== "rejected") return;
     await tx
@@ -370,9 +394,6 @@ async function unlockRow(rowId: string, reason: string, userId: string): Promise
     .returning({ id: hashavshevetSentRow.id });
   if (updated.length === 0) throw new RowNotLockedError(rowId);
 }
-
-/** Rows of a chunk that failed are released as `send_failed`; they never reached the temporary batch. */
-const DELIVERED = sql`${hashavshevetSentRow.unlockReason} IS DISTINCT FROM 'send_failed'`;
 
 const MAX_SENDS_LISTED = 500; // ponytail: hard cap instead of pagination; add paging if history outgrows it.
 

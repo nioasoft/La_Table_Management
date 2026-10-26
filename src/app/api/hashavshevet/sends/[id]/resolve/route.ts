@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { drizzleHashavshevetStore, InvalidTransitionError, type HashavshevetStore } from "@/data-access/hashavshevet";
 import { isAuthError, requireAdminOrSuperUser } from "@/lib/api-middleware";
 import { copy } from "@/lib/hashavshevet/copy";
+import { EXPORTS, type ExportDefinition } from "@/lib/hashavshevet/registry";
 import { fail, invalidBody, requestIdOf, serverFail } from "@/lib/hashavshevet/route-helpers";
+import type { ExportType } from "@/lib/hashavshevet/types";
 import { resolveSendSchema } from "@/schemas/hashavshevet";
 
 /**
@@ -13,12 +15,14 @@ import { resolveSendSchema } from "@/schemas/hashavshevet";
 
 export interface ResolveSendDeps {
   store: Pick<HashavshevetStore, "resolveSend">;
+  /** Each export's optional onApproved bookkeeping (ruling R27). */
+  exports: Record<ExportType, Pick<ExportDefinition, "onApproved">>;
 }
 
 export async function handleResolveSend(
   request: NextRequest,
   sendId: string,
-  deps: ResolveSendDeps = { store: drizzleHashavshevetStore },
+  deps: ResolveSendDeps = { store: drizzleHashavshevetStore, exports: EXPORTS },
 ): Promise<NextResponse> {
   const requestId = requestIdOf(request);
   const authResult = await requireAdminOrSuperUser(request);
@@ -30,7 +34,10 @@ export async function handleResolveSend(
   const { outcome, note } = parsed.data;
 
   try {
-    await deps.store.resolveSend(sendId, outcome, note || null, authResult.user.id);
+    // Runs inside the store's transaction only when the send becomes approved: a failure rolls the approval back.
+    const onApproved = async (exportType: ExportType, deliveredRowKeys: string[]) =>
+      deps.exports[exportType].onApproved?.(sendId, deliveredRowKeys);
+    await deps.store.resolveSend(sendId, outcome, note || null, authResult.user.id, onApproved);
     return NextResponse.json({ success: true, data: { id: sendId, outcome } });
   } catch (err) {
     if (err instanceof InvalidTransitionError) {

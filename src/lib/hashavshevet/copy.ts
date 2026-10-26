@@ -39,6 +39,8 @@ export const copy = {
   sentApproved: (count: number, total: number, companyName: string, chunks: number) =>
     `נשלחו ${count} שורות בסך ${formatShekel(total)} לחברה ${companyName}` + (chunks > 1 ? ` ב-${chunks} בקשות` : ""),
   unknownOutcome: "לא ידוע אם השליחה הגיעה. בדקו באזור הזמני בחשבשבת",
+  /** Ruling R27: the rows went out and were approved, but marking them exported in the system failed. */
+  approvedBookkeepingFailed: "השורות הגיעו לחשבשבת, אבל סימון הייצוא במערכת נכשל. פנו לתמיכה עם פרטי השליחה",
   sendConflict: "השורות האלה כבר נשלחות או נשלחו ממקום אחר. רעננו ובדקו שוב",
   sendBlocked: "יש שגיאות שחוסמות את השליחה. תקנו אותן ונסו שוב",
   rateLimited: "יותר מדי שליחות בזמן קצר. נסו שוב בעוד דקה",

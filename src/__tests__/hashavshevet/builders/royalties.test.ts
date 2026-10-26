@@ -4,19 +4,22 @@ import type { BrandExportContext, ExportBillingRow } from "@/app/api/franchisee-
 import {
   buildRoyaltiesRows,
   loadRoyaltiesData,
+  markRoyaltiesApproved,
   royaltiesExport,
   type RoyaltiesData,
 } from "@/lib/hashavshevet/builders/royalties";
 import { EXPORTS } from "@/lib/hashavshevet/registry";
 
-const { readBrandContexts, readBrandCompanyId } = vi.hoisted(() => ({
+const { readBrandContexts, readBrandCompanyId, markBillingRowsExported } = vi.hoisted(() => ({
   readBrandContexts: vi.fn(),
   readBrandCompanyId: vi.fn(),
+  markBillingRowsExported: vi.fn(),
 }));
 
 vi.mock("@/data-access/franchisee-billing-export", () => ({
   createHashavshevetExportOperations: async () => ({ readBrandContexts }),
   readBrandCompanyId,
+  markBillingRowsExported,
 }));
 
 function billing(over: Partial<ExportBillingRow> = {}): ExportBillingRow {
@@ -182,5 +185,50 @@ describe("royaltiesExport", () => {
   it("rejects params that fail the schema before touching the database", async () => {
     await expect(loadRoyaltiesData({ year: 2026, month: 13, brandId: "brand-1", itemType: "royalty" })).rejects.toThrow();
     expect(readBrandContexts).not.toHaveBeenCalled();
+  });
+});
+
+describe("markRoyaltiesApproved (ruling R27)", () => {
+  const AT = new Date(2026, 6, 2, 10, 0);
+
+  it("stamps the delivered rows' billing rows, one write per period and item type", async () => {
+    const mark = vi.fn(async () => {});
+    await markRoyaltiesApproved(
+      ["f-1|2026-06|royalty", "f-2|2026-06|royalty", "f-1|2026-06|marketing", "f-3|2025-12|royalty"],
+      mark,
+      AT,
+    );
+    expect(mark.mock.calls).toEqual([
+      [{ itemType: "royalty", year: 2026, month: 6, franchiseeIds: ["f-1", "f-2"], exportedAt: AT }],
+      [{ itemType: "marketing", year: 2026, month: 6, franchiseeIds: ["f-1"], exportedAt: AT }],
+      [{ itemType: "royalty", year: 2025, month: 12, franchiseeIds: ["f-3"], exportedAt: AT }],
+    ]);
+  });
+
+  it("parses every key the builder makes", async () => {
+    const mark = vi.fn(async () => {});
+    const keys = buildRoyaltiesRows(data({ itemType: "marketing", year: 2027, month: 1 })).rows.map((r) => r.rowKey);
+    await markRoyaltiesApproved(keys, mark, AT);
+    expect(mark).toHaveBeenCalledWith({ itemType: "marketing", year: 2027, month: 1, franchiseeIds: ["franchisee-1"], exportedAt: AT });
+  });
+
+  it("writes nothing when no row was delivered", async () => {
+    const mark = vi.fn(async () => {});
+    await markRoyaltiesApproved([], mark, AT);
+    expect(mark).not.toHaveBeenCalled();
+  });
+
+  it("refuses a key this export never builds, before writing anything", async () => {
+    const mark = vi.fn(async () => {});
+    await expect(markRoyaltiesApproved(["f-1|2026-06|royalty", "garbage"], mark, AT)).rejects.toThrow("garbage");
+    expect(mark).not.toHaveBeenCalled();
+  });
+
+  it("is the royalties export's onApproved hook, writing through the billing data-access", async () => {
+    markBillingRowsExported.mockReset().mockResolvedValue(undefined);
+    await royaltiesExport.onApproved?.("send-1", ["f-9|2026-06|royalty"]);
+    expect(markBillingRowsExported).toHaveBeenCalledWith(
+      expect.objectContaining({ itemType: "royalty", year: 2026, month: 6, franchiseeIds: ["f-9"], exportedAt: expect.any(Date) }),
+    );
   });
 });

@@ -205,6 +205,54 @@ describe("resolveSend escape hatch for a send stuck in pending", () => {
   });
 });
 
+describe("resolveSend onApproved bookkeeping (ruling R27)", () => {
+  const SEND_UPDATE = /^update "hashavshevet_send"/;
+  const DELIVERED_KEYS = /^select "row_key" from "hashavshevet_sent_row"/;
+
+  it("on approve, hands the export type and the delivered row keys to the hook inside the transaction", async () => {
+    captured.all = [];
+    captured.stubs = [
+      [SEND_UPDATE, [{ id: "s1", exportType: "royalties" }]],
+      [DELIVERED_KEYS, [{ rowKey: "k1" }, { rowKey: "k2" }]],
+    ];
+    const hook = vi.fn(async () => {});
+    await drizzleHashavshevetStore.resolveSend("s1", "approved", null, "u1", hook);
+    captured.stubs = [];
+    expect(hook).toHaveBeenCalledWith("royalties", ["k1", "k2"]);
+    const keysSql = captured.all.find((q) => DELIVERED_KEYS.test(q))!;
+    expect(keysSql).toMatch(/"hashavshevet_sent_row"\."send_id" = \$\d+/);
+    expect(keysSql).toContain(`"hashavshevet_sent_row"."unlock_reason" IS DISTINCT FROM 'send_failed'`);
+  });
+
+  it.each([
+    ["rejected", "לא תקין"],
+    ["arrived", null],
+  ] as const)("%s never runs the hook", async (outcome, note) => {
+    captured.all = [];
+    captured.stubs = [
+      [SEND_UPDATE, [{ id: "s1", exportType: "royalties" }]],
+      [DELIVERED_KEYS, [{ rowKey: "k1" }]],
+    ];
+    const hook = vi.fn(async () => {});
+    await drizzleHashavshevetStore.resolveSend("s1", outcome, note, "u1", hook);
+    captured.stubs = [];
+    expect(hook).not.toHaveBeenCalled();
+    expect(captured.all.some((q) => DELIVERED_KEYS.test(q))).toBe(false);
+  });
+
+  it("a failing hook fails the resolve (the transaction rolls back, so Reut can retry)", async () => {
+    captured.stubs = [
+      [SEND_UPDATE, [{ id: "s1", exportType: "royalties" }]],
+      [DELIVERED_KEYS, [{ rowKey: "k1" }]],
+    ];
+    const hook = vi.fn(async () => {
+      throw new Error("billing write failed");
+    });
+    await expect(drizzleHashavshevetStore.resolveSend("s1", "approved", null, "u1", hook)).rejects.toThrow("billing write failed");
+    captured.stubs = [];
+  });
+});
+
 describe("admin store: companies", () => {
   it("listCompanies selects the display columns, ordered by Hashavshevet comp id", async () => {
     await drizzleHashavshevetStore.listCompanies();

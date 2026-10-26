@@ -303,6 +303,46 @@ function exportStore(database: ExportDatabase): HashavshevetExportStore {
  * The Hashavshevet company a brand's exports are sent to (null = unmapped or no such brand).
  * Read only by the API send path, so the Excel export's queries never depend on the column.
  */
+/** Ruling R27: what an approved Hashavshevet API send marks, per period and item type. */
+export interface ApiExportedInput {
+  readonly itemType: PersistExportInput["itemType"];
+  readonly year: number;
+  readonly month: number;
+  readonly franchiseeIds: readonly string[];
+  readonly exportedAt: Date;
+}
+
+/**
+ * The Excel export's bookkeeping for an API send: stamps *ExportedAt on the period's approved
+ * billing rows (the reopen guard and the collection report read it). No export batch exists for
+ * an API send, so the batch FK stays null.
+ */
+export function createMarkApiExportedQuery(
+  database: Pick<ExportDatabase, "update">,
+  input: ApiExportedInput,
+) {
+  const exportedColumn = input.itemType === "royalty"
+    ? { royaltyExportedAt: input.exportedAt }
+    : { marketingExportedAt: input.exportedAt };
+  return database
+    .update(schema.franchiseeBilling)
+    .set(exportedColumn)
+    .where(
+      and(
+        inArray(schema.franchiseeBilling.franchiseeId, [...input.franchiseeIds]),
+        eq(schema.franchiseeBilling.periodYear, input.year),
+        eq(schema.franchiseeBilling.periodMonth, input.month),
+        eq(schema.franchiseeBilling.status, "approved"),
+      ),
+    );
+}
+
+export async function markBillingRowsExported(input: ApiExportedInput): Promise<void> {
+  if (input.franchiseeIds.length === 0) return;
+  const { database } = await import("@/db");
+  await createMarkApiExportedQuery(database, input);
+}
+
 export async function readBrandCompanyId(brandId: string): Promise<string | null> {
   const { database } = await import("@/db");
   const [row] = await database
