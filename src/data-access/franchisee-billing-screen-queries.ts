@@ -12,6 +12,9 @@ import type {
 } from "@/data-access/franchisee-billing-screen";
 import { ownerRecipients } from "@/data-access/franchisee-owner-recipients";
 import * as schema from "@/db/schema";
+import {
+  billingNotExported,
+} from "@/data-access/franchisee-billing-exported";
 import type { FranchiseeBillingPeriod } from "@/schemas/franchisee-billing-screen";
 import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
 
@@ -427,10 +430,7 @@ export function createReopenBillingQuery(
       and(
         eq(billing.id, input.billingId),
         eq(billing.status, "approved"),
-        isNull(billing.royaltyExportedAt),
-        isNull(billing.royaltyExportBatchId),
-        isNull(billing.marketingExportedAt),
-        isNull(billing.marketingExportBatchId),
+        billingNotExported(),
       ),
     );
 }

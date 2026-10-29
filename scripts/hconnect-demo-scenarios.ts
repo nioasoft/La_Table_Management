@@ -65,9 +65,9 @@ async function main() {
   });
 
   console.table(rows.map((r) => ({ ref: r.Ref2, deb: r.AccountKeyDeb1, gross: r.SuFDeb1, cred: r.AccountKeyCred1, net: r.SuFCred1, vat: r.SuFCred2 })));
-  const result = await sendToHashavshevet("movein", rows);
-  console.log(JSON.stringify(result.body));
-  process.exit(result.ok ? 0 : 1);
+  const result = await sendToHashavshevet("movein", process.env.HCONNECT_COMPANY!, rows);
+  console.log(JSON.stringify(result));
+  process.exit(result.kind === "ok" ? 0 : 1);
 }
 
 main().catch((e) => {

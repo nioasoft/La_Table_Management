@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>שליחה לחשבשבת — תוכנית</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1d1b;--mut:#6b6a66;--line:#e2e0da;--card:#fff;--acc:#1f5f8b;--warn:#a5520f;--warnbg:#fff4e8;--okbg:#eef6ee;--code:#f3f1ec}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--fg:#ecebe7;--mut:#a3a19b;--line:#33322f;--card:#1f1f1d;--acc:#7cb6e0;--warn:#f0a35e;--warnbg:#2c2216;--okbg:#18261a;--code:#262522}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.65 system-ui,-apple-system,"Segoe UI",Arial,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:30px;margin:0 0 4px}
+h2{font-size:22px;margin:44px 0 12px;padding-top:12px;border-top:1px solid var(--line)}
+h3{font-size:18px;margin:26px 0 8px}
+h4{font-size:16px;margin:18px 0 6px}
+.sub{color:var(--mut);margin:0 0 20px}
+a{color:var(--acc)}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre{background:var(--code);padding:12px 14px;border-radius:8px;overflow-x:auto;direction:ltr;text-align:left;line-height:1.5}
+pre code{background:none;padding:0}
+table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:14px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:6px 9px;text-align:right;vertical-align:top}
+th{background:var(--code)}
+td:first-child code,td:first-child{white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 18px;margin:14px 0}
+.warn{background:var(--warnbg);border-color:var(--warn)}
+.warn b:first-child{color:var(--warn)}
+.ok{background:var(--okbg)}
+nav.toc{columns:2;column-gap:32px;font-size:15px}
+nav.toc a{display:block;padding:2px 0;text-decoration:none}
+@media (max-width:640px){nav.toc{columns:1}}
+img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:6px;margin:6px 0;background:#fff}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:stretch;margin:12px 0}
+.flow div{flex:1 1 150px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;font-size:14px}
+.flow div b{display:block;font-size:13px;color:var(--acc)}
+.ref{border:1px solid var(--line);border-radius:10px;padding:4px 18px 14px;margin:18px 0;background:var(--card)}
+.refh{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.src{font-size:13px;font-weight:normal}
+.ltr{direction:ltr;unicode-bidi:embed}
+details summary{cursor:pointer;font-weight:600}
+</style>
+</head>
+<body><div class="wrap">
+
+<h1>שליחה לחשבשבת — תוכנית מימוש</h1>
+<p class="sub"><b>לסוכנים שמממשים:</b> חובה להשתמש ב-superpowers:subagent-driven-development (מומלץ) או ב-superpowers:executing-plans. הצעדים מסומנים ☐ למעקב.</p>
+
+<div class="card">
+<p><b>מטרה:</b> כפתור "שלח לחשבשבת" במקום ששת ייצואי האקסל. השורות נשלחות לחברה הנכונה דרך H-Connect, כל שורה ננעלת אחרי שליחה, ומחזור אישור משקף את המנה הזמנית בחשבשבת.</p>
+<p><b>ארכיטקטורה:</b> כל route של ייצוא מפוצל ל"בונה שורות" טהור ב-<code>src/lib/hashavshevet/builders/</code>. האקסל וה-API משתמשים באותו בונה. route אחד לתצוגה מקדימה ו-route אחד לשליחה עובדים מעל registry של ייצואים. שלוש טבלאות: חברות, שליחות ושורות נעולות. האילוץ הייחודי במסד הנתונים הוא שמונע כפילות.</p>
+<p><b>Stack:</b> Next.js 16 App Router, TypeScript strict, Drizzle על Neon, Zod, Vitest, TanStack Query, shadcn/Radix.</p>
+<p><b>Spec:</b> <a href="hashavshevet-api-send-spec.html">plan/hashavshevet-api-send-spec.html</a>. המממש קורא גם אותו. מספרי הסעיפים (§) מתייחסים אליו.</p>
+</div>
+
+<h2 id="constraints">אילוצים גלובליים</h2>
+<ul>
+<li><b>אין DB לפיתוח.</b> <code>DATABASE_URL</code> מצביע על production. <b>אף בדיקה לא נוגעת ב-DB.</b> ה-handlers מקבלים <code>store</code> מוזרק, באותה תבנית של <code>executeHashavshevetExport</code> בבדיקות התמלוגים.</li>
+<li><b>מיגרציה:</b> קובץ SQL חדש ב-<code>drizzle/</code>, ואחריו עדכון של <code>drizzle/meta/_journal.json</code> (idx 39). מריצים <code>npm run db:migrate</code>, ומאמתים ב-<code>psql</code> שהטבלאות והאינדקסים קיימים. לא לסמוך על הדיווח של Drizzle.</li>
+<li><b>אימות בכל route:</b> רק דרך <code>@/lib/api-middleware</code>. שליחה ותצוגה מקדימה: <code>requireAdminOrSuperUser</code>. ניהול: <code>requireSuperUser</code>.</li>
+<li><b>ולידציה:</b> סכמות Zod ב-<code>src/schemas/hashavshevet.ts</code>, עם <code>.parse()</code> בשרת.</li>
+<li><b>תאריכים:</b> לעולם לא <code>toISOString()</code>. ב-API הפורמט הוא <code>dd/mm/yyyy</code>, ובתוך הקוד <code>YYYY-MM-DD</code> שנבנה מ-getFullYear/getMonth/getDate.</li>
+<li><b>ערכים ל-API:</b> כולם מחרוזות. בשדה עשרוני חובה נקודה (<code>"1.000"</code>, <code>"5000.00"</code>). מספר הקצאה תמיד מחרוזת, כי יש מספרים שמתחילים ב-0.</li>
+<li><b>מגבלת גודל:</b> 4MB לבקשה (<code>4 * 1024 * 1024</code> bytes). שורות של אותו מסמך לא מתפצלות בין בקשות.</li>
+<li><b>ממשק:</b> כל הטקסטים בעברית יושבים בקבועים ב-<code>src/lib/hashavshevet/copy.ts</code>. בכל Radix (Dialog, Tabs) מעבירים <code>dir="rtl"</code>. בכל מסך ארבעה מצבים: טעינה, תוצאה, שגיאה, ריק. הודעות ל-console באנגלית.</li>
+<li><b>שגיאת שרת:</b> 500 עם הודעה כללית בעברית ו-<code>requestId</code>, בלי stack.</li>
+<li><b>Rate limit:</b> <code>checkRateLimit(userId, RateLimitConfigs.sensitive)</code> על <code>send</code>.</li>
+<li><b>גודל קבצים:</b> 200–400 שורות, לכל היותר 800. פונקציות עד 50 שורות.</li>
+<li><b>Commit:</b> בסוף כל משימה. בסוף הודעת ה-commit: <code>Co-Authored-By: claude-flow &lt;ruv@ruv.net&gt;</code>. העבודה נעשית על branch <code>feat/hashavshevet-api-send</code>, לא על master.</li>
+</ul>
+
+<h2 id="focus">מוקדי סקירה</h2>
+<p>חמישה מצבים שה-spec מחייב, אבל קל לפספס. לכל אחד יש בדיקה במשימה שמחזיקה את הקוד:</p>
+<ol>
+<li><b>שתי לשוניות שולחות את אותו ייצוא באותו רגע.</b> רק שליחה אחת יוצאת, והשנייה מקבלת 409. ← משימה 6, <code>"concurrent send loses on unique lock"</code>.</li>
+<li><b>הנתונים השתנו בין התצוגה המקדימה לשליחה</b> (קובץ עודכן). השליחה נעצרת עם 409, ושום דבר לא ננעל. ← משימה 6, <code>"drifted rows abort without locking"</code>.</li>
+<li><b>זכיין בלי חברה, או חברה שלא הופעלה.</b> השורה מסומנת <code>no_company</code> או <code>not_live</code>, ושליחה עם שורות כאלה נחסמת. ← משימה 3, <code>"unmapped and not-live companies block"</code>.</li>
+<li><b>תווים מיוחדים במפתחות</b> (<code>מע"מ</code>, <code>ויני ע</code>, הקצאה <code>012345678</code>). הם נשלחים בדיוק כמו שהם, והחתימה נכונה. ← משימה 2, <code>"signs and preserves hebrew, quotes and leading zeros"</code>.</li>
+<li><b>ייצוא גדול מ-4MB.</b> הוא מתחלק לבקשות בלי לפצל מסמך. אם בקשה אחת נכשלה, רק השורות שלה משתחררות. ← משימה 2, <code>"chunks keep documents whole"</code>, ומשימה 6, <code>"partial failure releases only failed chunk"</code>.</li>
+</ol>
+
+<h2 id="files">מבנה קבצים</h2>
+<table>
+<tr><th>קובץ</th><th>אחריות</th></tr>
+<tr><td><code>drizzle/0076_hashavshevet_send.sql</code></td><td>טבלאות, FK במותג ובזכיין, אינדקסים</td></tr>
+<tr><td><code>src/db/schema.ts</code> (שינוי)</td><td><code>hashavshevetCompany</code>, <code>hashavshevetSend</code>, <code>hashavshevetSentRow</code>, ועמודות חדשות במותג ובזכיין</td></tr>
+<tr><td><code>scripts/seed-hashavshevet-companies.ts</code></td><td>seed אידמפוטנטי של 14 החברות והשיוכים (§4)</td></tr>
+<tr><td><code>src/schemas/hashavshevet.ts</code></td><td>כל סכמות ה-Zod</td></tr>
+<tr><td><code>src/lib/hconnect.ts</code> (שינוי)</td><td>חתימה, שליחה, timeout, סיווג תוצאה, חלוקה לבקשות</td></tr>
+<tr><td><code>src/lib/hashavshevet/types.ts</code></td><td>טיפוסים משותפים</td></tr>
+<tr><td><code>src/lib/hashavshevet/format.ts</code></td><td>פורמט מחרוזות ל-API, תאריכים, תרגום סוג מסמך</td></tr>
+<tr><td><code>src/lib/hashavshevet/classify.ts</code></td><td>סיווג סטטוס של כל שורה</td></tr>
+<tr><td><code>src/lib/hashavshevet/copy.ts</code></td><td>טקסטים בעברית, ותרגום שגיאות API</td></tr>
+<tr><td><code>src/lib/hashavshevet/registry.ts</code></td><td>ששת הייצואים: בונה, plugin, פענוח פרמטרים</td></tr>
+<tr><td><code>src/lib/hashavshevet/builders/*.ts</code></td><td>בונה אחד לכל ייצוא</td></tr>
+<tr><td><code>src/data-access/hashavshevet.ts</code></td><td><code>HashavshevetStore</code> ומימוש Drizzle</td></tr>
+<tr><td><code>src/app/api/hashavshevet/{preview,send}/route.ts</code></td><td>תצוגה מקדימה ושליחה</td></tr>
+<tr><td><code>src/app/api/hashavshevet/{companies,mappings,sends}/…</code></td><td>ניהול</td></tr>
+<tr><td><code>src/components/hashavshevet/*.tsx</code></td><td>כפתור, חלון תצוגה מקדימה</td></tr>
+<tr><td><code>src/app/(protected)/admin/hashavshevet/{page,sends/page}.tsx</code></td><td>מסך הגדרות ומסך שליחות</td></tr>
+<tr><td><code>src/queries/hashavshevet.ts</code></td><td>hooks של TanStack Query</td></tr>
+</table>
+
+<h2 id="tasks">משימות</h2>
+
+<h3>משימה 1: סכמה, מיגרציה ו-seed</h3>
+<p><b>קבצים:</b> יצירה של <code>drizzle/0076_hashavshevet_send.sql</code> ו-<code>scripts/seed-hashavshevet-companies.ts</code>. שינוי של <code>src/db/schema.ts</code> ו-<code>drizzle/meta/_journal.json</code>. בדיקה: <code>src/__tests__/hashavshevet/seed-map.test.ts</code>.</p>
+<p><b>מייצר:</b></p>
+<ul>
+<li><code>hashavshevetCompany</code>: <code>id</code>, <code>fileName</code> (unique), <code>compId</code>, <code>nameHe</code>, <code>liveFrom: date|null</code>, <code>requiresApproval: boolean default true</code>, <code>updatedAt</code>, <code>updatedBy</code>.</li>
+<li><code>brand.hashavshevetCompanyId</code> ו-<code>franchisee.hashavshevetCompanyId</code>, שתיהן nullable FK.</li>
+<li><code>hashavshevetSend</code>, עם העמודות של spec §5. הסטטוס הוא text עם check על הערכים <code>pending|awaiting_approval|approved|rejected|failed|unknown</code>.</li>
+<li><code>hashavshevetSentRow</code>, עם העמודות של spec §5, ואינדקס <code>CREATE UNIQUE INDEX uq_hashavshevet_sent_row_active ON hashavshevet_sent_row (export_type, company_id, row_key) WHERE unlocked_at IS NULL</code>.</li>
+<li><code>SEED_COMPANIES</code> ו-<code>SEED_BRAND_MAP</code> ב-seed: 14 החברות, ומיפוי המותגים לפי <code>brand.code</code> (MINNA_TOMEI→smminna, VINNI→fv, KING_KONG→smminna_2024). <code>SEED_FRANCHISEE_MAP</code>: 7 הזכיינים לפי שם מדויק (טבלה ב-§4).</li>
+</ul>
+<ol>
+<li>☐ כתוב את <code>seed-map.test.ts</code>:
+<pre><code>it("seed covers spec §4 exactly", () =&gt; {
+  expect(SEED_COMPANIES).toHaveLength(14);
+  expect(new Set(SEED_COMPANIES.map(c =&gt; c.fileName)).size).toBe(14);
+  expect(SEED_BRAND_MAP).toEqual({ MINNA_TOMEI: "smminna", VINNI: "fv", KING_KONG: "smminna_2024" });
+  expect(SEED_FRANCHISEE_MAP["קינג קונג מוצקין בע\"מ"]).toBe("kingkong_hadera_2024_2026");
+  expect(Object.keys(SEED_FRANCHISEE_MAP)).toHaveLength(7);
+  expect(SEED_COMPANIES.every(c =&gt; c.fileName !== "DEMO")).toBe(true);
+});</code></pre></li>
+<li>☐ הרץ <code>npx vitest run src/__tests__/hashavshevet/seed-map.test.ts</code>. צפוי: FAIL (module not found).</li>
+<li>☐ כתוב את הטבלאות ב-<code>schema.ts</code> ואת ה-SQL. ה-seed מייצא את הקבועים, ופונקציית <code>main()</code> שלו עושה upsert לפי <code>file_name</code>. זכיין שהשם שלו לא נמצא עוצר את הסקריפט עם שגיאה. אין התאמה חלקית.</li>
+<li>☐ הרץ שוב את הבדיקה. צפוי: PASS.</li>
+<li>☐ <code>npm run db:migrate</code>, ואז אימות ב-psql: <code>\d hashavshevet_sent_row</code> מראה את <code>uq_hashavshevet_sent_row_active</code>.</li>
+<li>☐ <code>npx dotenv -e .env -- npx tsx scripts/seed-hashavshevet-companies.ts</code>. אימות: <code>select count(*) from hashavshevet_company</code> מחזיר 14, ושלושה מותגים ושבעה זכיינים משויכים.</li>
+<li>☐ Commit: <code>feat(hashavshevet): companies, sends and row-lock tables</code>.</li>
+</ol>
+
+<h3>משימה 2: לקוח H-Connect: חברה כפרמטר, timeout, סיווג תוצאה וחלוקה</h3>
+<p><b>קבצים:</b> שינוי של <code>src/lib/hconnect.ts</code>, ושל שלושת הסקריפטים <code>scripts/hconnect-*.ts</code>, שיעבירו את <code>process.env.HCONNECT_COMPANY</code>. יצירה של <code>src/lib/hashavshevet/types.ts</code>. בדיקה: <code>src/__tests__/hashavshevet/hconnect.test.ts</code>.</p>
+<p><b>מייצר:</b></p>
+<pre><code>// types.ts
+export type ExportType = "supplier_commissions" | "royalties" | "client_commissions"
+  | "franchisee_client_invoices" | "journal_entries" | "client_commission_invoices";
+export type ApiRow = Record&lt;string, string&gt;;
+export interface BuiltRow { rowKey: string; companyId: string | null; documentKey: string;
+  amount: number; display: Record&lt;string, string | number&gt;; apiRow: ApiRow; periodEnd: string /* YYYY-MM-DD */ }
+export type HConnectOutcome =
+  | { kind: "ok"; latencyMs: number; httpStatus: number; body: unknown }
+  | { kind: "api_error"; code: "validation" | "permission" | "not_in_service" | "other";
+      message: string; rowErrors: Record&lt;number, string&gt;; httpStatus: number; body: unknown }
+  | { kind: "unknown"; message: string };
+
+// hconnect.ts
+export function buildBody(plugin: HConnectPlugin, company: string, rows: ApiRow[]): string;
+export async function sendToHashavshevet(plugin: HConnectPlugin, company: string, rows: ApiRow[],
+  opts?: { timeoutMs?: number; fetchImpl?: typeof fetch }): Promise&lt;HConnectOutcome&gt;;
+export function chunkByDocument(rows: BuiltRow[], plugin: HConnectPlugin, company: string,
+  maxBytes?: number): BuiltRow[][];</code></pre>
+<ol>
+<li>☐ כתוב את הבדיקות. <code>fetch</code> מדומה, ומשתני הסביבה מוגדרים ב-<code>beforeEach</code>:
+<pre><code>it("signs and preserves hebrew, quotes and leading zeros", () =&gt; {
+  const body = buildBody("movein", "fv", [{ AccountKeyCred2: 'מע"מ', AccountKeyDeb1: "ויני ע", TaxAPINumber: "012345678" }]);
+  const parsed = JSON.parse(body);
+  expect(parsed.company).toBe("fv");
+  expect(parsed.message.pluginData[0].TaxAPINumber).toBe("012345678");
+  expect(parsed.signature).toBe(signPluginData(JSON.stringify(parsed.message.pluginData), "TOKEN"));
+});
+it("classifies ok / invalid data / not allowed / not in service", async () =&gt; {
+  // 200 {apiRes:{status:"ok"}}                                   → kind "ok"
+  // 500 {apiRes:{err:{message:"invalid data",errors:"{\"data\":{\"0\":{\"quantity\":\"...\"}}}"}}}
+  //                                                               → "api_error","validation", rowErrors[0] contains "quantity"
+  // 500 {apiRes:{err:"movein module error:  Error: you are not allowed to use movein module"}} → "permission"
+  // 500 body containing "Not in service"                          → "not_in_service"
+});
+it("network failure and timeout are unknown", async () =&gt; { /* fetch rejects / AbortError → kind "unknown" */ });
+it("chunks keep documents whole", () =&gt; {
+  // 3 docs × 2 rows; maxBytes fits 2 docs → [[d1,d1,d2,d2],[d3,d3]]
+  // a single doc bigger than maxBytes → throws "document exceeds 4MB"
+});</code></pre></li>
+<li>☐ הרץ. צפוי: FAIL.</li>
+<li>☐ מימוש:
+  <ul>
+  <li><code>timeoutMs</code> ברירת מחדל 30000, דרך <code>AbortSignal.timeout</code>.</li>
+  <li>הסיווג נעשה לפי הטקסט של <code>apiRes.err</code>: <code>"invalid data"</code> → validation, <code>"not allowed"</code> → permission, <code>"Not in service"</code> → not_in_service. את <code>errors</code> מפענחים כ-JSON לתוך <code>rowErrors</code>.</li>
+  <li>תשובה שלא נקראת כ-JSON, עם HTTP 2xx → <code>unknown</code>.</li>
+  <li>הלוג המובנה הקיים נשאר, ומוסיפים לו את <code>company</code>.</li>
+  </ul></li>
+<li>☐ הרץ. צפוי: PASS. אחר כך <code>npx tsc --noEmit</code>, נקי, כולל הסקריפטים.</li>
+<li>☐ Commit: <code>feat(hconnect): company per call, timeout, outcome classification, document-safe chunking</code>.</li>
+</ol>
+
+<h3>משימה 3: פורמט, סיווג שורות וטקסטים</h3>
+<p><b>קבצים:</b> יצירה של <code>src/lib/hashavshevet/format.ts</code>, <code>classify.ts</code> ו-<code>copy.ts</code>. בדיקות: <code>src/__tests__/hashavshevet/format.test.ts</code> ו-<code>classify.test.ts</code>.</p>
+<p><b>מייצר:</b></p>
+<pre><code>// format.ts
+export function apiMoney(n: number): string;            // 5000 → "5000.00"
+export function apiQuantity(n: number): string;         // 1 → "1.000"
+export function apiDate(ymd: string): string;           // "2026-10-31" → "31/10/2026"
+export const EXCEL_TO_API_DOCUMENT_ID: Readonly&lt;Record&lt;number, string&gt;&gt; = { 11: "1" };
+export function apiDocumentId(excelType: number): string | null; // null = unsupported
+export const JOURNAL_TRANS_TYPE = "00"; // ponytail: Reut's sales code replaces this before go-live (task 14)
+export function internalReference(sendPrefix: string, rowKey: string): string; // ≤9 digits, stable for rowKey
+
+// classify.ts
+export type RowStatus = "new" | "sent" | "changed" | "before_live" | "no_company" | "not_live";
+export interface ActiveLock { rowKey: string; companyId: string; amount: number; sentAt: Date; sentBy: string | null; sendStatus: string }
+export interface CompanyInfo { id: string; liveFrom: string | null; requiresApproval: boolean }
+export type ClassifiedRow = BuiltRow &amp; { status: RowStatus; lock?: ActiveLock };
+export function classifyRows(rows: BuiltRow[], locks: ActiveLock[], companies: Map&lt;string, CompanyInfo&gt;): ClassifiedRow[];
+export function rowsToSend(rows: ClassifiedRow[]): ClassifiedRow[];   // status === "new"
+export function blockingStatuses(rows: ClassifiedRow[]): RowStatus[]; // distinct of no_company | not_live</code></pre>
+<ol>
+<li>☐ כתוב את הבדיקות:
+<pre><code>it("formats api values", () =&gt; {
+  expect(apiMoney(5000)).toBe("5000.00"); expect(apiMoney(0.1 + 0.2)).toBe("0.30");
+  expect(apiQuantity(1)).toBe("1.000"); expect(apiDate("2026-10-31")).toBe("31/10/2026");
+  expect(apiDocumentId(11)).toBe("1"); expect(apiDocumentId(1)).toBeNull();
+  expect(internalReference("H", "a|b")).toBe(internalReference("H", "a|b"));
+  expect(internalReference("H", "a|b")).toMatch(/^\d{1,9}$/);
+});
+it("classifies by lock, amount, live date and mapping", () =&gt; {
+  // lock amount 100, row 100 → "sent"; row 120 → "changed" (lock attached)
+  // company liveFrom "2026-11-01", row periodEnd "2026-10-31" → "before_live"
+  // companyId null → "no_company"; company liveFrom null → "not_live"; else "new"
+});
+it("unmapped and not-live companies block", () =&gt; {
+  expect(blockingStatuses(classified)).toEqual(expect.arrayContaining(["no_company", "not_live"]));
+});</code></pre></li>
+<li>☐ הרץ. צפוי: FAIL.</li>
+<li>☐ מימוש. השוואת הסכומים נעשית אחרי עיגול ל-2 ספרות. ב-<code>internalReference</code> משתמשים ב-FNV-1a על <code>sendPrefix + rowKey</code>, mod 10⁹. ב-<code>copy.ts</code> נמצאים כל הטקסטים, כולל <code>apiErrorMessage(code, plugin, companyName)</code> לשלוש השגיאות של spec §10.</li>
+<li>☐ הרץ. צפוי: PASS.</li>
+<li>☐ Commit: <code>feat(hashavshevet): api formatting and row status classification</code>.</li>
+</ol>
+
+<h3>משימה 4: Store, סכמות Zod ו-registry</h3>
+<p><b>קבצים:</b> יצירה של <code>src/schemas/hashavshevet.ts</code>, <code>src/data-access/hashavshevet.ts</code> ו-<code>src/lib/hashavshevet/registry.ts</code>. בדיקה: <code>src/__tests__/hashavshevet/schemas.test.ts</code>.</p>
+<p><b>מייצר:</b></p>
+<pre><code>// schemas
+export const exportTypeSchema: z.ZodEnum&lt;[ExportType...]&gt;;
+export const exportParamsSchema; // discriminated union on exportType; params per export mirror today's route query params
+export const previewRequestSchema = z.object({ exportType, params });
+export const sendRequestSchema = previewRequestSchema.extend({
+  expected: z.array(z.object({ rowKey: z.string().min(1), amount: z.number() })).min(1) });
+export const resolveSendSchema; // { outcome: "approved"|"rejected"|"arrived", note?: string }; note required (min 3) when rejected
+export const unlockRowSchema = z.object({ reason: z.string().trim().min(3) });
+export const companyPatchSchema = z.object({ liveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  requiresApproval: z.boolean().optional() });
+export const mappingPatchSchema = z.object({ kind: z.enum(["brand", "franchisee"]), id: z.string(), companyId: z.string().nullable() });
+
+// data-access
+export interface HashavshevetStore {
+  getCompanies(): Promise&lt;Map&lt;string, CompanyInfo &amp; { fileName: string; nameHe: string }&gt;&gt;;
+  getActiveLocks(exportType: ExportType, rowKeys: string[]): Promise&lt;ActiveLock[]&gt;;
+  createSendWithLocks(input: { exportType: ExportType; companyId: string; targetFileName: string; plugin: HConnectPlugin;
+    params: unknown; rows: ClassifiedRow[]; sentBy: string }): Promise&lt;{ sendId: string }&gt;; // throws LockConflictError
+  finishSend(sendId: string, result: { status: "awaiting_approval" | "approved" | "failed" | "unknown";
+    failedRowKeys: string[]; httpStatus?: number; response?: unknown; latencyMs?: number; requestId: string }): Promise&lt;void&gt;;
+  resolveSend(sendId: string, outcome: "approved" | "rejected" | "arrived", note: string | null, userId: string): Promise&lt;void&gt;;
+  unlockRow(rowId: string, reason: string, userId: string): Promise&lt;void&gt;;
+  listSends(filter: { status?: string; companyId?: string; exportType?: ExportType }): Promise&lt;SendSummary[]&gt;;
+  countAwaitingApproval(): Promise&lt;number&gt;;
+}
+export class LockConflictError extends Error {}
+export const drizzleHashavshevetStore: HashavshevetStore;
+
+// registry
+export interface ExportDefinition { type: ExportType; plugin: HConnectPlugin; labelHe: string;
+  build(params: unknown): Promise&lt;{ rows: BuiltRow[]; blockingErrors: string[] }&gt; }
+export const EXPORTS: Record&lt;ExportType, ExportDefinition&gt;; // filled by tasks 8–13</code></pre>
+<ol>
+<li>☐ כתוב את בדיקת הסכמות: ב-<code>rejected</code> בלי note הוא נכשל. <code>arrived</code> בלי note עובר. ב-<code>expected</code> ריק <code>sendRequestSchema</code> נכשל. <code>liveFrom: "31/10/2026"</code> נכשל.</li>
+<li>☐ הרץ. צפוי: FAIL.</li>
+<li>☐ מימוש:
+  <ul>
+  <li>ב-<code>createSendWithLocks</code>: טרנזקציה אחת שמכניסה את השליחה בסטטוס <code>pending</code> ואת השורות. שגיאת Postgres <code>23505</code> → <code>LockConflictError</code>.</li>
+  <li>ב-<code>finishSend</code>: שורות של <code>failedRowKeys</code> מקבלות <code>unlocked_at=now()</code> ו-<code>unlock_reason='send_failed'</code>.</li>
+  <li>ב-<code>resolveSend</code>, <code>rejected</code> משחרר את כל השורות של השליחה עם <code>unlock_reason='rejected: '+note</code>. <code>arrived</code> מותר רק מ-<code>unknown</code>. <code>approved</code> ו-<code>rejected</code> מותרים רק מ-<code>awaiting_approval</code>. מעבר אחר זורק שגיאה.</li>
+  <li>ה-registry מתחיל עם 6 רשומות שה-<code>build</code> שלהן זורק <code>"not migrated"</code>.</li>
+  </ul></li>
+<li>☐ הרץ. צפוי: PASS. אחר כך <code>npx tsc --noEmit</code>.</li>
+<li>☐ Commit: <code>feat(hashavshevet): store, zod schemas, export registry</code>.</li>
+</ol>
+
+<h3>משימה 5: route תצוגה מקדימה</h3>
+<p><b>קבצים:</b> יצירה של <code>src/app/api/hashavshevet/preview/route.ts</code>. בדיקה: <code>src/app/api/hashavshevet/preview/__tests__/route.test.ts</code>.</p>
+<p><b>מייצר:</b> <code>handlePreview(request: NextRequest, deps = { store: drizzleHashavshevetStore, exports: EXPORTS })</code> שמחזיר <code>{ success, data: { exportType, plugin, groups: Array&lt;{ companyId: string|null; companyName: string|null; requiresApproval: boolean; rows: ClassifiedRow[]; totalNew: number }&gt;, blockingErrors: string[] } }</code>. <code>POST = (r) =&gt; handlePreview(r)</code>.</p>
+<ol>
+<li>☐ בדיקות: מוק ל-<code>@/lib/api-middleware</code>, באותה תבנית של בדיקת התמלוגים. store ו-exports מזויפים.
+<pre><code>it("groups rows per company with statuses", ...)        // 2 companies → 2 groups, statuses from classifyRows
+it("returns builder blocking errors", ...)              // build → blockingErrors ["ספק X ללא כרטיס חשבשבת"]
+it("400 on invalid body", ...)                          // { exportType: "nope" } → 400
+it("401 when unauthenticated", ...)</code></pre></li>
+<li>☐ הרץ. צפוי: FAIL. ☐ מימוש. ☐ הרץ. צפוי: PASS.</li>
+<li>☐ Commit: <code>feat(hashavshevet): preview route</code>.</li>
+</ol>
+
+<h3>משימה 6: route שליחה</h3>
+<p><b>קבצים:</b> יצירה של <code>src/app/api/hashavshevet/send/route.ts</code>. בדיקה: <code>src/app/api/hashavshevet/send/__tests__/route.test.ts</code>.</p>
+<p><b>מייצר:</b> <code>handleSend(request, deps = { store, exports, send: sendToHashavshevet })</code> שמחזיר <code>{ success, data: { sends: Array&lt;{ sendId; companyName; status; rowCount; total; chunks: number }&gt; } }</code>. הזרימה לפי spec §7: build ← classify ← השוואה ל-expected ← חסימות ← לכל קבוצת חברה <code>createSendWithLocks</code> ← <code>chunkByDocument</code> ← שליחה ← <code>finishSend</code>. אם לחברה <code>requiresApproval=false</code>, תוצאה ok נכתבת כ-<code>approved</code>.</p>
+<ol>
+<li>☐ בדיקות:
+<pre><code>it("sends new rows and leaves them awaiting approval", ...)      // status "awaiting_approval", send called once with company fileName
+it("auto-approves when company does not require approval", ...)  // status "approved"
+it("drifted rows abort without locking", ...)                    // expected amount differs → 409, createSendWithLocks not called
+it("blocking statuses or errors return 422", ...)                // no_company row → 422
+it("concurrent send loses on unique lock", ...)                  // store throws LockConflictError → 409, send not called
+it("api validation error fails and releases", ...)               // outcome api_error → finishSend("failed", all keys), response has hebrew row errors
+it("partial failure releases only failed chunk", ...)            // chunk1 ok, chunk2 api_error → failedRowKeys = chunk2 keys, status "failed"
+it("unknown outcome keeps locks", ...)                           // outcome unknown → finishSend("unknown", failedRowKeys [])
+it("rate limited returns 429", ...)
+it("only new rows are sent", ...)                                // sent/changed/before_live rows excluded from payload</code></pre></li>
+<li>☐ הרץ. צפוי: FAIL.</li>
+<li>☐ מימוש. ההשוואה ל-<code>expected</code> בודקת שקבוצת המפתחות של השורות החדשות שווה, ושכל סכום זהה אחרי עיגול. <code>requestId</code> נלקח מ-<code>x-vercel-id</code>, ואם אין, <code>crypto.randomUUID()</code>. ההודעה בתשובה מגיעה מ-<code>copy.ts</code>.</li>
+<li>☐ הרץ. צפוי: PASS.</li>
+<li>☐ Commit: <code>feat(hashavshevet): send route with row locks and outcome handling</code>.</li>
+</ol>
+
+<h3>משימה 7: routes ניהול</h3>
+<p><b>קבצים:</b> יצירה של <code>src/app/api/hashavshevet/companies/route.ts</code> (GET), <code>companies/[id]/route.ts</code> (PATCH), <code>mappings/route.ts</code> (GET, PATCH), <code>sends/route.ts</code> (GET, ו-<code>?count=awaiting</code>), <code>sends/[id]/resolve/route.ts</code> (POST) ו-<code>rows/[id]/unlock/route.ts</code> (POST). בדיקה: <code>src/app/api/hashavshevet/__tests__/admin-routes.test.ts</code>.</p>
+<ol>
+<li>☐ בדיקות:
+  <ul>
+  <li>admin שאינו super user מקבל 403 ב-PATCH, ב-resolve וב-unlock.</li>
+  <li>GET של sends פתוח ל-admin.</li>
+  <li>resolve עם <code>rejected</code> בלי note מחזיר 400.</li>
+  <li>resolve במעבר לא חוקי מחזיר 409, עם הודעה בעברית.</li>
+  <li>PATCH של <code>liveFrom</code> מעביר את התאריך ל-store כמו שהוא, ו-<code>null</code> מכבה את החברה.</li>
+  <li>unlock בלי סיבה מחזיר 400.</li>
+  </ul></li>
+<li>☐ הרץ. צפוי: FAIL. ☐ מימוש, עם <code>requireSuperUser</code> ו-<code>requireAdminOrSuperUser</code> לפי טבלת ההרשאות ב-§9. ☐ הרץ. צפוי: PASS.</li>
+<li>☐ Commit: <code>feat(hashavshevet): admin routes for companies, mappings, sends</code>.</li>
+</ol>
+
+<h3>משימות 8–13: בונה לכל ייצוא</h3>
+<p>אותה תבנית בכל אחת משש המשימות. <b>כלל ברזל: מעבירים קוד, לא כותבים אותו מחדש.</b> השאילתות, הצבירות, החלוקות, הדריסות והשגיאות החוסמות עוברים כמו שהם.</p>
+<ol>
+<li>☐ <b>בדיקת אפיון לפני שנוגעים בקוד.</b> כותבים בדיקה ל-route הנוכחי. ה-DB מדומה ברמת פונקציות ה-data-access ש-route קורא להן. אם ה-route ניגש ל-<code>db</code> ישירות, קודם מוציאים את השאילתות לפונקציה <code>load…Data(params)</code> בקובץ הבונה, והבדיקה מדמה אותה. הבדיקה מריצה fixture סינתטי שמכסה את הכללים של אותו ייצוא (רשימה בכל משימה), ומשווה את שורות האקסל (<code>XLSX.utils.sheet_to_json(..., {header:1})</code>) לערכים צפויים. היא צריכה לעבור על הקוד הנוכחי. אם לא, זה באג באפיון, ומתקנים את הבדיקה ולא את ה-route.</li>
+<li>☐ <b>הוצאה.</b> <code>src/lib/hashavshevet/builders/&lt;x&gt;.ts</code> מייצא <code>load&lt;X&gt;Data(params)</code>, <code>build&lt;X&gt;Rows(data): { rows: BuiltRow[]; blockingErrors: string[] }</code> ו-<code>&lt;x&gt;Export: ExportDefinition</code>. ה-route של האקסל עובר לבנות מ-<code>row.display</code>. כל עמודה ב-<code>display</code> היא עמודת אקסל, לפי הסדר.</li>
+<li>☐ <b>בדיקת האפיון עוברת בלי שום שינוי בה.</b> זו בדיקת ההתאמה של §11.1.</li>
+<li>☐ <b>בדיקות לבונה:</b> <code>rowKey</code> לפי spec §5, <code>companyId</code> נכון, ו-<code>apiRow</code> לפי §8, כולל פורמט ותרגום סוג מסמך.</li>
+<li>☐ <b>רישום ב-<code>EXPORTS</code>.</b> הרץ <code>npm test</code> ו-<code>npx tsc --noEmit</code>.</li>
+<li>☐ <b>בדיקת התאמה מול נתוני prod.</b> הרץ <code>npx dotenv -e .env -- npx tsx scripts/hashavshevet-parity.ts &lt;exportType&gt; &lt;paramsJson&gt; &lt;old.xlsx&gt;</code>. את <code>old.xlsx</code> מורידים מהאתר החי לפני ה-deploy, לתיקיית scratch, ו<b>לא עושים לו commit</b>. הריפו ציבורי. צפוי: <code>0 differences</code>. את הסקריפט כותבים במשימה 8 ומשתמשים בו בכל השש.</li>
+<li>☐ Commit: <code>refactor(hashavshevet): extract &lt;x&gt; row builder, excel unchanged</code>.</li>
+</ol>
+<table>
+<tr><th>#</th><th>ייצוא / route מקור</th><th>בונה</th><th>כללים שה-fixture חייב לכסות</th><th>rowKey · companyId · plugin</th></tr>
+<tr><td>8</td><td>תמלוגים ושיווק / <code>franchisee-billing/hashavshevet-export</code></td><td><code>royalties.ts</code>. יש כבר <code>buildHashavshevetExportRows</code> ובדיקות. עוטפים אותו, לא משכפלים</td><td>הבדיקות הקיימות עוברות. סדר <code>ACCOUNT_ORDER</code>, פריטים <code>הכנסותת</code>/<code>שיווק</code>, סוג מסמך 11. <b>גם</b> <code>scripts/hashavshevet-parity.ts</code></td><td><code>franchiseeId|YYYY-MM|itemType</code> · חברת המותג · <code>imovein</code></td></tr>
+<tr><td>9</td><td>עמלות ספקים / <code>reports/hashavshevet/export</code></td><td><code>supplier-commissions.ts</code></td><td>צבירה לפי ספק×זכיין×תקופה, ספק בלי <code>hashavshevetCode</code> חוסם, שער התדירות, פריט <code>עמלות &lt;זכיין&gt;</code> או <code>hashavshevetItemKey</code>, עיגול</td><td><code>supplierId|franchiseeId|periodStart|periodEnd</code> · חברת המותג של הזכיין · <code>imovein</code></td></tr>
+<tr><td>10</td><td>עמלות לקוחות / <code>reports/hashavshevet/client-export</code></td><td><code>client-commissions.ts</code></td><td>חלוקה ב-2 ל-LATABLE/LATABLEMARK בחשבונית בלבד, דילוג על אפס, <code>resolveClientHashavshevetAccount</code>, מצב journal מול invoice</td><td><code>clientId|franchiseeId|periodStart|periodEnd|docKind</code> · חברת הזכיין · <code>imovein</code>. במצב journal (סוג 1) נוצרת שגיאה חוסמת <code>copy.unsupportedJournalDocType</code> עד אימות §13 #1</td></tr>
+<tr><td>11</td><td>חשבוניות לקוחות של זכיין / <code>franchisee-client-invoices-export</code></td><td><code>franchisee-client-invoices.ts</code></td><td>פריט <code>ארוחות</code>, <code>גיפט</code> ל-GIFTCARD, <code>ארוחותש</code> ל-LATABLEMARK, דריסות לפי מותג וזכיין, אחוז הנחה, סיבוס</td><td><code>clientId|franchiseeId|YYYY-MM|itemKey</code> · חברת הזכיין · <code>imovein</code></td></tr>
+<tr><td>12</td><td>פקודות יומן / <code>franchisee-journal-entries-export</code></td><td><code>journal-entries.ts</code></td><td>פיצול מע"מ (<code>מעמעס</code>), שתי שורות HEVER (עמלה ונגד), HAAT, <code>tenbisUsesJournalEntries()</code>, אסמכתא 2 = 4 ספרות אחרונות של החשבונית, עמודה K כמחרוזת</td><td><code>clientId|franchiseeId|YYYY-MM|lineKind</code> · חברת הזכיין · <code>movein</code>. <code>Reference=internalReference</code>, <code>TransType=JOURNAL_TRANS_TYPE</code></td></tr>
+<tr><td>13</td><td>חשבוניות עמלה מלקוחות / <code>clients/commission-invoices/export</code></td><td><code>client-commission-invoices.ts</code></td><td>חובה <code>עמלות מלקוחות</code> ו-<code>מעמתש</code>, זכות לכרטיס הלקוח לפי מותג, G = I/(1+vat), H = I−G, פרטים "עמלה &lt;חודש&gt;", K = הקצאה</td><td><code>clientDocumentId</code> · חברת הזכיין · <code>movein</code></td></tr>
+</table>
+
+<h3>משימה 14: כפתור וחלון תצוגה מקדימה, בשש הנקודות</h3>
+<p><b>קבצים:</b> יצירה של <code>src/components/hashavshevet/send-button.tsx</code>, <code>preview-dialog.tsx</code> ו-<code>src/queries/hashavshevet.ts</code>. שינוי של שש נקודות הייצוא: <code>admin/reports/hashavshevet/page.tsx</code>, <code>components/franchisee-billing-export.tsx</code>, <code>admin/clients/reconciliation/page.tsx</code> (שלושה ייצואים), <code>admin/clients/commission-invoices/page.tsx</code>. בדיקה: <code>src/components/hashavshevet/__tests__/preview-dialog.test.tsx</code>.</p>
+<p><b>מייצר:</b> <code>&lt;HashavshevetSendButton exportType params disabledReason? /&gt;</code>, ו-hooks: <code>usePreviewMutation</code>, <code>useSendMutation</code>, <code>useAwaitingCount</code>. ה-<code>params</code> הם בדיוק אותם פרמטרים שכפתור האקסל הקיים שולח.</p>
+<ol>
+<li>☐ בדיקות רכיב:
+  <ul>
+  <li>כפתור "שלח" מושבת כשאין שורות <code>new</code>, וכשיש <code>blockingErrors</code>.</li>
+  <li>ה-POST של השליחה כולל <code>expected</code> שתואם לשורות ה-<code>new</code>.</li>
+  <li>כש-409 עם drift, מוצגת ההודעה <code>copy.dataChanged</code> וכפתור "רענן".</li>
+  <li>אחרי הצלחה מוצגת ההודעה <code>copy.sentAwaitingApproval</code>, עם הסה"כ ומספר הבקשות.</li>
+  <li>מוצגים ארבעה מצבים.</li>
+  </ul></li>
+<li>☐ הרץ. צפוי: FAIL. ☐ מימוש. החלון הוא <code>Dialog dir="rtl"</code>, הטבלה מקובצת לפי חברה, והסטטוסים בצבע לפי spec §7. ☐ הרץ. צפוי: PASS.</li>
+<li>☐ הוסף את הכפתור <b>לצד</b> כל כפתור אקסל. בשלב הזה האקסל נשאר. אצל זכיין בלי חברה מעבירים <code>disabledReason={copy.noCompany}</code>.</li>
+<li>☐ אימות בדפדפן מול השרת המקומי. המטרה: לוודא שהחלון נפתח ומציג קבוצות וסטטוסים אמיתיים. <b>לא לוחצים "שלח"</b>. אין חברה מופעלת, ולכן "שלח" יהיה מושבת עם <code>not_live</code>.</li>
+<li>☐ Commit: <code>feat(hashavshevet): send button and preview dialog at all six export points</code>.</li>
+</ol>
+
+<h3>משימה 15: מסך הגדרות ומסך שליחות</h3>
+<p><b>קבצים:</b> יצירה של <code>src/app/(protected)/admin/hashavshevet/page.tsx</code> ו-<code>sends/page.tsx</code>. שינוי של <code>src/components/sidebar/sidebar.tsx</code>. בדיקה: <code>src/app/(protected)/admin/hashavshevet/__tests__/pages.test.tsx</code>.</p>
+<ol>
+<li>☐ בדיקות:
+  <ul>
+  <li>"הפעל שליחה" פותח חלון אישור, ובו תאריך שברירת המחדל שלו היא היום, בפורמט מקומי, לא <code>toISOString</code>. האישור קורא ל-PATCH עם <code>liveFrom</code>.</li>
+  <li>ברשימת "ממתינות לאישור" מוצגים שורות, סה"כ, ושני הכפתורים "אישרתי בחשבשבת" / "דחיתי".</li>
+  <li>"דחיתי" בלי הערה מושבת.</li>
+  <li>שליחה בסטטוס <code>unknown</code> מציגה "הגיע" / "לא הגיע".</li>
+  <li>כפתורי הניהול מוסתרים מ-admin שאינו super user.</li>
+  </ul></li>
+<li>☐ הרץ. צפוי: FAIL. ☐ מימוש. בתפריט הצד: קישור "חשבשבת" עם תג <code>useAwaitingCount</code>. ☐ הרץ. צפוי: PASS.</li>
+<li>☐ אימות בדפדפן: 14 חברות מוצגות, שלושה מותגים ושבעה זכיינים משויכים, ומסך השליחות ריק במצב "אין שליחות".</li>
+<li>☐ Commit: <code>feat(hashavshevet): settings and sends pages with approval queue</code>.</li>
+</ol>
+
+<h3>משימה 16: שליחה ראשונה מבוקרת והורדת האקסל</h3>
+<p><b>התנאי להתחלה:</b> משימות 1–15 ב-production, ו-<code>JOURNAL_TRANS_TYPE</code> הוחלף בקוד המכירות של רעות. ההחלפה היא commit של שורה אחת, עם הבדיקה של <code>format.test.ts</code> מעודכנת.</p>
+<ol>
+<li>☐ <b>לכל ייצוא ולכל חברה, לפי הסדר שרעות בוחרת:</b> הפעלת החברה, תצוגה מקדימה, שליחה קטנה (זכיין אחד, תקופה אחת). רעות מוודאת שהמנה בזמני, שהסה"כ תואם, ושגם חשבוניות נכנסו לזמני (§13 #8), ואז מאשרת או דוחה. כל ממצא נרשם ב-<code>docs/hashavshevet-api-experiments.html</code>.</li>
+<li>☐ <b>אימות §13 #1 ו-#2:</b> סוג מסמך 11 → 1, וחשבונית עם שתי שורות. אם מתברר שצריך שינוי, מעדכנים את <code>EXCEL_TO_API_DOCUMENT_ID</code> או את <code>documentKey</code>, בבדיקה ובקוד.</li>
+<li>☐ <b>תחילת החודש:</b> הסרת כפתורי האקסל מששת המסכים. ה-routes נשארים. כלל הביטחון חל: ייצוא שלא עבר שליחה ראשונה תקינה משאיר את כפתור האקסל שלו עד החודש הבא.</li>
+<li>☐ עדכון הזיכרון (<code>reference-hashavshevet-hconnect-api.md</code>) ויומן הניסויים.</li>
+<li>☐ Commit: <code>feat(hashavshevet): go live, excel export removed from UI</code>.</li>
+</ol>
+
+<h2 id="coverage">כיסוי ה-spec</h2>
+<table>
+<tr><th>סעיף ב-spec</th><th>משימה</th></tr>
+<tr><td>§2 החלטות 1, 3 (אותם חוקים, תשתית אחת)</td><td>8–13 (אפיון והתאמה), 4 (registry)</td></tr>
+<tr><td>§2 החלטות 2, 8 (הורדת האקסל וכלל ביטחון)</td><td>16</td></tr>
+<tr><td>§2 החלטות 4, 7 (בלי DEMO, תאריך התחלה)</td><td>1 (<code>liveFrom</code>), 3 (<code>not_live</code>/<code>before_live</code>), 15, 16</td></tr>
+<tr><td>§2 החלטות 5, 6 (נעילה לפי שורה, חסימה)</td><td>1 (אינדקס), 4, 6, 7 (unlock)</td></tr>
+<tr><td>§2 החלטה 9 (זמני ואישור)</td><td>1 (<code>requiresApproval</code>), 4 (<code>resolveSend</code>), 6, 15</td></tr>
+<tr><td>§4 מיפוי</td><td>1 (seed)</td></tr>
+<tr><td>§5 מודל נתונים</td><td>1</td></tr>
+<tr><td>§6 בוני שורות</td><td>8–13</td></tr>
+<tr><td>§7 זרימה</td><td>5, 6, 7</td></tr>
+<tr><td>§8 מיפוי ל-API</td><td>3, 8–13</td></tr>
+<tr><td>§9 מסכים והרשאות</td><td>14, 15, 7</td></tr>
+<tr><td>§10 שגיאות ומעקב</td><td>2, 3 (copy), 6</td></tr>
+<tr><td>§11 בדיקות</td><td>בכל המשימות. ההתאמה במשימות 8–13</td></tr>
+<tr><td>§13 שאלות פתוחות</td><td>3 (קבועים), 10 (חסימת journal), 16 (אימות)</td></tr>
+</table>
+
+</div></body></html>

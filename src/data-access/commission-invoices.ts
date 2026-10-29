@@ -758,6 +758,8 @@ export interface CommissionInvoiceExportRow {
   franchiseeId: string;
   franchiseeName: string;
   brandId: string | null;
+  /** The franchisee's own Hashavshevet company; null = unmapped. */
+  franchiseeHashavshevetCompanyId: string | null;
 }
 
 /**
@@ -798,6 +800,7 @@ export async function getCommissionInvoicesForExport(
       franchiseeId: franchisee.id,
       franchiseeName: franchisee.name,
       brandId: franchisee.brandId,
+      franchiseeHashavshevetCompanyId: franchisee.hashavshevetCompanyId,
     })
     .from(clientDocument)
     .innerJoin(franchisee, eq(franchisee.id, clientDocument.franchiseeId))
@@ -829,6 +832,7 @@ export async function getCommissionInvoicesForExport(
       franchiseeId: r.franchiseeId,
       franchiseeName: r.franchiseeName,
       brandId: r.brandId ?? null,
+      franchiseeHashavshevetCompanyId: r.franchiseeHashavshevetCompanyId ?? null,
     });
   }
 
