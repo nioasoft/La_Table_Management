@@ -44,6 +44,8 @@ export const SEED_BRAND_MAP: Record<string, string> = {
   MINNA_TOMEI: "smminna",
   VINNI: "fv",
   KING_KONG: "smminna_2024",
+  // Same entity as Vini Azrieli — billed through Vini's brand company (user, 2026-10-29).
+  NATANZON: "fv",
 };
 
 /** exact franchisee.name -> company file_name */

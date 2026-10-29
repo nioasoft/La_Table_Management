@@ -13,6 +13,8 @@ describe("hashavshevet seed map", () => {
       MINNA_TOMEI: "smminna",
       VINNI: "fv",
       KING_KONG: "smminna_2024",
+      // Natanzon is billed through Vini's brand-management company (user, 2026-10-29).
+      NATANZON: "fv",
     });
     expect(SEED_FRANCHISEE_MAP['קינג קונג מוצקין בע"מ']).toBe(
       "kingkong_hadera_2024_2026",
