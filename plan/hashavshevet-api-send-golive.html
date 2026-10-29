@@ -59,7 +59,7 @@ details summary{cursor:pointer;font-weight:600}
 
 <h2>3. צ'קליסט לעלייה לאוויר (משימה 16)</h2>
 <ol>
-<li>☐ להכניס ל-Vercel: <code>HCONNECT_STATION</code>, <code>HCONNECT_PASSPORT_ID</code>, <code>HCONNECT_TOKEN</code> (ה-company נלקח מטבלת החברות, לא מ-env).</li>
+<li>☑ ב-Vercel (Production, כ-Secret): <code>HCONNECT_STATION</code>, <code>HCONNECT_PASSPORT_ID</code>, <code>HCONNECT_TOKEN</code> — נוספו 29/10. ה-company נלקח מטבלת החברות, לא מ-env. נכנסים לתוקף ב-deploy הבא.</li>
 <li>☐ להחליט על סעיף 1 ולתקן את סעיף 2.</li>
 <li>☐ בדיקת התאמה מול אקסל אמיתי לכל ייצוא: להוריד את האקסל מהאתר <b>לפני</b> ה-deploy, ואז <code>npx dotenv -e .env -- npx tsx scripts/hashavshevet-parity.ts &lt;exportType&gt; '&lt;params&gt;' &lt;old.xlsx&gt;</code> → צפוי 0 differences. לא לעשות commit לקבצי האקסל.</li>
 <li>☐ בדיקה בדפדפן של שלושת המסכים (לא בוצעה — צריך משתמש מחובר).</li>
