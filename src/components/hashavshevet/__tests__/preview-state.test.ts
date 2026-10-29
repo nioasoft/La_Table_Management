@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { copy, formatShekel, previewCopy, sendStatusLabels } from "@/lib/hashavshevet/copy";
 import {
+  displayCell,
   skippedNotice,
   blockingMessages,
   buildExpected,
@@ -275,5 +276,17 @@ describe("resolveView", () => {
 
   it("is loading before the first preview was requested", () => {
     expect(resolveView({ ...base, data: undefined })).toBe("loading");
+  });
+});
+
+describe("displayCell", () => {
+  it("rounds long computed numbers to two decimals; keeps short exact ones (e.g. a 4-decimal discount)", () => {
+    expect(displayCell(41212.883475)).toBe("41212.88");
+    expect(displayCell(1)).toBe("1");
+    expect(displayCell(5001)).toBe("5001");
+    expect(displayCell(15.2543)).toBe("15.2543");
+    expect(displayCell(1234.5)).toBe("1234.5");
+    expect(displayCell("012345678")).toBe("012345678");
+    expect(displayCell(undefined)).toBe("");
   });
 });

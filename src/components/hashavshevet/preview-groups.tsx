@@ -3,6 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatShekel, previewCopy } from "@/lib/hashavshevet/copy";
 import { cn } from "@/lib/utils";
 import {
+  displayCell,
   displayColumns,
   statusBadge,
   statusDetail,
@@ -40,7 +41,7 @@ function RowLine({ row, group, columns }: { row: ClientRow; group: ClientGroup; 
       <TableCell className="align-top tabular-nums whitespace-nowrap">{formatShekel(row.amount)}</TableCell>
       {columns.map((c) => (
         <TableCell key={c} className="align-top whitespace-nowrap">
-          {String(row.display[c] ?? "")}
+          {displayCell(row.display[c])}
         </TableCell>
       ))}
     </TableRow>

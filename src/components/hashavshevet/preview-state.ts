@@ -66,6 +66,18 @@ export function blockingMessages(data: ClientPreview): string[] {
   return [...data.blockingErrors, ...statusLines];
 }
 
+/**
+ * A preview cell. Long computed numbers (e.g. a royalty of 41212.883475) are
+ * rounded to two decimals for reading; values with up to four decimals are
+ * exact business values (e.g. the 15.2543 discount) and shown as they are.
+ * Display only — what is sent is built server-side.
+ */
+export function displayCell(value: string | number | undefined): string {
+  if (typeof value !== "number") return value ?? "";
+  const decimals = String(value).split(".")[1]?.length ?? 0;
+  return decimals > 4 ? value.toFixed(2) : String(value);
+}
+
 /** Rows with no Hashavshevet company are skipped (not blocking); say how many. */
 export function skippedNotice(data: ClientPreview): string | null {
   const skipped = data.groups.reduce(
