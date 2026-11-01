@@ -170,7 +170,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
     );
     expect(rows.map((r) => [r.rowKey, r.apiRow.itemkey, r.apiRow.price])).toEqual([
       ["client:c-GIFTCARD|fr-1|2026-09", "גיפט", "242.237"],
-      ["client:c-LATABLEMARK|fr-1|2026-09", "ארוחותש", "847.457"],
+      ["client:c-LATABLEMARK|fr-1|2026-09", "ארוחותש", "423.728"], // La Table halved: 500,
       ["client:c-TENBIS|fr-1|2026-09", "הכנסותנ", "508.474"],
       ["occasional:o-א|fr-1|2026-09", "הכנסותנ", "33.898"],
     ]);
@@ -227,9 +227,9 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       }),
     );
     expect(rows.map((r) => [r.amount, r.display["מחיר"], r.apiRow.price])).toEqual([
-      [1234.56, 1234.56, "1234.56"],
-      [501, 501, "501.00"],
-      [-100, -100, "-100.00"],
+      [1234.56, 1234.56, "1046.237"], // apiRow: net of the 15.2543 discount
+      [501, 501, "424.576"],
+      [-100, -100, "-84.746"],
     ]);
   });
 
