@@ -131,7 +131,7 @@ describe("buildJournalEntriesRows", () => {
       SuFCred1: "1046.25",
       AccountKeyCred2: "מעמעס",
       SuFCred2: "188.32",
-      Details: "ארוחות",
+      Description: "ארוחות",
     });
   });
 
@@ -162,7 +162,7 @@ describe("buildJournalEntriesRows", () => {
       SuFCred1: "-188.32",
       AccountKeyCred2: "מעמעס",
       SuFCred2: "-33.90",
-      Details: "עמלה",
+      Description: "עמלה",
       TaxAPINumber: "012345678",
     });
     expect(contra.amount).toBe(1234.57);
@@ -176,7 +176,7 @@ describe("buildJournalEntriesRows", () => {
       SuFDeb1: "1234.57",
       AccountKeyCred1: "אמריקן",
       SuFCred1: "1234.57",
-      Details: "מיון",
+      Description: "מיון",
     });
     expect(commission.apiRow.Reference).not.toBe(contra.apiRow.Reference);
   });

@@ -265,7 +265,8 @@ function apiRowOf(line: Line, rowKey: string, periodEnd: string): ApiRow {
     SuFCred1: apiMoney(h),
     AccountKeyCred2: i === null ? "" : VAT_ACCOUNT,
     SuFCred2: i === null ? "" : apiMoney(i),
-    Details: line.details,
+    // movein's "פרטים" is Description; Details is "הערות נוספות" (seen in Hashavshevet, 2026-11-01).
+    Description: line.details,
     // The allocation number goes as the exact string: some start with 0.
     TaxAPINumber: line.allocationNumber,
   };

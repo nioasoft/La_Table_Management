@@ -59,7 +59,7 @@ async function main() {
       SuFCred1: money(s.net),
       AccountKeyCred2: VAT_ACCOUNT,
       SuFCred2: money(vat),
-      Details: s.details,
+      Description: s.details,
       ...(s.allocation ? { TaxAPINumber: s.allocation } : {}),
     };
   });
