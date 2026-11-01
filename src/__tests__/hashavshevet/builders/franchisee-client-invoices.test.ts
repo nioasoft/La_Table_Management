@@ -137,7 +137,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       price: "242.24", // GIFTCARD: 19.2543 off
       DocumentID: "1",
       Reference: "2",
-      remarks: "ארוחות 09/26",
+      remarks: "גיפט קארד 09/26", // Reut 01/11/2026: gift card says so instead of ארוחות
     });
     expect(rows[0].apiRow).not.toHaveProperty("valueDate");
   });

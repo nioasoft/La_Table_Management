@@ -241,8 +241,12 @@ function toBuiltRow(entry: Entry, documentNumber: number, data: FranchiseeClient
     documentKey: rowKey,
     amount: entry.price,
     display,
-    // Reut, 01/11/2026: the invoice's הערות = "ארוחות" + the period as MM/YY.
-    apiRow: apiRowOf(entry, documentNumber, `ארוחות ${String(periodMonth).padStart(2, "0")}/${String(periodYear).slice(-2)}`),
+    // Reut, 01/11/2026: the invoice's הערות = "ארוחות" (gift card: "גיפט קארד") + the period as MM/YY.
+    apiRow: apiRowOf(
+      entry,
+      documentNumber,
+      `${entry.itemKey === ITEM_KEY_GIFTCARD ? "גיפט קארד" : "ארוחות"} ${String(periodMonth).padStart(2, "0")}/${String(periodYear).slice(-2)}`,
+    ),
     periodEnd: lastDayOfMonth(periodYear, periodMonth),
   };
 }
