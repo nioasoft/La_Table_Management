@@ -107,7 +107,7 @@ describe("buildClientCommissionInvoicesRows", () => {
   it("dates the row at the period's real last day", () => {
     const [row] = rowsOf({ periodMonth: 2, periodYear: 2028 });
     expect(row.periodEnd).toBe("2028-02-29");
-    expect(row.apiRow).toMatchObject({ ValueDate: "29/02/2028", DueDate: "29/02/2028", Details: "עמלה פברואר" });
+    expect(row.apiRow).toMatchObject({ ValueDate: "29/02/2028", DueDate: "29/02/2028", Description: "עמלה פברואר" });
   });
 
   it("shows the Excel's eleven columns with the Excel's values: serial dates, G and H split from I", () => {
@@ -136,7 +136,7 @@ describe("buildClientCommissionInvoicesRows", () => {
       SuFDeb1: "1046.25",
       SuFDeb2: "188.32",
       SuFCred1: "1234.57",
-      Details: "עמלה ספטמבר",
+      Description: "עמלה ספטמבר",
       TaxAPINumber: "012345678",
     });
   });
@@ -154,7 +154,7 @@ describe("buildClientCommissionInvoicesRows", () => {
       SuFDeb1: "50.84",
       SuFDeb2: "9.15",
       SuFCred1: "59.99",
-      Details: "עמלה ספטמבר",
+      Description: "עמלה ספטמבר",
     });
     expect(row.apiRow).not.toHaveProperty("Ref2");
     expect(row.apiRow).not.toHaveProperty("TaxAPINumber");

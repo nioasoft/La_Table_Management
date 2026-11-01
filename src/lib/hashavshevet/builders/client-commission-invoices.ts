@@ -141,7 +141,8 @@ function apiRowOf(line: Line, period: PeriodFacts): ApiRow {
     SuFDeb1: apiMoney(line.net),
     SuFDeb2: apiMoney(line.vat),
     SuFCred1: apiMoney(line.total),
-    Details: period.description,
+    // movein's פרטים is Description; Details lands in הערות נוספות (seen 01/11/2026).
+    Description: period.description,
     // The allocation number goes as the exact string: some start with 0.
     TaxAPINumber: line.allocationNumber,
   };
