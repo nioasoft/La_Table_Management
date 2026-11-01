@@ -116,7 +116,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
     expect(dec.periodEnd).toBe("2026-12-31");
   });
 
-  it("builds the imovein apiRow as exact strings, the discount with its four decimals", () => {
+  it("builds the imovein apiRow as exact strings: net price, no Discountprc (decimal 2.2 cannot carry 15.2543)", () => {
     const { rows } = buildFranchiseeClientInvoicesRows(
       data({ approved: [approved("CIBUS", 1234.5), approved("GIFTCARD", 300)] }),
     );
@@ -124,8 +124,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       accountKey: "חשבון CIBUS",
       itemkey: "ארוחות",
       Quantity: "1.000",
-      price: "1235.00",
-      Discountprc: "15.2543",
+      price: "1046.609",
       DocumentID: "1",
       Reference: "1",
     });
@@ -133,8 +132,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       accountKey: "חשבון GIFTCARD",
       itemkey: "גיפט",
       Quantity: "1.000",
-      price: "300.00",
-      Discountprc: "19.2543", // R21: never rounded to 2 decimals
+      price: "242.237", // GIFTCARD: 19.2543 off
       DocumentID: "1",
       Reference: "2",
     });
@@ -165,16 +163,16 @@ describe("buildFranchiseeClientInvoicesRows", () => {
         approved: [
           approved("GIFTCARD", 300, { clientItemKey: "ארוחותש" }),
           approved("LATABLEMARK", 1000, { clientItemKey: "ארוחותש" }),
-          approved("TENBIS", 500),
+          approved("TENBIS", 600),
         ],
         occasional: [occasional("א", 40)],
       } as Partial<FranchiseeClientInvoicesData>),
     );
-    expect(rows.map((r) => [r.rowKey, r.apiRow.itemkey, r.apiRow.Discountprc])).toEqual([
-      ["client:c-GIFTCARD|fr-1|2026-09", "גיפט", "19.2543"],
-      ["client:c-LATABLEMARK|fr-1|2026-09", "ארוחותש", "15.2543"],
-      ["client:c-TENBIS|fr-1|2026-09", "הכנסותנ", "15.2543"],
-      ["occasional:o-א|fr-1|2026-09", "הכנסותנ", "15.2543"],
+    expect(rows.map((r) => [r.rowKey, r.apiRow.itemkey, r.apiRow.price])).toEqual([
+      ["client:c-GIFTCARD|fr-1|2026-09", "גיפט", "242.237"],
+      ["client:c-LATABLEMARK|fr-1|2026-09", "ארוחותש", "847.457"],
+      ["client:c-TENBIS|fr-1|2026-09", "הכנסותנ", "508.474"],
+      ["occasional:o-א|fr-1|2026-09", "הכנסותנ", "33.898"],
     ]);
   });
 

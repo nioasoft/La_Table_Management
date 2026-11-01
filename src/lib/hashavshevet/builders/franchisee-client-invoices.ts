@@ -12,7 +12,7 @@ import {
 } from "@/data-access/occasional-clients";
 import { franchiseePeriodParams } from "@/schemas/hashavshevet";
 import { exportLabels } from "../copy";
-import { apiDiscountPct, apiDocumentId, apiMoney, apiQuantity, lastDayOfMonth } from "../format";
+import { apiDocumentId, apiNetPrice, apiQuantity, lastDayOfMonth } from "../format";
 import type { ExportDefinition } from "../registry";
 import type { ApiRow, BuiltRow } from "../types";
 
@@ -210,8 +210,7 @@ function apiRowOf(entry: Entry, documentNumber: number): ApiRow {
     accountKey: entry.accountKey,
     itemkey: entry.itemKey,
     Quantity: apiQuantity(1),
-    price: apiMoney(entry.price),
-    Discountprc: apiDiscountPct(entry.discountPct),
+    price: apiNetPrice(entry.price, entry.discountPct),
     DocumentID: documentId,
     Reference: String(documentNumber),
   };
