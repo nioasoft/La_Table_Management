@@ -112,7 +112,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
     const feb = buildFranchiseeClientInvoicesRows(data({ periodMonth: 2, periodYear: 2026 })).rows[0];
     expect(feb.rowKey).toBe("client:c-CIBUS|fr-1|2026-02");
     expect(feb.periodEnd).toBe("2026-02-28");
-    expect(march.apiRow.details).toBe("ארוחות 03/27");
+    expect(march.apiRow.remarks).toBe("ארוחות 03/27");
     const dec = buildFranchiseeClientInvoicesRows(data({ periodMonth: 12 })).rows[0];
     expect(dec.periodEnd).toBe("2026-12-31");
   });
@@ -128,7 +128,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       price: "1046.61",
       DocumentID: "1",
       Reference: "1",
-      details: "ארוחות 09/26", // Reut 01/11/2026: "ארוחות" + the period
+      remarks: "ארוחות 09/26", // Reut 01/11/2026: "ארוחות" + the period, in the invoice's הערות
     });
     expect(rows[1].apiRow).toEqual({
       accountKey: "חשבון GIFTCARD",
@@ -137,7 +137,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       price: "242.24", // GIFTCARD: 19.2543 off
       DocumentID: "1",
       Reference: "2",
-      details: "ארוחות 09/26",
+      remarks: "ארוחות 09/26",
     });
     expect(rows[0].apiRow).not.toHaveProperty("valueDate");
   });
