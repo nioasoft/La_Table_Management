@@ -30,11 +30,11 @@ describe("hashavshevet format", () => {
     expect(apiMoney(-0.001)).toBe("0.00");
   });
 
-  it("apiNetPrice applies the 4-decimal discount to the price, 3 decimals (imovein Discountprc is decimal 2.2)", () => {
-    expect(apiNetPrice(118289, 15.2543)).toBe("100244.841");
-    expect(apiNetPrice(2158, 19.2543)).toBe("1742.492");
-    expect(apiNetPrice(3312, 15.2543)).toBe("2806.778");
-    expect(apiNetPrice(100, 0)).toBe("100.000");
+  it("apiNetPrice applies the 4-decimal discount to the price, rounded once to agorot (imovein Discountprc is decimal 2.2)", () => {
+    expect(apiNetPrice(118289, 15.2543)).toBe("100244.84");
+    expect(apiNetPrice(2158, 19.2543)).toBe("1742.49");
+    expect(apiNetPrice(3312, 15.2543)).toBe("2806.78");
+    expect(apiNetPrice(100, 0)).toBe("100.00");
   });
 
   it("lastDayOfMonth returns the real last day, leap years included", () => {

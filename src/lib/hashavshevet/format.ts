@@ -18,12 +18,12 @@ export function apiQuantity(n: number): string {
 
 /**
  * imovein unit price after the Excel's "אחוז הנחה לפריט" (15.2543 / 19.2543, the VAT-share
- * trick), 3 decimals: Discountprc is decimal 2.2 and rejects 4 decimals, so the discount is
- * folded into the price and the net matches the Excel import (ruling R21, Reut 01/11/2026).
+ * trick): Discountprc is decimal 2.2 and rejects 4 decimals, so the discount is folded into
+ * the price (ruling R21, Reut 01/11/2026). Rounded once, to agorot, like Hashavshevet rounds the
+ * Excel line (quantity is always 1): 3 decimals would round twice (301.6947 → 301.695 → 301.70).
  */
 export function apiNetPrice(price: number, discountPct: number): string {
-  // ponytail: toFixed rounding on an exact x.xxx5 can go either way; Hashavshevet rounds the line to agorot anyway.
-  return (price * (1 - discountPct / 100)).toFixed(3);
+  return (price * (1 - discountPct / 100)).toFixed(2);
 }
 
 /** YYYY-MM-DD of the month's last day (month is 1-12), from local date parts: never toISOString. */
