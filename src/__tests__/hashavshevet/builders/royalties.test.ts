@@ -101,7 +101,7 @@ describe("buildRoyaltiesRows", () => {
       itemkey: "הכנסותת",
       Quantity: "1.000",
       price: "48228.83",
-      DocumentID: "1",
+      DocumentID: "2", // ח-ן קבלה = חשבונית מס/קבלה (Reut, 01/11/2026), not the Excel's 11 → 1
       Reference: "5000",
     });
   });
