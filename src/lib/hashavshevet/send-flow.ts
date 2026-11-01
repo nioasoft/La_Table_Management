@@ -2,10 +2,10 @@ import type { CompanyRecord, FinishSendResult, HashavshevetStore } from "@/data-
 import { chunkByDocument, HCONNECT_TIMEOUT_MS, type HConnectPlugin, type sendToHashavshevet } from "@/lib/hconnect";
 import { groupByCompanyId, type ClassifiedRow } from "./classify";
 import { apiErrorMessage, copy } from "./copy";
-import { roundCents } from "./format";
+import { apiDate, roundCents } from "./format";
 import type { ExportDefinition } from "./registry";
 import { errorLogFields } from "./route-helpers";
-import type { BuiltRow, ExportType, HConnectOutcome } from "./types";
+import type { ApiRow, BuiltRow, ExportType, HConnectOutcome } from "./types";
 
 /** Spec §7 send flow, one company at a time: lock rows → send chunks in order → record the outcome. */
 
@@ -227,6 +227,12 @@ function toResult(
  * before a chunk the time budget can't cover) and records the outcome. Throws LockConflictError
  * (nothing sent) when another send holds a row.
  */
+/** Invoices (imovein) are dated the last day of their period (Reut, 01/11/2026); a builder's own date wins. */
+export function sentApiRow(plugin: HConnectPlugin, row: BuiltRow): ApiRow {
+  if (plugin !== "imovein" || !row.periodEnd) return row.apiRow;
+  return { valueDate: apiDate(row.periodEnd), ...row.apiRow };
+}
+
 export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<CompanySendResult> {
   if (!hasTimeFor(ctx)) return notSent(ctx, plan);
   const { company, rows, chunks } = plan;
@@ -245,7 +251,7 @@ export async function sendCompany(ctx: SendContext, plan: CompanyPlan): Promise<
     for (const chunk of chunks) {
       if (!hasTimeFor(ctx)) break; // not started = unattempted: released below
       started++;
-      const outcome = await ctx.send(ctx.plugin, company.fileName, chunk.map((r) => r.apiRow));
+      const outcome = await ctx.send(ctx.plugin, company.fileName, chunk.map((r) => sentApiRow(ctx.plugin, r)));
       outcomes.push(outcome);
       if (outcome.kind !== "ok") break;
     }

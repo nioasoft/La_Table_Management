@@ -203,7 +203,7 @@ function occasionalEntries(data: FranchiseeClientInvoicesData, itemKeyOverride: 
  * API mapping (it is covered by a unit test) the row degrades to empty instead of
  * throwing, so the Excel always builds.
  */
-function apiRowOf(entry: Entry, documentNumber: number): ApiRow {
+function apiRowOf(entry: Entry, documentNumber: number, details: string): ApiRow {
   const documentId = apiDocumentId(DOCUMENT_TYPE);
   if (documentId === null) return {};
   return {
@@ -213,6 +213,7 @@ function apiRowOf(entry: Entry, documentNumber: number): ApiRow {
     price: apiNetPrice(entry.price, entry.discountPct),
     DocumentID: documentId,
     Reference: String(documentNumber),
+    details,
   };
 }
 
@@ -240,7 +241,8 @@ function toBuiltRow(entry: Entry, documentNumber: number, data: FranchiseeClient
     documentKey: rowKey,
     amount: entry.price,
     display,
-    apiRow: apiRowOf(entry, documentNumber),
+    // Reut, 01/11/2026: פרטים = "ארוחות" + the period as MM/YY.
+    apiRow: apiRowOf(entry, documentNumber, `ארוחות ${String(periodMonth).padStart(2, "0")}/${String(periodYear).slice(-2)}`),
     periodEnd: lastDayOfMonth(periodYear, periodMonth),
   };
 }
