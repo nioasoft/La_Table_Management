@@ -11,6 +11,11 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import { createDeleteBillingLedgerQuery } from "@/data-access/franchisee-billing-screen-queries";
 import { database } from "@/db";
 import * as schema from "@/db/schema";
+import {
+  billingExportMarkerColumns,
+  billingNotExported,
+  isBillingExported,
+} from "@/data-access/franchisee-billing-exported";
 
 async function main(): Promise<void> {
   const year = Number(process.argv[2]);
@@ -26,8 +31,7 @@ async function main(): Promise<void> {
       name: schema.franchisee.name,
       status: schema.franchiseeBilling.status,
       total: schema.franchiseeBilling.total,
-      royaltyExportBatchId: schema.franchiseeBilling.royaltyExportBatchId,
-      marketingExportBatchId: schema.franchiseeBilling.marketingExportBatchId,
+      ...billingExportMarkerColumns,
     })
     .from(schema.franchiseeBilling)
     .innerJoin(
@@ -42,8 +46,7 @@ async function main(): Promise<void> {
     );
 
   const approved = rows.filter((row) => row.status === "approved");
-  const isExported = (row: (typeof rows)[number]) =>
-    row.royaltyExportBatchId !== null || row.marketingExportBatchId !== null;
+  const isExported = (row: (typeof rows)[number]) => isBillingExported(row);
   const exported = approved.filter(isExported);
   const reopenable = approved.filter((row) => !isExported(row));
   console.log(
@@ -78,8 +81,7 @@ async function main(): Promise<void> {
           schema.franchiseeBilling.id,
           reopenable.map((row) => row.id),
         ),
-        isNull(schema.franchiseeBilling.royaltyExportBatchId),
-        isNull(schema.franchiseeBilling.marketingExportBatchId),
+        billingNotExported(),
       ),
     )
     .returning({ id: schema.franchiseeBilling.id });

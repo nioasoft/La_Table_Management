@@ -3,118 +3,52 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { createHashavshevetExportOperations } from "@/data-access/franchisee-billing-export";
-import type { FranchiseeBillingStatus } from "@/db/schema";
 import {
   isAuthError,
   requireAdminOrSuperUser,
 } from "@/lib/api-middleware";
+import {
+  BRAND_NOT_FOUND_MESSAGE,
+  HASHAVSHEVET_HEADERS,
+  HashavshevetExportError,
+  ITEM_LABELS,
+  ITEM_TYPES,
+  buildHashavshevetExportRows,
+  displayRow,
+  incompleteMessage,
+  summarizeBrandCompleteness,
+  type BrandCompleteness,
+  type BrandExportContext,
+  type HashavshevetExportInput,
+  type HashavshevetRow,
+} from "@/lib/hashavshevet/builders/royalties";
 import {
   franchiseeBillingHashavshevetQuerySchema,
   type FranchiseeBillingItemType,
   type FranchiseeBillingPeriod,
 } from "@/schemas/franchisee-billing-screen";
 
+// The row logic lives in the shared builder; these keep the route's public surface unchanged.
+export { HashavshevetExportError, buildHashavshevetExportRows, summarizeBrandCompleteness };
+export type {
+  BrandCompleteness,
+  BrandExportContext,
+  ExportBillingRow,
+  HashavshevetExportInput,
+  HashavshevetRow,
+  MissingFranchisee,
+} from "@/lib/hashavshevet/builders/royalties";
+
 export const runtime = "nodejs";
 
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-const ITEM_KEYS = {
-  royalty: "הכנסותת",
-  marketing: "שיווק",
-} as const;
-const ITEM_LABELS = {
-  royalty: "תמלוגים",
-  marketing: "שיווק",
-} as const;
-const ITEM_TYPES: readonly FranchiseeBillingItemType[] = [
-  "royalty",
-  "marketing",
-];
 const ZIP_FILE_NAME = "תמלוגים ושיווק זכיינים.zip";
 const EXPORT_BRAND_NAMES: Readonly<Record<string, string>> = {
   MINNA_TOMEI: "מינה טומאיי",
   VINNI: "פט ויני",
   KING_KONG: "קינג קונג",
 };
-const ACCOUNT_ORDER = [
-  "אושיבה",
-  "מינה עין שמר",
-  "מינה",
-  "אודון",
-  "מינה שרונה",
-  "ויני חדרה",
-  "טמפר",
-  "ויני כרמיאל",
-  "סידיוס",
-  "פט ויני ע",
-  "מיאמוטו",
-  "ויני רגבה",
-  "קינג ח",
-  "קינג קונג חורב",
-  "קינג כרמיאל",
-  "קינג ג",
-  "קינג עפולה",
-  "קינג ב",
-  "קינג מ",
-  "ק.ק מסעדה",
-] as const;
-const ACCOUNT_ORDER_INDEX: ReadonlyMap<string, number> = new Map(
-  ACCOUNT_ORDER.map((accountKey, index) => [accountKey, index]),
-);
-
-export interface ExportBillingRow {
-  readonly billingId: string | null;
-  readonly franchiseeId: string;
-  readonly franchiseeName: string;
-  readonly accountKeySnapshot: string | null;
-  readonly status: FranchiseeBillingStatus | null;
-  readonly noRevenueReason: string | null;
-  readonly royalty: string | null;
-  readonly marketing: string | null;
-  readonly total: string | null;
-}
-
-export interface BrandExportContext {
-  readonly brandId: string;
-  readonly brandCode: string;
-  readonly brandName: string;
-  readonly rows: readonly ExportBillingRow[];
-}
-
-export interface MissingFranchisee {
-  readonly franchiseeId: string;
-  readonly franchiseeName: string;
-}
-
-export interface BrandCompleteness {
-  readonly brandId: string;
-  readonly brandCode: string;
-  readonly brandName: string;
-  readonly readyCount: number;
-  readonly totalActive: number;
-  readonly canExport: boolean;
-  readonly missing: readonly MissingFranchisee[];
-}
-
-export interface HashavshevetRow {
-  readonly billingId: string;
-  readonly accountKey: string;
-  readonly accountName: "";
-  readonly itemKey: string;
-  readonly itemName: "";
-  readonly quantity: 1;
-  readonly price: number;
-  readonly documentType: "11";
-  readonly documentNumber: string;
-  readonly details: "";
-}
-
-export interface HashavshevetExportInput
-  extends FranchiseeBillingPeriod {
-  readonly brandId: string;
-  readonly itemType: FranchiseeBillingItemType;
-}
-
 export interface PersistExportInput extends HashavshevetExportInput {
   readonly batchId: string;
   readonly exportedAt: Date;
@@ -162,156 +96,12 @@ interface RequestContext {
   readonly startedAt: number;
 }
 
-export class HashavshevetExportError extends Error {
-  constructor(
-    readonly code: "not_found" | "incomplete" | "invalid_data",
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
-function hasNoRevenueReason(row: ExportBillingRow): boolean {
-  return Boolean(row.noRevenueReason?.trim());
-}
-
-function storedAmountIsZero(value: string | null): boolean {
-  if (value === null || value.trim() === "") return false;
-  const amount = Number(value);
-  return Number.isFinite(amount) && amount === 0;
-}
-
-function rowIsReady(row: ExportBillingRow): boolean {
-  if (row.status === "approved") return true;
-  return (
-    hasNoRevenueReason(row) &&
-    storedAmountIsZero(row.royalty) &&
-    storedAmountIsZero(row.marketing) &&
-    storedAmountIsZero(row.total)
-  );
-}
-
-export function summarizeBrandCompleteness(
-  context: BrandExportContext,
-): BrandCompleteness {
-  const missing = context.rows
-    .filter((row) => !rowIsReady(row))
-    .map((row) => ({
-      franchiseeId: row.franchiseeId,
-      franchiseeName: row.franchiseeName,
-    }));
-  const totalActive = context.rows.length;
-  return {
-    brandId: context.brandId,
-    brandCode: context.brandCode,
-    brandName: context.brandName,
-    readyCount: totalActive - missing.length,
-    totalActive,
-    canExport: totalActive > 0 && missing.length === 0,
-    missing,
-  };
-}
-
-function rowSortValue(row: ExportBillingRow): number {
-  const key = row.accountKeySnapshot?.trim() ?? "";
-  return ACCOUNT_ORDER_INDEX.get(key) ?? Number.MAX_SAFE_INTEGER;
-}
-
-function sortExportRows(
-  rows: readonly ExportBillingRow[],
-): ExportBillingRow[] {
-  return rows
-    .map((row, sourceIndex) => ({ row, sourceIndex }))
-    .sort((left, right) => {
-      const order = rowSortValue(left.row) - rowSortValue(right.row);
-      if (order !== 0) return order;
-      const nameOrder = left.row.franchiseeName.localeCompare(
-        right.row.franchiseeName,
-        "he",
-      );
-      return nameOrder || left.sourceIndex - right.sourceIndex;
-    })
-    .map(({ row }) => row);
-}
-
-function exportAmount(
-  row: ExportBillingRow,
-  itemType: FranchiseeBillingItemType,
-): number {
-  const stored = row[itemType];
-  const amount = stored === null ? Number.NaN : Number(stored);
-  if (!Number.isFinite(amount)) {
-    throw new HashavshevetExportError(
-      "invalid_data",
-      `סכום ${ITEM_LABELS[itemType]} של ${row.franchiseeName} אינו תקין`,
-    );
-  }
-  return amount;
-}
-
-export function buildHashavshevetExportRows(
-  context: BrandExportContext,
-  itemType: FranchiseeBillingItemType,
-): HashavshevetRow[] {
-  const approved = sortExportRows(
-    context.rows.filter((row) => row.status === "approved"),
-  );
-  const rows = approved.flatMap((row) => {
-    const price = exportAmount(row, itemType);
-    if (price === 0) return [];
-    const accountKey = row.accountKeySnapshot?.trim();
-    if (!row.billingId || !accountKey) {
-      throw new HashavshevetExportError(
-        "invalid_data",
-        `מפתח החשבון של ${row.franchiseeName} חסר בצילום האישור`,
-      );
-    }
-    return [{
-      billingId: row.billingId,
-      accountKey,
-      accountName: "" as const,
-      itemKey: ITEM_KEYS[itemType],
-      itemName: "" as const,
-      quantity: 1 as const,
-      price,
-      documentType: "11" as const,
-      documentNumber: "",
-      details: "" as const,
-    }];
-  });
-  return rows.map((row, index) => ({
-    ...row,
-    documentNumber: String(5000 + index),
-  }));
-}
-
 export function buildHashavshevetWorkbookBuffer(
   rows: readonly HashavshevetRow[],
 ): Buffer {
-  const headers = [
-    "מפתח חשבון",
-    "שם",
-    "מפתח פריט",
-    "שם פריט",
-    "כמות",
-    "מחיר",
-    "סוג המסמך",
-    "מספר מסמך",
-    "פרטים",
-  ];
   const data = [
-    headers,
-    ...rows.map((row) => [
-      row.accountKey,
-      row.accountName,
-      row.itemKey,
-      row.itemName,
-      row.quantity,
-      row.price,
-      row.documentType,
-      row.documentNumber,
-      row.details,
-    ]),
+    [...HASHAVSHEVET_HEADERS],
+    ...rows.map((row) => Object.values(displayRow(row))),
   ];
   const worksheet = XLSX.utils.aoa_to_sheet(data);
   worksheet["!cols"] = [
@@ -363,15 +153,9 @@ function exportPathname(
 }
 
 function incompleteError(completeness: BrandCompleteness): never {
-  const names = completeness.missing
-    .map((item) => item.franchiseeName)
-    .join(", ");
-  const detail = completeness.totalActive === 0
-    ? "אין זכיינים פעילים במותג"
-    : `חסרים: ${names}`;
   throw new HashavshevetExportError(
     "incomplete",
-    `לא ניתן לייצא ${completeness.brandName}: ${completeness.readyCount}/${completeness.totalActive}. ${detail}`,
+    incompleteMessage(completeness),
   );
 }
 
@@ -392,7 +176,7 @@ async function exportWithinTransaction(
   if (!context) {
     throw new HashavshevetExportError(
       "not_found",
-      "המותג שנבחר לא נמצא",
+      BRAND_NOT_FOUND_MESSAGE,
     );
   }
   const completeness = summarizeBrandCompleteness(context);

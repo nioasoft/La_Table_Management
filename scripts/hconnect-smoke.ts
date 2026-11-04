@@ -25,14 +25,16 @@ async function main() {
 
   const accounts = await sendToHashavshevet(
     "heshin",
+    process.env.HCONNECT_COMPANY!,
     TEST_ACCOUNTS.map((a) => ({ accountKey: a.accountKey, fullName: a.fullName }))
   );
   console.log(JSON.stringify(accounts, null, 2));
-  if (!accounts.ok) process.exit(1);
+  if (accounts.kind !== "ok") process.exit(1);
 
   const today = ddmmyyyy(new Date());
   const entries = await sendToHashavshevet(
     "movein",
+    process.env.HCONNECT_COMPANY!,
     TEST_ACCOUNTS.map((a) => ({
       TransType: "00",
       Reference: a.reference,
@@ -46,7 +48,7 @@ async function main() {
     }))
   );
   console.log(JSON.stringify(entries, null, 2));
-  process.exit(entries.ok ? 0 : 1);
+  process.exit(entries.kind === "ok" ? 0 : 1);
 }
 
 main().catch((e) => {

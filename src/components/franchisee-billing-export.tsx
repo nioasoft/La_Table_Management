@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { HashavshevetSendButton } from "@/components/hashavshevet/send-button";
+import { previewCopy } from "@/lib/hashavshevet/copy";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import {
@@ -240,6 +242,7 @@ function MissingFranchisees({
 }
 
 interface BrandExportCardProps {
+  readonly period: FranchiseeBillingPeriod;
   readonly brand: FranchiseeBillingExportBrandStatus;
   readonly pendingKey: string | null;
   readonly onDownload: (
@@ -250,6 +253,7 @@ interface BrandExportCardProps {
 }
 
 function BrandExportCard({
+  period,
   brand,
   pendingKey,
   onDownload,
@@ -272,21 +276,29 @@ function BrandExportCard({
           const key = `${brand.brandId}:${itemType}`;
           const pending = pendingKey === key;
           return (
-            <Button
-              key={itemType}
-              type="button"
-              size="sm"
-              variant={itemType === "royalty" ? "default" : "outline"}
-              disabled={gate.exportDisabled || pendingKey !== null}
-              onClick={() => onDownload(brand, itemType, label)}
-            >
-              {pending ? (
-                <Loader2 className="animate-spin" aria-hidden="true" />
-              ) : (
-                <Download aria-hidden="true" />
-              )}
-              {pending ? "מפיק קובץ…" : `ייצוא ${label}`}
-            </Button>
+            <Fragment key={itemType}>
+              <Button
+                type="button"
+                size="sm"
+                variant={itemType === "royalty" ? "default" : "outline"}
+                disabled={gate.exportDisabled || pendingKey !== null}
+                onClick={() => onDownload(brand, itemType, label)}
+              >
+                {pending ? (
+                  <Loader2 className="animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download aria-hidden="true" />
+                )}
+                {pending ? "מפיק קובץ…" : `ייצוא ${label}`}
+              </Button>
+              <HashavshevetSendButton
+                exportType="royalties"
+                size="sm"
+                label={previewCopy.sendLabel(label)}
+                disabled={gate.exportDisabled || pendingKey !== null}
+                params={{ year: period.year, month: period.month, brandId: brand.brandId, itemType }}
+              />
+            </Fragment>
           );
         })}
       </div>
@@ -440,6 +452,7 @@ export function FranchiseeBillingExport({
           {query.data.map((brand) => (
             <BrandExportCard
               key={brand.brandId}
+              period={period}
               brand={brand}
               pendingKey={pendingKey}
               onDownload={(selectedBrand, itemType, label) =>

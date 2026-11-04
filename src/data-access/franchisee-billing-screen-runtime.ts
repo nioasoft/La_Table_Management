@@ -3,6 +3,12 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import * as schema from "@/db/schema";
 import {
+  billingExportMarkerColumns,
+  billingExported,
+  billingNotExported,
+  isBillingExported,
+} from "@/data-access/franchisee-billing-exported";
+import {
   createDeleteBillingLedgerQuery,
   createDiscountContextQuery,
   createLatestSourceReviewsQuery,
@@ -355,21 +361,11 @@ async function billingWasExported(
 ): Promise<boolean> {
   const billing = schema.franchiseeBilling;
   const [row] = await database
-    .select({
-      royaltyExportedAt: billing.royaltyExportedAt,
-      royaltyExportBatchId: billing.royaltyExportBatchId,
-      marketingExportedAt: billing.marketingExportedAt,
-      marketingExportBatchId: billing.marketingExportBatchId,
-    })
+    .select(billingExportMarkerColumns)
     .from(billing)
     .where(eq(billing.id, billingId))
     .limit(1);
-  return Boolean(
-    row?.royaltyExportedAt ||
-    row?.royaltyExportBatchId ||
-    row?.marketingExportedAt ||
-    row?.marketingExportBatchId
-  );
+  return isBillingExported(row);
 }
 
 async function reopenAndReverseApproval(
@@ -499,10 +495,7 @@ async function readStaleRowContext(
       id: billing.id,
       periodYear: billing.periodYear,
       periodMonth: billing.periodMonth,
-      isExported: sql<boolean>`(
-        ${billing.royaltyExportBatchId} is not null
-        or ${billing.marketingExportBatchId} is not null
-      )`,
+      isExported: sql<boolean>`(${billingExported()})`,
     })
     .from(billing)
     .where(eq(billing.id, billingId))
@@ -530,8 +523,7 @@ async function acknowledgeStaleRow(
     .where(
       and(
         eq(schema.franchiseeBilling.id, billingId),
-        isNull(schema.franchiseeBilling.royaltyExportBatchId),
-        isNull(schema.franchiseeBilling.marketingExportBatchId),
+        billingNotExported(),
       ),
     )
     .returning({ id: schema.franchiseeBilling.id });
@@ -547,8 +539,7 @@ async function deleteStaleRow(
     .where(
       and(
         eq(schema.franchiseeBilling.id, billingId),
-        isNull(schema.franchiseeBilling.royaltyExportBatchId),
-        isNull(schema.franchiseeBilling.marketingExportBatchId),
+        billingNotExported(),
       ),
     )
     .returning({ id: schema.franchiseeBilling.id });

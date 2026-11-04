@@ -68,6 +68,7 @@ function franchisee(
     royaltyIncludeTips: false,
     tipsAbsenceAcknowledged: false,
     hashavshevetAccountKey: null,
+    hashavshevetCompanyId: null,
     status: "active",
     notes: null,
     hashavshevetItemKey: null,
@@ -512,7 +513,9 @@ function storedBilling(
     marketingRateSnapshot: "1.00",
     vatRateSnapshot: "0.1800",
     status: "draft",
+    royaltyExportedAt: null,
     royaltyExportBatchId: null,
+    marketingExportedAt: null,
     marketingExportBatchId: null,
     ...overrides,
   };

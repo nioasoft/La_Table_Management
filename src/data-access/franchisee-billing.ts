@@ -1,6 +1,11 @@
 import type { Franchisee, FranchiseeBillingStatus } from "@/db/schema";
 import * as schema from "@/db/schema";
-import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
+import {
+  billingExportMarkerColumns,
+  billingNotExported,
+  isBillingExported,
+} from "@/data-access/franchisee-billing-exported";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type { RoyaltyTier, RoyaltyTierBasis } from "@/lib/royalty";
 import { calculateRoyalty } from "@/lib/royalty";
@@ -33,10 +38,13 @@ export interface StoredFranchiseeBilling {
   readonly marketingRateSnapshot: string | null;
   readonly vatRateSnapshot: string | null;
   /**
-   * A row already carried into a Hashavshevet batch is invoiced. No upload
-   * rewrites it, however emphatically the overwrite was confirmed.
+   * A row already carried to Hashavshevet (Excel batch or approved API send)
+   * is invoiced. No upload rewrites it, however emphatically the overwrite
+   * was confirmed. See isBillingExported.
    */
+  readonly royaltyExportedAt: Date | null;
   readonly royaltyExportBatchId: string | null;
+  readonly marketingExportedAt: Date | null;
   readonly marketingExportBatchId: string | null;
 }
 
@@ -596,13 +604,9 @@ export function buildRoyaltyBillingPlan(
   };
 }
 
-/** A row carried into a Hashavshevet batch — invoiced, and no longer ours. */
-function isExported(billing: StoredFranchiseeBilling): boolean {
-  return (
-    billing.royaltyExportBatchId !== null ||
-    billing.marketingExportBatchId !== null
-  );
-}
+/** A row carried to Hashavshevet — invoiced, and no longer ours. */
+const isExported = (billing: StoredFranchiseeBilling) =>
+  isBillingExported(billing);
 
 export interface OverwriteConflict {
   readonly franchiseeNames: readonly string[];
@@ -701,10 +705,7 @@ export function createDraftBillingUpsertQuery(
   const { franchiseeBilling } = schema;
   const excluded = (column: { readonly name: string }) =>
     excludedColumn(column);
-  const notExported = and(
-    isNull(franchiseeBilling.royaltyExportBatchId),
-    isNull(franchiseeBilling.marketingExportBatchId),
-  );
+  const notExported = billingNotExported();
   return database
     .insert(franchiseeBilling)
     .values(draftInsertValues(draft))
@@ -841,9 +842,7 @@ async function readExistingBillings(
         schema.franchiseeBilling.marketingRateSnapshot,
       vatRateSnapshot: schema.franchiseeBilling.vatRateSnapshot,
       status: schema.franchiseeBilling.status,
-      royaltyExportBatchId: schema.franchiseeBilling.royaltyExportBatchId,
-      marketingExportBatchId:
-        schema.franchiseeBilling.marketingExportBatchId,
+      ...billingExportMarkerColumns,
     })
     .from(schema.franchiseeBilling)
     .where(

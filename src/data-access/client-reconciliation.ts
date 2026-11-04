@@ -514,6 +514,9 @@ export async function getApprovedComparisonsForExport(
   sessionId: string
 ): Promise<
   Array<{
+    franchiseeId: string;
+    /** The franchisee's own Hashavshevet company; null = unmapped. */
+    hashavshevetCompanyId: string | null;
     franchiseeName: string;
     franchiseeCode: string;
     franchiseeBrandId: string | null;
@@ -525,6 +528,8 @@ export async function getApprovedComparisonsForExport(
 > {
   return database
     .select({
+      franchiseeId: franchisee.id,
+      hashavshevetCompanyId: franchisee.hashavshevetCompanyId,
       franchiseeName: franchisee.name,
       franchiseeCode: franchisee.code,
       franchiseeBrandId: franchisee.brandId,
