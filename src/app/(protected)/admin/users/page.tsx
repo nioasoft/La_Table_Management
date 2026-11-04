@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import type { User, UserRole, UserStatus } from "@/db/schema";
 import { PermissionsEditor } from "@/components/permissions-editor";
+import { AddUserDialog } from "@/components/add-user-dialog";
 import { he } from "@/lib/translations/he";
 
 interface UserWithExtras extends User {
@@ -462,6 +463,7 @@ export default function AdminUsersPage() {
             <RefreshCw className="me-2 h-4 w-4" />
             {he.common.refresh}
           </Button>
+          <AddUserDialog />
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} dir="rtl">

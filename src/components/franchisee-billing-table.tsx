@@ -47,8 +47,8 @@ interface FranchiseeBillingTableProps {
 }
 
 const currencyColumns = [
-  ["grossBase", "מחזור ברוטו"],
-  ["netBase", "מחזור נטו"],
+  ["grossBase", "מחזור כולל מע״מ"],
+  ["netBase", "מחזור לפני מע״מ"],
 ] as const;
 
 interface BrandTotals {

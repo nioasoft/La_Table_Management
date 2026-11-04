@@ -50,8 +50,8 @@ const fieldLabels: Readonly<Record<string, string>> = {
   receipts: "תקבולים",
   tips: "טיפים",
   includeTips: "הכללת טיפים",
-  grossBase: "מחזור ברוטו",
-  netBase: "מחזור נטו",
+  grossBase: "מחזור כולל מע״מ",
+  netBase: "מחזור לפני מע״מ",
   tierRate: "תעריף מדרגה",
   discountRatePoints: "דחייה בנקודות אחוז",
   effectiveRate: "תעריף לאחר דחייה",
@@ -101,7 +101,7 @@ function differenceValue(field: string, value: unknown): ReactNode {
     return <BillingNumber value={value} kind={kind} />;
   }
   if (field === "tierBasisSnapshot") {
-    return value === "gross" ? "ברוטו" : value === "net" ? "נטו" : "לא זמין";
+    return value === "gross" ? "כולל מע״מ" : value === "net" ? "לפני מע״מ" : "לא זמין";
   }
   return (
     <span

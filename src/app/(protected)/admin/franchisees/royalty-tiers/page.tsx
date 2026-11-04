@@ -323,7 +323,7 @@ export default function FranchiseeRoyaltyTiersPage() {
                     )}
                   </TableCell>
                   <TableCell>
-                    {row.royaltyTierBasis === "net" ? "נטו" : "ברוטו"}
+                    {row.royaltyTierBasis === "net" ? "לפני מע״מ" : "כולל מע״מ"}
                   </TableCell>
                   <TableCell>
                     {row.marketingFeeRate === null

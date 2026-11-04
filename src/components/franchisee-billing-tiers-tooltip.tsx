@@ -90,7 +90,7 @@ export function FranchiseeBillingTiersTooltip({
         ) : (
           <>
             <p className="font-semibold">
-              מדרגות תמלוגים · לפי מחזור {tierBasis === "net" ? "נטו" : "ברוטו"}
+              מדרגות תמלוגים · לפי מחזור {tierBasis === "net" ? "לפני מע״מ" : "כולל מע״מ"}
             </p>
             <ul className="space-y-0.5">
               {tiers.map((tier, index) => (
