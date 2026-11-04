@@ -148,12 +148,50 @@ describe("buildRoyaltyBillingPlan", () => {
     });
   });
 
-  it("blocks every row when two rows resolve to the same franchisee", () => {
+  it("sums two differently named rows that resolve to the same franchisee", () => {
     const plan = buildRoyaltyBillingPlan({
       rows: [
-        revenueRow(),
-        revenueRow({ branchName: "ויני יהוד" }),
+        revenueRow({ receipts: 782_578.95, tips: 0 }),
+        revenueRow({ branchName: "Vivian יהוד", receipts: 9_894.8, tips: 0 }),
       ],
+      franchisees: [franchisee({ aliases: ["Vivian יהוד"] })],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.anomalies).toEqual([]);
+    expect(plan.drafts).toHaveLength(1);
+    expect(plan.drafts[0]).toMatchObject({
+      franchiseeId: "franchisee-1",
+      receipts: 792_473.75,
+      tips: 0,
+    });
+    expect(plan.matchedFranchiseeIds).toEqual(["franchisee-1"]);
+  });
+
+  it("adds a row assigned by hand to a franchisee another row already matched", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [
+        revenueRow({ receipts: 100, tips: 10 }),
+        revenueRow({ branchName: "מטבח ללא שם", receipts: 50, tips: 5 }),
+      ],
+      franchisees: [franchisee()],
+      rowOverrides: [{ rowIndex: 1, franchiseeId: "franchisee-1" }],
+      existingBillings: [],
+      sourceFileId: "file-1",
+      vat: 0.18,
+      period: PERIOD,
+    });
+
+    expect(plan.anomalies).toEqual([]);
+    expect(plan.drafts[0]).toMatchObject({ receipts: 150, tips: 15 });
+  });
+
+  it("blocks the same branch name appearing twice", () => {
+    const plan = buildRoyaltyBillingPlan({
+      rows: [revenueRow(), revenueRow()],
       franchisees: [franchisee()],
       existingBillings: [],
       sourceFileId: "file-1",

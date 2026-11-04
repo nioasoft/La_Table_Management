@@ -364,27 +364,52 @@ function validateResolvedRow(resolved: ResolvedRevenueRow): BillingAnomaly[] {
   ];
 }
 
-function addDuplicateAnomaly(
-  resolved: ResolvedRevenueRow,
+function sumAmounts(values: readonly (number | null)[]): number {
+  return Math.round(values.reduce<number>((sum, value) => sum + (value ?? 0), 0) * 100) / 100;
+}
+
+/**
+ * Rows only reach a franchisee through an exact name/alias/code or a hand
+ * assignment, so two differently named rows on one franchisee are a declared
+ * decision — a kitchen operating inside the restaurant (Vivian inside VINNI
+ * יהוד) — and are billed as one. The same name twice is a duplicated row, not
+ * a second kitchen, and still blocks every copy.
+ */
+function combineRowsOfOneFranchisee(
   rows: readonly ResolvedRevenueRow[],
-): ResolvedRevenueRow {
-  const id = resolved.franchisee?.id;
-  if (!id || rows.filter((entry) => entry.franchisee?.id === id).length < 2) {
-    return resolved;
-  }
-  return {
-    ...resolved,
-    anomalies: [
-      ...resolved.anomalies,
-      anomaly(
-        "duplicate_franchisee",
-        resolved.row,
-        resolved.rowIndex,
-        `יותר משורה אחת בקובץ משויכת לזכיין "${resolved.franchisee?.name}"`,
-        id,
-      ),
-    ],
-  };
+): ResolvedRevenueRow[] {
+  const groupOf = (id: string) => rows.filter((entry) => entry.franchisee?.id === id);
+  return rows.flatMap((entry) => {
+    const id = entry.franchisee?.id;
+    const group = id ? groupOf(id) : [entry];
+    if (group.length < 2) return [entry];
+    const names = new Set(group.map(({ row }) => row.branchName.trim()));
+    if (names.size < group.length) {
+      return [{
+        ...entry,
+        anomalies: [
+          ...entry.anomalies,
+          anomaly(
+            "duplicate_franchisee",
+            entry.row,
+            entry.rowIndex,
+            `יותר משורה אחת בקובץ משויכת לזכיין "${entry.franchisee?.name}"`,
+            id,
+          ),
+        ],
+      }];
+    }
+    if (group[0] !== entry) return [];
+    return [{
+      ...entry,
+      row: {
+        ...entry.row,
+        branchName: group.map(({ row }) => row.branchName).join(" + "),
+        receipts: sumAmounts(group.map(({ row }) => row.receipts)),
+        tips: sumAmounts(group.map(({ row }) => row.tips)),
+      },
+    }];
+  });
 }
 
 function buildDraft(
@@ -550,15 +575,10 @@ export function buildRoyaltyBillingPlan(
       input.singleBranch,
     ),
   );
-  const resolved = matched.map((entry) =>
-    addDuplicateAnomaly(
-      {
-        ...entry,
-        anomalies: [...entry.anomalies, ...validateResolvedRow(entry)],
-      },
-      matched,
-    ),
-  );
+  const resolved = combineRowsOfOneFranchisee(matched).map((entry) => ({
+    ...entry,
+    anomalies: [...entry.anomalies, ...validateResolvedRow(entry)],
+  }));
   const candidates = resolved.flatMap((entry) => {
     const draft = buildDraft(entry, input);
     return draft ? [{ entry, draft }] : [];
