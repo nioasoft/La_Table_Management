@@ -50,13 +50,15 @@ async function main() {
     throw new Error("Demo invoices run only against the demo company");
   }
 
-  const items = await sendToHashavshevet("itemin", ITEMS);
-  console.log("itemin:", JSON.stringify(items.body));
-  if (!items.ok) process.exit(1);
+  const company = process.env.HCONNECT_COMPANY!;
+  const items = await sendToHashavshevet("itemin", company, ITEMS);
+  console.log("itemin:", JSON.stringify(items));
+  if (items.kind !== "ok") process.exit(1);
 
   const today = ddmmyyyy(new Date());
   const invoices = await sendToHashavshevet(
     "imovein",
+    company,
     LINES.map((l) => ({
       accountKey: l.accountKey,
       Reference: l.reference,
@@ -69,8 +71,8 @@ async function main() {
       ...(l.allocation ? { Assignmentnumber: l.allocation } : {}),
     }))
   );
-  console.log("imovein:", JSON.stringify(invoices.body));
-  process.exit(invoices.ok ? 0 : 1);
+  console.log("imovein:", JSON.stringify(invoices));
+  process.exit(invoices.kind === "ok" ? 0 : 1);
 }
 
 main().catch((e) => {

@@ -49,12 +49,14 @@ import {
   Coins,
   Handshake,
   Tag,
+  Send,
 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
 import { he } from "@/lib/translations/he";
 import { useSidebar } from "./sidebar-context";
 import type { UserRole } from "@/db/schema";
 import { useState } from "react";
+import { useAwaitingCount } from "@/queries/hashavshevet";
 
 interface NavChild {
   label: string;
@@ -119,6 +121,10 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
   });
 
   const pendingUsersCount = pendingUsersData?.count || 0;
+
+  // Hashavshevet sends waiting for Reut's approval
+  const { data: awaitingSendsData } = useAwaitingCount(isSuperUserOrAdmin);
+  const awaitingSendsCount = awaitingSendsData || 0;
 
   const handleSignOut = async () => {
     await authClient.signOut();
@@ -270,6 +276,24 @@ export function Sidebar({ userRole, userName, userEmail, mobile }: SidebarProps)
                 label: "עמלות ספקים",
                 href: "/admin/reports/supplier-commission",
                 icon: <Coins className="h-4 w-4" />,
+              },
+            ],
+          },
+          {
+            label: he.sidebar.navigation.hashavshevet,
+            icon: <Send className="h-5 w-5" />,
+            badge: awaitingSendsCount > 0 ? awaitingSendsCount : null,
+            children: [
+              {
+                label: he.sidebar.subNavigation.hashavshevetSends,
+                href: "/admin/hashavshevet/sends",
+                icon: <CheckCircle className="h-4 w-4" />,
+                badge: awaitingSendsCount > 0 ? awaitingSendsCount : null,
+              },
+              {
+                label: he.sidebar.subNavigation.hashavshevetSettings,
+                href: "/admin/hashavshevet",
+                icon: <Settings className="h-4 w-4" />,
               },
             ],
           },

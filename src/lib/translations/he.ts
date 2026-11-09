@@ -3286,6 +3286,7 @@ export const he = {
       archive: "ארכיון",
       files: "קבצים",
       brandManagement: "ניהול מותגים",
+      hashavshevet: "חשבשבת",
     },
 
     // Sub-navigation items
@@ -3316,6 +3317,8 @@ export const he = {
       filesReport: "ניהול קבצים",
       supplierFilesReport: "נתוני קבצי ספקים",
       hashavshevetExport: "ייצוא לחשבשבת",
+      hashavshevetSends: "שליחות לחשבשבת",
+      hashavshevetSettings: "הגדרות חשבשבת",
       generalReports: "דוחות כלליים",
 
       // Settings

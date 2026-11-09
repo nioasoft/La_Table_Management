@@ -38,6 +38,7 @@ import { getPeriodByKey } from "@/lib/settlement-periods";
 import { formatDateAsLocal } from "@/lib/date-utils";
 import { formatCurrency, formatNumber } from "@/lib/report-utils";
 import { toast } from "sonner";
+import { HashavshevetSendButton } from "@/components/hashavshevet/send-button";
 
 // ============================================================================
 // TYPES
@@ -850,6 +851,19 @@ export default function HashavshevetExportPage() {
                         )}
                         ייצא לחשבשבת
                       </Button>
+                      <HashavshevetSendButton
+                        exportType="supplier_commissions"
+                        size="lg"
+                        disabled={isExporting}
+                        params={{
+                          startDate,
+                          endDate,
+                          brandIds: selectedBrandId ? [selectedBrandId] : undefined,
+                          supplierIds: selectedSupplierIds.length > 0 ? selectedSupplierIds : undefined,
+                          startDocNumber: parseInt(startDocNumber, 10) || 5001,
+                          onlyApproved,
+                        }}
+                      />
                     </div>
                   </div>
                 </CardContent>

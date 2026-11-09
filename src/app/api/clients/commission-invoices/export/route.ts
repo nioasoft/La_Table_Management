@@ -3,9 +3,12 @@ import {
   requireAdminOrSuperUser,
   isAuthError,
 } from "@/lib/api-middleware";
-import { getCommissionInvoicesForExport } from "@/data-access/commission-invoices";
-import { getVatRateForDate } from "@/data-access/vatRates";
-import { resolveClientHashavshevetAccount } from "@/lib/hashavshevet-account";
+import {
+  buildClientCommissionInvoicesRows,
+  CLIENT_COMMISSION_INVOICES_HEADERS as HEADERS,
+  loadClientCommissionInvoicesData,
+} from "@/lib/hashavshevet/builders/client-commission-invoices";
+import { copy } from "@/lib/hashavshevet/copy";
 import * as XLSX from "xlsx";
 
 // Worksheet name — sheet names allow spaces, so we can use the full
@@ -16,57 +19,6 @@ const SHEET_NAME = "עמלות לקוחות";
 // "רשימות שהוסרו: טווח בעל שם" warning). Using an underscore keeps the
 // name valid while remaining readable to Hashavshevet's importer.
 const NAMED_RANGE = "עמלות_לקוחות";
-
-// Header row — verbatim from the user's template file (typos preserved on purpose,
-// Hashavshevet's importer expects this exact layout).
-const HEADERS = [
-  "אסמתכא 2",      // A — last 4 digits of invoice number
-  "תאריך אסמכתא",   // B — invoice date
-  "תאריך ערך",     // C — value date (same as B)
-  "חן חובה 1",     // D — fixed: "עמלות מלקוחות"
-  "חוז חובה 2",    // E — fixed: "מעמתש"
-  "חן זכות",       // F — client's Hashavshevet account (per brand)
-  "סכום חובה",     // G — pre-VAT amount = I / (1 + vat)
-  "סכום חובה 2",   // H — VAT amount = I − G
-  "סכום זכות 2",   // I — total with VAT
-  "פרטים",         // J — "עמלה <Hebrew month>"
-  "מספר הקצאה",    // K — Israeli tax allocation number (9 digits) when invoice ≥ ₪10K
-] as const;
-
-const DEBIT_ACCOUNT_1 = "עמלות מלקוחות";
-const DEBIT_ACCOUNT_2 = "מעמתש";
-
-const HEBREW_MONTHS = [
-  "ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני",
-  "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר",
-];
-
-// Excel epoch is 1899-12-30 (accounts for the Lotus 1-2-3 leap-year bug).
-// Using UTC on both sides avoids any DST/timezone drift for a whole-day serial.
-function toExcelSerial(localDate: Date): number {
-  const utcMs = Date.UTC(
-    localDate.getFullYear(),
-    localDate.getMonth(),
-    localDate.getDate()
-  );
-  return Math.floor((utcMs - Date.UTC(1899, 11, 30)) / 86_400_000);
-}
-
-function lastDayOfMonth(year: number, month1Based: number): Date {
-  // new Date(y, m, 0) → last day of month (m-1), i.e. last day of month1Based.
-  return new Date(year, month1Based, 0);
-}
-
-function roundTo2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function invoiceRef(invoiceNumber: string | null): string {
-  if (!invoiceNumber) return "";
-  const digits = invoiceNumber.replace(/\D/g, "");
-  const base = digits.length > 0 ? digits : invoiceNumber;
-  return base.slice(-4);
-}
 
 /**
  * GET /api/clients/commission-invoices/export
@@ -101,52 +53,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const exportRows = await getCommissionInvoicesForExport(
-      periodMonth,
-      periodYear,
-      franchiseeId
+    const { rows } = buildClientCommissionInvoicesRows(
+      await loadClientCommissionInvoicesData({
+        periodMonth,
+        periodYear,
+        franchiseeId,
+      })
     );
 
-    if (exportRows.length === 0) {
-      return NextResponse.json(
-        { error: "אין חשבוניות עמלה לתקופה הנבחרת" },
-        { status: 400 }
-      );
+    if (rows.length === 0) {
+      return NextResponse.json({ error: copy.noCommissionInvoices }, { status: 400 });
     }
 
-    // Invoice-date and VAT rate are period-scoped: all rows in the export fall
-    // in the same month, so compute once.
-    const invoiceDate = lastDayOfMonth(periodYear, periodMonth);
-    const invoiceDateSerial = toExcelSerial(invoiceDate);
-    const vatRate = await getVatRateForDate(invoiceDate);
-    const vatMultiplier = 1 + vatRate;
-    const monthName = HEBREW_MONTHS[periodMonth - 1];
-    const description = `עמלה ${monthName}`;
-
-    // Build rows
-    const dataRows = exportRows.map((row) => {
-      const totalWithVat = roundTo2(row.totalAmountWithVat);
-      const netAmount = roundTo2(totalWithVat / vatMultiplier);
-      const vatAmount = roundTo2(totalWithVat - netAmount);
-      const accountName = resolveClientHashavshevetAccount(
-        row.clientHashavshevet,
-        row.brandId
-      );
-
-      return [
-        invoiceRef(row.invoiceNumber),     // A
-        invoiceDateSerial,                  // B
-        invoiceDateSerial,                  // C
-        DEBIT_ACCOUNT_1,                    // D
-        DEBIT_ACCOUNT_2,                    // E
-        accountName,                        // F
-        netAmount,                          // G
-        vatAmount,                          // H
-        totalWithVat,                       // I
-        description,                        // J
-        row.allocationNumber ?? "",         // K — empty when invoice is below threshold
-      ];
-    });
+    // Every column is the row's display value, in header order.
+    const dataRows = rows.map(({ display }) => HEADERS.map((header) => display[header]));
 
     const aoa: (string | number)[][] = [
       [...HEADERS],
