@@ -126,7 +126,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       itemkey: "ארוחות",
       Quantity: "1.000",
       price: "1046.61",
-      DocumentID: "1",
+      DocumentID: "30",
       Reference: "1",
       remarks: "ארוחות 09/26", // Reut 01/11/2026: "ארוחות" + the period, in the invoice's הערות
     });
@@ -135,7 +135,7 @@ describe("buildFranchiseeClientInvoicesRows", () => {
       itemkey: "גיפט",
       Quantity: "1.000",
       price: "242.24", // GIFTCARD: 19.2543 off
-      DocumentID: "1",
+      DocumentID: "30",
       Reference: "2",
       remarks: "גיפט קארד 09/26", // Reut 01/11/2026: gift card says so instead of ארוחות
     });

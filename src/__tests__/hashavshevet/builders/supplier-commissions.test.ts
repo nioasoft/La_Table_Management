@@ -111,7 +111,7 @@ describe("buildSupplierCommissionsRows", () => {
       itemkey: 'מע"מ ויני כ',
       Quantity: "1.000",
       price: "1235.00",
-      DocumentID: "1",
+      DocumentID: "30",
       Reference: "7002",
     });
   });

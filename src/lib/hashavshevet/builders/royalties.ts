@@ -11,7 +11,7 @@ import {
 } from "@/schemas/franchisee-billing-screen";
 import { royaltiesParams } from "@/schemas/hashavshevet";
 import { exportLabels } from "../copy";
-import { apiMoney, apiQuantity, lastDayOfMonth } from "../format";
+import { apiDocumentId, apiMoney, apiQuantity, lastDayOfMonth } from "../format";
 import type { ExportDefinition } from "../registry";
 import type { ApiRow, BuiltRow } from "../types";
 
@@ -303,19 +303,17 @@ export async function loadRoyaltiesData(params: unknown): Promise<RoyaltiesData>
   return { context, companyId, itemType, year, month };
 }
 
-/**
- * Royalties and marketing are issued as "ח-ן קבלה" (חשבונית מס/קבלה, DocumentID 2), not as the
- * Excel's type 11 → חשבונית (Reut, first temp send 01/11/2026). The Excel row keeps its 11.
- */
-const API_DOCUMENT_ID_TAX_INVOICE_RECEIPT = "2";
-
 function apiRowOf(row: HashavshevetRow): ApiRow {
+  const documentId = apiDocumentId(Number(row.documentType));
+  if (documentId === null) {
+    throw new Error(`No API DocumentID for Excel document type ${row.documentType}`);
+  }
   const apiRow: ApiRow = {
     accountKey: row.accountKey,
     itemkey: row.itemKey,
     Quantity: apiQuantity(row.quantity),
     price: apiMoney(row.price),
-    DocumentID: API_DOCUMENT_ID_TAX_INVOICE_RECEIPT,
+    DocumentID: documentId,
     Reference: row.documentNumber,
   };
   if (row.details) apiRow.details = row.details;

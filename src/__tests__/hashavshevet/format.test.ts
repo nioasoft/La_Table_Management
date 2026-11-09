@@ -16,7 +16,7 @@ describe("hashavshevet format", () => {
     expect(apiMoney(0.1 + 0.2)).toBe("0.30");
     expect(apiQuantity(1)).toBe("1.000");
     expect(apiDate("2026-10-31")).toBe("31/10/2026");
-    expect(apiDocumentId(11)).toBe("1");
+    expect(apiDocumentId(11)).toBe("30");
     expect(apiDocumentId(1)).toBeNull();
     expect(internalReference("H", "a|b")).toBe(internalReference("H", "a|b"));
     expect(internalReference("H", "a|b")).toMatch(/^\d{1,9}$/);

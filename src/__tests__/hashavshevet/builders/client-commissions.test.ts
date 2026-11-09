@@ -100,7 +100,7 @@ describe("buildClientCommissionsRows", () => {
       itemkey: "עמלות ויני חדרה",
       Quantity: "1.000",
       price: "1235.00",
-      DocumentID: "1",
+      DocumentID: "30",
     });
     expect(row.apiRow).not.toHaveProperty("Reference");
     expect(row.apiRow).not.toHaveProperty("valueDate");

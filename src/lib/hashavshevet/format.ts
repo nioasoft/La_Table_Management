@@ -39,8 +39,14 @@ export function apiDate(ymd: string): string {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-/** Excel document-type numbering → H-Connect DocumentID. 11 = invoice (verify on first temp send, spec §13). */
-export const EXCEL_TO_API_DOCUMENT_ID: Readonly<Record<number, string>> = { 11: "1" };
+/**
+ * Excel document-type numbering → H-Connect DocumentID. Every invoice export (royalties and marketing
+ * included) goes out as an order (30): Reut issues the actual invoices, including חשבונית מס/קבלה, from
+ * the orders in חוזים. Hashavshevet support, 05/11/2026: never send a tax invoice (1), and no single
+ * invoice/receipt (2) exists through the API. Orders imported once Hashavshevet fixed the importer on
+ * their side (company 27, 09/11/2026).
+ */
+export const EXCEL_TO_API_DOCUMENT_ID: Readonly<Record<number, string>> = { 11: "30" };
 
 /** null = no API equivalent (unsupported for sending). */
 export function apiDocumentId(excelType: number): string | null {
