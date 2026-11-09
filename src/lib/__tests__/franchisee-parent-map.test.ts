@@ -186,6 +186,20 @@ describe("findOperatingBrand", () => {
       ).toBe("נתנזון עזריאלי חיפה");
     });
 
+    // Regression 2026-11-09: Wolt's commission invoice names the branch
+    // "נתנזון | NATANZON | חיפה" — no "בורגר". Since the ח.פ route
+    // (2026-09-09) both Azrieli invoices resolved to ויני, so Sep/Oct
+    // Natanzon invoices parked and Reut's manual re-upload overwrote ויני's.
+    it("fires on Wolt's 'NATANZON' recipient marker (via the ח.פ route's franchisee name)", () => {
+      const woltNatanzon =
+        'פט ויני עזריאלי בע״מ\nנתנזון | NATANZON | חיפה\nמספר ח"פ:516161361';
+      expect(
+        findOperatingBrand("ויני עזריאלי חיפה", woltNatanzon)?.operatingFranchiseeName
+      ).toBe("נתנזון עזריאלי חיפה");
+      const woltVini = 'פט ויני עזריאלי בע״מ\nויני | חיפה\nמספר ח"פ:516161361';
+      expect(findOperatingBrand("ויני עזריאלי חיפה", woltVini)).toBeNull();
+    });
+
     it("still blocks when the VINNI brand marker is present (business 8093 red report)", () => {
       const haatVini = 'פט ויני עזריאלי בע"מ VINNI\nמספר העסק: 8093';
       expect(findOperatingBrand(PAT_VINI, haatVini)).toBeNull();

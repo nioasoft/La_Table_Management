@@ -22,6 +22,7 @@ import {
   findConflictingFranchisee,
   matchFranchiseeName,
 } from "@/lib/franchisee-matcher";
+import { findOperatingBrand } from "@/lib/franchisee-parent-map";
 import { database } from "@/db";
 import { client, franchisee, type Franchisee } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -91,6 +92,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * Shared-ח.פ override the inbound resolver applies: a נתנזון invoice is
+ * addressed to ויני's legal entity, so the name alone matches ויני.
+ */
+function toOperatingBrand(
+  matched: Franchisee,
+  rawText: string | undefined,
+  active: Franchisee[]
+): Franchisee {
+  const pair = findOperatingBrand(matched.name, rawText ?? "");
+  return active.find((f) => f.id === pair?.operatingFranchiseeId) ?? matched;
+}
+
 /** The franchisee the file itself names, when it is not the selected one. */
 async function detectOtherFranchisee(
   buffer: Buffer,
@@ -105,8 +119,11 @@ async function detectOtherFranchisee(
       : getClientParser(parserCode);
   if (!parser) return null;
   let name: string | undefined;
+  let rawText: string | undefined;
   try {
-    name = (await parser(buffer, mimeType)).data?.franchiseeName;
+    const data = (await parser(buffer, mimeType)).data;
+    name = data?.franchiseeName;
+    rawText = data?.rawText;
   } catch (err) {
     console.warn("[documents-upload] pre-parse for franchisee check failed:", err);
     return null;
@@ -116,7 +133,11 @@ async function detectOtherFranchisee(
     .select()
     .from(franchisee)
     .where(eq(franchisee.isActive, true))) as Franchisee[];
-  return findConflictingFranchisee(name, active, selectedId);
+  const named =
+    findConflictingFranchisee(name, active, selectedId) ??
+    active.find((f) => f.id === selectedId);
+  const owner = named && toOperatingBrand(named, rawText, active);
+  return owner && owner.id !== selectedId ? owner : null;
 }
 
 export async function POST(request: NextRequest) {
@@ -253,10 +274,12 @@ export async function POST(request: NextRequest) {
       }
 
       let extractedName: string | null = null;
+      let rawText: string | undefined;
       try {
         const preParse = await invoiceParser(buffer, mimeType);
         if (preParse.success && preParse.data?.franchiseeName) {
           extractedName = preParse.data.franchiseeName;
+          rawText = preParse.data.rawText;
         }
       } catch (err) {
         console.warn(
@@ -301,9 +324,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      resolvedFranchiseeId = matchResult.matchedFranchisee.id;
+      const owner = toOperatingBrand(
+        matchResult.matchedFranchisee,
+        rawText,
+        activeFranchisees
+      );
+      resolvedFranchiseeId = owner.id;
       console.log(
-        `[documents-upload] auto-matched franchisee for commission_invoice: "${extractedName}" → "${matchResult.matchedFranchisee.name}" (confidence ${matchResult.confidence.toFixed(2)})`
+        `[documents-upload] auto-matched franchisee for commission_invoice: "${extractedName}" → "${owner.name}" (confidence ${matchResult.confidence.toFixed(2)})`
       );
     }
 

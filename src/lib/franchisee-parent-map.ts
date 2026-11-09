@@ -73,7 +73,10 @@ export const PARENT_BRAND_MAP: readonly ParentBrandPair[] = [
     ],
     operatingFranchiseeId: "ab020323-fefe-4543-9a69-16d14dd54b99",
     operatingFranchiseeName: "נתנזון עזריאלי חיפה",
-    requiredOperatingKeywords: ["נתנזון בורגר", "Natanzon Burger"],
+    // "NATANZON" — Wolt's recipient block reads "נתנזון | NATANZON | חיפה"
+    // (no בורגר). Missing it sent Sep/Oct 2026 Natanzon Wolt invoices to ויני
+    // via the ח.פ route.
+    requiredOperatingKeywords: ["נתנזון בורגר", "Natanzon Burger", "NATANZON"],
     // BLOCKING — only the Latin brand marker "VINNI". Earlier this list
     // held "ויני חיפה", which silently killed the override on EVERY
     // Mishloha invoice to this entity: the recipient header is
