@@ -203,7 +203,7 @@ Implement all tasks in the issue or phase following project conventions:
 
 - Follow existing code patterns in the codebase
 - Use the `@/` import alias
-- Run `pnpm lint && pnpm typecheck` after making changes
+- Run `npm run lint && npx tsc --noEmit` after making changes
 - Fix any lint or type errors before committing
 
 ### 10. Commit Changes

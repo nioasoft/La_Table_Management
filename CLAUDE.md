@@ -16,7 +16,8 @@ La Table Management — מערכת ניהול עמלות לקבוצת זכיינ
 ## Database — PRODUCTION בלבד
 
 **אין DB פיתוח.** `DATABASE_URL` ב-.env מצביע על Neon production (www.latable.co.il),
-וכל סקריפט `db:*` רץ נגדו. אל תשתמש ב-Docker המקומי לנתונים.
+וכל סקריפט `db:*` שטוען את `.env` (generate/migrate/studio/seed) רץ נגדו.
+`db:up`/`db:down` מרימים Docker מקומי — אל תשתמש בו לנתונים.
 
 שאילתות ישירות:
 

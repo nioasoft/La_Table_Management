@@ -12,9 +12,7 @@ Please create a comprehensive checkpoint commit with the following steps:
    - Run `git log -5 --oneline` to understand the commit message style of this repository
 
 3. **Stage everything**:
-   - Add ALL tracked changes (modified and deleted files)
-   - Add ALL untracked files (new files)
-   - Use `git add -A` or `git add .` to stage everything
+   - Stage all modified, deleted and new files (`git add -A`), except files that hold secrets or machine-local config (`.env*`, credentials, keys), because a committed secret has to be rotated; name anything you leave out
 
 4. **Create a detailed commit message**:
    - **First line**: Write a clear, concise summary (50-72 chars) describing the primary change
@@ -25,13 +23,11 @@ Please create a comprehensive checkpoint commit with the following steps:
      - Why these changes were made (purpose/motivation)
      - Any important technical details or decisions
      - Breaking changes or migration notes if applicable
-   - **Footer**: Include co-author attribution as shown in the Git Safety Protocol
+   - **Footer**: End with the commit attribution lines this session's instructions specify, if any
 
 5. **Execute the commit**: Create the commit with the properly formatted message following this repository's conventions.
 
-IMPORTANT:
+Notes:
 
-- Do NOT skip any files - include everything
 - Make the commit message descriptive enough that someone reviewing the git log can understand what was accomplished
 - Follow the project's existing commit message conventions (check git log first)
-- Include the Claude Code co-author attribution in the commit message

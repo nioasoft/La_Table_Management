@@ -290,7 +290,7 @@ and say "continue with this feature" or use /continue-feature.
 
 - If `gh auth status` fails, inform user to run `gh auth login`
 - If project creation fails with "missing required scopes [project read:project]", inform user to run `gh auth refresh -s project,read:project`
-- If the feature folder doesn't exist, ask user to run `/create-feature` first
+- If the feature folder doesn't exist, ask user to run `/create-spec` first
 - If labels/issues fail to create, report the error and continue with remaining items
 - If github.md already exists, ask user if they want to overwrite or update it
 

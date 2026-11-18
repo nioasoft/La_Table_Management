@@ -94,8 +94,6 @@ Brief summary of what will be built.
 
 ## Capturing Technical Details
 
-**CRITICAL**: The implementation plan must capture ALL technical details discussed during planning. The plan is the single source of truth - anything not captured here is lost.
-
 Each phase should include a `### Technical Details` section containing:
 
 - **CLI commands**: Package installations, migrations, code generation
@@ -166,7 +164,6 @@ After creating the feature, inform the user:
 - Use clear, descriptive task names that explain what will be done
 - Note dependencies explicitly when tasks must be done in order
 - Common manual tasks: account creation, API key generation, environment variables, OAuth app configuration, DNS/domain setup, billing setup, third-party service registration
-- **Don't lose planning details**: If technical specifics were discussed during planning (commands, schemas, code patterns), they MUST appear in the `### Technical Details` section of the relevant phase. Review the conversation before finalizing to ensure nothing is missed.
 
 ### When to Use `[complex]`
 
