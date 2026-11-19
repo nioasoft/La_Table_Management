@@ -35,7 +35,7 @@ For Next.js projects like this one, be aware of:
 - Components in `src/components/` including `ui/` for shadcn components
 - Library code in `src/lib/` for utilities, auth, database
 - API routes in `src/app/api/` as route.ts files
-- Documentation in `docs/` with technical and business subdirectories
+- Documentation in `docs/` (a flat folder of .md and .html files)
 
 ### Output Format
 

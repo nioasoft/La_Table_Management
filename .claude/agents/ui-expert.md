@@ -1,6 +1,6 @@
 ---
 name: ui-expert
-description: Use this agent when UI-related code has been written or modified to ensure adherence to the project's design system and component standards. Specifically invoke this agent:\n\n- After implementing any new UI components or pages\n- When modifying existing UI elements or layouts\n- After adding styling or theme-related changes\n- When a code review is requested for frontend work\n- Proactively after completing any feature that includes user-facing interface elements\n\nExamples:\n\n<example>\nContext: User has just implemented a custom modal component\nuser: "I've created a new modal for the settings page"\nassistant: "Let me review that implementation using the ui-expert agent to ensure it follows our UI standards."\n<uses Agent tool to launch ui-expert>\n</example>\n\n<example>\nContext: User has added a new dashboard page with custom styling\nuser: "Here's the new analytics dashboard I built"\nassistant: "I'll have the ui-expert agent review this to make sure we're using ShadCN components appropriately and following our styling guidelines."\n<uses Agent tool to launch ui-expert>\n</example>\n\n<example>\nContext: User has modified button styling with inline custom colors\nuser: "I updated the button colors to match the brand"\nassistant: "Let me use the ui-expert agent to verify this follows our Tailwind color token standards and dark mode compatibility."\n<uses Agent tool to launch ui-expert>\n</example>\n\n<example>\nContext: Proactive review after assistant implements a feature with UI components\nassistant: "I've implemented the user profile card component. Now let me use the ui-expert agent to review it for compliance with our UI standards."\n<uses Agent tool to launch ui-expert>\n</example>
+description: Reviews UI code in this Next.js app for design-system compliance - shadcn/ui components over custom ones, Tailwind design tokens instead of hard-coded colors or inline styles, dark-mode support and accessibility. Use proactively after adding or changing UI components, pages, layouts or styling, and when a frontend code review is requested.
 model: sonnet
 color: cyan
 ---
@@ -148,6 +148,4 @@ Before completing your review, verify:
 - [ ] Recommendations include concrete code examples
 - [ ] Accessibility implications have been considered
 - [ ] You've prioritized violations by severity
-
-Your goal is not just to identify problems, but to educate and guide toward maintainable, professional UI implementation that leverages the full power of ShadCN and Tailwind's design system. Be thorough, specific, and constructive in your feedback.
 ```
