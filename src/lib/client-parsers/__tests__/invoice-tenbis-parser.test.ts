@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { parseTenbisInvoice } from "../invoice-tenbis-parser";
+import { extractTenbisInvoiceNumber, parseTenbisInvoice } from "../invoice-tenbis-parser";
 
 describe("parseTenbisInvoice — King Kong Horev 500105038", () => {
   it("extracts franchisee, with-VAT headline and period from a real Tnbis tax invoice", async () => {
@@ -106,5 +106,41 @@ describe("parseTenbisInvoice — period derived from the invoice date", () => {
       "application/pdf",
     );
     expect(result.data?.periodMonth).not.toBe(5);
+  });
+});
+
+/**
+ * Reut 2026-11-23: King Kong Hadera's October 10bis commission invoice reached
+ * Hashavshevet with an empty אסמכתא 2. 10bis's PDFs come out of pdf-parse in
+ * three layouts; only the first was read, so the other two saved the invoice
+ * with no number and the export left אסמכתא 2 blank. The numbers below are
+ * synthetic; the surrounding lines are verbatim from the stored rawText.
+ */
+describe("extractTenbisInvoiceNumber — every 10bis layout", () => {
+  it("reads the number after the label (most branches)", () => {
+    const text =
+      'ח.פ./ע.מ.516161361\n   חשבונית מס מספר 400200001\nמקור\n=== מסמך ממוחשב ==\n ח.פ:\nתאריך:\n512963489\n';
+    expect(extractTenbisInvoiceNumber(text)).toBe("400200001");
+  });
+
+  it("reads the number before the label (Hadera Oct, Horev Jul/Aug)", () => {
+    const text =
+      'ח.פ./ע.מ.517012217\n400200002   חשבונית מס מספר \nמקור\n=== מסמך ממוחשב ==\n ח.פ:\nתאריך:\n512963489\n';
+    expect(extractTenbisInvoiceNumber(text)).toBe("400200002");
+  });
+
+  it("reads the number on the line under a bare label (Motzkin Jul template)", () => {
+    const text =
+      'חשבונית מס\n 400200003\nקינג קונג מוצקין בע"מ\nלידי:\nנאמן למקור\n31/07/2026\nתאריך:\n512963489מספר ח.פ:\nמספר ממוחשב:\n 87386492\n';
+    expect(extractTenbisInvoiceNumber(text)).toBe("400200003");
+  });
+
+  it("never takes 10bis's own ח.פ from the line under an empty label", () => {
+    const text = "400200004   חשבונית מס מספר \n512963489\n";
+    expect(extractTenbisInvoiceNumber(text)).toBe("400200004");
+  });
+
+  it("returns an empty string when there is no invoice number", () => {
+    expect(extractTenbisInvoiceNumber("חשבונית מס\nמקור\n")).toBe("");
   });
 });

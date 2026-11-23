@@ -78,6 +78,35 @@ function extractHebrewMonth(text: string): number | undefined {
   return undefined;
 }
 
+// The 10bis layouts pdf-parse produces, tried in order; the first match wins.
+const INVOICE_NUMBER_PATTERNS: RegExp[] = [
+  // "400205611   חשבונית מס מספר" — logical label, number before it (Hadera Oct 2026).
+  // Same line only, and first: the "number after" pattern below crosses newlines,
+  // so on this layout it would read 10bis's own ח.פ from a later line instead.
+  /(\d{5,12})[^\S\n]*חשבונית[^\S\n]*מס[^\S\n]*מספר/,
+  // "500102320 מספר מס חשבונית" — visual RTL, the whole line reversed.
+  /(\d{5,12})\s*מספר\s*מס\s*חשבונית/,
+  // "חשבונית מס מספר 400204901" — logical order, number after the label.
+  /חשבונית\s*מס\s*מספר\s*(\d{5,12})/,
+  /(\d{5,12})\s*'מס\s*מספר\s*חשבונית/,
+  /חשבונית\s*מספר\s*(\d{5,12})/,
+  // "חשבונית מס\n 400185104" — the July-2026 template: bare label, number alone on the next line.
+  /^[^\S\n]*חשבונית[^\S\n]*מס[^\S\n]*\n[^\S\n]*(\d{5,12})[^\S\n]*$/m,
+];
+
+/**
+ * The invoice number of a 10bis tax invoice, from pdf-parse text; "" when absent.
+ * It becomes אסמכתא 2 (last 4 digits) of the commission-invoices Hashavshevet export,
+ * so a missed layout books the entry with that field empty (Reut 2026-11-23).
+ */
+export function extractTenbisInvoiceNumber(text: string): string {
+  for (const pattern of INVOICE_NUMBER_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) return match[1];
+  }
+  return "";
+}
+
 /**
  * Parse a Tenbis commission invoice PDF (חשבונית מס)
  *
@@ -185,18 +214,7 @@ export async function parseTenbisInvoice(
     // ---------------------------------------------------------------
     // 2. Extract invoice number
     // ---------------------------------------------------------------
-    // "חשבונית מס מספר 500102320" in visual RTL could be:
-    //   "500102320 מספר מס חשבונית" or "500102320מספר מס חשבונית"
-    let invoiceNumber = "";
-    // Pattern A: number near "חשבונית" and "מספר"
-    const invoiceNumMatch =
-      text.match(/(\d{5,12})\s*מספר\s*מס\s*חשבונית/) ||
-      text.match(/חשבונית\s*מס\s*מספר\s*(\d{5,12})/) ||
-      text.match(/(\d{5,12})\s*'מס\s*מספר\s*חשבונית/) ||
-      text.match(/חשבונית\s*מספר\s*(\d{5,12})/);
-    if (invoiceNumMatch) {
-      invoiceNumber = invoiceNumMatch[1];
-    }
+    const invoiceNumber = extractTenbisInvoiceNumber(text);
 
     // ---------------------------------------------------------------
     // 3. Extract invoice date
